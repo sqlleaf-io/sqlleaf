@@ -163,3 +163,20 @@ def test__select_window_function(holder):
         ['window[RANK()]', 'column[fruit.processed.age]'],
         ['window[ROW_NUMBER()]', 'column[fruit.processed.amount]'],
     ]
+
+def test__select_join(holder):
+    queries = '''
+    INSERT INTO fruit.processed
+    SELECT
+        p.name,
+        r.age as age
+    FROM fruit.raw r
+    INNER JOIN fruit.processed p ON r.name = p.name;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    paths = h.get_friendly_paths()
+    assert paths == [
+        ['column[fruit.raw.age]', 'column[fruit.processed.age]']
+        # Exclude self-referential inserts
+    ]
