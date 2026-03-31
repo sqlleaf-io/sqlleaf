@@ -64,7 +64,7 @@ sqlleaf is different from other lineage systems in that it calculates lineage fr
 There are many open-source tools that can calculate column-level lineage, such as [sqllineage](https://github.com/reata/sqllineage), [sqlglot](https://github.com/tobymao/sqlglot/blob/main/sqlglot/lineage.py), and [DataHub](https://github.com/datahub-project/datahub/blob/master/docs/api/tutorials/lineage.md),  but they all fall short: they only consider columns. They ignore non-column sources of data, such as functions, literals or variables, which are essential to explaining how data flows throughout a system.
 
 For example, consider the SQL snippet:
-```postgresql
+```sql
 INSERT INTO fruit.processed
 SELECT
     CASE WHEN age < 2 THEN 'new' ELSE 'old' END AS kind
@@ -82,21 +82,21 @@ sqlleaf considers the context in which columns appear and ignores values which a
 Other examples in which columns are excluded are those appearing in `WHERE`, `ORDER BY`, and `PARTITION BY` clauses.
 
 Similarly, consider the query:
-```postgresql
+```sql
 INSERT INTO accounts
-SELECT SUBSTRING(credit_card, 0, 3)
+SELECT SUBSTRING(credit_card, 0, 3) as card
 FROM customers;
 ```
 Other systems ignore the context of the function and create lineage:
-- `column[customers.credit_card] -> column[transactions.credit_card]`
+- `column[customers.credit_card] -> column[accounts.card]`
 
 whereas sqlleaf creates a dedicated node for the function:
-- `column[customers.credit_card] -> function[substring] -> column[transactions.credit_card]`
+- `column[customers.credit_card] -> function[substring] -> column[accounts.card]`
 
-along with methods to easily traverse and find these types of situations.
+This allows us to identify the transformations throughout the data flow.
 
 ## Usage
-There is one main function:
+There is currently one main function:
 - `generate()`, which converts SQL expressions into graphs
 
 ### generate()
@@ -118,12 +118,14 @@ sqlleaf aims to represent any type of query or object from any SQL dialect.
 sqlleaf can extract queries from insert, update and merge statements.
 
 For example, the merge statement:
-```postgresql
+```sql
 MERGE INTO fruit.processed AS t
     USING fruit.raw AS s
     ON t.kind = s.kind
-    WHEN MATCHED THEN UPDATE SET name = s.name
-    WHEN NOT MATCHED THEN INSERT (label) VALUES (s.kind);
+    WHEN MATCHED THEN 
+        UPDATE SET name = s.name
+    WHEN NOT MATCHED THEN 
+        INSERT (label) VALUES (s.kind);
 ```
 has tree output:
 ```
@@ -135,12 +137,12 @@ column[fruit.processed.label]
 Internally, the merge query has two inner queries: one insert and one update. Queries form a hierarchy, depending on their type, allowing you to traverse them easily:
 ```python
 query = lineage.get_queries()   # [structs.MergeQuery]
-query.child_queries             # [structs.UpdateQuery, structs.InsertQuery]
+query[0].child_queries             # [structs.UpdateQuery, structs.InsertQuery]
 ```
 
 ### Common Table Expressions (CTEs)
-CTEs are treated as nodes.
-```postgresql
+CTEs are represented as nodes.
+```sql
 WITH my_cte AS ( SELECT 'john' as name )
 INSERT INTO processed
 SELECT name as name FROM my_cte;
@@ -150,6 +152,7 @@ column[fruit.processed.name]
 └── column[my_cte.name]
     └── literal["john"]
 ```
+They have kind `cte`.
 
 ### Views, Select Into, and Create Table As (CTAS)
 You can generate lineage for views, 'select into' and CTAS statements:
@@ -165,12 +168,25 @@ A `SELECT INTO` query is automatically transformed by sqlglot into a `CTAS`
 if the dialect officially recommends it (e.g. Postgres).
 
 ### Functions
-A lineage system needs to keep track of whether data are transformed as they move throughout tables.
-sqlleaf represents functions as nodes in the graph.
+Functions are represented as nodes. Each occurrence of a function creates a unique node.
+To identify each function, it is assigned multiple indices to identify its position.
+```sql
+INSERT INTO fruit.processed
+SELECT UPPER(LOWER(UPPER(name))) as name
+FROM fruit.raw;
+```
+outputs with `print_tree(full_name=True)`:
+```
+column[fruit.processed.name type=VARCHAR kind=table]
+└── function[UPPER() type=VARCHAR node_depth=0 select=0 func_depth=0 func_arg=0]
+    └── function[LOWER() type=VARCHAR node_depth=0 select=0 func_depth=1 func_arg=0]
+        └── function[UPPER() type=VARCHAR node_depth=0 select=0 func_depth=2 func_arg=0]
+            └── column[fruit.raw.name type=VARCHAR kind=table]
+```
 
 ### JSON
-Paths and operators used for JSON are treated as nodes:
-```postgresql
+Paths and operators used for JSON are represented as nodes:
+```sql
 INSERT INTO processed
 SELECT jsonblob -> 'fruits' -> 'apple' as name
 FROM raw;
@@ -180,14 +196,16 @@ column[processed.name]
 └── jsonpath[.fruits.apple]
     └── column[raw.jsonblob]
 ```
-Coming soon: XML
+
+# XML
+Coming soon.
 
 ### Stored procedures
 The current SQL parsers lack complete support for stored procedure syntax, such as PL/pgsql. `sqlleaf` will perform a best effort to extract any queries inside them.
 
 This example parses a stored procedure containing a CTE, an input variable and several nested functions:
 
-```postgresql
+```sql
 CREATE OR REPLACE PROCEDURE fruit.process(v_kind VARCHAR, v_amount INT)
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -228,12 +246,13 @@ Coming soon.
 
 ### Triggers
 Triggers are parsed and collected, but their behaviour is not currently implemented.
+They are not represented as nodes, but they are included in an edge's attributes.
 Coming soon.
 
 ### Sequences
 Sequences (in Postgres) are supported as nodes.
 
-```postgresql
+```sql
 CREATE SEQUENCE serial START 101;
 INSERT INTO processed SELECT nextval('serial') as age;
 ```
@@ -348,6 +367,16 @@ Future features:
 - validation/error detection of SQL queries uniquely determined by the lineage
 - querying ordering awareness
 - dependency order resolution of CREATE statements
+- Filtering:
+```
+lineage.filter(
+    name,
+    direction='',
+    include_types=[],
+    exclude_types=[],
+    neighbors=0
+)
+```
 
 The following types of queries and nodes need to be created.
 
