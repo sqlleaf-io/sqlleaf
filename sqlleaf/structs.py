@@ -325,7 +325,7 @@ class TableQuery(Query):
 
         for inh_prop in inherited_props:
             inh_table = inh_prop.find(exp.Table)
-            inh_table_query = mapping.find_table(inh_table)
+            inh_table_query = mapping.find_query(kind='table', table=inh_table)
             columns.extend(inh_table_query.column_defs)
 
         return columns
@@ -357,7 +357,7 @@ class TableQuery(Query):
                     val = str(prop.args["value"])
                     self.set_props(val, props=include_props, to_include=False)
 
-            parent_table = mapping.find_table(table=like_table)
+            parent_table = mapping.find_query(kind='table', table=like_table)
             parent_columns = parent_table.column_defs
             # TODO: copy parent_table, change column props based on props
             for col_def in parent_columns:
@@ -556,7 +556,7 @@ class CopyQuery(Query):
         Convert the COPY statement into an INSERT statement so that the lineage functions can process it.
         """
         child_table = expr.this
-        child_columns = mapping.find_columns(expr.this)
+        child_columns = mapping.find_columns_for_table(table=expr.this)
         column_names = tuple(child_columns.keys())
         stage_name = str(expr.args['files'][0])
         select = exp.select(*column_names, dialect=dialect).from_(stage_name)
@@ -700,7 +700,7 @@ class ColumnNode(NodeAttributes):
         tokens = [catalog, schema, table]
         name = ".".join([tok for tok in tokens if tok])
         tab = exp.to_table(name, dialect=processor_ctx.query.dialect)
-        query = processor_ctx.mapping.find_table(tab)
+        query = processor_ctx.mapping.find_query(kind='table', table=tab)
 
         if query.kind == 'ctas':
             return 'table'
@@ -1220,7 +1220,7 @@ class LineageBuilder:
 
             # Ensure the sequence exists
             seq_table = exp.table_(table=seq_name_expr.name, db=schema)
-            if not processor_ctx.mapping.find_sequence(seq_table):
+            if not processor_ctx.mapping.find_query(kind='sequence', table=seq_table):
                 logger.warning(f"Sequence '{full_name}' not found.")
 
             node_attrs = SequenceNode(name=seq_name_expr.name, processor_ctx=processor_ctx, ctx=ctx)
@@ -1231,7 +1231,7 @@ class LineageBuilder:
         node_attrs = UserDefinedFunctionNode(name=function, schema=schema, processor_ctx=processor_ctx, ctx=ctx)
 
         table_expr = exp.table_(table=function, db=schema)
-        udf_obj = processor_ctx.mapping.find_user_defined_function(table=table_expr)
+        udf_obj = processor_ctx.mapping.find_query(kind='udf', table=table_expr)
 
         # if the udf has a return_expr, insert it in here
         # if it's a literal, set the parent of 'this' as the return expr. Discard the args in lineage, but record in object

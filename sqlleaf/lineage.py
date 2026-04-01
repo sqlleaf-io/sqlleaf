@@ -92,7 +92,7 @@ def generate_column_lineage_for_query(
     scope = sqlglot.optimizer.build_scope(statement)
 
     # Check if a trigger overrides the query's behaviour
-    if t := mapping.find_trigger(child_table):
+    if t := mapping.find_query(kind='trigger', table=child_table):
         if t.timing == "INSTEAD OF":
             logger.debug("Skipping lineage for all columns of table '%s' since trigger '%s' overrides it." % (exp.table_name(child_table), t.name))
             # TODO: Use the trigger's function as the lineage
@@ -212,7 +212,7 @@ def determine_selected_columns(statement: exp.Insert, child_table: exp.Table, ma
     Returns:
         child_columns (Dict[str, str]): the table's resolved columns - {name: type}
     """
-    child_table_query = mapping.find_table(child_table)
+    child_table_query = mapping.find_query(kind='table', table=child_table)
     if not child_table_query:
         raise exception.SqlLeafException(message="Unknown table", table=str(child_table))
 
