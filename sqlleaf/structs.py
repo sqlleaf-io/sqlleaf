@@ -75,22 +75,6 @@ class Query:
         """
         self.set_statement(statement=self.statement_original)
 
-    def set_as_insert(self):
-        """
-        Transform the Create query into an Insert query so that the lineage functions can process it.
-        We track that this query is a Create to enable resolution of column types in later stages.
-
-        Example:
-         CREATE VIEW a.b.c AS SELECT 'x' FROM blah;
-         ->
-         INSERT INTO a.b.c SELECT 'x' FROM blah
-        """
-        statement = exp.insert(
-            expression=self.statement.expression,
-            into=self.child_table,
-        )
-        self.set_statement(statement=statement)
-
     def add_child_query(self, child_query):
         child_query.parent_query = self
         self.child_queries.append(child_query)
@@ -545,6 +529,45 @@ class TriggerQuery(Query):
         self.execute_args = self.execute.expressions  # [Literal(apple)]
 
 
+class StageQuery(Query):
+    def __init__(self, statement: exp.Create, dialect: str):
+        super().__init__(
+            kind="stage",
+            dialect=dialect,
+            statement=statement,
+            child_table=util.get_table(statement),
+            has_statement=False,
+        )
+
+
+class CopyQuery(Query):
+    def __init__(self, expr: exp.Copy, dialect: str, mapping: mappings.ObjectMapping, index: int = 0):
+        super().__init__(
+            kind="copy",
+            dialect=dialect,
+            statement=expr,
+            index=index,
+            child_table=expr.this,
+        )
+        self.set_as_insert(expr, dialect, mapping)
+
+    def set_as_insert(self, expr, dialect, mapping):
+        """
+        Convert the COPY statement into an INSERT statement so that the lineage functions can process it.
+        """
+        child_table = expr.this
+        child_columns = mapping.find_columns(expr.this)
+        column_names = tuple(child_columns.keys())
+        stage_name = str(expr.args['files'][0])
+        select = exp.select(*column_names, dialect=dialect).from_(stage_name)
+
+        expr_insert = exp.insert(
+            expression=select,
+            into=child_table,
+            dialect=dialect,
+        )
+        self.set_statement(expr_insert)
+
 ################################ NODES ################################
 
 
@@ -679,7 +702,9 @@ class ColumnNode(NodeAttributes):
         tab = exp.to_table(name, dialect=processor_ctx.query.dialect)
         query = processor_ctx.mapping.find_table(tab)
 
-        return "view" if isinstance(query, ViewQuery) else "table"
+        if query.kind == 'ctas':
+            return 'table'
+        return query.kind
 
     def get_name(self):
         tokens = [self.catalog, self.schema, self.table, self.column]

@@ -34,7 +34,7 @@ def apply_optimizations(statement: exp.Expression, dialect: str, mapping, child_
             quote_identifiers=False,
         )
     except sqlglot.errors.OptimizeError as e:
-        raise exception.SqlGlotException(message=str(e), table=child_table)
+        raise exception.SqlGlotException(message=str(e))
 
     stmt = add_aliases_to_selects(stmt, child_table)
     stmt = annotate_types.annotate_types(stmt, dialect=dialect, schema=mapping)

@@ -3,6 +3,8 @@ import typing as t
 
 import sqlglot
 from sqlglot import exp
+from sqlglot.optimizer.optimizer import qualify
+from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
 from sqlleaf import structs, transform, exception
 
@@ -22,6 +24,8 @@ def get_processors():
         "insert": _process_unnamed,
         "update": _process_unnamed,
         "merge": _process_unnamed,
+        "stage": _process_stage,
+        "copy": _process_unnamed,
     }
 
 
@@ -126,7 +130,13 @@ def collect_queries(text: str, dialect: str, object_mapping) -> (t.List[structs.
         else:
             kind = stmt.key.lower()
 
-        query = processors[kind](statement=stmt, dialect=dialect, object_mapping=object_mapping)
+        # Convert the statement to uppercase if the dialect supports it
+        stmt = normalize_identifiers(stmt, dialect=dialect, store_original_column_identifiers=True)
+        try:
+            query = processors[kind](statement=stmt, dialect=dialect, object_mapping=object_mapping)
+        except KeyError:
+            raise exception.SqlLeafException(message=f"Unsupported query kind: '{kind}'")
+
         queries.append(query)
         counts[kind] += 1
 
@@ -145,6 +155,8 @@ def _process_unnamed(statement: t.Union[exp.Insert, exp.Update], dialect: str, o
         query = structs.InsertQuery(expr=statement, dialect=dialect, index=-1)
     elif isinstance(statement, exp.Update):
         query = structs.UpdateQuery(expr=statement, dialect=dialect, index=-1)
+    elif isinstance(statement, exp.Copy):
+        query = structs.CopyQuery(expr=statement, dialect=dialect, mapping=object_mapping, index=-1)
     return query
 
 
@@ -283,4 +295,9 @@ def _process_stored_procedures(statement: exp.Create, dialect: str, object_mappi
     # The original text is lost, so we are forced to use the transformed text in its place for now
     queries = get_queries_from_sql(text=transformed_text, dialect=dialect)
     query.add_child_queries(child_queries=queries)
+    return query
+
+def _process_stage(statement: exp.Create, dialect: str, object_mapping):
+    query = structs.StageQuery(statement, dialect)
+    object_mapping.add_stage_mapping(query=query, dialect=dialect)
     return query

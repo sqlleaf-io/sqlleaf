@@ -339,7 +339,11 @@ def to_node(
                 if source.db:
                     c.set("db", exp.to_identifier(source.db))
                 if source.name:
-                    c.set("table", exp.to_identifier(source.name))
+                    if dialect == 'snowflake':
+                        if source.this.this.args.get('quoted', False):
+                            c.set("table", exp.to_identifier(source.name))
+                    else:
+                        c.set("table", exp.to_identifier(source.name))
 
             n = Node(
                 name=c.sql(comments=False),

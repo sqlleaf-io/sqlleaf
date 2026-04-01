@@ -37,17 +37,17 @@ class LineageDummy(sqlleaf.Lineage):
         new_queries = []
         for query in all_queries:
             # Remove the COMMON_TABLES queries
-            if not (isinstance(query, structs.TableQuery) and exp.table_name(query.child_table) in ['fruit.raw', 'fruit.processed']):
+            if not (isinstance(query, structs.TableQuery) and exp.table_name(query.child_table).lower() in ['fruit.raw', 'fruit.processed']):
                 new_queries.append(query)
         return new_queries
 
 
 @pytest.fixture
 def holder():
-    def _create_holder(with_tables: bool = False):
+    def _create_holder(with_tables: bool = False, dialect: str = ''):
         h = LineageDummy()
         if with_tables:
-            h.generate(COMMON_TABLES, dialect=DIALECT)
+            h.generate(COMMON_TABLES, dialect=dialect or DIALECT)
         return h
     return _create_holder
 
@@ -74,9 +74,6 @@ COMMON_TABLES = '''
      name        VARCHAR,
      kind        VARCHAR,
      age         INT,
-     kind_with_x TEXT GENERATED ALWAYS AS (
-         kind || 'x'
-         ) STORED,
      label       VARCHAR,
      amount      INT,
      number      INT,

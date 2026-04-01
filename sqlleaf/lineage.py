@@ -36,7 +36,7 @@ def get_lineage_for_query(parent_query: structs.Query, object_mapping) -> nx.Mul
 
     # Process each of the statements
     for statement_index, query in enumerate(queries):
-        statement = query.statement_original
+        statement = query.statement
         logger.info(f"Processing query {statement_index + 1}/{len(queries)} - {str(type(statement))}")
 
         if isinstance(statement, exp.Update):
@@ -217,6 +217,11 @@ def determine_selected_columns(statement: exp.Insert, child_table: exp.Table, ma
         raise exception.SqlLeafException(message="Unknown table", table=str(child_table))
 
     child_columns = child_table_query.get_columns()
+    if isinstance(statement, exp.Copy):
+        for col_name, col_props in child_columns.items():
+            col_props["selected"] = True
+        return child_columns
+
     unknown_columns = util.unique(statement.named_selects - child_columns.keys())
 
     if unknown_columns:

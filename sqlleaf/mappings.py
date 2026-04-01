@@ -36,6 +36,9 @@ class ObjectMapping(MappingSchema):
         self.stored_procedure_mapping = {}
         self.stored_procedure_mapping_trie = new_trie({})
 
+        self.stage_mapping = {}
+        self.stage_mapping_trie = new_trie({})
+
     def add_table_mapping(
         self,
         query,  # structs.TableQuery
@@ -127,6 +130,19 @@ class ObjectMapping(MappingSchema):
         Track the exp.Table inside a "CREATE STORED PROCEDURE ..." statement
         """
         self._add_mapping(query, dialect=dialect, normalize=normalize, mapping=self.stored_procedure_mapping, mapping_trie=self.stored_procedure_mapping_trie)
+
+    def add_stage_mapping(
+            self,
+            query,  # structs.StageQuery
+            dialect: DialectType = None,
+            normalize: t.Optional[bool] = None,
+    ) -> None:
+        """
+        Track the exp.Table inside a "CREATE STAGE ..." statement
+        """
+        self._add_mapping(query, dialect=dialect, normalize=normalize, mapping=self.stage_mapping, mapping_trie=self.stage_mapping_trie)
+        # Track it as a table so that we can resolve columns within COPY queries
+        self._add_mapping(query, dialect=dialect, normalize=normalize, mapping=self.table_mapping, mapping_trie=self.table_mapping_trie)
 
     def _add_mapping(
         self,
@@ -231,6 +247,21 @@ class ObjectMapping(MappingSchema):
             table,
             self.stored_procedure_mapping,
             self.stored_procedure_mapping_trie,
+            raise_on_missing,
+        )
+
+    def find_stage(
+        self,
+        table: exp.Table,
+        raise_on_missing: bool = True,
+    ) -> t.Optional[t.Any]:
+        """
+        Identical to find_table()
+        """
+        return self._find_in_mapping(
+            table,
+            self.stage_mapping,
+            self.stage_mapping_trie,
             raise_on_missing,
         )
 
