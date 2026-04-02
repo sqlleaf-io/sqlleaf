@@ -24,6 +24,7 @@ def test___copy_stage(holder, case):
     old, new = case
     queries = f'''
     CREATE TABLE incoming.zone (name VARCHAR, age INT);
+    CREATE TABLE outgoing.zone (name VARCHAR, age INT);
     
     CREATE STAGE {old}
       URL='s3://load/files/'
@@ -32,16 +33,26 @@ def test___copy_stage(holder, case):
     COPY INTO incoming.zone
     FROM @{old}
     FILE_FORMAT = ( TYPE = 'CSV', FIELD_DELIMITER = ',', SKIP_HEADER = 1 );
+
+    COPY INTO @{old}
+    FROM outgoing.zone
+    FILE_FORMAT = ( TYPE = 'CSV', FIELD_DELIMITER = ',', SKIP_HEADER = 1 );
     '''
     h = holder()
     h.generate(queries, dialect=DIALECT)
     queries = h.get_queries_created()
     paths = h.get_friendly_paths()
 
-    assert [structs.TableQuery, structs.StageQuery, structs.CopyQuery] == list(map(type, queries))
+    assert [structs.TableQuery, structs.TableQuery, structs.StageQuery, structs.CopyQuery, structs.CopyQuery] == list(map(type, queries))
+    # TODO: this is buggy - it should not be many:many. Needs more design thought
+    #  to be compatible with single nodes PUT file[] -> stage[]
+    #  e.g. maybe file[] -> stage[my_stage] -> N x column[my_stage_col1 kind=stage] ->
+    #  But what happens if a table loads into a stage as well? Where do all its edges go?
     assert paths == [
-        [f'stage[{new}]', 'column[INCOMING.ZONE.AGE]'],
-        [f'stage[{new}]', 'column[INCOMING.ZONE.NAME]'],
+        ['column[OUTGOING.ZONE.NAME]', f'stage[{new}]', 'column[INCOMING.ZONE.AGE]'],
+        ['column[OUTGOING.ZONE.NAME]', f'stage[{new}]', 'column[INCOMING.ZONE.NAME]'],
+        ['column[OUTGOING.ZONE.AGE]', f'stage[{new}]', 'column[INCOMING.ZONE.AGE]'],
+        ['column[OUTGOING.ZONE.AGE]', f'stage[{new}]', 'column[INCOMING.ZONE.NAME]'],
     ]
 
 

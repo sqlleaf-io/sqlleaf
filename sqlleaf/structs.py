@@ -106,18 +106,17 @@ class Query:
             child_columns: {col_name: {'kind': 'table', 'selected': False, 'default': '42'}, ...}
         """
         child_table = self.child_table
-        statement = self.statement
         # Get the 'CREATE TABLE' query for this query's child table
-        child_table_query = mapping.find_query(kind='table', table=child_table)
+        if str(child_table).startswith("@"):
+            child_table_query = mapping.find_query(kind='stage', table=child_table)
+        else:
+            child_table_query = mapping.find_query(kind='table', table=child_table)
+
         if not child_table_query:
             raise exception.SqlLeafException(message="Unknown table", table=str(child_table))
 
+        statement = self.statement
         child_columns = child_table_query.get_columns()
-        if isinstance(statement, exp.Copy):
-            for col_name, col_props in child_columns.items():
-                col_props["selected"] = True
-            return child_columns
-
         unknown_columns = util.unique(statement.named_selects - child_columns.keys())
 
         if unknown_columns:
@@ -580,6 +579,15 @@ class StageQuery(Query):
             child_table=util.get_table(statement),
             has_statement=False,
         )
+        # Needed due to a bug in sqlglot. Never access the table name via print()!
+        #  as it prints double-double quotes
+        stage_name = str(self.child_table.this)
+        self.child_table.this.set("this", "@" + stage_name)
+        self.child_table.this.set("quoted", False)
+        print()
+
+    def get_columns(self) -> t.Dict[str, t.Dict[str, str]]:
+        return self.columns
 
 
 class CopyQuery(Query):
@@ -605,17 +613,20 @@ class CopyQuery(Query):
         """
         Set the name if we are a Snowflake 'stage'.
         This involves manually normalising (uppercasing) the name.
-        sqlglot only does this for columns - see comments in `sqlglot.optimizer.normalize_identifiers()`
+        sqlglot only normalizes columns - see comments in `sqlglot.optimizer.normalize_identifiers()`
         """
         source = expr.args['files'][0]
         target = expr.args['this']
 
         if str(source).startswith("@"):
             self.is_source_a_stage = True
+            if not str(source).startswith('@"'):
+                source.this.set("this", str(source).upper())
 
         elif str(target).startswith("@"):
             self.is_target_a_stage = True
-
+            if not str(target).startswith('@"'):
+                target.this.set("this", str(target).upper())
 
     def set_as_insert(self, expr, dialect, mapping):
         """
@@ -623,22 +634,43 @@ class CopyQuery(Query):
 
         COPY INTO <table> FROM @stage
             -> INSERT INTO <table> SELECT * FROM @stage
+            => is_source_a_stage = True
             => produces lineage: @stage -> N table columns
         COPY INTO @stage FROM <table>
             -> INSERT INTO @stage SELECT * FROM <table>
+            => is_target_a_stage = True
             => produces lineage: N table columns -> @stage
         """
-        child_table = expr.this
-        child_columns = mapping.find_columns_for_table(table=expr.this)
-        column_names = tuple(child_columns.keys())
-        stage_name = str(expr.args['files'][0])
-        select = exp.select(*column_names, dialect=dialect).from_(stage_name)
+        if self.is_source_a_stage:
+            child_table = expr.this
+            parent_table = expr.args['files'][0]
+            source_table = child_table
+        elif self.is_target_a_stage:
+            child_table = expr.this
+            parent_table = expr.args['files'][0]
+            source_table = parent_table
 
+        child_columns = mapping.find_columns_for_table(table=source_table)
+        column_names = tuple(child_columns.keys())
+
+        # Convert the Copy to an Insert so that the lineage functions work
+        select = exp.select(*column_names, dialect=dialect).from_(parent_table)
         expr_insert = exp.insert(
             expression=select,
             into=child_table,
             dialect=dialect,
         )
+
+        if self.is_target_a_stage:
+            # Any object that is referenced as a source table needs to be added to the table mapping
+            # for the lineage functions to work - such as this Stage
+            named_columns = {s.alias_or_name: {"default": None, "kind": s.type or "UNKNOWN"} for s in expr_insert.selects}
+
+            child_table_query = mapping.find_query(kind='stage', table=child_table)
+            child_table_query.columns = named_columns
+
+        # We don't worry about `self.is_source_a_stage` here as that is handled in the process_column() later
+
         self.set_statement(expr_insert)
 
 
@@ -788,6 +820,8 @@ class ColumnNode(NodeAttributes):
         name = ".".join([tok for tok in tokens if tok])
         tab = exp.to_table(name, dialect=processor_ctx.query.dialect)
         query = processor_ctx.mapping.find_query(kind='table', table=tab)
+        if not query:
+            query = processor_ctx.mapping.find_query(kind='stage', table=tab)
 
         if query.kind == 'ctas':
             return 'table'
@@ -981,17 +1015,15 @@ class StageNode(NodeAttributes):
         expr: exp.Var = processor_ctx.expr
 
         if str(expr).startswith("@"):
-            if str(expr).startswith('@"'):
-                # We are double-quoted; do not uppercase
-                expr.set("this", str(expr)[1:])
-            else:
-                expr.set("this", str(expr)[1:].upper())
+            if not str(expr).startswith('@"'):
+                # Set to uppercase only if not double-quoted
+                expr.set("this", str(expr).upper())
 
         super().__init__(
             kind="stage",
             data_type=None,
             expr=expr,
-            column=expr.name.replace('"', ""),
+            column=expr.name.removeprefix("@").replace('"', ""),
         )
 
     @property
@@ -1527,14 +1559,15 @@ class SnowflakeLineageBuilder(LineageBuilder):
 
     def process_column(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
         """
-        If this is actually a Stage, don't try to create a Column.
+        If the source is actually a Stage, don't try to create a Column.
         """
         query = processor_ctx.query
-        if isinstance(query, CopyQuery) and query.is_source_a_stage:
-            stage_name: exp.Var = query.source.this
-            stage_ctx = replace(processor_ctx, expr=stage_name)
-            parent_node_attrs = StageNode(processor_ctx=stage_ctx, ctx=ctx)
-            return parent_node_attrs, []
+        if isinstance(query, CopyQuery):
+            if query.is_source_a_stage:
+                stage_name: exp.Var = query.source.this
+                stage_ctx = replace(processor_ctx, expr=stage_name)
+                parent_node_attrs = StageNode(processor_ctx=stage_ctx, ctx=ctx)
+                return parent_node_attrs, []
 
         return super().process_column(processor_ctx, ctx)
 

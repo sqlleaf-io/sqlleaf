@@ -31,7 +31,7 @@ class ObjectMapping(MappingSchema):
             column_mapping: t.Optional[ColumnMapping] = None,
             dialect: DialectType = None,
             normalize: t.Optional[bool] = None,
-            match_depth: bool = True,
+            match_depth: bool = False,
     ) -> None:
         """
         Register or update a table. Updates are only performed if a new column mapping is provided.
@@ -57,13 +57,29 @@ class ObjectMapping(MappingSchema):
 
         if kind == 'table' and column_mapping is not None:
             # Track the table's columns
-            super().add_table(
+            self.add_columns_for_table(
                 table=table,
                 column_mapping=column_mapping,
                 dialect=dialect,
                 normalize=normalize,
                 match_depth=match_depth,
             )
+
+    def add_columns_for_table(
+        self,
+        table: exp.Table,
+        column_mapping: t.Optional[ColumnMapping] = None,
+        dialect: DialectType = None,
+        normalize: t.Optional[bool] = None,
+        match_depth: bool = False,
+    ):
+        super().add_table(
+            table=table,
+            column_mapping=column_mapping,
+            dialect=dialect,
+            normalize=normalize,
+            match_depth=match_depth,
+        )
 
     def find_columns_for_table(
         self,

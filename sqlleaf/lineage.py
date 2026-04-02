@@ -196,6 +196,12 @@ def generate_column_lineage_for_query(
             for node_depth, node in enumerate(path):
                 logger.debug("----")
                 # Node depth distinguishes identical queries across CTEs
+
+                if isinstance(query, structs.CopyQuery) and query.is_target_a_stage:
+                    # Set the column to be a StageNode (if applicable) since we now have the lineage from using the dummy column
+                    processor_ctx = replace(processor_ctx, expr=query.target.this)
+                    child_node_attrs = structs.StageNode(processor_ctx=processor_ctx, ctx=ctx)
+
                 logger.debug(f"Processing node alias: '{node.name}'")
                 logger.debug(f"Child node: {child_node_attrs.full_name}")
                 top_expr = util.unwrap_expression(node.expression)
