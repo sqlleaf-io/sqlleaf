@@ -94,6 +94,7 @@ def find_edge_paths(g: nx.MultiDiGraph, start: str, path: t.List = None, seen: t
     if not desc:
         yield path
     else:
+        desc = sorted(desc)     # nx.desc() is non-deterministic
         for n in desc:
             if n in seen:
                 # TODO: this might be a bug. It's valid to re-visit a node if it's further down in the chain.

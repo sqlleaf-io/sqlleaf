@@ -549,7 +549,31 @@ class CopyQuery(Query):
             index=index,
             child_table=expr.this,
         )
+        self.source = expr.args['files'][0]
+        self.target = expr.args['this']
+        self.is_source_a_stage = False
+        self.is_target_a_stage = False
+
+        if dialect == 'snowflake':
+            self.configure_stage(expr)
+
         self.set_as_insert(expr, dialect, mapping)
+
+    def configure_stage(self, expr: exp.Copy):
+        """
+        Set the name if we are a Snowflake 'stage'.
+        This involves manually normalising (uppercasing) the name.
+        sqlglot only does this for columns - see comments in `sqlglot.optimizer.normalize_identifiers()`
+        """
+        source = expr.args['files'][0]
+        target = expr.args['this']
+
+        if str(source).startswith("@"):
+            self.is_source_a_stage = True
+
+        elif str(target).startswith("@"):
+            self.is_target_a_stage = True
+
 
     def set_as_insert(self, expr, dialect, mapping):
         """
@@ -557,8 +581,10 @@ class CopyQuery(Query):
 
         COPY INTO <table> FROM @stage
             -> INSERT INTO <table> SELECT * FROM @stage
+            => produces lineage: @stage -> N table columns
         COPY INTO @stage FROM <table>
             -> INSERT INTO @stage SELECT * FROM <table>
+            => produces lineage: N table columns -> @stage
         """
         child_table = expr.this
         child_columns = mapping.find_columns_for_table(table=expr.this)
@@ -585,8 +611,7 @@ class PutQuery(Query):
         )
         self.source = expr.name
         self.target = expr.args['target'].name
-        print()
-        #self.set_as_insert(expr, dialect, mapping)
+
 
 ################################ NODES ################################
 
@@ -911,11 +936,20 @@ class WindowNode(NodeAttributes):
 
 class StageNode(NodeAttributes):
     def __init__(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+        expr: exp.Var = processor_ctx.expr
+
+        if str(expr).startswith("@"):
+            if str(expr).startswith('@"'):
+                # We are double-quoted; do not uppercase
+                expr.set("this", str(expr)[1:])
+            else:
+                expr.set("this", str(expr)[1:].upper())
+
         super().__init__(
             kind="stage",
             data_type=None,
-            expr=processor_ctx.expr,
-            column=processor_ctx.expr.this,
+            expr=expr,
+            column=expr.name.replace('"', ""),
         )
 
     @property
@@ -966,17 +1000,14 @@ class EdgeAttributes:
                 str(s)
                 for s in [
                     prefix,
-                    self.parent,
-                    self.child,
+                    self.parent.full_name,
+                    self.child.full_name,
                     self.select_idx,
                     self.path_idx,
                 ]
             ]
         )
         self.id = "edge:" + util.short_sha256_hash(edge_id)
-
-    def associate_query(self, query: Query):
-        self.query = query
 
     def to_dict(self):
         result = {
@@ -1452,6 +1483,18 @@ class SnowflakeLineageBuilder(LineageBuilder):
 
         self.add_nodes_with_edge_to_graph(file_node, stage_node, processor_ctx.graph, processor_ctx.query, ctx)
 
+    def process_column(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+        """
+        If this is actually a Stage, don't try to create a Column.
+        """
+        query = processor_ctx.query
+        if isinstance(query, CopyQuery) and query.is_source_a_stage:
+            stage_name: exp.Var = query.source.this
+            stage_ctx = replace(processor_ctx, expr=stage_name)
+            parent_node_attrs = StageNode(processor_ctx=stage_ctx, ctx=ctx)
+            return parent_node_attrs, []
+
+        return super().process_column(processor_ctx, ctx)
 
 def is_node_a_placeholder(expr: exp.Column, query: Query) -> bool:
     """

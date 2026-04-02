@@ -40,8 +40,8 @@ def test___copy_stage(holder, case):
 
     assert [structs.TableQuery, structs.StageQuery, structs.CopyQuery] == list(map(type, queries))
     assert paths == [
+        [f'stage[{new}]', 'column[INCOMING.ZONE.AGE]'],
         [f'stage[{new}]', 'column[INCOMING.ZONE.NAME]'],
-        [f'stage[{new}]', 'column[INCOMING.ZONE.AGE]']
     ]
 
 
@@ -59,5 +59,5 @@ def test___put_stage(holder):
 
     assert [structs.StageQuery, structs.PutQuery] == list(map(type, queries))
     assert paths == [
-        ['file[/tmp/data/mydata.csv]', 'stage[@my_int_stage]']
+        ['file[/tmp/data/mydata.csv]', 'stage[MY_INT_STAGE]']
     ]

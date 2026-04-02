@@ -65,10 +65,6 @@ class ObjectMapping(MappingSchema):
                 match_depth=match_depth,
             )
 
-        if kind == 'stage':
-            # Track it as a table so that we can resolve columns within COPY queries
-            self.add_query(kind='table', query=query, dialect=dialect, normalize=normalize)
-
     def find_columns_for_table(
         self,
         table: exp.Table,

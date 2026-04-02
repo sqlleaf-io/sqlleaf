@@ -111,6 +111,7 @@ def generate_column_lineage_for_query(
 
     builder = structs.LineageBuilder.from_dialect(query.dialect)
     if isinstance(query, structs.PutQuery):
+        # Short-circuit this function for simplicity
         builder.process_put(processor_ctx, ctx)
         return graph
 
@@ -364,7 +365,7 @@ def calculate_paths(graph: nx.MultiDiGraph):
             if not path:
                 continue
 
-            logger.debug("Found edge path: %s", path)
+            logger.debug("Found edge path: %s", [e.id for e in path])
             lineage_path = structs.LineagePath(root=root, hops=path)
             all_lineage_paths[lineage_path.path_id] = lineage_path
 
