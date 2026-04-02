@@ -22,6 +22,35 @@ from sqlleaf import (
 
 logger = logging.getLogger("sqlleaf")
 
+def transform_query(parent_query: structs.Query, object_mapping) -> structs.Query:
+    """
+    Transform the queries so that the have complete information about them
+    in preparaing for lineage calculation.
+    """
+    queries = parent_query.child_queries or [parent_query]
+
+    # Process each of the statements
+    for statement_index, query in enumerate(queries):
+        statement = query.statement
+        logger.info(f"Transforming query {statement_index + 1}/{len(queries)} - {str(type(statement))}")
+
+        if isinstance(statement, exp.Update):
+            # TODO: put this inside UpdateQuery? similar to CTAS
+            statement = transform.convert_update_to_insert(statement)
+
+        # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
+        statement = transform.apply_optimizations(statement, query.dialect, object_mapping, query.child_table)
+
+        # Simplify the expression tree if possible (e.g. always-true logical statements)
+        statement = sqlglot.optimizer.optimizer.simplify(statement)
+
+        # Transform CASE statements to remove false positive lineage; see docs
+        statement = statement.transform(transform.case_statement_transformer)
+        query.statement_transformed = statement
+        query.set_statement(statement)
+
+    return parent_query
+
 
 def get_lineage_for_query(parent_query: structs.Query, object_mapping) -> nx.MultiDiGraph:
     """
@@ -37,29 +66,14 @@ def get_lineage_for_query(parent_query: structs.Query, object_mapping) -> nx.Mul
     # Process each of the statements
     for statement_index, query in enumerate(queries):
         statement = query.statement
-        logger.info(f"Processing query {statement_index + 1}/{len(queries)} - {str(type(statement))}")
-
-        if isinstance(statement, exp.Update):
-            # TODO: put this inside UpdateQuery? similar to CTAS
-            statement = transform.convert_update_to_insert(statement)
-
-        # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
-        statement = transform.apply_optimizations(statement, query.dialect, object_mapping, query.child_table)
 
         # Ensure the child table exists with the expected columns
         child_columns = determine_selected_columns(statement, query.child_table, object_mapping)
 
-        # Simplify the expression tree if possible (e.g. always-true logical statements)
-        statement = sqlglot.optimizer.optimizer.simplify(statement)
-
-        # Transform CASE statements to remove false positive lineage; see docs
-        statement = statement.transform(transform.case_statement_transformer)
-        query.statement_transformed = statement
-
         # Main method. Get the statement's column-level lineage
         generate_column_lineage_for_query(query, child_columns, graph, object_mapping, statement_index)
 
-        # Reset the query to it
+        # Reset the query
         query.set_to_original()
 
     return graph
@@ -88,8 +102,10 @@ def generate_column_lineage_for_query(
         statement_index: the statement's index within a list of statements [detects duplicates]
     """
     child_table = query.child_table
-    statement = query.statement_transformed
+    statement = query.statement
     scope = sqlglot.optimizer.build_scope(statement)
+
+    logger.info(f"Getting lineage for query: {str(type(statement))}")
 
     # Check if a trigger overrides the query's behaviour
     if t := mapping.find_query(kind='trigger', table=child_table):

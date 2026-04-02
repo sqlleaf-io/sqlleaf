@@ -28,6 +28,7 @@ class Lineage:
         for query in queries:
             if query.has_statement:
                 # Queries without DML statements have no lineage
+                query = lineage.transform_query(query, self.object_mapping)
                 graph = lineage.get_lineage_for_query(query, self.object_mapping)
                 logger.debug("Skipping data types as it's faulty")
                 # lineage.update_column_data_types(self.graph)
