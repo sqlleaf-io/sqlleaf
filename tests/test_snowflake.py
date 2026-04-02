@@ -18,17 +18,18 @@ cases = [
     ('my_eXt_sTaGe', "MY_EXT_STAGE"),
 ]
 
+# TODO: support COPY INTO @stage FROM table
 @pytest.mark.parametrize("case", cases)
-def test__stage(holder, case):
+def test___copy_stage(holder, case):
     old, new = case
     queries = f'''
-    CREATE TABLE landing.zone (name VARCHAR, age INT);
+    CREATE TABLE incoming.zone (name VARCHAR, age INT);
     
     CREATE STAGE {old}
       URL='s3://load/files/'
       STORAGE_INTEGRATION = myint;
       
-    COPY INTO landing.zone
+    COPY INTO incoming.zone
     FROM @{old}
     FILE_FORMAT = ( TYPE = 'CSV', FIELD_DELIMITER = ',', SKIP_HEADER = 1 );
     '''
@@ -38,8 +39,25 @@ def test__stage(holder, case):
     paths = h.get_friendly_paths()
 
     assert [structs.TableQuery, structs.StageQuery, structs.CopyQuery] == list(map(type, queries))
-
     assert paths == [
-        [f'column[{new}.NAME]', 'column[LANDING.ZONE.NAME]'],
-        [f'column[{new}.AGE]', 'column[LANDING.ZONE.AGE]']
+        [f'stage[{new}]', 'column[INCOMING.ZONE.NAME]'],
+        [f'stage[{new}]', 'column[INCOMING.ZONE.AGE]']
+    ]
+
+
+def test___put_stage(holder):
+    queries = f'''
+    CREATE STAGE my_int_stage
+      URL='s3://load/files/';
+      
+    PUT 'file:///tmp/data/mydata.csv' @my_int_stage;
+    '''
+    h = holder()
+    h.generate(queries, dialect=DIALECT)
+    queries = h.get_queries_created()
+    paths = h.get_friendly_paths()
+
+    assert [structs.StageQuery, structs.PutQuery] == list(map(type, queries))
+    assert paths == [
+        ['file[/tmp/data/mydata.csv]', 'stage[@my_int_stage]']
     ]

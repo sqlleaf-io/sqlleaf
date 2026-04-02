@@ -554,6 +554,11 @@ class CopyQuery(Query):
     def set_as_insert(self, expr, dialect, mapping):
         """
         Convert the COPY statement into an INSERT statement so that the lineage functions can process it.
+
+        COPY INTO <table> FROM @stage
+            -> INSERT INTO <table> SELECT * FROM @stage
+        COPY INTO @stage FROM <table>
+            -> INSERT INTO @stage SELECT * FROM <table>
         """
         child_table = expr.this
         child_columns = mapping.find_columns_for_table(table=expr.this)
@@ -567,6 +572,21 @@ class CopyQuery(Query):
             dialect=dialect,
         )
         self.set_statement(expr_insert)
+
+
+class PutQuery(Query):
+    def __init__(self, expr: exp.Put, dialect: str, mapping: mappings.ObjectMapping, index: int = 0):
+        super().__init__(
+            kind="put",
+            dialect=dialect,
+            statement=expr,
+            index=index,
+            child_table=expr.this,
+        )
+        self.source = expr.name
+        self.target = expr.args['target'].name
+        print()
+        #self.set_as_insert(expr, dialect, mapping)
 
 ################################ NODES ################################
 
@@ -889,6 +909,36 @@ class WindowNode(NodeAttributes):
         )
 
 
+class StageNode(NodeAttributes):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+        super().__init__(
+            kind="stage",
+            data_type=None,
+            expr=processor_ctx.expr,
+            column=processor_ctx.expr.this,
+        )
+
+    @property
+    def full_name(self):
+        return self.wrap(f"{self.column}")
+
+
+class FileNode(NodeAttributes):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+        expr: exp.Literal = processor_ctx.expr
+        filename = expr.this.removeprefix("file://")
+        super().__init__(
+            kind="file",
+            data_type=None,
+            expr=processor_ctx.expr,
+            column=filename,
+        )
+
+    @property
+    def full_name(self):
+        return self.wrap(f"{self.column}")
+
+
 class EdgeAttributes:
     def __init__(
         self,
@@ -1079,7 +1129,7 @@ class LineageBuilder:
                 return processor
         return None
 
-    def produce_node_objects(
+    def walk_tree_and_build_graph(
         self,
         processor_ctx: ProcessorContext,
         ctx: context.NodeContext,
@@ -1092,7 +1142,7 @@ class LineageBuilder:
         expr = processor_ctx.expr
         child_node_attrs = processor_ctx.child_node_attrs
 
-        logger.debug("produce_node_objects(): %s", type(expr))
+        logger.debug("walk_tree_and_build_graph(): %s", type(expr))
 
         processor_func = self.get_processor(expr)
         if not processor_func:
@@ -1118,7 +1168,7 @@ class LineageBuilder:
 
         for child_expr in children:
             child_processor_ctx = replace(processor_ctx, expr=child_expr, child_node_attrs=parent_node_attrs)
-            nodes = self.produce_node_objects(child_processor_ctx, child_ctx)
+            nodes = self.walk_tree_and_build_graph(child_processor_ctx, child_ctx)
             nodes_created.extend(nodes)
             child_ctx = replace(child_ctx, function_arg_index=child_ctx.function_arg_index + 1)
 
@@ -1381,6 +1431,26 @@ class LineageBuilder:
 
 class PostgresLineageBuilder(LineageBuilder):
     dialect = "postgres"
+
+
+class SnowflakeLineageBuilder(LineageBuilder):
+    dialect = "snowflake"
+
+    def process_put(self, processor_ctx: ProcessorContext, ctx: context.NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        """
+        PUT 'file:///tmp/data/mydata.csv' @my_int_stage;
+        - Creates two nodes: FileNode and StageNode
+        """
+        # This steps outside the 'process_node_objects()' main method, as
+        # adding logic inside the default functions is too messy.
+        # We may need to return to this later.
+        file_ctx = replace(processor_ctx, expr=processor_ctx.expr.args['this'])
+        stage_ctx = replace(processor_ctx, expr=processor_ctx.expr.args['target'])
+
+        file_node = FileNode(processor_ctx=file_ctx, ctx=ctx)
+        stage_node = StageNode(processor_ctx=stage_ctx, ctx=ctx)
+
+        self.add_nodes_with_edge_to_graph(file_node, stage_node, processor_ctx.graph, processor_ctx.query, ctx)
 
 
 def is_node_a_placeholder(expr: exp.Column, query: Query) -> bool:

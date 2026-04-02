@@ -65,13 +65,8 @@ def get_lineage_for_query(parent_query: structs.Query, object_mapping) -> nx.Mul
 
     # Process each of the statements
     for statement_index, query in enumerate(queries):
-        statement = query.statement
-
-        # Ensure the child table exists with the expected columns
-        child_columns = determine_selected_columns(statement, query.child_table, object_mapping)
-
         # Main method. Get the statement's column-level lineage
-        generate_column_lineage_for_query(query, child_columns, graph, object_mapping, statement_index)
+        generate_column_lineage_for_query(query, graph, object_mapping, statement_index)
 
         # Reset the query
         query.set_to_original()
@@ -81,7 +76,6 @@ def get_lineage_for_query(parent_query: structs.Query, object_mapping) -> nx.Mul
 
 def generate_column_lineage_for_query(
     query: structs.Query,
-    child_columns: t.Dict[str, t.Dict[str, str]],
     graph: nx.MultiDiGraph,
     mapping: mappings.ObjectMapping,
     statement_index: int,
@@ -107,6 +101,19 @@ def generate_column_lineage_for_query(
 
     logger.info(f"Getting lineage for query: {str(type(statement))}")
 
+    ctx = context.NodeContext(select_index=-1)
+    processor_ctx = structs.ProcessorContext(
+        graph=graph,
+        mapping=mapping,
+        query=query,
+        expr=statement,
+    )
+
+    builder = structs.LineageBuilder.from_dialect(query.dialect)
+    if isinstance(query, structs.PutQuery):
+        builder.process_put(processor_ctx, ctx)
+        return graph
+
     # Check if a trigger overrides the query's behaviour
     if t := mapping.find_query(kind='trigger', table=child_table):
         if t.timing == "INSTEAD OF":
@@ -116,10 +123,12 @@ def generate_column_lineage_for_query(
 
             return graph
 
-    builder = structs.LineageBuilder.from_dialect(query.dialect)
+
     """
     For each child table column, calculate the lineage
     """
+    # Ensure the child table exists with the expected columns
+    child_columns = determine_selected_columns(statement, query.child_table, mapping)
     select_idx = 0
     for col_name, col_props in child_columns.items():
         # Skip columns that weren't selected and that have no default
@@ -136,12 +145,7 @@ def generate_column_lineage_for_query(
         col_expr.parent = child_table
 
         ctx = context.NodeContext(select_index=select_idx)
-        processor_ctx = structs.ProcessorContext(
-            graph=graph,
-            mapping=mapping,
-            query=query,
-            expr=col_expr,
-        )
+        processor_ctx = replace(processor_ctx, expr=col_expr)
 
         child_node = structs.ColumnNode(
             catalog=child_table.catalog,
@@ -160,7 +164,7 @@ def generate_column_lineage_for_query(
 
             logger.debug("Adding unselected column %s with default to lineage", str(default_expr))
             processor_ctx = replace(processor_ctx, expr=default_expr, child_node_attrs=child_node)
-            builder.produce_node_objects(processor_ctx=processor_ctx, ctx=ctx)
+            builder.walk_tree_and_build_graph(processor_ctx=processor_ctx, ctx=ctx)
             continue
 
         logger.info(
@@ -204,7 +208,7 @@ def generate_column_lineage_for_query(
                 )
 
                 # TODO: CTEs also need to be namespaced to prevent naming conflicts
-                nodes = builder.produce_node_objects(processor_ctx, child_ctx)
+                nodes = builder.walk_tree_and_build_graph(processor_ctx, child_ctx)
                 if nodes:
                     logger.debug(f"Produced nodes: {[n.full_name for n in nodes]}")
                     # The next child is the most recently created parent

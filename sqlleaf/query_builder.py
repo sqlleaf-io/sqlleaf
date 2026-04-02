@@ -26,12 +26,13 @@ def get_processors():
         "merge": _process_unnamed,
         "stage": _process_stage,
         "copy": _process_unnamed,
+        "put": _process_unnamed,
     }
 
 
 def produce_query_objects(statement: exp.Expression, dialect: str, statement_index: int) -> structs.Query:
     """
-    This follows the same pattern as `produce_node_objects()`
+    This follows the same pattern as `walk_tree_and_build_graph()`
 
     Args:
         statement_index: the order of the statement in a list of statements.
@@ -141,7 +142,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         counts[kind] += 1
 
     logger.debug("Found statements: %s", dict(counts.items()))
-    logger.debug("Unrecognised statements: %s", len(unrecognised))
+    logger.warn("Unrecognised statements: %s", len(unrecognised))
     return queries
 
 
@@ -157,6 +158,8 @@ def _process_unnamed(statement: t.Union[exp.Insert, exp.Update], dialect: str, o
         query = structs.UpdateQuery(expr=statement, dialect=dialect, index=-1)
     elif isinstance(statement, exp.Copy):
         query = structs.CopyQuery(expr=statement, dialect=dialect, mapping=object_mapping, index=-1)
+    elif isinstance(statement, exp.Put):
+        query = structs.PutQuery(expr=statement, dialect=dialect, mapping=object_mapping, index=-1)
     return query
 
 
