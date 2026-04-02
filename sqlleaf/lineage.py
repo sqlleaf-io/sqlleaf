@@ -129,7 +129,7 @@ def generate_column_lineage_for_query(
     For each child table column, calculate the lineage
     """
     # Ensure the child table exists with the expected columns
-    child_columns = determine_selected_columns(statement, query.child_table, mapping)
+    child_columns = query.determine_selected_columns(mapping)
     select_idx = 0
     for col_name, col_props in child_columns.items():
         # Skip columns that weren't selected and that have no default
@@ -218,48 +218,6 @@ def generate_column_lineage_for_query(
         select_idx += 1
 
     return graph
-
-
-def determine_selected_columns(statement: exp.Insert, child_table: exp.Table, mapping: mappings.ObjectMapping) -> t.Dict:
-    """
-    Ensure that there are no unknown columns used in the child table.
-    For example, we may be trying to insert into a column that doesn't exist (according to the table's DDL).
-
-    Parameters:
-        child_table (exp.Table): the child table
-        mapping (sqlglot.MappingSchema): the mapping of table schemas
-        statement (exp.Select): the statement to validate
-
-    Returns:
-        child_columns (Dict[str, str]): the table's resolved columns - {name: type}
-    """
-    child_table_query = mapping.find_query(kind='table', table=child_table)
-    if not child_table_query:
-        raise exception.SqlLeafException(message="Unknown table", table=str(child_table))
-
-    child_columns = child_table_query.get_columns()
-    if isinstance(statement, exp.Copy):
-        for col_name, col_props in child_columns.items():
-            col_props["selected"] = True
-        return child_columns
-
-    unknown_columns = util.unique(statement.named_selects - child_columns.keys())
-
-    if unknown_columns:
-        raise exception.SqlLeafException(
-            message=f"Unknown columns used in SELECT: {list(unknown_columns)}",
-            table=str(child_table),
-        )
-
-    if "*" in child_columns.keys():
-        # TODO: shouldn't this check statement.named_selects instead?
-        raise exception.SqlLeafException(message="Statement has unresolved star column", table=str(child_table))
-
-    # Set the query's columns as being selected (required by sqlglot's lineage())
-    for col_name, col_props in child_columns.items():
-        col_props["selected"] = col_name in statement.named_selects
-
-    return child_columns
 
 
 def update_column_data_types(graph: nx.MultiDiGraph):

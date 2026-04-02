@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace, InitVar
 import networkx as nx
 from sqlglot import exp
 
-from sqlleaf import util, mappings, context, sqlglot_lineage
+from sqlleaf import util, mappings, context, sqlglot_lineage, exception
 
 logger = logging.getLogger("sqleaf")
 
@@ -93,6 +93,48 @@ class Query:
         for child in self.child_queries:
             queries.extend(child.get_all_child_queries())
         return queries
+
+    def determine_selected_columns(self, mapping: mappings.ObjectMapping) -> t.Dict:
+        """
+         Determine whether the selected columns exist inside the table's mapping.
+        An error is thrown if any non-existent or invalid columns are used.
+
+        Parameters:
+            mapping (sqlglot.MappingSchema): the mapping of table schemas
+
+        Returns:
+            child_columns: {col_name: {'kind': 'table', 'selected': False, 'default': '42'}, ...}
+        """
+        child_table = self.child_table
+        statement = self.statement
+        # Get the 'CREATE TABLE' query for this query's child table
+        child_table_query = mapping.find_query(kind='table', table=child_table)
+        if not child_table_query:
+            raise exception.SqlLeafException(message="Unknown table", table=str(child_table))
+
+        child_columns = child_table_query.get_columns()
+        if isinstance(statement, exp.Copy):
+            for col_name, col_props in child_columns.items():
+                col_props["selected"] = True
+            return child_columns
+
+        unknown_columns = util.unique(statement.named_selects - child_columns.keys())
+
+        if unknown_columns:
+            raise exception.SqlLeafException(
+                message=f"Unknown columns used in SELECT: {list(unknown_columns)}",
+                table=str(child_table),
+            )
+
+        if "*" in child_columns.keys():
+            # TODO: shouldn't this check statement.named_selects instead?
+            raise exception.SqlLeafException(message="Statement has unresolved star column", table=str(child_table))
+
+        # Set the query's columns as being selected (required by sqlglot's lineage())
+        for col_name, col_props in child_columns.items():
+            col_props["selected"] = col_name in statement.named_selects
+
+        return child_columns
 
     def to_dict(self):
         result = {
