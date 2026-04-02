@@ -7,7 +7,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from sqlleaf import structs
 
 from tests.new_fixtures import (
-    holder
+    holder, is_subset
 )
 
 DIALECT = 'postgres'
@@ -146,7 +146,6 @@ def test__select_value_twice(case, holder):
 # TODO: select_query_twice
 # TODO: select_query_twice, but slightly different second
 
-# Circular inserts, CTEs, etc
 
 def test__select_window_function(holder):
     queries = '''
@@ -164,7 +163,7 @@ def test__select_window_function(holder):
         ['window[ROW_NUMBER()]', 'column[fruit.processed.amount]'],
     ]
 
-def test__select_join(holder):
+def test__select_join_to_self(holder):
     queries = '''
     INSERT INTO fruit.processed
     SELECT
@@ -180,3 +179,17 @@ def test__select_join(holder):
         ['column[fruit.raw.age]', 'column[fruit.processed.age]']
         # Exclude self-referential inserts
     ]
+
+def test__select_assorted(holder):
+    queries = '''
+    CREATE TABLE anything(name VARCHAR);
+    INSERT INTO anything
+    SELECT
+        ARRAY[1,2,3] as name;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    assert is_subset(subarr=[
+        'literal[{1,2,3} type=ARRAY<INT> node_depth=0 select=0 func_depth=0 func_arg=0]'
+    ], arr=nodes)

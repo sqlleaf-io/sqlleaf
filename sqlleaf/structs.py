@@ -1034,6 +1034,7 @@ class LineageBuilder:
         skip = (exp.DataType, exp.Identifier)
         self.processors = {
             exp.Placeholder: self.process_placeholder,
+            exp.Array: self.process_array,
             (exp.JSONExtract, exp.JSONBExtract): self.process_json,
             exp.Window: self.process_window,
             (exp.Literal, exp.Boolean): self.process_literal,
@@ -1141,6 +1142,15 @@ class LineageBuilder:
 
         processor_ctx = replace(processor_ctx, new_data_type=exp.DataType.build(col_type))
         node_attrs = VariableNode(processor_ctx, ctx)
+        return node_attrs, []
+
+    def process_array(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+        """
+        SELECT ARRAY[1,2,3]
+        """
+        values = [str(e) for e in processor_ctx.expr.expressions]
+        values = '{' + ','.join(values) + '}'
+        node_attrs = LiteralNode(name=values, processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
     def process_window(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
