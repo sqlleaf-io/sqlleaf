@@ -7,7 +7,7 @@ from sqlglot.optimizer.qualify import qualify
 from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
-from sqlleaf import structs, transform, exception, mappings
+from sqlleaf import structs, transform, exception, mappings, util
 
 logger = logging.getLogger("sqleaf")
 
@@ -104,7 +104,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     The statements must be provided in the order in which they depend.
     If B depends on A, A must be created before B.
     """
-    queries = []
+    queries = {}
     unsupported = []
     processors = get_query_processors()
     counts = {kind: 0 for kind in processors.keys()}
@@ -113,6 +113,12 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     for index, stmt in enumerate(parsed):
         if isinstance(stmt, exp.Command):
             unsupported.append((index, stmt))
+            continue
+
+        # Remove duplicate queries
+        _id = util.short_sha256_hash(stmt.sql())
+        if _id in queries:
+            logger.debug(f"Skipping duplicate query: {stmt.sql()}")
             continue
 
         if stmt.key == "create":
@@ -145,12 +151,12 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         stmt = normalize_identifiers(stmt, dialect=dialect, store_original_column_identifiers=True)
 
         query: structs.Query = processors[kind](statement=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=index)
-        queries.append(query)
+        queries[_id] = query
         counts[kind] += 1
 
     logger.debug("Found statements: %s", dict(counts.items()))
     logger.warning("Unsupported statements: %s", len(unsupported))
-    return queries
+    return list(queries.values())
 
 
 def _process_unnamed(statement: exp.Expression, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> structs.Query:
