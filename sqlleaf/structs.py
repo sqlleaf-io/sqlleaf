@@ -265,6 +265,60 @@ class UpdateQuery(Query):
             index=index,
             child_table=util.get_table(expr),
         )
+        self.convert_update_to_insert()
+
+    def convert_update_to_insert(self) -> exp.Insert:
+        """
+        Taken from function extract_select_from_update() at datahub/metadata-ingestion/src/datahub/sql_parsing/sqlglotlineage.py
+
+        This transforms an UPDATE statement into an INSERT statement so that it can be processed by the lineage functions.
+        """
+        _UPDATE_FROM_TABLE_ARGS_TO_MOVE = {"joins", "laterals", "pivot"}
+        _UPDATE_ARGS_NOT_SUPPORTED_BY_SELECT: t.Set[str] = set(exp.Update.arg_types.keys()) - set(exp.Select.arg_types.keys())
+
+        statement = self.statement.copy()
+
+        # The "SET" expressions need to be converted.
+        # For the update command, it'll be a list of EQ expressions, but the select
+        # should contain aliased columns.
+        new_expressions = []
+        for expr in statement.expressions:
+            if isinstance(expr, exp.EQ) and isinstance(expr.left, exp.Column):
+                new_expressions.append(
+                    exp.Alias(
+                        this=expr.right,
+                        alias=expr.left.this,
+                    )
+                )
+            else:
+                # If we don't know how to convert it, just leave it as-is. If this causes issues,
+                # they'll get caught later.
+                new_expressions.append(expr)
+
+        # Special translation for the `from` clause.
+        extra_args: dict = {}
+        original_from = statement.args.get("from")
+        if original_from and isinstance(original_from.this, exp.Table):
+            # Move joins, laterals, and pivots from the Update->From->Table->field
+            # to the top-level Select->field.
+
+            for k in _UPDATE_FROM_TABLE_ARGS_TO_MOVE:
+                if k in original_from.this.args:
+                    # Mutate the from table clause in-place.
+                    extra_args[k] = original_from.this.args.get(k)
+                    original_from.this.set(k, None)
+
+        select_statement = exp.Select(
+            **{
+                **{k: v for k, v in statement.args.items() if k not in _UPDATE_ARGS_NOT_SUPPORTED_BY_SELECT},
+                **extra_args,
+                "expressions": new_expressions,
+            }
+        )
+
+        # Convert the statement into an insert
+        insert_statement = exp.insert(expression=select_statement, into=statement.this)
+        self.set_statement(insert_statement)
 
 
 class CTASQuery(Query):
@@ -584,7 +638,6 @@ class StageQuery(Query):
         stage_name = str(self.child_table.this)
         self.child_table.this.set("this", "@" + stage_name)
         self.child_table.this.set("quoted", False)
-        print()
 
     def get_columns(self) -> t.Dict[str, t.Dict[str, str]]:
         return self.columns
@@ -910,7 +963,6 @@ class JsonPathNode(NodeAttributes):
             column=self.selector,
             ctx=ctx,
         )
-        print()
 
     def json_selectors(self, expr: exp.JSONExtract):
         """
@@ -1162,6 +1214,7 @@ class ProcessorContext:
     new_data_type: InitVar[exp.DataType] = None
 
     def __post_init__(self, new_data_type: exp.DataType = None):
+        # Called via replace() or if a new object is instantiated
         if new_data_type:
             expr_type = new_data_type
         else:
@@ -1206,6 +1259,8 @@ class LineageBuilder:
             exp.Column: self.process_column,
             exp.Table: self.process_table,
             exp.WithinGroup: self.process_within_group,
+            exp.Select: self.process_select,
+
             skip: self.skip,
         }
 
@@ -1416,6 +1471,12 @@ class LineageBuilder:
         parent, children = self.process_function(processor_ctx, ctx)
         children = list(expr.expression.find_all(exp.Column))  # expr.expression is type(exp.Order)
         return parent, children
+
+    def process_select(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+        """
+        SELECT (SELECT 1) AS name
+        """
+        return None, []
 
     def process_case(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
         """

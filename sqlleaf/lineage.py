@@ -34,10 +34,6 @@ def transform_query(parent_query: structs.Query, object_mapping) -> structs.Quer
         statement = query.statement
         logger.info(f"Transforming query {statement_index + 1}/{len(queries)} - {str(type(statement))}")
 
-        if isinstance(statement, exp.Update):
-            # TODO: put this inside UpdateQuery? similar to CTAS
-            statement = transform.convert_update_to_insert(statement)
-
         # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
         statement = transform.apply_optimizations(statement, query.dialect, object_mapping, query.child_table)
 
