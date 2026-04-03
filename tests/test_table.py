@@ -50,9 +50,10 @@ def test__table_inherits_table(holder):
     # expect: fruit.a.name -> fruit.processed.name
     # expect: fruit.b_inherits_a.name -> fruit.processed.name
 
-
-def test__view_simple(holder):
-    queries = '''CREATE VIEW one AS SELECT -1 as number;'''
+view_types = ['', 'MATERIALIZED']
+@pytest.mark.parametrize("case", view_types)
+def test__view_simple(holder, case):
+    queries = f'''CREATE {case} VIEW one AS SELECT -1 as number;'''
     h = holder()
     h.generate(queries, dialect=DIALECT)
     paths = h.get_friendly_paths()
