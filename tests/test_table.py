@@ -35,6 +35,27 @@ def test__table_like_table(holder):
     ]
 
 
+def test__table_with_default_columns(holder):
+    queries = '''
+    CREATE TABLE fruit (name varchar, size int default 1, age int default 42);
+
+    INSERT INTO fruit
+    SELECT 'apple' as name, 10 as size;
+    '''
+    h = holder()
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_friendly_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+
+    assert paths == [
+        ['literal["apple"]', 'column[fruit.name]'],
+        ['literal[1]', 'column[fruit.size]'],
+        ['literal[10]', 'column[fruit.size]'],
+        ['literal[42]', 'column[fruit.age]']
+    ]
+
+
 @pytest.mark.skip(reason="todo")
 def test__table_inherits_table(holder):
     queries = '''

@@ -128,10 +128,6 @@ def generate_column_lineage_for_query(
     child_columns = query.determine_selected_columns(mapping)
     select_idx = 0
     for col_name, col_props in child_columns.items():
-        # Skip columns that weren't selected and that have no default
-        if not col_props["selected"] and not col_props["default"]:
-            continue
-
         col_expr = exp.column(
             catalog=child_table.catalog,
             db=child_table.db,
@@ -153,15 +149,13 @@ def generate_column_lineage_for_query(
             ctx=ctx,
         )
 
-        # TODO: move this block to process_column() (requires the object having these props accessible)
-        # TODO: although this seems to complicate things
-        if not col_props["selected"] and col_props["default"]:
-            # Add any default columns that weren't selected
-            default_expr = col_props["default"]
-
-            logger.debug("Adding unselected column %s with default to lineage", str(default_expr))
+        if default_expr:= col_props["default"]:
+            # Add the default column expression to the lineage
+            # TODO: make this a CLI flag
             processor_ctx = replace(processor_ctx, expr=default_expr, child_node_attrs=child_node)
             builder.walk_tree_and_build_graph(processor_ctx=processor_ctx, ctx=ctx)
+
+        if not col_props['selected']:
             continue
 
         logger.info(
