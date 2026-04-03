@@ -131,18 +131,23 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         else:
             kind = stmt.key.lower()
 
-        # Convert the statement to uppercase if the dialect supports it
-        stmt = normalize_identifiers(stmt, dialect=dialect, store_original_column_identifiers=True)
+        skip_kinds = ["transaction", "commit", "rollback", "endstatement", "alias", "semicolon"]
+        if kind in skip_kinds:
+            logger.debug(f"Skipping statement kind: {kind}")
+            continue
 
         if kind not in processors:
-            raise exception.SqlLeafException(message=f"Unsupported query kind: '{kind}'")
+            raise exception.SqlLeafException(message=f"Unsupported query kind: '{kind}'. Are you missing a processor for this kind?")
+
+        # Convert the statement to uppercase if the dialect supports it
+        stmt = normalize_identifiers(stmt, dialect=dialect, store_original_column_identifiers=True)
 
         query = processors[kind](statement=stmt, dialect=dialect, object_mapping=object_mapping)
         queries.append(query)
         counts[kind] += 1
 
     logger.debug("Found statements: %s", dict(counts.items()))
-    logger.warn("Unrecognised statements: %s", len(unrecognised))
+    logger.warning("Unrecognised statements: %s", len(unrecognised))
     return queries
 
 
