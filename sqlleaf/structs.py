@@ -25,14 +25,14 @@ class Query:
         dialect: str,
         statement: exp.Expression,
         child_table: exp.Table,
-        index: int = 0,
+        statement_index: int,
         has_statement: bool = True,
     ):
         self.kind = kind
         self.dialect = dialect
         self.statement = statement
         self.child_table = child_table  # The target table
-        self.index = index  # The position of this query within a list of queries
+        self.statement_index = statement_index  # The position of this query within a list of queries
         self.parent_query = None
         self.child_queries = []
         self.has_statement = has_statement  # Has a DML statement (Insert, Update, Merge)
@@ -64,13 +64,13 @@ class Query:
         Consider the query's index in the ID as there may be duplicate queries provided
         (e.g. in a stored procedure).
         """
-        self.id = "query:" + util.short_sha256_hash(self.text_original + ":" + str(self.index))
+        self.id = "query:" + util.short_sha256_hash(self.text_original + ":" + str(self.statement_index))
 
     def set_to_original(self):
         """
-        Convert the Query to its original statement.
+        Convert the Query back to its original statement.
 
-        This is needed for CTAS/View queries after they tranform into Inserts in order to have their lineage calculated.
+        This is needed for CTAS/View queries after they transform into Inserts in order to have their lineage calculated.
         This is the inverse of functions like set_as_insert()
         """
         self.set_statement(statement=self.statement_original)
@@ -149,12 +149,12 @@ class Query:
 
 
 class MergeQuery(Query):
-    def __init__(self, expr: exp.Merge, dialect: str, index: int = 0):
+    def __init__(self, expr: exp.Merge, dialect: str, statement_index: int):
         super().__init__(
             kind="merge",
             statement=expr,
             dialect=dialect,
-            index=index,
+            statement_index=statement_index,
             child_table=expr.this,
         )
 
@@ -221,7 +221,7 @@ class MergeQuery(Query):
                 for cte in new_ctes:
                     update_expr = update_expr.with_(alias=cte["alias"], as_=cte["as_"])
 
-                update_query = UpdateQuery(expr=update_expr, dialect=self.dialect, index=i)
+                update_query = UpdateQuery(expr=update_expr, dialect=self.dialect, statement_index=i)
                 self.add_child_query(update_query)
 
             elif isinstance(when, exp.Insert):
@@ -241,33 +241,33 @@ class MergeQuery(Query):
                 for cte in new_ctes:
                     insert_expr = insert_expr.with_(alias=cte["alias"], as_=cte["as_"])
 
-                insert_query = InsertQuery(expr=insert_expr, dialect=self.dialect, index=i)
+                insert_query = InsertQuery(expr=insert_expr, dialect=self.dialect, statement_index=i)
                 self.add_child_query(insert_query)
 
 
 class InsertQuery(Query):
-    def __init__(self, expr: exp.Insert, dialect: str, index: int = 0):
+    def __init__(self, expr: exp.Insert, dialect: str, statement_index: int):
         super().__init__(
             kind="insert",
             statement=expr,
             dialect=dialect,
-            index=index,
+            statement_index=statement_index,
             child_table=util.get_table(expr),
         )
 
 
 class UpdateQuery(Query):
-    def __init__(self, expr: exp.Update, dialect: str, index: int = 0):
+    def __init__(self, expr: exp.Update, dialect: str, statement_index: int):
         super().__init__(
             kind="update",
             statement=expr,
             dialect=dialect,
-            index=index,
+            statement_index=statement_index,
             child_table=util.get_table(expr),
         )
         self.convert_update_to_insert()
 
-    def convert_update_to_insert(self) -> exp.Insert:
+    def convert_update_to_insert(self):
         """
         Taken from function extract_select_from_update() at datahub/metadata-ingestion/src/datahub/sql_parsing/sqlglotlineage.py
 
@@ -327,11 +327,13 @@ class CTASQuery(Query):
         statement: exp.Create,
         dialect: str,
         columns: t.Dict[str, t.Dict[str, str]],
+        statement_index: int,
     ):
         super().__init__(
             kind="ctas",
             statement=statement,
             dialect=dialect,
+            statement_index=statement_index,
             child_table=util.get_table(statement),
         )
         self.columns = columns
@@ -353,11 +355,13 @@ class ViewQuery(Query):
         statement: exp.Create,
         dialect: str,
         columns: t.Dict[str, t.Dict[str, str]],
+        statement_index: int,
     ):
         super().__init__(
             kind="view",
             statement=statement,
             dialect=dialect,
+            statement_index=statement_index,
             child_table=util.get_table(statement),
         )
         self.columns = columns
@@ -374,11 +378,12 @@ class ViewQuery(Query):
 
 
 class TableQuery(Query):
-    def __init__(self, statement: exp.Create, dialect: str, mapping):
+    def __init__(self, statement: exp.Create, dialect: str, mapping, statement_index: int):
         super().__init__(
             kind="table",
             statement=statement,
             dialect=dialect,
+            statement_index=statement_index,
             child_table=util.get_table(statement.this),
             has_statement = False,
         )
@@ -510,12 +515,13 @@ class ProcedureQuery(Query):
     Holds metadata related to stored procedures.
     """
 
-    def __init__(self, statement: exp.Create, dialect: str):
+    def __init__(self, statement: exp.Create, dialect: str, statement_index: int):
         table = util.get_table(statement)
         super().__init__(
             kind="procedure",
             statement=statement,
             dialect=dialect,
+            statement_index=statement_index,
             child_table=table,
         )
 
@@ -564,11 +570,13 @@ class UserDefinedFunctionQuery(Query):
         returns_null,
         language,
         statement,
+        statement_index: int,
     ):
         super().__init__(
             kind="user_defined_function",
-            dialect=dialect,
             statement=statement,
+            dialect=dialect,
+            statement_index=statement_index,
             child_table=statement.this.this,
         )
         self.schema = schema
@@ -590,18 +598,19 @@ class UserDefinedFunctionQuery(Query):
 
 
 class SequenceQuery(Query):
-    def __init__(self, statement: exp.Create, dialect: str):
+    def __init__(self, statement: exp.Create, dialect: str, statement_index: int):
         super().__init__(
             kind="sequence",
-            dialect=dialect,
             statement=statement,
+            dialect=dialect,
+            statement_index=statement_index,
             child_table=statement.this,
             has_statement=False,
         )
 
 
 class TriggerQuery(Query):
-    def __init__(self, statement: exp.Create, dialect: str):
+    def __init__(self, statement: exp.Create, dialect: str, statement_index: int):
         """
         Example:
             CREATE TRIGGER before_fruit_insert
@@ -612,8 +621,9 @@ class TriggerQuery(Query):
         properties = statement.args["properties"].expressions[0]
         super().__init__(
             kind="trigger",
-            dialect=dialect,
             statement=statement,
+            dialect=dialect,
+            statement_index=statement_index,
             child_table=properties.args["table"],
         )
         self.name = statement.name  # before_fruit_insert
@@ -625,11 +635,12 @@ class TriggerQuery(Query):
 
 
 class StageQuery(Query):
-    def __init__(self, statement: exp.Create, dialect: str):
+    def __init__(self, statement: exp.Create, dialect: str, statement_index: int):
         super().__init__(
             kind="stage",
-            dialect=dialect,
             statement=statement,
+            dialect=dialect,
+            statement_index=statement_index,
             child_table=util.get_table(statement),
             has_statement=False,
         )
@@ -644,12 +655,12 @@ class StageQuery(Query):
 
 
 class CopyQuery(Query):
-    def __init__(self, expr: exp.Copy, dialect: str, mapping: mappings.ObjectMapping, index: int = 0):
+    def __init__(self, expr: exp.Copy, dialect: str, mapping: mappings.ObjectMapping, statement_index: int):
         super().__init__(
             kind="copy",
-            dialect=dialect,
             statement=expr,
-            index=index,
+            dialect=dialect,
+            statement_index=statement_index,
             child_table=expr.this,
         )
         self.source = expr.args['files'][0]
@@ -728,12 +739,12 @@ class CopyQuery(Query):
 
 
 class PutQuery(Query):
-    def __init__(self, expr: exp.Put, dialect: str, mapping: mappings.ObjectMapping, index: int = 0):
+    def __init__(self, expr: exp.Put, dialect: str, mapping: mappings.ObjectMapping, statement_index: int):
         super().__init__(
             kind="put",
-            dialect=dialect,
             statement=expr,
-            index=index,
+            dialect=dialect,
+            statement_index=statement_index,
             child_table=expr.this,
         )
         self.source = expr.name
@@ -1099,6 +1110,25 @@ class FileNode(NodeAttributes):
         return self.wrap(f"{self.column}")
 
 
+class IntervalNode(NodeAttributes):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+        expr: exp.Interval = processor_ctx.expr
+        name = str(expr.this.name) + ' ' + str(expr.unit)
+        super().__init__(
+            kind="interval",
+            data_type=processor_ctx.data_type,
+            expr=processor_ctx.expr,
+            column=name,
+        )
+        print()
+
+    @property
+    def full_name(self):
+        return self.wrap(
+            f"{self.column} type={self.data_type} node_depth={self.ctx.node_depth} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+        )
+
+
 class EdgeAttributes:
     def __init__(
         self,
@@ -1260,6 +1290,7 @@ class LineageBuilder:
             exp.Table: self.process_table,
             exp.WithinGroup: self.process_within_group,
             exp.Select: self.process_select,
+            exp.Interval: self.process_interval,
 
             skip: self.skip,
         }
@@ -1544,6 +1575,10 @@ class LineageBuilder:
             source = source.this
 
         return node_attrs, [source]
+
+    def process_interval(self, processor_ctx: ProcessorContext, ctx: context.NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        node_attrs = IntervalNode(processor_ctx=processor_ctx, ctx=ctx)
+        return node_attrs, []
 
     def skip(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
         logger.debug("Skipping expression {}".format(str(processor_ctx.expr)))

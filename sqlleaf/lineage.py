@@ -15,24 +15,23 @@ from sqlleaf import (
     structs,
     mappings,
     sqlglot_lineage,
-    exception,
     transform,
     context,
 )
 
 logger = logging.getLogger("sqlleaf")
 
+
 def transform_query(parent_query: structs.Query, object_mapping) -> structs.Query:
     """
-    Transform the queries so that the have complete information about them
-    in preparaing for lineage calculation.
+    Transform the queries so that they have complete information in preparation for lineage calculation.
     """
     queries = parent_query.child_queries or [parent_query]
 
     # Process each of the statements
-    for statement_index, query in enumerate(queries):
+    for query in queries:
         statement = query.statement
-        logger.info(f"Transforming query {statement_index + 1}/{len(queries)} - {str(type(statement))}")
+        logger.info(f"Transforming query: {str(type(statement))}")
 
         # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
         statement = transform.apply_optimizations(statement, query.dialect, object_mapping, query.child_table)
@@ -59,12 +58,8 @@ def get_lineage_for_query(parent_query: structs.Query, object_mapping) -> nx.Mul
     graph.graph["attrs"].add_query(parent_query)
     queries = parent_query.child_queries or [parent_query]
 
-    # Process each of the statements
-    for statement_index, query in enumerate(queries):
-        # Main method. Get the statement's column-level lineage
-        generate_column_lineage_for_query(query, graph, object_mapping, statement_index)
-
-        # Reset the query
+    for query in queries:
+        generate_column_lineage_for_query(query, graph, object_mapping)
         query.set_to_original()
 
     return graph
@@ -74,7 +69,6 @@ def generate_column_lineage_for_query(
     query: structs.Query,
     graph: nx.MultiDiGraph,
     mapping: mappings.ObjectMapping,
-    statement_index: int,
 ) -> nx.MultiDiGraph:
     """
     Calculate the lineage for an SQL query.
@@ -95,7 +89,7 @@ def generate_column_lineage_for_query(
     statement = query.statement
     scope = sqlglot.optimizer.build_scope(statement)
 
-    logger.info(f"Getting lineage for query: {str(type(statement))}")
+    logger.info(f"Getting lineage for query: {statement.sql()}")
 
     ctx = context.NodeContext(select_index=-1)
     processor_ctx = structs.ProcessorContext(
@@ -228,6 +222,8 @@ def update_column_data_types(graph: nx.MultiDiGraph):
     types are by default UNKNOWN and therefore need resolution.
     """
     # TODO: Use sqlglot.expressions.DataType.is_type() as a first check
+    logger.debug("Skipping data types as it's faulty")
+    return
 
     root_columns = _get_root_nodes(graph)
 
@@ -336,12 +332,15 @@ def _get_node_leaves(expr: exp.Expression):
     return leaves
 
 
-def _get_all_paths_from_lineage(node: sqlglot_lineage.Node, path=[]):
+def _get_all_paths_from_lineage(node: sqlglot_lineage.Node, path=None):
     """
     Iterate over the tree of lineage.Node produced by lineage.lineage()
 
     NOTE: the path is just a list! It is completely separate from the concept of a path in a graph.
     """
+    if path is None:
+        path = []
+
     path.append(node)
     expr = util.unwrap_expression(node.expression)
 

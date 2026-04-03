@@ -3,7 +3,8 @@ import typing as t
 
 import sqlglot
 from sqlglot import exp
-from sqlglot.optimizer.optimizer import qualify
+from sqlglot.optimizer.qualify import qualify
+from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
 from sqlleaf import structs, transform, exception, mappings
@@ -40,7 +41,7 @@ def produce_query_objects(statement: exp.Expression, dialect: str, statement_ind
     query = None
 
     if isinstance(statement, exp.Merge):
-        query = structs.MergeQuery(expr=statement, dialect=dialect, index=statement_index)
+        query = structs.MergeQuery(expr=statement, dialect=dialect, statement_index=statement_index)
 
         # Link any child queries
         for child_expr in query.get_child_expressions():
@@ -49,9 +50,9 @@ def produce_query_objects(statement: exp.Expression, dialect: str, statement_ind
             query.add_child_query(child_query)
 
     elif isinstance(statement, exp.Insert):
-        query = structs.InsertQuery(expr=statement, dialect=dialect, index=statement_index)
+        query = structs.InsertQuery(expr=statement, dialect=dialect, statement_index=statement_index)
     elif isinstance(statement, exp.Update):
-        query = structs.UpdateQuery(expr=statement, dialect=dialect, index=statement_index)
+        query = structs.UpdateQuery(expr=statement, dialect=dialect, statement_index=statement_index)
 
     return query
 
@@ -95,7 +96,7 @@ def get_queries_from_sql(text: str, dialect: str, include_selects=False) -> t.Li
     return queries
 
 
-def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapping) -> (t.List[structs.Query], t.List[exp.Expression]):
+def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapping) -> t.List[structs.Query]:
     """
     Parse a series of SQL statements provided as text.
     This includes tables, views, procedures, functions, sequences, etc.
@@ -104,14 +105,14 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     If B depends on A, A must be created before B.
     """
     queries = []
-    unrecognised = []
+    unsupported = []
     processors = get_processors()
     counts = {kind: 0 for kind in processors.keys()}
     parsed = sqlglot.parse(text, dialect=dialect)
 
-    for stmt in parsed:
+    for index, stmt in enumerate(parsed):
         if isinstance(stmt, exp.Command):
-            unrecognised.append(stmt)
+            unsupported.append((index, stmt))
             continue
 
         if stmt.key == "create":
@@ -134,6 +135,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         skip_kinds = ["transaction", "commit", "rollback", "endstatement", "alias", "semicolon"]
         if kind in skip_kinds:
             logger.debug(f"Skipping statement kind: {kind}")
+            unsupported.append((index, stmt))
             continue
 
         if kind not in processors:
@@ -142,39 +144,39 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         # Convert the statement to uppercase if the dialect supports it
         stmt = normalize_identifiers(stmt, dialect=dialect, store_original_column_identifiers=True)
 
-        query = processors[kind](statement=stmt, dialect=dialect, object_mapping=object_mapping)
+        query: structs.Query = processors[kind](statement=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=index)
         queries.append(query)
         counts[kind] += 1
 
     logger.debug("Found statements: %s", dict(counts.items()))
-    logger.warning("Unrecognised statements: %s", len(unrecognised))
+    logger.warning("Unsupported statements: %s", len(unsupported))
     return queries
 
 
-def _process_unnamed(statement: t.Union[exp.Insert, exp.Update], dialect: str, object_mapping: mappings.ObjectMapping):
+def _process_unnamed(statement: exp.Expression, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> structs.Query:
     """
-    Process a MERGE, INSERT or UPDATE statement.
+    Process an unnamed statement - one not inside a 'CREATE <name>' statement.
     """
     if isinstance(statement, exp.Merge):
-        query = structs.MergeQuery(expr=statement, dialect=dialect, index=-1)
+        query = structs.MergeQuery(expr=statement, dialect=dialect, statement_index=statement_index)
     if isinstance(statement, exp.Insert):
-        query = structs.InsertQuery(expr=statement, dialect=dialect, index=-1)
+        query = structs.InsertQuery(expr=statement, dialect=dialect, statement_index=statement_index)
     elif isinstance(statement, exp.Update):
-        query = structs.UpdateQuery(expr=statement, dialect=dialect, index=-1)
+        query = structs.UpdateQuery(expr=statement, dialect=dialect, statement_index=statement_index)
     elif isinstance(statement, exp.Copy):
-        query = structs.CopyQuery(expr=statement, dialect=dialect, mapping=object_mapping, index=-1)
+        query = structs.CopyQuery(expr=statement, dialect=dialect, mapping=object_mapping, statement_index=statement_index)
     elif isinstance(statement, exp.Put):
-        query = structs.PutQuery(expr=statement, dialect=dialect, mapping=object_mapping, index=-1)
+        query = structs.PutQuery(expr=statement, dialect=dialect, mapping=object_mapping, statement_index=statement_index)
     return query
 
 
-def _process_tables(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping):
+def _process_tables(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> structs.Query:
     """
     Process a 'CREATE TABLE' statement.
     """
     if statement.kind == "TABLE":
         # CREATE TABLE ...
-        query = structs.TableQuery(statement=statement, dialect=dialect, mapping=object_mapping)
+        query = structs.TableQuery(statement=statement, dialect=dialect, mapping=object_mapping, statement_index=statement_index)
         object_mapping.add_query(
             kind='table',
             query=query,
@@ -183,21 +185,18 @@ def _process_tables(statement: exp.Create, dialect: str, object_mapping: mapping
             dialect=dialect,
         )
     elif statement.kind == "SEQUENCE":
-        query = structs.SequenceQuery(statement=statement, dialect=dialect)
+        query = structs.SequenceQuery(statement=statement, dialect=dialect, statement_index=statement_index)
         object_mapping.add_query(kind='sequence', query=query, dialect=dialect)
     return query
 
 
-def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping):
+def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> structs.Query:
     """
     Convert a series of `CREATE VIEW/TABLE AS ...` SQL DDL statements into sqlglot's MappingSchema
     to extract the table and column details.
-
-    Parameters:
-        statements:
     """
     # Infer schemas, qualify columns, etc
-    stmt = sqlglot.optimizer.qualify.qualify(
+    stmt = qualify(
         statement,
         schema=object_mapping,
         infer_schema=True,
@@ -207,18 +206,18 @@ def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping:
         quote_identifiers=False,
     )
     # Add types from the mapping if available
-    stmt = sqlglot.optimizer.annotate_types.annotate_types(stmt, dialect=dialect, schema=object_mapping)
+    stmt = annotate_types(stmt, dialect=dialect, schema=object_mapping)
 
     # We may not know the column types until we parse the Creates's SELECT query / connect it to the lineage
     named_columns = {s.alias_or_name: {"default": None, "kind": s.type or "UNKNOWN"} for s in stmt.selects}
 
     if stmt.kind == "VIEW":
         # CREATE VIEW ...
-        query = structs.ViewQuery(statement=stmt, dialect=dialect, columns=named_columns)
+        query = structs.ViewQuery(statement=stmt, dialect=dialect, columns=named_columns, statement_index=statement_index)
 
     elif stmt.kind == "TABLE":
         # CREATE TABLE AS SELECT ...
-        query = structs.CTASQuery(statement=stmt, dialect=dialect, columns=named_columns)
+        query = structs.CTASQuery(statement=stmt, dialect=dialect, columns=named_columns, statement_index=statement_index)
 
     object_mapping.add_query(
         kind='table',
@@ -229,7 +228,7 @@ def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping:
     return query
 
 
-def _process_functions(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping):
+def _process_functions(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> structs.Query:
     """
     Process a "CREATE FUNCTION" statement.
     """
@@ -281,7 +280,7 @@ def _process_functions(statement: exp.Create, dialect: str, object_mapping: mapp
     return query
 
 
-def _process_triggers(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping):
+def _process_triggers(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> structs.Query:
     """
     Process a "CREATE TRIGGER" statement.
     """
@@ -290,11 +289,11 @@ def _process_triggers(statement: exp.Create, dialect: str, object_mapping: mappi
     return query
 
 
-def _process_stored_procedures(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping):
+def _process_stored_procedures(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> structs.Query:
     """
     Process a "CREATE PROCEDURE" statement.
     """
-    query = structs.ProcedureQuery(statement=statement, dialect=dialect)
+    query = structs.ProcedureQuery(statement=statement, dialect=dialect, statement_index=statement_index)
     object_mapping.add_query(kind='procedure', query=query, dialect=dialect)
     # TODO: find a way to get each SP's text from a query that has multiple SPs defined in it.
     #  sqlglot will parse the 2 SPs, but does not provide the original, raw text. This is imperfect
@@ -307,7 +306,7 @@ def _process_stored_procedures(statement: exp.Create, dialect: str, object_mappi
     query.add_child_queries(child_queries=queries)
     return query
 
-def _process_stage(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping):
-    query = structs.StageQuery(statement, dialect)
+def _process_stage(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> structs.Query:
+    query = structs.StageQuery(statement, dialect, statement_index)
     object_mapping.add_query(kind='stage', query=query, dialect=dialect)
     return query
