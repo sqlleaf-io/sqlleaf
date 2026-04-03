@@ -1264,13 +1264,13 @@ class LineageBuilder:
     _dialects = {}
     dialect = ""
 
-    def __init__(self):
+    def get_expression_processors(self) -> t.Dict:
         """
         These are processed in the order they are defined.
         This is due to subclasses generally needing to be processed first.
         """
         skip = (exp.DataType, exp.Identifier)
-        self.processors = {
+        return {
             exp.Placeholder: self.process_placeholder,
             exp.Array: self.process_array,
             (exp.JSONExtract, exp.JSONBExtract): self.process_json,
@@ -1315,7 +1315,7 @@ class LineageBuilder:
         We iterate over the list in order because earlier processors (usually subclasses)
         often take precedence.
         """
-        for types, processor in self.processors.items():
+        for types, processor in self.get_expression_processors().items():
             if isinstance(expr, types):
                 return processor
         return None

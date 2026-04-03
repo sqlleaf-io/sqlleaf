@@ -13,7 +13,7 @@ logger = logging.getLogger("sqleaf")
 
 
 # TODO: determine dependency order based on object relations
-def get_processors():
+def get_query_processors():
     return {
         "table": _process_tables,
         "ctas": _process_views_and_ctas,
@@ -106,7 +106,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     """
     queries = []
     unsupported = []
-    processors = get_processors()
+    processors = get_query_processors()
     counts = {kind: 0 for kind in processors.keys()}
     parsed = sqlglot.parse(text, dialect=dialect)
 
