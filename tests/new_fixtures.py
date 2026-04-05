@@ -42,7 +42,7 @@ class LineageDummy(sqlleaf.Lineage):
         return new_queries
 
 
-@pytest.fixture
+@pytest.fixture(scope='function')
 def holder():
     def _create_holder(with_tables: bool = False, dialect: str = ''):
         h = LineageDummy()

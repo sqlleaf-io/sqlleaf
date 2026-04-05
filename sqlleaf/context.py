@@ -1,10 +1,9 @@
 from dataclasses import dataclass
 
 
-# @dataclass(frozen=True)
-@dataclass()
+@dataclass(frozen=True)
 class NodeContext:
-    statement_index: int = 0
+    statement_index: str = ''
     select_index: int = 0
     function_depth: int = 0
     function_arg_index: int = 0

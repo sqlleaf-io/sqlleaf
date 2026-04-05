@@ -91,7 +91,7 @@ def generate_column_lineage_for_query(
 
     logger.info(f"Getting lineage for query: {statement.sql()}")
 
-    ctx = context.NodeContext(select_index=-1)
+    ctx = context.NodeContext(statement_index=query.get_statement_index())
     processor_ctx = structs.ProcessorContext(
         graph=graph,
         mapping=mapping,
@@ -131,7 +131,7 @@ def generate_column_lineage_for_query(
         col_expr.type = exp.DataType.build(col_props["kind"])
         col_expr.parent = child_table
 
-        ctx = context.NodeContext(select_index=select_idx)
+        ctx = context.NodeContext(select_index=select_idx, statement_index=query.get_statement_index())
         processor_ctx = replace(processor_ctx, expr=col_expr)
 
         child_node = structs.ColumnNode(

@@ -20,6 +20,9 @@ class Lineage:
         self.object_mapping = None
 
     def generate(self, sql: str, dialect: str):
+        """
+        Generate lineage for one or more SQL statements.
+        """
         if not self.object_mapping:
             self.object_mapping = mappings.ObjectMapping(dialect=dialect)
 

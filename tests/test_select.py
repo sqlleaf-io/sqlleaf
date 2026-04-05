@@ -33,7 +33,6 @@ def test__select_with_ordinality(holder):
     nodes = h.get_full_node_names()
 
 
-
 def test__case_simple(holder):
     queries = '''
     INSERT INTO fruit.processed
@@ -182,14 +181,16 @@ def test__select_join_to_self(holder):
 
 def test__select_assorted(holder):
     queries = '''
-    CREATE TABLE anything(name VARCHAR);
+    CREATE TABLE anything(name1 VARCHAR, name2 VARCHAR);
     INSERT INTO anything
     SELECT
-        ARRAY[1,2,3] as name;
+        ARRAY[1,2,3] as name1,
+        INTERVAL '-10.75 MINUTE' as name2;
     '''
-    h = holder(with_tables=True)
+    h = holder()
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
     assert is_subset(subarr=[
-        'literal[{1,2,3} type=ARRAY<INT> node_depth=0 select=0 func_depth=0 func_arg=0]'
+        'literal[{1,2,3} type=ARRAY<INT> node_depth=0 statement=1 select=0 func_depth=0 func_arg=0]',
+        'interval["-10.75 MINUTE" type=INTERVAL node_depth=0 statement=1 select=1 func_depth=0 func_arg=0]'
     ], arr=nodes)

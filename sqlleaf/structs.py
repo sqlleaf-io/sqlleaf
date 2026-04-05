@@ -44,6 +44,16 @@ class Query:
 
         logger.debug(f"Created structs.Query: {self.__class__}")
 
+    def get_statement_index(self) -> str:
+        """
+        Get the statement index for this query (including its parents).
+        """
+        if self.parent_query:
+            index = self.parent_query.get_statement_index()
+            return index + ':' + str(self.statement_index)
+        else:
+            return str(self.statement_index)
+
     def set_properties(self, statement):
         self.property_names = []
         table_properties = statement.args.get("properties")
@@ -759,6 +769,7 @@ class NodeAttributes:
         self,
         expr: exp.Expression,
         data_type: exp.DataType,
+        ctx: context.NodeContext,
         column: str,
         table: str = "",
         schema: str = "",
@@ -766,7 +777,6 @@ class NodeAttributes:
         kind: str = "",
         table_type: str = "",
         table_properties: t.List = None,
-        ctx: context.NodeContext = None,
     ):
         self.expr = expr
         self.data_type = str(data_type)  # TODO: could we just assign expr.type = data_type and remove this?
@@ -777,7 +787,7 @@ class NodeAttributes:
         self.table = table
         self.table_type = table_type
         self.table_properties = sorted(table_properties) if table_properties else []
-        self.ctx = ctx if ctx else context.NodeContext()
+        self.ctx = ctx
 
         logger.debug(f"structs.NodeAttributes: Created Node: {self.__class__}, Name: {self.full_name}")
 
@@ -840,7 +850,7 @@ class LiteralNode(NodeAttributes):
     def full_name(self):
         name = self.column.replace("'", '"')
         return self.wrap(
-            f"{name} type={self.data_type} node_depth={self.ctx.node_depth} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{name} type={self.data_type} node_depth={self.ctx.node_depth} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
@@ -871,6 +881,7 @@ class ColumnNode(NodeAttributes):
             expr=expr,
             table_type=self._table_type(catalog, schema, table, processor_ctx),
             table_properties=processor_ctx.query.property_names,
+            ctx=ctx,
         )
 
     def _table_type(self, catalog, schema, table, processor_ctx):
@@ -897,7 +908,11 @@ class ColumnNode(NodeAttributes):
 
     @property
     def full_name(self):
-        return self.wrap(f"{self.get_name()} type={self.data_type} kind={self.table_type}")
+        if self.table_type == 'cte':
+            # A CTE name can be reused across statements
+            return self.wrap(f"{self.get_name()} type={self.data_type} statement={self.ctx.statement_index} kind={self.table_type}")
+        else:
+            return self.wrap(f"{self.get_name()} type={self.data_type} kind={self.table_type}")
 
     @property
     def friendly_name(self):
@@ -918,7 +933,7 @@ class FunctionNode(NodeAttributes):
     def full_name(self):
         name = f"{self.column}()".upper()
         return self.wrap(
-            f"{name} type={self.data_type} node_depth={self.ctx.node_depth} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{name} type={self.data_type} node_depth={self.ctx.node_depth} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
@@ -951,7 +966,7 @@ class UserDefinedFunctionNode(NodeAttributes):
     @property
     def full_name(self):
         return self.wrap(
-            f"{self.get_name()} type={self.data_type} node_depth={self.ctx.node_depth} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{self.get_name()} type={self.data_type} node_depth={self.ctx.node_depth} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
@@ -1005,6 +1020,7 @@ class VariableNode(NodeAttributes):
             data_type=processor_ctx.data_type,
             expr=processor_ctx.expr,
             column=processor_ctx.node.name,
+            ctx=ctx,
         )
 
 
@@ -1015,6 +1031,7 @@ class StarNode(NodeAttributes):
             data_type=exp.DataType.build("UNKNOWN"),
             expr=processor_ctx.expr,
             column="*",
+            ctx=ctx,
         )
 
     @property
@@ -1029,6 +1046,7 @@ class VarNode(NodeAttributes):
             data_type=exp.DataType.build("NULL"),
             expr=processor_ctx.expr,
             column=processor_ctx.expr.name,
+            ctx=ctx,
         )
 
 
@@ -1045,7 +1063,7 @@ class NullNode(NodeAttributes):
     @property
     def full_name(self):
         return self.wrap(
-            f"{self.column} type={self.data_type} node_depth={self.ctx.node_depth} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{self.column} type={self.data_type} node_depth={self.ctx.node_depth} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
@@ -1060,6 +1078,7 @@ class SequenceNode(NodeAttributes):
             data_type=exp.DataType.build("INT"),
             expr=processor_ctx.expr,
             column=name,
+            ctx=ctx,
         )
 
 
@@ -1070,6 +1089,7 @@ class WindowNode(NodeAttributes):
             data_type=processor_ctx.data_type,
             expr=processor_ctx.expr,
             column=processor_ctx.expr.this.sql(),
+            ctx=ctx,
         )
 
 
@@ -1087,6 +1107,7 @@ class StageNode(NodeAttributes):
             data_type=None,
             expr=expr,
             column=expr.name.removeprefix("@").replace('"', ""),
+            ctx=ctx,
         )
 
     @property
@@ -1103,6 +1124,7 @@ class FileNode(NodeAttributes):
             data_type=None,
             expr=processor_ctx.expr,
             column=filename,
+            ctx=ctx,
         )
 
     @property
@@ -1113,19 +1135,20 @@ class FileNode(NodeAttributes):
 class IntervalNode(NodeAttributes):
     def __init__(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
         expr: exp.Interval = processor_ctx.expr
-        name = str(expr.this.name) + ' ' + str(expr.unit)
+        name = f'"{str(expr.this.name)} {str(expr.unit)}"'
         super().__init__(
             kind="interval",
             data_type=processor_ctx.data_type,
             expr=processor_ctx.expr,
             column=name,
+            ctx=ctx,
         )
         print()
 
     @property
     def full_name(self):
         return self.wrap(
-            f"{self.column} type={self.data_type} node_depth={self.ctx.node_depth} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{self.column} type={self.data_type} node_depth={self.ctx.node_depth} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
 
