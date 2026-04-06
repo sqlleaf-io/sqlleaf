@@ -91,7 +91,50 @@ def test__cte_two_same_name_different_query(holder):
         ['literal[2]', 'column[cte1.name]', 'column[fruit.raw.name]']
     ]
     assert is_subset(subarr=[
-        'column[cte1.name type=INT statement=0 kind=cte]',
-        'column[cte1.name type=INT statement=1 kind=cte]',
+        'column[cte1.name type=INT subkind=cte statement=0]',
+        'column[cte1.name type=INT subkind=cte statement=1]',
     ], arr=nodes)
     assert [structs.InsertQuery, structs.InsertQuery] == list(map(type, queries))
+
+
+def test__cte_chained(holder):
+    queries = '''
+    WITH cte_one AS (
+        SELECT name FROM fruit.raw
+    ),
+    cte_two AS (
+        SELECT * FROM cte_one
+    )
+    INSERT INTO fruit.processed
+    SELECT * FROM cte_two;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    paths = h.get_friendly_paths()
+    queries = h.get_queries_created()
+
+    assert paths == [
+        ['column[fruit.raw.name]', 'column[cte_one.name]', 'column[cte_two.name]', 'column[fruit.processed.name]']
+    ]
+
+
+def test__cte_nested(holder):
+    queries = '''
+    WITH outer_cte AS (
+        WITH inner_cte AS (
+            SELECT name FROM fruit.raw
+        )
+        SELECT * FROM inner_cte
+    )
+    INSERT INTO fruit.processed
+    SELECT * FROM outer_cte;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    paths = h.get_friendly_paths()
+
+    assert paths == [
+        ['column[fruit.raw.name]', 'column[inner_cte.name]', 'column[outer_cte.name]', 'column[fruit.processed.name]']
+    ]
