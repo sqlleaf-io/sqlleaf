@@ -144,6 +144,9 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
             unsupported.append((index, stmt))
             continue
 
+        if kind == 'select':
+            raise exception.SqlLeafException(message=f"SELECT queries have no lineage. Provide an INSERT, UPDATE or any CREATE statement.")
+
         if kind not in processors:
             raise exception.SqlLeafException(message=f"Unsupported query kind: '{kind}'. Are you missing a processor for this kind?")
 
