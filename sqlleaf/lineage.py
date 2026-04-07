@@ -16,7 +16,6 @@ from sqlleaf import (
     mappings,
     sqlglot_lineage,
     transform,
-    context,
 )
 
 logger = logging.getLogger("sqlleaf")
@@ -89,9 +88,9 @@ def generate_column_lineage_for_query(
     statement = query.statement
     scope = sqlglot.optimizer.build_scope(statement)
 
-    logger.info(f"Getting lineage for query: {statement.sql()}")
+    logger.info(f"Getting lineage for query: {statement.sql(comments=False)}")
 
-    ctx = context.NodeContext(statement_index=query.get_statement_index())
+    ctx = structs.NodeContext(statement_index=query.get_statement_index())
     processor_ctx = structs.ProcessorContext(
         graph=graph,
         mapping=mapping,
@@ -122,6 +121,8 @@ def generate_column_lineage_for_query(
     child_columns = query.determine_selected_columns(mapping)
     select_idx = 0
     for col_name, col_props in child_columns.items():
+
+        # TODO: refactor
         col_expr = exp.column(
             catalog=child_table.catalog,
             db=child_table.db,
@@ -131,7 +132,7 @@ def generate_column_lineage_for_query(
         col_expr.type = exp.DataType.build(col_props["kind"])
         col_expr.parent = child_table
 
-        ctx = context.NodeContext(select_index=select_idx, statement_index=query.get_statement_index())
+        ctx = structs.NodeContext(select_index=select_idx, statement_index=query.get_statement_index())
         processor_ctx = replace(processor_ctx, expr=col_expr)
 
         child_node = structs.ColumnNode(
@@ -174,8 +175,11 @@ def generate_column_lineage_for_query(
         that contains only the essential information we need.
         """
         for path in _get_all_paths_from_lineage(lin):
+            set_cte_properties(path)
+
             child_node_attrs = child_node
-            logger.debug(f"Found path from lineage.lineage(): {[n.name for n in path]}")
+            logger.debug("----")
+            logger.debug(f"Found path from lineage.lineage(): {[(n.name, n.expression.sql()) for n in path]}")
 
             for node_depth, node in enumerate(path):
                 logger.debug("----")
@@ -186,9 +190,9 @@ def generate_column_lineage_for_query(
                     processor_ctx = replace(processor_ctx, expr=query.target.this)
                     child_node_attrs = structs.StageNode(processor_ctx=processor_ctx, ctx=ctx)
 
-                logger.debug(f"Processing node alias: '{node.name}'")
-                logger.debug(f"Child node: {child_node_attrs.full_name}")
                 top_expr = util.unwrap_expression(node.expression)
+                logger.debug(f"Processing node alias: '{node.name}', Expr: {top_expr}, Id: {id(node)}")
+                logger.debug(f"Child node: {child_node_attrs.full_name}")
 
                 child_ctx = replace(ctx, node_depth=node_depth)
                 processor_ctx = replace(
@@ -198,16 +202,42 @@ def generate_column_lineage_for_query(
                     child_node_attrs=child_node_attrs,
                 )
 
-                # TODO: CTEs also need to be namespaced to prevent naming conflicts
                 nodes = builder.walk_tree_and_build_graph(processor_ctx, child_ctx)
                 if nodes:
                     logger.debug(f"Produced nodes: {[n.full_name for n in nodes]}")
                     # The next child is the most recently created parent
                     child_node_attrs = nodes[-1]
 
+                    # Ensure the child for the next iteration supports children
+                    # e.g. Literals cannot be children
+                    for n in reversed(nodes):
+                        if not n.expr.is_leaf():
+                            child_node_attrs = n
+                            break
+
         select_idx += 1
 
     return graph
+
+
+def set_cte_properties(path: t.List[sqlglot_lineage.Node]) -> None:
+    """
+    Check for properties related to recursive CTEs.
+
+    Make the first node recursive if anything in its path is also recursive.
+    Otherwise, we set it to be the anchor, as its children are the anchor part
+    of the expression.
+    """
+    root_node: sqlglot_lineage.Node = path[0]
+    if root_node.is_parent_a_recursive_cte:
+        for n in path[1:]:
+            if sqlglot_lineage.is_node_inside_a_recursive_cte(n):
+                if n.is_parent_a_recursive_cte:
+                    root_node.recursive_cte_member_kind = 'recursive'
+                    n.recursive_cte_member_kind = 'anchor'
+                else:
+                    root_node.recursive_cte_member_kind = 'anchor'
+            break
 
 
 def update_column_data_types(graph: nx.MultiDiGraph):

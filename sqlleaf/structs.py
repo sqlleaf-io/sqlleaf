@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace, InitVar
 import networkx as nx
 from sqlglot import exp
 
-from sqlleaf import util, mappings, context, sqlglot_lineage, exception
+from sqlleaf import util, mappings, sqlglot_lineage, exception
 
 logger = logging.getLogger("sqleaf")
 
@@ -769,13 +769,12 @@ class NodeAttributes:
         self,
         expr: exp.Expression,
         data_type: exp.DataType,
-        ctx: context.NodeContext,
+        ctx: NodeContext,
         column: str,
         table: str = "",
         schema: str = "",
         catalog: str = "",
         kind: str = "",
-        table_type: str = "",
         table_properties: t.List = None,
     ):
         self.expr = expr
@@ -785,8 +784,9 @@ class NodeAttributes:
         self.catalog = catalog
         self.schema = schema
         self.table = table
-        self.table_type = table_type
+        self.table_type = ""
         self.table_properties = sorted(table_properties) if table_properties else []
+        self.member = ""
         self.ctx = ctx
 
         logger.debug(f"structs.NodeAttributes: Created Node: {self.__class__}, Name: {self.full_name}")
@@ -837,7 +837,7 @@ class NodeAttributes:
 
 
 class LiteralNode(NodeAttributes):
-    def __init__(self, name: str, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def __init__(self, name: str, processor_ctx: ProcessorContext, ctx: NodeContext):
         super().__init__(
             kind="literal",
             data_type=processor_ctx.data_type,
@@ -867,7 +867,7 @@ class ColumnNode(NodeAttributes):
         table: str,
         column: str,
         processor_ctx: ProcessorContext,
-        ctx: context.NodeContext,
+        ctx: NodeContext,
     ):
         expr: exp.Column = processor_ctx.expr
 
@@ -879,16 +879,20 @@ class ColumnNode(NodeAttributes):
             column=column,
             data_type=processor_ctx.data_type,
             expr=expr,
-            table_type=self._table_type(catalog, schema, table, processor_ctx),
             table_properties=processor_ctx.query.property_names,
             ctx=ctx,
         )
+        table_type = self._table_type(catalog, schema, table, processor_ctx)
+        if table_type == 'cte':
+            self.member = processor_ctx.node.recursive_cte_member_kind
 
-    def _table_type(self, catalog, schema, table, processor_ctx):
+        self.table_type = table_type
+
+    def _table_type(self, catalog, schema, table, processor_ctx) -> str:
         """
         Figure out the table's type (view/table) by inspecting the original query in the mapping.
         """
-        if processor_ctx.node and processor_ctx.node.is_cte:
+        if processor_ctx.node and processor_ctx.node.is_parent_a_cte:
             return "cte"
 
         tokens = [catalog, schema, table]
@@ -908,11 +912,14 @@ class ColumnNode(NodeAttributes):
 
     @property
     def full_name(self):
-        if self.table_type == 'cte':
+        if 'cte' in self.table_type:
             # A CTE name can be reused across statements
-            return self.wrap(f"{self.get_name()} type={self.data_type} statement={self.ctx.statement_index} kind={self.table_type}")
+            if self.member:
+                # Recursive CTE has the field 'member'
+                return self.wrap(f"{self.get_name()} type={self.data_type} subkind={self.table_type} member={self.member} statement={self.ctx.statement_index}")
+            return self.wrap(f"{self.get_name()} type={self.data_type} subkind={self.table_type} statement={self.ctx.statement_index}")
         else:
-            return self.wrap(f"{self.get_name()} type={self.data_type} kind={self.table_type}")
+            return self.wrap(f"{self.get_name()} type={self.data_type} subkind={self.table_type}")
 
     @property
     def friendly_name(self):
@@ -920,7 +927,7 @@ class ColumnNode(NodeAttributes):
 
 
 class FunctionNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         super().__init__(
             kind="function",
             data_type=processor_ctx.data_type,
@@ -948,7 +955,7 @@ class UserDefinedFunctionNode(NodeAttributes):
         name: str,
         schema: str,
         processor_ctx: ProcessorContext,
-        ctx: context.NodeContext,
+        ctx: NodeContext,
     ):
         super().__init__(
             kind="udf",
@@ -975,7 +982,7 @@ class UserDefinedFunctionNode(NodeAttributes):
 
 
 class JsonPathNode(NodeAttributes):
-    def __init__(self, name: str, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def __init__(self, name: str, processor_ctx: ProcessorContext, ctx: NodeContext):
         expr: exp.JSONExtract = processor_ctx.expr
 
         self.selectors = self.json_selectors(expr)
@@ -1014,7 +1021,7 @@ class JsonPathNode(NodeAttributes):
 
 
 class VariableNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         super().__init__(
             kind="variable",
             data_type=processor_ctx.data_type,
@@ -1025,7 +1032,7 @@ class VariableNode(NodeAttributes):
 
 
 class StarNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         super().__init__(
             kind="star",
             data_type=exp.DataType.build("UNKNOWN"),
@@ -1040,7 +1047,7 @@ class StarNode(NodeAttributes):
 
 
 class VarNode(NodeAttributes):
-    def __init__(self, processor_ctx, ctx: context.NodeContext):
+    def __init__(self, processor_ctx, ctx: NodeContext):
         super().__init__(
             kind="var",
             data_type=exp.DataType.build("NULL"),
@@ -1051,7 +1058,7 @@ class VarNode(NodeAttributes):
 
 
 class NullNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         super().__init__(
             kind="null",
             data_type=exp.DataType.build("NULL"),
@@ -1072,7 +1079,7 @@ class NullNode(NodeAttributes):
 
 
 class SequenceNode(NodeAttributes):
-    def __init__(self, name: str, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def __init__(self, name: str, processor_ctx: ProcessorContext, ctx: NodeContext):
         super().__init__(
             kind="sequence",
             data_type=exp.DataType.build("INT"),
@@ -1083,7 +1090,7 @@ class SequenceNode(NodeAttributes):
 
 
 class WindowNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         super().__init__(
             kind="window",
             data_type=processor_ctx.data_type,
@@ -1094,7 +1101,7 @@ class WindowNode(NodeAttributes):
 
 
 class StageNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         expr: exp.Var = processor_ctx.expr
 
         if str(expr).startswith("@"):
@@ -1116,7 +1123,7 @@ class StageNode(NodeAttributes):
 
 
 class FileNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         expr: exp.Literal = processor_ctx.expr
         filename = expr.this.removeprefix("file://")
         super().__init__(
@@ -1133,7 +1140,7 @@ class FileNode(NodeAttributes):
 
 
 class IntervalNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         expr: exp.Interval = processor_ctx.expr
         name = f'"{str(expr.this.name)} {str(expr.unit)}"'
         super().__init__(
@@ -1143,7 +1150,6 @@ class IntervalNode(NodeAttributes):
             column=name,
             ctx=ctx,
         )
-        print()
 
     @property
     def full_name(self):
@@ -1282,6 +1288,15 @@ class ProcessorContext:
         object.__setattr__(self, "expr", unwrapped_expr)
 
 
+@dataclass(frozen=True)
+class NodeContext:
+    statement_index: str
+    select_index: int = 0
+    function_depth: int = 0
+    function_arg_index: int = 0
+    node_depth: int = 0
+
+
 class LineageBuilder:
     # A registry to store subclasses
     _dialects = {}
@@ -1346,7 +1361,7 @@ class LineageBuilder:
     def walk_tree_and_build_graph(
         self,
         processor_ctx: ProcessorContext,
-        ctx: context.NodeContext,
+        ctx: NodeContext,
     ) -> t.List[NodeAttributes]:
         """
         Collect the leaves of an expression so that we can get the full set of data sources and function arguments
@@ -1388,12 +1403,12 @@ class LineageBuilder:
 
         return nodes_created
 
-    def process_function(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_function(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         node_attrs = FunctionNode(processor_ctx, ctx)
         args = util.get_function_args(expr=processor_ctx.expr)
         return node_attrs, args
 
-    def process_placeholder(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_placeholder(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         """
         CREATE PROCEDURE proc(v_amount INT) AS
         SELECT v_amount     <-- placeholder
@@ -1408,7 +1423,7 @@ class LineageBuilder:
         node_attrs = VariableNode(processor_ctx, ctx)
         return node_attrs, []
 
-    def process_array(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_array(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         """
         SELECT ARRAY[1,2,3]
         """
@@ -1417,7 +1432,7 @@ class LineageBuilder:
         node_attrs = LiteralNode(name=values, processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_window(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_window(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         """
         SELECT ROW_NUMBER() OVER (ORDER BY name DESC) AS amount
         """
@@ -1429,7 +1444,7 @@ class LineageBuilder:
         node_attrs = WindowNode(processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_literal(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_literal(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         """
         select 'hello' as greeting
         """
@@ -1437,25 +1452,25 @@ class LineageBuilder:
         node_attrs = LiteralNode(name=expr.sql(comments=False), processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_star(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_star(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         """
         select count(*) as cnt
         """
         node_attrs = StarNode(processor_ctx, ctx)
         return node_attrs, []
 
-    def process_null(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_null(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         node_attrs = NullNode(processor_ctx, ctx)
         return node_attrs, []
 
-    def process_cast(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_cast(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         """
         SELECT col1::timestamp AS col1_time
         """
         processor_ctx_to = replace(processor_ctx, new_data_type=processor_ctx.expr.to)
         return self.process_function(processor_ctx_to, ctx)
 
-    def process_neg(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_neg(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         """
         SELECT -10
         """
@@ -1463,7 +1478,7 @@ class LineageBuilder:
         node_attrs = LiteralNode(name="-" + expr.name, processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_anonymous(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_anonymous(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         """
         Either user-defined functions or sequence functions.
 
@@ -1515,7 +1530,7 @@ class LineageBuilder:
 
         return node_attrs, node_args
 
-    def process_within_group(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_within_group(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         """
         SELECT MODE() WITHIN GROUP (ORDER BY name DESC) AS name
         """
@@ -1526,13 +1541,13 @@ class LineageBuilder:
         children = list(expr.expression.find_all(exp.Column))  # expr.expression is type(exp.Order)
         return parent, children
 
-    def process_select(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_select(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         """
         SELECT (SELECT 1) AS name
         """
         return None, []
 
-    def process_case(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_case(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         """
         SELECT CASE WHEN count(*) > 1 THEN 1 ELSE 0 END AS my_var
         """
@@ -1543,7 +1558,7 @@ class LineageBuilder:
         children = [default] + thens
         return None, children
 
-    def process_binary(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_binary(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         """
         SELECT 1 + 2 AS age
         """
@@ -1559,12 +1574,12 @@ class LineageBuilder:
 
         return node_attrs, args
 
-    def process_var(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_var(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         """ """
         node_attrs = VarNode(processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_column(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_column(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         expr: exp.Column = processor_ctx.expr
         if is_node_a_placeholder(expr=expr, query=processor_ctx.query):
             # The actual placeholder is processed elsewhere
@@ -1584,11 +1599,11 @@ class LineageBuilder:
 
         return node_attrs, []
 
-    def process_table(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_table(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         logger.debug(f"Skipping exp.Table: {str(processor_ctx.expr)}")
         return None, []
 
-    def process_json(self, processor_ctx: ProcessorContext, ctx: context.NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    def process_json(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         expr: exp.JSONExtract = processor_ctx.expr
         node_attrs = JsonPathNode(name=expr.name, processor_ctx=processor_ctx, ctx=ctx)
 
@@ -1599,11 +1614,11 @@ class LineageBuilder:
 
         return node_attrs, [source]
 
-    def process_interval(self, processor_ctx: ProcessorContext, ctx: context.NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    def process_interval(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         node_attrs = IntervalNode(processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def skip(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def skip(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         logger.debug("Skipping expression {}".format(str(processor_ctx.expr)))
         return processor_ctx.child_node_attrs, []
 
@@ -1613,7 +1628,7 @@ class LineageBuilder:
         child_node_attrs,
         graph: nx.MultiDiGraph,
         query: Query,
-        ctx: context.NodeContext,
+        ctx: NodeContext,
     ):
         """
         Add two nodes and an edge between them to the graph.
@@ -1660,7 +1675,7 @@ class PostgresLineageBuilder(LineageBuilder):
 class SnowflakeLineageBuilder(LineageBuilder):
     dialect = "snowflake"
 
-    def process_put(self, processor_ctx: ProcessorContext, ctx: context.NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    def process_put(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         PUT 'file:///tmp/data/mydata.csv' @my_int_stage;
         - Creates two nodes: FileNode and StageNode
@@ -1676,7 +1691,7 @@ class SnowflakeLineageBuilder(LineageBuilder):
 
         self.add_nodes_with_edge_to_graph(file_node, stage_node, processor_ctx.graph, processor_ctx.query, ctx)
 
-    def process_column(self, processor_ctx: ProcessorContext, ctx: context.NodeContext):
+    def process_column(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         """
         If the source is actually a Stage, don't try to create a Column.
         """

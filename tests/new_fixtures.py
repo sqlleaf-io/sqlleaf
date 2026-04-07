@@ -32,6 +32,12 @@ class LineageDummy(sqlleaf.Lineage):
             paths.append([hop.friendly_name for hop in path.node_hops()])
         return paths
 
+    def get_full_paths(self):
+        paths = []
+        for path in self.get_paths():
+            paths.append([hop.full_name for hop in path.node_hops()])
+        return paths
+
     def get_queries_created(self):
         all_queries = self.get_queries()
         new_queries = []

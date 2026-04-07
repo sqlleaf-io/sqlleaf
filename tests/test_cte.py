@@ -112,7 +112,6 @@ def test__cte_chained(holder):
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
     paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
 
     assert paths == [
         ['column[fruit.raw.name]', 'column[cte_one.name]', 'column[cte_two.name]', 'column[fruit.processed.name]']
@@ -137,4 +136,43 @@ def test__cte_nested(holder):
 
     assert paths == [
         ['column[fruit.raw.name]', 'column[inner_cte.name]', 'column[outer_cte.name]', 'column[fruit.processed.name]']
+    ]
+
+
+def test__view_with_recursive_cte(holder):
+    queries = """
+    WITH RECURSIVE numbers AS (
+        SELECT 1 AS n
+        UNION ALL
+        SELECT n + 1 AS n
+        FROM numbers
+        WHERE n < 5
+    )
+    INSERT INTO fruit.processed
+    SELECT n AS age FROM numbers;
+    """
+    h = holder(with_tables=True)
+    h.generate(queries, dialect='postgres')
+    nodes = h.get_full_node_names()
+    paths = h.get_full_paths()
+
+    assert paths == [
+        [
+            'literal[1 type=INT node_depth=1 statement=0 select=0 func_depth=0 func_arg=0]',
+            'column[numbers.n type=INT subkind=cte member=anchor statement=0]',
+            'column[fruit.processed.age type=INT subkind=table]'
+         ],
+        [
+            'literal[1 type=INT node_depth=1 statement=0 select=0 func_depth=0 func_arg=0]',
+            'column[numbers.n type=INT subkind=cte member=anchor statement=0]',
+            'function[ADD() type=INT node_depth=1 statement=0 select=0 func_depth=0 func_arg=0]',
+            'column[numbers.n type=INT subkind=cte member=recursive statement=0]',
+            'column[fruit.processed.age type=INT subkind=table]'
+         ],
+        [
+            'literal[1 type=INT node_depth=1 statement=0 select=0 func_depth=1 func_arg=1]',
+            'function[ADD() type=INT node_depth=1 statement=0 select=0 func_depth=0 func_arg=0]',
+            'column[numbers.n type=INT subkind=cte member=recursive statement=0]',
+            'column[fruit.processed.age type=INT subkind=table]'
+         ]
     ]

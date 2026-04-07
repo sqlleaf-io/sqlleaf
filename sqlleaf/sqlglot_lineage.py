@@ -24,7 +24,7 @@ logger = logging.getLogger("sqlleaf")
 """
 This file was taken from sqlglot and slightly modified.
 """
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class Node:
     name: str
     column: exp.Expression  # Usually exp.Column
@@ -32,7 +32,9 @@ class Node:
     source: exp.Expression
     downstream: t.List[Node] = field(default_factory=list)
     upstream: t.List[Node] = field(default_factory=list)
-    is_cte: bool = False
+    is_parent_a_cte: bool = False
+    is_parent_a_recursive_cte: bool = False
+    recursive_cte_member_kind: str = ''         # anchor | recursive
     source_name: str = ""
     reference_node_name: str = ""
 
@@ -189,7 +191,7 @@ def to_node(
         source_name=source_name or "",
         reference_node_name=reference_node_name or "",
     )
-    logger.debug("[1] Created Node '%s', Expr: %s", column, util.unwrap_expression(select))
+    logger.debug("[1] Created Node '%s', Expr: %s, Id: %s", column, select.sql(), id(node))
 
     if upstream:
         upstream.downstream.append(node)
@@ -273,7 +275,20 @@ def to_node(
                 reference_node_name = selected_node.name if selected_node else None
                 # Use the CTE's name instead of its alias
                 c.args["table"] = exp.to_identifier(reference_node_name)
-                node = replace(node, is_cte=True)
+                node.is_parent_a_cte = True
+                logger.debug("Set node to be a CTE.")
+
+                # Check if the parent is a recursive CTE
+                for cte in source.parent.ctes:
+                    if cte.alias_or_name == reference_node_name:
+                        with_: exp.With = cte.parent
+                        node.is_parent_a_recursive_cte = with_.recursive
+                        logger.debug("Set node to be a recursive CTE.")
+                        break
+
+            if is_node_inside_a_recursive_cte(node):
+                # Any further nodes are duplicates
+                break
 
             # The table itself came from a more specific scope. Recurse into that one using the unaliased column name.
             to_node(
@@ -364,3 +379,13 @@ def to_node(
 
 def _to_node_name(expr):
     return expr.key
+
+
+def is_node_inside_a_recursive_cte(node: Node) -> bool:
+    """
+    Check if we're inside a recursive CTE
+    """
+    if (parent_cte := node.expression.find_ancestor(exp.CTE)):
+        if parent_cte.parent.recursive:
+            return True
+    return False

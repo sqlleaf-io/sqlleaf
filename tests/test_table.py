@@ -99,7 +99,26 @@ def test__views_and_ctas_with_every_hierarchy(holder):
     assert len(nodes) == 5
     assert len(edges) == 4
     assert paths == [
-        ['column[base.one]', 'column[ctas.one]', 'column[vie.one]', 'column[tab.vie.two]', 'column[sch.tab.vie.three]']]
+        ['column[base.one]', 'column[ctas.one]', 'column[vie.one]', 'column[tab.vie.two]', 'column[sch.tab.vie.three]']
+    ]
+
+
+def test__view_with_cte(holder):
+    queries = '''
+    CREATE VIEW v AS
+    WITH inner1 AS (
+        SELECT 'a' as name
+    )
+    SELECT * FROM inner1;
+    '''
+    h = holder()
+    h.generate(queries, dialect='postgres')
+    paths = h.get_friendly_paths()
+
+    assert paths == [
+        ['literal["a"]', 'column[inner1.name]', 'column[v.name]']
+    ]
+
 
 
 # TODO: test views using interchanging schema/view name to see if conflicts in mapping hierarchy
