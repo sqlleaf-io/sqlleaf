@@ -326,7 +326,7 @@ def ensure_correct_data_types(
     logger.info(f"New types. Parent: {p_type} Child: {c_type}")
 
 
-def calculate_paths(graph: nx.MultiDiGraph):
+def calculate_paths(graph: nx.MultiDiGraph) -> t.Dict[str, structs.LineagePath]:
     """
     Find all the unique paths in the graph and give each path a unique ID according to the set of edges it contains.
 

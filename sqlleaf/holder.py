@@ -16,7 +16,7 @@ class Lineage:
     def __init__(self):
         self.graph = structs.new_graph()  # The graph that contains all lineage
         self.subgraphs: t.List[nx.MultiDiGraph] = []  # The subgraphs that make up the main graph
-        self.paths: t.Dict[str, t.List[structs.EdgeAttributes]] = {}  # The paths throughout the graph
+        self.paths: t.Dict[str, structs.LineagePath] = {}  # The paths throughout the graph
         self.object_mapping = None
 
     def generate(self, sql: str, dialect: str):
@@ -85,7 +85,7 @@ class Lineage:
         """
         return []
 
-    def get_paths(self) -> t.List:
+    def get_paths(self) -> t.List[structs.LineagePath]:
         """
         paths: [
             {
@@ -177,15 +177,19 @@ class Lineage:
                     print("%s%s" % (prefix, getattr(child_node, attr)))
                     seen.add(child_name)
 
-    def to_paths(self):
+    def print_paths(self):
         """
-        Iterate over all the paths in the graph and format them as a friendly, human-readable set of strings.
+        Iterate over all the paths in the graph and print each one.
 
-        Example:
-          sqlleaf lineage --functions='*'
-
-        Output:
-          column=[fruit.raw.apple],functions=[SUBSTR,UPPER]  ->  column=[fruit.processed.apple]
-          functions=[count(*)]   ->  column=[fruit.processed.amount]
+        Example output:
+          column[fruit.raw.apple] -> function[UPPER()] - column[fruit.processed.apple]
         """
-        return ""
+        for path in self.get_paths():
+            nodes = path.node_hops()
+
+            for i, node in enumerate(nodes):
+                print(node.friendly_name, end='')
+                if i < len(nodes) - 1:
+                    print(' -> ', end='')
+                else:
+                    print('\n')

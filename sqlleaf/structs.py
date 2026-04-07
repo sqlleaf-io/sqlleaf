@@ -1239,8 +1239,8 @@ class LineagePath:
         """
         Return the list of nodes in this path.
         """
-        hops = [self.hops[0].parent, self.hops[0].child]
-        for hop in self.hops[1:]:
+        hops = [self.hops[0].parent]
+        for hop in self.hops:
             hops.append(hop.child)
         return hops
 
