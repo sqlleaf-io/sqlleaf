@@ -32,6 +32,7 @@ class Node:
     source: exp.Expression
     downstream: t.List[Node] = field(default_factory=list)
     upstream: t.List[Node] = field(default_factory=list)
+    parent_pivot_aliases: t.List[Node] = field(default_factory=list)
     is_parent_a_cte: bool = False
     is_parent_a_recursive_cte: bool = False
     recursive_cte_member_kind: str = ''         # anchor | recursive
@@ -125,6 +126,29 @@ def to_node(
             exp.Star() if scope.expression.is_star else scope.expression,
         )
     )
+    parent_pivot_aliases = []
+    pivots = scope.pivots
+    pivot = pivots[0] if len(pivots) == 1 and not pivots[0].unpivot else None
+    if pivot:
+        # For each aggregation function, the pivot creates a new column for each field in category
+        # combined with the aggfunc. So the columns parsed have this order: cat_a_value_sum, cat_a,
+        # b_value_sum, b. Because of this step wise manner the aggfunc 'sum(value) as value_sum'
+        # belongs to the column indices 0, 2, and the aggfunc 'max(price)' without an alias belongs
+        # to the column indices 1, 3. Here, only the columns used in the aggregations are of interest
+        # in the lineage, so lookup the pivot column name by index and map that with the columns used
+        # in the aggregation.
+        #
+        # Example: PIVOT (SUM(value) AS value_sum, MAX(price)) FOR category IN ('a' AS cat_a, 'b')
+        pivot_columns = pivot.args["columns"]
+        pivot_aggs_count = len(pivot.expressions)
+
+        pivot_column_mapping = {}
+        for i, agg in enumerate(pivot.expressions):
+            agg_cols = list(agg.find_all(exp.Column))
+            for col_index in range(i, len(pivot_columns), pivot_aggs_count):
+                pivot_column_mapping[pivot_columns[col_index].name] = agg_cols
+
+        parent_pivot_aliases.append(pivot.alias)
 
     if isinstance(scope.expression, exp.Subquery):
         for source in scope.subquery_scopes:
@@ -145,6 +169,7 @@ def to_node(
                 column=column,
                 source=scope.expression,
                 expression=select,
+                parent_pivot_aliases=parent_pivot_aliases,
             )
             logger.debug("[6] Created Node '%s'", column)
 
@@ -190,6 +215,7 @@ def to_node(
         expression=select,
         source_name=source_name or "",
         reference_node_name=reference_node_name or "",
+        parent_pivot_aliases=parent_pivot_aliases,
     )
     logger.debug("[1] Created Node '%s', Expr: %s, Id: %s", column, select.sql(), id(node))
 
@@ -225,6 +251,7 @@ def to_node(
                 source=source,
                 upstream=[node],
                 expression=source,
+                parent_pivot_aliases=parent_pivot_aliases,
             )
             node.downstream.append(n)
             logger.debug("[2] Created Node from star: %s", node.name)
@@ -240,27 +267,6 @@ def to_node(
         derived_tables = scope.derived_tables
 
     source_names = {dt.alias: dt.comments[0].split()[1] for dt in derived_tables if dt.comments and dt.comments[0].startswith("source: ")}
-
-    pivots = scope.pivots
-    pivot = pivots[0] if len(pivots) == 1 and not pivots[0].unpivot else None
-    if pivot:
-        # For each aggregation function, the pivot creates a new column for each field in category
-        # combined with the aggfunc. So the columns parsed have this order: cat_a_value_sum, cat_a,
-        # b_value_sum, b. Because of this step wise manner the aggfunc 'sum(value) as value_sum'
-        # belongs to the column indices 0, 2, and the aggfunc 'max(price)' without an alias belongs
-        # to the column indices 1, 3. Here, only the columns used in the aggregations are of interest
-        # in the lineage, so lookup the pivot column name by index and map that with the columns used
-        # in the aggregation.
-        #
-        # Example: PIVOT (SUM(value) AS value_sum, MAX(price)) FOR category IN ('a' AS cat_a, 'b')
-        pivot_columns = pivot.args["columns"]
-        pivot_aggs_count = len(pivot.expressions)
-
-        pivot_column_mapping = {}
-        for i, agg in enumerate(pivot.expressions):
-            agg_cols = list(agg.find_all(exp.Column))
-            for col_index in range(i, len(pivot_columns), pivot_aggs_count):
-                pivot_column_mapping[pivot_columns[col_index].name] = agg_cols
 
     for c in source_columns:
         table = c.table
@@ -336,6 +342,7 @@ def to_node(
                         source=source,
                         upstream=[node],
                         expression=source,
+                        parent_pivot_aliases=parent_pivot_aliases,
                     )
                     node.downstream.append(n)
                     logger.debug("[4] Created Node '%s' downstream of '%s'", n.name, node.name)
@@ -366,13 +373,10 @@ def to_node(
                 source=source,
                 upstream=[node],
                 expression=source,
+                parent_pivot_aliases=parent_pivot_aliases,
             )
             node.downstream.append(n)
-            logger.debug(
-                "[5] Created Node '%s' downstream of '%s'",
-                n.column.name,
-                node.column.name,
-            )
+            logger.debug("[5] Created Node '%s', Expr: %s, Id: %s", c, source.sql(), id(n))
 
     return node
 

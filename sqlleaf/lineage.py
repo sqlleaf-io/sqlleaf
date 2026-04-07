@@ -147,8 +147,8 @@ def generate_column_lineage_for_query(
         if default_expr:= col_props["default"]:
             # Add the default column expression to the lineage
             # TODO: make this a CLI flag
-            processor_ctx = replace(processor_ctx, expr=default_expr, child_node_attrs=child_node)
-            builder.walk_tree_and_build_graph(processor_ctx=processor_ctx, ctx=ctx)
+            default_ctx = replace(processor_ctx, expr=default_expr, child_node_attrs=child_node)
+            builder.walk_tree_and_build_graph(processor_ctx=default_ctx, ctx=ctx)
 
         if not col_props['selected']:
             continue

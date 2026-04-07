@@ -789,8 +789,6 @@ class NodeAttributes:
         self.member = ""
         self.ctx = ctx
 
-        logger.debug(f"structs.NodeAttributes: Created Node: {self.__class__}, Name: {self.full_name}")
-
     # Allows the class to be used a networkx node
     def __hash__(self):
         return hash(self.full_name)
@@ -901,6 +899,9 @@ class ColumnNode(NodeAttributes):
         query = processor_ctx.mapping.find_query(kind='table', table=tab)
         if not query:
             query = processor_ctx.mapping.find_query(kind='stage', table=tab)
+
+        if not query:
+            return 'table'
 
         if query.kind == 'ctas':
             return 'table'
@@ -1581,6 +1582,10 @@ class LineageBuilder:
 
     def process_column(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         expr: exp.Column = processor_ctx.expr
+        if expr.table in processor_ctx.node.parent_pivot_aliases:
+            # On a path toward a pivot. Skip until we reach it.
+            return None, []
+
         if is_node_a_placeholder(expr=expr, query=processor_ctx.query):
             # The actual placeholder is processed elsewhere
             return None, []
@@ -1662,9 +1667,11 @@ class LineageBuilder:
         node_name = node_attrs.full_name
 
         if graph.has_node(node_name):
+            logger.debug(f"Re-using Node: {self.__class__}, Name: {node_attrs.full_name}")
             return graph.nodes[node_name]['attrs']
 
         graph.add_node(node_name, attrs=node_attrs)
+        logger.debug(f"Created Node: {self.__class__}, Name: {node_attrs.full_name}")
         return node_attrs
 
 
