@@ -36,13 +36,13 @@ def apply_optimizations(statement: exp.Expression, dialect: str, object_mapping:
     except sqlglot.errors.OptimizeError as e:
         raise exception.SqlGlotException(message=str(e))
 
-    stmt = add_aliases_to_selects(stmt, child_table)
+    stmt = add_aliases_to_selects(stmt, object_mapping, child_table)
     stmt = annotate_types.annotate_types(stmt, dialect=dialect, schema=object_mapping)
 
     return stmt
 
 
-def add_aliases_to_selects(statement, child_table):
+def add_aliases_to_selects(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
     """
     Add aliases to SELECTs that are missing them by looking at the corresponding INSERT column.
     This prevents sqlglot from assigning its own generated names as aliases.
@@ -52,19 +52,43 @@ def add_aliases_to_selects(statement, child_table):
     renames to:
         INSERT INTO my.apple (a,b) SELECT name as a, age as b FROM my.pear
     """
-    if not isinstance(statement, exp.Select) or not statement.selects:
+    if not isinstance(statement, exp.Insert) or not statement.selects:
         return statement
 
-    insert_columns = statement.this.expressions
-    if len(insert_columns) > 0 and len(insert_columns) != len(statement.selects):
-        message = "Mismatched column count: inserted columns (%s) do not match selected columns (%s)" % (
-            len(insert_columns),
-            len(statement.selects),
+    selects = statement.selects
+    insert_columns = [s.name for s in statement.this.expressions]
+
+    cols = object_mapping.find_columns_for_table(child_table)
+    if not cols:
+        obj = object_mapping.find_query(kind='stage', table=child_table)
+        cols = obj.get_columns()
+
+    table_columns = list(cols)[:len(selects)]
+
+    if not insert_columns:
+        # Add the column names from the mapping
+        insert_columns = table_columns
+
+    else:
+        if len(insert_columns) != len(statement.selects):
+            message = "Mismatched column count: number of column names (%s) does not match selected columns (%s)" % (
+                len(insert_columns),
+                len(statement.selects),
+            )
+            raise exception.SqlGlotException(message=message, table=child_table)
+
+    aliases = [s.alias_or_name for s in statement.selects]
+    if aliases != insert_columns:
+        message = "Mismatched column names: column names (%s) do not match column aliases (%s)" % (
+            ",".join(insert_columns),
+            ",".join(aliases),
         )
-        raise exception.SqlGlotException(message=message, table=child_table)
+        logger.warning(message)
 
     for i, ins in enumerate(insert_columns):
+        # Overwrite the aliases because sqlglot may have added incorrect ones
         statement.selects[i] = statement.selects[i].as_(ins)
+
     return statement
 
 

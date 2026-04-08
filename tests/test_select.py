@@ -35,7 +35,7 @@ def test__select_with_ordinality(holder):
 
 def test__case_simple(holder):
     queries = '''
-    INSERT INTO fruit.processed
+    INSERT INTO fruit.processed (age, number)
     SELECT 
         CASE WHEN name = 'John' THEN 1 ELSE 2 END AS age,
         CASE WHEN name = 'John' THEN 1 END AS number
@@ -56,15 +56,16 @@ def test__case_simple(holder):
         ['literal[1]', 'column[fruit.processed.number]']
     ]
 
-
-def test__insert_values(holder):
-    queries = '''
-    INSERT INTO fruit.raw VALUES ('yellow', UPPER('banana'));
-    INSERT INTO fruit.raw (name, kind) VALUES ('red', UPPER('apple'));
-    INSERT INTO fruit.raw SELECT 'green' as name, UPPER('apple') as kind;
-    '''
+cases = [
+    "INSERT INTO fruit.raw VALUES ('yellow', UPPER('banana'));",
+    "INSERT INTO fruit.raw (name, kind) VALUES ('yellow', UPPER('banana'));",
+    "INSERT INTO fruit.raw SELECT 'yellow' as name, UPPER('banana') as kind;",
+    "INSERT INTO fruit.raw SELECT 'yellow', UPPER('banana');",
+]
+@pytest.mark.parametrize("case", cases)
+def test__insert_values(holder, case):
     h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
+    h.generate(case, dialect=DIALECT)
     nodes = h.get_friendly_node_names()
     edges = h.get_edges()
     queries = h.get_queries_created()
@@ -73,12 +74,8 @@ def test__insert_values(holder):
     assert paths == [
         ['literal["yellow"]', 'column[fruit.raw.name]'],
         ['literal["banana"]', 'function[UPPER()]', 'column[fruit.raw.kind]'],
-        ['literal["red"]', 'column[fruit.raw.name]'],
-        ['literal["apple"]', 'function[UPPER()]', 'column[fruit.raw.kind]'],
-        ['literal["green"]', 'column[fruit.raw.name]'],
-        ['literal["apple"]', 'function[UPPER()]', 'column[fruit.raw.kind]']
     ]
-    assert [structs.InsertQuery, structs.InsertQuery, structs.InsertQuery] == list(map(type, queries))
+    assert [structs.InsertQuery] == list(map(type, queries))
 
 
 def test__merge_simple_update_and_insert(holder):
@@ -151,7 +148,7 @@ tests = [
 def test__select_value_twice(case, holder):
     value, kind = case
     queries = f'''
-    INSERT INTO fruit.processed
+    INSERT INTO fruit.processed (name, age)
     SELECT {value} as name, {value} as age;
     '''
     print(queries)
@@ -172,7 +169,7 @@ def test__select_value_twice(case, holder):
 
 def test__select_window_function(holder):
     queries = '''
-    INSERT INTO fruit.processed
+    INSERT INTO fruit.processed (amount, age)
     SELECT 
         ROW_NUMBER() OVER (ORDER BY created_at DESC) AS amount,
         RANK() OVER (PARTITION BY age ORDER BY updated_at) AS age
@@ -188,7 +185,7 @@ def test__select_window_function(holder):
 
 def test__select_join_to_self(holder):
     queries = '''
-    INSERT INTO fruit.processed
+    INSERT INTO fruit.processed (name, age)
     SELECT
         p.name,
         r.age as age

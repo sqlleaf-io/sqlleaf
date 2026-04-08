@@ -26,7 +26,7 @@ def test__procedure_simple(holder):
             SELECT upper(kind) AS knd
             FROM fruit.raw
         )
-        INSERT INTO fruit.processed
+        INSERT INTO fruit.processed (amount, number, kind)
         SELECT v_amount     as amount,
                1            as number,
                lower(c.knd) as kind

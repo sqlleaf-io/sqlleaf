@@ -253,6 +253,7 @@ class MergeQuery(Query):
                 # insert
                 insert_expr = exp.insert(
                     expression=new_select,
+                    columns=[col.this for col in when.this.expressions],
                     into=merge.child_table,
                 )
                 for cte in new_ctes:
@@ -272,24 +273,37 @@ class InsertQuery(Query):
             statement_index=statement_index,
             child_table=child_table,
         )
+        self.convert_values_to_select(object_mapping)
 
-        if isinstance(expr.expression, exp.Values):
-            # INSERT INTO x VALUES (...)
-            # Transform the query into an INSERT .. SELECT
-            # so that the lineage functions can process it.
-            values = expr.expression.expressions[0].expressions
-            columns = [e.name for e in expr.this.expressions]
+
+    def convert_values_to_select(self, object_mapping: mappings.ObjectMapping):
+        """
+        Transform an
+            INSERT INTO x VALUES (...)
+        into an
+            INSERT INTO x SELECT ...
+        so that the lineage functions can process it.
+
+        We don't attempt to add the column names from the mapping as we may have
+        stars in the columns. This comes later.
+        """
+        if isinstance(self.statement.expression, exp.Values):
+
+            values = self.statement.expression.expressions[0].expressions
+            columns = [e.name for e in self.statement.this.expressions]
 
             if not columns:
-                cols = object_mapping.find_columns_for_table(child_table)
+                cols = object_mapping.find_columns_for_table(self.child_table)
                 columns = list(cols)[:len(values)]
 
             selects = [exp.alias_(val, str(col)) for col, val in zip(columns, values)]
             new_select = exp.select(*selects)
             insert_expr = exp.insert(
                 expression=new_select,
-                into=child_table,
+                columns=self.statement.this.expressions,
+                into=self.child_table,
             )
+
             self.set_statement(insert_expr)
 
 
@@ -318,9 +332,11 @@ class UpdateQuery(Query):
         # The "SET" expressions need to be converted.
         # For the update command, it'll be a list of EQ expressions, but the select
         # should contain aliased columns.
+        alias_names = []
         new_expressions = []
         for expr in statement.expressions:
             if isinstance(expr, exp.EQ) and isinstance(expr.left, exp.Column):
+                alias_names.append(expr.left.this)
                 new_expressions.append(
                     exp.Alias(
                         this=expr.right,
@@ -354,7 +370,11 @@ class UpdateQuery(Query):
         )
 
         # Convert the statement into an insert
-        insert_statement = exp.insert(expression=select_statement, into=statement.this)
+        insert_statement = exp.insert(
+            expression=select_statement,
+            columns=alias_names,
+            into=statement.this
+        )
         self.set_statement(insert_statement)
 
 

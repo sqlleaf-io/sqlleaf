@@ -21,7 +21,7 @@ def test__cte_same_functions_different_levels(holder):
             LOWER('a') as a_name1,
             1 as ignored
     )
-    INSERT INTO fruit.processed
+    INSERT INTO fruit.processed (name, name1, name2, name3)
     SELECT
         'a' as name,
         LOWER('a') as name1,
@@ -148,7 +148,7 @@ def test__view_with_recursive_cte(holder):
         FROM numbers
         WHERE n < 5
     )
-    INSERT INTO fruit.processed
+    INSERT INTO fruit.processed (age)
     SELECT n AS age FROM numbers;
     """
     h = holder(with_tables=True)

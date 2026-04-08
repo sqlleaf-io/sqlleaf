@@ -130,7 +130,7 @@ def test__view_with_cte(holder):
 def test__simple_sequence(holder):
     queries = '''
     CREATE SEQUENCE serial START 101;
-    INSERT INTO fruit.raw SELECT nextval('serial') as age;
+    INSERT INTO fruit.raw (age) SELECT nextval('serial') as age;
     '''
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
