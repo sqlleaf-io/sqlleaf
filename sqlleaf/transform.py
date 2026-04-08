@@ -52,6 +52,9 @@ def add_aliases_to_selects(statement, child_table):
     renames to:
         INSERT INTO my.apple (a,b) SELECT name as a, age as b FROM my.pear
     """
+    if not isinstance(statement, exp.Select) or not statement.selects:
+        return statement
+
     insert_columns = statement.this.expressions
     if len(insert_columns) > 0 and len(insert_columns) != len(statement.selects):
         message = "Mismatched column count: inserted columns (%s) do not match selected columns (%s)" % (

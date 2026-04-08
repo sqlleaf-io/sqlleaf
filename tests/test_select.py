@@ -57,6 +57,30 @@ def test__case_simple(holder):
     ]
 
 
+def test__insert_values(holder):
+    queries = '''
+    INSERT INTO fruit.raw VALUES ('yellow', UPPER('banana'));
+    INSERT INTO fruit.raw (name, kind) VALUES ('red', UPPER('apple'));
+    INSERT INTO fruit.raw SELECT 'green' as name, UPPER('apple') as kind;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_friendly_node_names()
+    edges = h.get_edges()
+    queries = h.get_queries_created()
+    paths = h.get_friendly_paths()
+    print()
+    assert paths == [
+        ['literal["yellow"]', 'column[fruit.raw.name]'],
+        ['literal["banana"]', 'function[UPPER()]', 'column[fruit.raw.kind]'],
+        ['literal["red"]', 'column[fruit.raw.name]'],
+        ['literal["apple"]', 'function[UPPER()]', 'column[fruit.raw.kind]'],
+        ['literal["green"]', 'column[fruit.raw.name]'],
+        ['literal["apple"]', 'function[UPPER()]', 'column[fruit.raw.kind]']
+    ]
+    assert [structs.InsertQuery, structs.InsertQuery, structs.InsertQuery] == list(map(type, queries))
+
+
 def test__merge_simple_update_and_insert(holder):
     queries = '''
     MERGE INTO fruit.processed AS t

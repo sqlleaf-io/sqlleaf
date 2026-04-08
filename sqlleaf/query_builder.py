@@ -31,7 +31,7 @@ def get_query_processors():
     }
 
 
-def produce_query_objects(statement: exp.Expression, dialect: str, statement_index: int) -> structs.Query:
+def produce_query_objects(statement: exp.Expression, dialect: str, mapping: mappings.ObjectMapping, statement_index: int) -> structs.Query:
     """
     This follows the same pattern as `walk_tree_and_build_graph()`
 
@@ -46,18 +46,18 @@ def produce_query_objects(statement: exp.Expression, dialect: str, statement_ind
         # Link any child queries
         for child_expr in query.get_child_expressions():
             statement_index += 1
-            child_query = produce_query_objects(statement=child_expr, dialect=dialect, statement_index=statement_index)
+            child_query = produce_query_objects(statement=child_expr, mapping=mapping, dialect=dialect, statement_index=statement_index)
             query.add_child_query(child_query)
 
     elif isinstance(statement, exp.Insert):
-        query = structs.InsertQuery(expr=statement, dialect=dialect, statement_index=statement_index)
+        query = structs.InsertQuery(expr=statement, dialect=dialect, mapping=mapping, statement_index=statement_index)
     elif isinstance(statement, exp.Update):
         query = structs.UpdateQuery(expr=statement, dialect=dialect, statement_index=statement_index)
 
     return query
 
 
-def get_queries_from_sql(text: str, dialect: str, include_selects=False) -> t.List[structs.Query]:
+def get_queries_from_sql(text: str, dialect: str, object_mapping: mappings.ObjectMapping, include_selects=False) -> t.List[structs.Query]:
     """
     Extract all the SQL queries from some text.
     """
@@ -90,7 +90,7 @@ def get_queries_from_sql(text: str, dialect: str, include_selects=False) -> t.Li
             logging.info(f"Skipping unsupported '{type(statement)}' statement.")
             continue
 
-        query = produce_query_objects(statement, dialect, statement_index)
+        query = produce_query_objects(statement, dialect, object_mapping, statement_index)
         queries.append(query)
 
     return queries
@@ -167,9 +167,9 @@ def _process_unnamed(statement: exp.Expression, dialect: str, object_mapping: ma
     Process an unnamed statement - one not inside a 'CREATE <name>' statement.
     """
     if isinstance(statement, exp.Merge):
-        query = structs.MergeQuery(expr=statement, dialect=dialect, statement_index=statement_index)
+        query = structs.MergeQuery(expr=statement, dialect=dialect, mapping=object_mapping, statement_index=statement_index)
     if isinstance(statement, exp.Insert):
-        query = structs.InsertQuery(expr=statement, dialect=dialect, statement_index=statement_index)
+        query = structs.InsertQuery(expr=statement, dialect=dialect, mapping=object_mapping, statement_index=statement_index)
     elif isinstance(statement, exp.Update):
         query = structs.UpdateQuery(expr=statement, dialect=dialect, statement_index=statement_index)
     elif isinstance(statement, exp.Copy):
@@ -257,6 +257,7 @@ def _process_functions(statement: exp.Create, dialect: str, object_mapping: mapp
         queries = get_queries_from_sql(
             text=statement.expression.this,
             dialect=dialect,
+            object_mapping=object_mapping,
             include_selects=True,
         )
 
@@ -311,7 +312,7 @@ def _process_stored_procedures(statement: exp.Create, dialect: str, object_mappi
     query.text_transformed = transformed_text
 
     # The original text is lost, so we are forced to use the transformed text in its place for now
-    queries = get_queries_from_sql(text=transformed_text, dialect=dialect)
+    queries = get_queries_from_sql(text=transformed_text, object_mapping=object_mapping, dialect=dialect)
     query.add_child_queries(child_queries=queries)
     return query
 

@@ -127,7 +127,13 @@ class Query:
 
         statement = self.statement
         child_columns = child_table_query.get_columns()
-        unknown_columns = util.unique(statement.named_selects - child_columns.keys())
+
+        if isinstance(statement.expression, exp.Values):
+            selects = [s.name for s in statement.this.expressions]
+        else:
+            selects = statement.named_selects
+
+        unknown_columns = util.unique(selects - child_columns.keys())
 
         if unknown_columns:
             raise exception.SqlLeafException(
@@ -135,13 +141,14 @@ class Query:
                 table=str(child_table),
             )
 
-        if "*" in child_columns.keys():
+        if "*" in selects:
             # TODO: shouldn't this check statement.named_selects instead?
             raise exception.SqlLeafException(message="Statement has unresolved star column", table=str(child_table))
 
+
         # Set the query's columns as being selected (required by sqlglot's lineage())
         for col_name, col_props in child_columns.items():
-            col_props["selected"] = col_name in statement.named_selects
+            col_props["selected"] = col_name in selects
 
         return child_columns
 
@@ -159,7 +166,7 @@ class Query:
 
 
 class MergeQuery(Query):
-    def __init__(self, expr: exp.Merge, dialect: str, statement_index: int):
+    def __init__(self, expr: exp.Merge, dialect: str, mapping: mappings.ObjectMapping, statement_index: int):
         super().__init__(
             kind="merge",
             statement=expr,
@@ -182,9 +189,9 @@ class MergeQuery(Query):
 
         self.whens = []
         self.child_expressions = []
-        self.collect_and_transform_child_expressions(expr)
+        self.collect_and_transform_child_expressions(expr, mapping)
 
-    def collect_and_transform_child_expressions(self, expr: exp.Merge):
+    def collect_and_transform_child_expressions(self, expr: exp.Merge, mapping: mappings.ObjectMapping):
         """
         Transform any nested statements (INSERT or UPDATE) into fully qualified queries.
 
@@ -251,19 +258,39 @@ class MergeQuery(Query):
                 for cte in new_ctes:
                     insert_expr = insert_expr.with_(alias=cte["alias"], as_=cte["as_"])
 
-                insert_query = InsertQuery(expr=insert_expr, dialect=self.dialect, statement_index=i)
+                insert_query = InsertQuery(expr=insert_expr, dialect=self.dialect, mapping=mapping, statement_index=i)
                 self.add_child_query(insert_query)
 
 
 class InsertQuery(Query):
-    def __init__(self, expr: exp.Insert, dialect: str, statement_index: int):
+    def __init__(self, expr: exp.Insert, dialect: str, mapping: mappings.ObjectMapping, statement_index: int):
+        child_table = util.get_table(expr)
         super().__init__(
             kind="insert",
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=util.get_table(expr),
+            child_table=child_table,
         )
+
+        if isinstance(expr.expression, exp.Values):
+            # INSERT INTO x VALUES (...)
+            # Transform the query into an INSERT .. SELECT
+            # so that the lineage functions can process it.
+            values = expr.expression.expressions[0].expressions
+            columns = [e.name for e in expr.this.expressions]
+
+            if not columns:
+                cols = mapping.find_columns_for_table(child_table)
+                columns = list(cols)[:len(values)]
+
+            selects = [exp.alias_(val, str(col)) for col, val in zip(columns, values)]
+            new_select = exp.select(*selects)
+            insert_expr = exp.insert(
+                expression=new_select,
+                into=child_table,
+            )
+            self.set_statement(insert_expr)
 
 
 class UpdateQuery(Query):
@@ -1671,7 +1698,7 @@ class LineageBuilder:
             return graph.nodes[node_name]['attrs']
 
         graph.add_node(node_name, attrs=node_attrs)
-        logger.debug(f"Created Node: {self.__class__}, Name: {node_attrs.full_name}")
+        logger.debug(f"Created Node: {node_attrs.__class__}, Name: {node_attrs.full_name}")
         return node_attrs
 
 
