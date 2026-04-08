@@ -8,6 +8,8 @@ This extends the wonderful open source SQL transpiler [sqlglot](https://github.c
 - representation of SQL queries as networkx graphs for simple analysis
 - useful traversal functions for common lineage use cases
 
+This is currently under early development and is not yet 0.0.1
+
 ### Contents
 * [Example](#example)
 * [Introduction](#intro)
@@ -29,12 +31,12 @@ This extends the wonderful open source SQL transpiler [sqlglot](https://github.c
 
 ```python
 sql = """
-CREATE TABLE source (name VARCHAR);
-CREATE TABLE target (name VARCHAR, age INT, birthday TIMESTAMP);
+CREATE TABLE person (name VARCHAR);
+CREATE TABLE people (name VARCHAR, age INT, birthday TIMESTAMP);
 
-INSERT INTO target
+INSERT INTO people (name, age, birthday)
 SELECT LOWER(name) AS name, 5 as age, CURRENT_TIMESTAMP as birthday
-FROM source;
+FROM person;
 """
 import sqlleaf
 lineage = sqlleaf.Lineage()
@@ -43,12 +45,12 @@ lineage.print_tree()
 ```
 Output:
 ```
-column[target.name]
+column[people.name]
 └── function[LOWER()]
-    └── column[source.name]
-column[target.age]
+    └── column[person.name]
+column[people.age]
 └── literal[5]
-column[target.birthday]
+column[people.birthday]
 └── function[CURRENTTIMESTAMP()]
 ```
 
@@ -68,7 +70,7 @@ For example, consider the SQL snippet:
 INSERT INTO fruit.processed
 SELECT
     CASE WHEN age < 2 THEN 'new' ELSE 'old' END AS kind
-FROM fruit.raw
+FROM fruit.raw;
 ```
 
 Some tools detect that the column `age` is used and would therefore produce lineage:
@@ -363,74 +365,4 @@ function[CURRENTTIMESTAMP()] -> column[target.birthday]
 ```
 
 # Roadmap
-Future features:
-- validation/error detection of SQL queries uniquely determined by the lineage
-- querying ordering awareness
-- dependency order resolution of CREATE statements
-- Filtering:
-```
-lineage.filter(
-    name,
-    direction='',
-    include_types=[],
-    exclude_types=[],
-    neighbors=0
-)
-```
-
-The following types of queries and nodes need to be created.
-
-### Postgres
-- XML
-- File
-
-- CREATE TABLE
-  - LIKE
-  - INHERITS
-  - Generated columns
-  - Default columns
-  - EXTERNAL
-  - FOREIGN
-
-- SELECT
-  - LATERAL
-  - ROWS FROM
-  - FROM ONLY
-  - WITH (INSERT ...) AS
-  - WITH ORDINALITY
-  - WINDOW
-
-- CREATE FUNCTION
-  - CALLED ON NULL INPUT
-  - RETURNS NULL ON NULL INPUT
-  - RETURNS TABLE
-  - RETURNS <expression>
-  - Heredoc extraction
-  - Inner statement parsing
-  - Function parameters (IN, OUT, INOUT)
-
-- CREATE TRIGGER
-  - Implement behaviour
-
-- INSERT
-  - RETURNING
-  - ON CONFLICT DO UPDATE
-  - VALUES
-  - OVERRIDING {SYSTEM|USER} VALUE
-
-- COPY FROM/TO
-
-### Redshift
-- CREATE TABLE
-  - EXTERNAL
-
-- UNLOAD
-
-### Snowflake
-- CREATE STAGE
-- CREATE PIPE
-- CREATE TASK
-- CREATE TABLE
-  - HYBRID
-- PUT
-- GET
+For upcoming features, see ROADMAP.md
