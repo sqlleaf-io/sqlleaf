@@ -7,12 +7,12 @@ from sqlglot import exp
 from sqlglot.optimizer import qualify
 from sqlglot.optimizer import annotate_types
 
-from sqlleaf import exception
+from sqlleaf import exception, mappings
 
 logger = logging.getLogger("sqleaf")
 
 
-def apply_optimizations(statement: exp.Expression, dialect: str, mapping, child_table):
+def apply_optimizations(statement: exp.Expression, dialect: str, object_mapping: mappings.ObjectMapping, child_table):
     """
     1. We pass validate=false to prevent errors like: sqlglot.errors.OptimizeError: Column '"v_ca_start_date_id"' could not be resolved
     2. We pass infer_schema=True to source unqualified columns from the source table (if missing from the `schema` param)
@@ -26,7 +26,7 @@ def apply_optimizations(statement: exp.Expression, dialect: str, mapping, child_
     try:
         stmt = qualify.qualify(
             statement,
-            schema=mapping,
+            schema=object_mapping,
             infer_schema=True,
             dialect=dialect,
             isolate_tables=False,
@@ -37,7 +37,7 @@ def apply_optimizations(statement: exp.Expression, dialect: str, mapping, child_
         raise exception.SqlGlotException(message=str(e))
 
     stmt = add_aliases_to_selects(stmt, child_table)
-    stmt = annotate_types.annotate_types(stmt, dialect=dialect, schema=mapping)
+    stmt = annotate_types.annotate_types(stmt, dialect=dialect, schema=object_mapping)
 
     return stmt
 

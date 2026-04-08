@@ -31,7 +31,7 @@ def get_query_processors():
     }
 
 
-def produce_query_objects(statement: exp.Expression, dialect: str, mapping: mappings.ObjectMapping, statement_index: int) -> structs.Query:
+def produce_query_objects(statement: exp.Expression, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> structs.Query:
     """
     This follows the same pattern as `walk_tree_and_build_graph()`
 
@@ -46,11 +46,11 @@ def produce_query_objects(statement: exp.Expression, dialect: str, mapping: mapp
         # Link any child queries
         for child_expr in query.get_child_expressions():
             statement_index += 1
-            child_query = produce_query_objects(statement=child_expr, mapping=mapping, dialect=dialect, statement_index=statement_index)
+            child_query = produce_query_objects(statement=child_expr, object_mapping=object_mapping, dialect=dialect, statement_index=statement_index)
             query.add_child_query(child_query)
 
     elif isinstance(statement, exp.Insert):
-        query = structs.InsertQuery(expr=statement, dialect=dialect, mapping=mapping, statement_index=statement_index)
+        query = structs.InsertQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
     elif isinstance(statement, exp.Update):
         query = structs.UpdateQuery(expr=statement, dialect=dialect, statement_index=statement_index)
 
@@ -167,15 +167,15 @@ def _process_unnamed(statement: exp.Expression, dialect: str, object_mapping: ma
     Process an unnamed statement - one not inside a 'CREATE <name>' statement.
     """
     if isinstance(statement, exp.Merge):
-        query = structs.MergeQuery(expr=statement, dialect=dialect, mapping=object_mapping, statement_index=statement_index)
+        query = structs.MergeQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
     if isinstance(statement, exp.Insert):
-        query = structs.InsertQuery(expr=statement, dialect=dialect, mapping=object_mapping, statement_index=statement_index)
+        query = structs.InsertQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
     elif isinstance(statement, exp.Update):
         query = structs.UpdateQuery(expr=statement, dialect=dialect, statement_index=statement_index)
     elif isinstance(statement, exp.Copy):
-        query = structs.CopyQuery(expr=statement, dialect=dialect, mapping=object_mapping, statement_index=statement_index)
+        query = structs.CopyQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
     elif isinstance(statement, exp.Put):
-        query = structs.PutQuery(expr=statement, dialect=dialect, mapping=object_mapping, statement_index=statement_index)
+        query = structs.PutQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
     return query
 
 
@@ -185,7 +185,7 @@ def _process_tables(statement: exp.Create, dialect: str, object_mapping: mapping
     """
     if statement.kind == "TABLE":
         # CREATE TABLE ...
-        query = structs.TableQuery(statement=statement, dialect=dialect, mapping=object_mapping, statement_index=statement_index)
+        query = structs.TableQuery(statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
         object_mapping.add_query(
             kind='table',
             query=query,

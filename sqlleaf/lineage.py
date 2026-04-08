@@ -67,7 +67,7 @@ def get_lineage_for_query(parent_query: structs.Query, object_mapping) -> nx.Mul
 def generate_column_lineage_for_query(
     query: structs.Query,
     graph: nx.MultiDiGraph,
-    mapping: mappings.ObjectMapping,
+    object_mapping: mappings.ObjectMapping,
 ) -> nx.MultiDiGraph:
     """
     Calculate the lineage for an SQL query.
@@ -81,7 +81,7 @@ def generate_column_lineage_for_query(
         child_columns: the table's columns, marked as selected in the query or not
         child_table: the child table
         dialect:
-        mapping:
+        object_mapping:
         statement_index: the statement's index within a list of statements [detects duplicates]
     """
     child_table = query.child_table
@@ -93,7 +93,7 @@ def generate_column_lineage_for_query(
     ctx = structs.NodeContext(statement_index=query.get_statement_index())
     processor_ctx = structs.ProcessorContext(
         graph=graph,
-        mapping=mapping,
+        object_mapping=object_mapping,
         query=query,
         expr=statement,
     )
@@ -105,7 +105,7 @@ def generate_column_lineage_for_query(
         return graph
 
     # Check if a trigger overrides the query's behaviour
-    if t := mapping.find_query(kind='trigger', table=child_table):
+    if t := object_mapping.find_query(kind='trigger', table=child_table):
         if t.timing == "INSTEAD OF":
             logger.debug("Skipping lineage for all columns of table '%s' since trigger '%s' overrides it." % (exp.table_name(child_table), t.name))
             # TODO: Use the trigger's function as the lineage
@@ -118,7 +118,7 @@ def generate_column_lineage_for_query(
     For each child table column, calculate the lineage
     """
     # Ensure the child table exists with the expected columns
-    child_columns = query.determine_selected_columns(mapping)
+    child_columns = query.determine_selected_columns(object_mapping)
     select_idx = 0
     for col_name, col_props in child_columns.items():
 
@@ -166,7 +166,7 @@ def generate_column_lineage_for_query(
             sql=statement,
             scope=scope,
             dialect=query.dialect,
-            schema=mapping,
+            schema=object_mapping,
             trim_selects=False,
         )
 

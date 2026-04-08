@@ -104,7 +104,7 @@ class Query:
             queries.extend(child.get_all_child_queries())
         return queries
 
-    def determine_selected_columns(self, mapping: mappings.ObjectMapping) -> t.Dict:
+    def determine_selected_columns(self, object_mapping: mappings.ObjectMapping) -> t.Dict:
         """
          Determine whether the selected columns exist inside the table's mapping.
         An error is thrown if any non-existent or invalid columns are used.
@@ -118,9 +118,9 @@ class Query:
         child_table = self.child_table
         # Get the 'CREATE TABLE' query for this query's child table
         if str(child_table).startswith("@"):
-            child_table_query = mapping.find_query(kind='stage', table=child_table)
+            child_table_query = object_mapping.find_query(kind='stage', table=child_table)
         else:
-            child_table_query = mapping.find_query(kind='table', table=child_table)
+            child_table_query = object_mapping.find_query(kind='table', table=child_table)
 
         if not child_table_query:
             raise exception.SqlLeafException(message="Unknown table", table=str(child_table))
@@ -166,7 +166,7 @@ class Query:
 
 
 class MergeQuery(Query):
-    def __init__(self, expr: exp.Merge, dialect: str, mapping: mappings.ObjectMapping, statement_index: int):
+    def __init__(self, expr: exp.Merge, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
         super().__init__(
             kind="merge",
             statement=expr,
@@ -189,9 +189,9 @@ class MergeQuery(Query):
 
         self.whens = []
         self.child_expressions = []
-        self.collect_and_transform_child_expressions(expr, mapping)
+        self.collect_and_transform_child_expressions(expr, object_mapping)
 
-    def collect_and_transform_child_expressions(self, expr: exp.Merge, mapping: mappings.ObjectMapping):
+    def collect_and_transform_child_expressions(self, expr: exp.Merge, object_mapping: mappings.ObjectMapping):
         """
         Transform any nested statements (INSERT or UPDATE) into fully qualified queries.
 
@@ -258,12 +258,12 @@ class MergeQuery(Query):
                 for cte in new_ctes:
                     insert_expr = insert_expr.with_(alias=cte["alias"], as_=cte["as_"])
 
-                insert_query = InsertQuery(expr=insert_expr, dialect=self.dialect, mapping=mapping, statement_index=i)
+                insert_query = InsertQuery(expr=insert_expr, dialect=self.dialect, object_mapping=object_mapping, statement_index=i)
                 self.add_child_query(insert_query)
 
 
 class InsertQuery(Query):
-    def __init__(self, expr: exp.Insert, dialect: str, mapping: mappings.ObjectMapping, statement_index: int):
+    def __init__(self, expr: exp.Insert, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
         child_table = util.get_table(expr)
         super().__init__(
             kind="insert",
@@ -281,7 +281,7 @@ class InsertQuery(Query):
             columns = [e.name for e in expr.this.expressions]
 
             if not columns:
-                cols = mapping.find_columns_for_table(child_table)
+                cols = object_mapping.find_columns_for_table(child_table)
                 columns = list(cols)[:len(values)]
 
             selects = [exp.alias_(val, str(col)) for col, val in zip(columns, values)]
@@ -415,7 +415,7 @@ class ViewQuery(Query):
 
 
 class TableQuery(Query):
-    def __init__(self, statement: exp.Create, dialect: str, mapping, statement_index: int):
+    def __init__(self, statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
         super().__init__(
             kind="table",
             statement=statement,
@@ -427,9 +427,9 @@ class TableQuery(Query):
         self.property_names = []
         self.column_defs = []
 
-        self.set_column_defs(mapping)
+        self.set_column_defs(object_mapping)
 
-    def set_column_defs(self, mapping: mappings.ObjectMapping):
+    def set_column_defs(self, object_mapping: mappings.ObjectMapping):
         """
         Collect all the column definitions for this table.
         """
@@ -446,14 +446,14 @@ class TableQuery(Query):
         if table_properties:
             self.property_names = [str(p) for p in table_properties.expressions]
 
-            inherited_columns = self.find_inherited_columns(table_properties, mapping)
-            like_columns = self.find_like_columns(table_properties, mapping)
+            inherited_columns = self.find_inherited_columns(table_properties, object_mapping)
+            like_columns = self.find_like_columns(table_properties, object_mapping)
 
             columns += inherited_columns + like_columns
 
         self.column_defs = columns
 
-    def find_inherited_columns(self, table_properties: exp.Expression, mapping: mappings.ObjectMapping) -> t.List[exp.ColumnDef]:
+    def find_inherited_columns(self, table_properties: exp.Expression, object_mapping: mappings.ObjectMapping) -> t.List[exp.ColumnDef]:
         """
         Search for tables referenced as 'CREATE TABLE b INHERITS (a)'
         """
@@ -462,12 +462,12 @@ class TableQuery(Query):
 
         for inh_prop in inherited_props:
             inh_table = inh_prop.find(exp.Table)
-            inh_table_query = mapping.find_query(kind='table', table=inh_table)
+            inh_table_query = object_mapping.find_query(kind='table', table=inh_table)
             columns.extend(inh_table_query.column_defs)
 
         return columns
 
-    def find_like_columns(self, table_properties: exp.Expression, mapping: mappings.ObjectMapping) -> t.List[exp.ColumnDef]:
+    def find_like_columns(self, table_properties: exp.Expression, object_mapping: mappings.ObjectMapping) -> t.List[exp.ColumnDef]:
         """
         Search for tables referenced as 'CREATE TABLE b LIKE a'
         """
@@ -494,7 +494,7 @@ class TableQuery(Query):
                     val = str(prop.args["value"])
                     self.set_props(val, props=include_props, to_include=False)
 
-            parent_table = mapping.find_query(kind='table', table=like_table)
+            parent_table = object_mapping.find_query(kind='table', table=like_table)
             parent_columns = parent_table.column_defs
             # TODO: copy parent_table, change column props based on props
             for col_def in parent_columns:
@@ -692,7 +692,7 @@ class StageQuery(Query):
 
 
 class CopyQuery(Query):
-    def __init__(self, expr: exp.Copy, dialect: str, mapping: mappings.ObjectMapping, statement_index: int):
+    def __init__(self, expr: exp.Copy, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
         super().__init__(
             kind="copy",
             statement=expr,
@@ -708,7 +708,7 @@ class CopyQuery(Query):
         if dialect == 'snowflake':
             self.configure_stage(expr)
 
-        self.set_as_insert(expr, dialect, mapping)
+        self.set_as_insert(expr, dialect, object_mapping)
 
     def configure_stage(self, expr: exp.Copy):
         """
@@ -729,7 +729,7 @@ class CopyQuery(Query):
             if not str(target).startswith('@"'):
                 target.this.set("this", str(target).upper())
 
-    def set_as_insert(self, expr, dialect, mapping):
+    def set_as_insert(self, expr, dialect, object_mapping):
         """
         Convert the COPY statement into an INSERT statement so that the lineage functions can process it.
 
@@ -751,7 +751,7 @@ class CopyQuery(Query):
             parent_table = expr.args['files'][0]
             source_table = parent_table
 
-        child_columns = mapping.find_columns_for_table(table=source_table)
+        child_columns = object_mapping.find_columns_for_table(table=source_table)
         column_names = tuple(child_columns.keys())
 
         # Convert the Copy to an Insert so that the lineage functions work
@@ -767,7 +767,7 @@ class CopyQuery(Query):
             # for the lineage functions to work - such as this Stage
             named_columns = {s.alias_or_name: {"default": None, "kind": s.type or "UNKNOWN"} for s in expr_insert.selects}
 
-            child_table_query = mapping.find_query(kind='stage', table=child_table)
+            child_table_query = object_mapping.find_query(kind='stage', table=child_table)
             child_table_query.columns = named_columns
 
         # We don't worry about `self.is_source_a_stage` here as that is handled in the process_column() later
@@ -776,7 +776,7 @@ class CopyQuery(Query):
 
 
 class PutQuery(Query):
-    def __init__(self, expr: exp.Put, dialect: str, mapping: mappings.ObjectMapping, statement_index: int):
+    def __init__(self, expr: exp.Put, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
         super().__init__(
             kind="put",
             statement=expr,
@@ -923,9 +923,9 @@ class ColumnNode(NodeAttributes):
         tokens = [catalog, schema, table]
         name = ".".join([tok for tok in tokens if tok])
         tab = exp.to_table(name, dialect=processor_ctx.query.dialect)
-        query = processor_ctx.mapping.find_query(kind='table', table=tab)
+        query = processor_ctx.object_mapping.find_query(kind='table', table=tab)
         if not query:
-            query = processor_ctx.mapping.find_query(kind='stage', table=tab)
+            query = processor_ctx.object_mapping.find_query(kind='stage', table=tab)
 
         if not query:
             return 'table'
@@ -1291,7 +1291,7 @@ class LineagePath:
 @dataclass(frozen=True)
 class ProcessorContext:
     graph: nx.MultiDiGraph
-    mapping: mappings.ObjectMapping
+    object_mapping: mappings.ObjectMapping
     query: Query
     expr: exp.Expression
     data_type: exp.DataType = None
@@ -1537,7 +1537,7 @@ class LineageBuilder:
 
             # Ensure the sequence exists
             seq_table = exp.table_(table=seq_name_expr.name, db=schema)
-            if not processor_ctx.mapping.find_query(kind='sequence', table=seq_table):
+            if not processor_ctx.object_mapping.find_query(kind='sequence', table=seq_table):
                 logger.warning(f"Sequence '{full_name}' not found.")
 
             node_attrs = SequenceNode(name=seq_name_expr.name, processor_ctx=processor_ctx, ctx=ctx)
@@ -1548,7 +1548,7 @@ class LineageBuilder:
         node_attrs = UserDefinedFunctionNode(name=function, schema=schema, processor_ctx=processor_ctx, ctx=ctx)
 
         table_expr = exp.table_(table=function, db=schema)
-        udf_obj = processor_ctx.mapping.find_query(kind='udf', table=table_expr)
+        udf_obj = processor_ctx.object_mapping.find_query(kind='udf', table=table_expr)
 
         # if the udf has a return_expr, insert it in here
         # if it's a literal, set the parent of 'this' as the return expr. Discard the args in lineage, but record in object
