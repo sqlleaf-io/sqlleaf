@@ -35,9 +35,6 @@ def transform_query(parent_query: structs.Query, object_mapping) -> structs.Quer
         # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
         statement = transform.apply_optimizations(statement, query.dialect, object_mapping, query.child_table)
 
-        # Simplify the expression tree if possible (e.g. always-true logical statements)
-        statement = sqlglot.optimizer.optimizer.simplify(statement)
-
         # Transform CASE statements to remove false positive lineage; see docs
         statement = statement.transform(transform.case_statement_transformer)
         query.statement_transformed = statement
@@ -179,7 +176,7 @@ def generate_column_lineage_for_query(
 
             child_node_attrs = child_node
             logger.debug("----")
-            logger.debug(f"Found path from lineage.lineage(): {[(n.name, n.expression.sql()) for n in path]}")
+            logger.debug(f"Found path from lineage.lineage(): {[(n.name, n.expression.sql(comments=False)) for n in path]}")
 
             for node_depth, node in enumerate(path):
                 logger.debug("----")

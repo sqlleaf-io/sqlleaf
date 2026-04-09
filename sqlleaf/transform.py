@@ -5,7 +5,8 @@ import logging
 import sqlglot
 from sqlglot import exp
 from sqlglot.optimizer import qualify
-from sqlglot.optimizer import annotate_types
+from sqlglot.optimizer.merge_subqueries import merge_derived_tables
+from sqlglot.optimizer import optimize, RULES
 
 from sqlleaf import exception, mappings
 
@@ -37,7 +38,12 @@ def apply_optimizations(statement: exp.Expression, dialect: str, object_mapping:
         raise exception.SqlGlotException(message=str(e))
 
     stmt = add_aliases_to_selects(stmt, object_mapping, child_table)
-    stmt = annotate_types.annotate_types(stmt, dialect=dialect, schema=object_mapping)
+
+    # Apply sqlglot's optimization rules.
+    # Some of them cause undesirable effects for our purposes.
+    rules = [r for r in RULES if r.__name__ not in ['eliminate_ctes', 'merge_subqueries', 'qualify', 'quote_identifiers']]
+    stmt = optimize(expression=stmt, dialect=dialect, schema=object_mapping, rules=rules)
+    stmt = merge_derived_tables(stmt)   # Skip merge_ctes()
 
     return stmt
 
