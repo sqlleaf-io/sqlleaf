@@ -462,74 +462,114 @@ class TableQuery(Query):
                 default.this.type = col_def.kind
 
         # Process the table's properties: INHERITS, LIKE, etc
-        table_properties = statement.args["properties"]
-        if table_properties:
+        if table_properties := statement.args["properties"]:
             self.property_names = [str(p) for p in table_properties.expressions]
 
-            inherited_columns = self.find_inherited_columns(table_properties, object_mapping)
-            like_columns = self.find_like_columns(table_properties, object_mapping)
+        if inherited_props := list(statement.find_all(exp.InheritsProperty)):
+            inherited_columns = self.find_inherited_columns(inherited_props, object_mapping)
+            columns += inherited_columns
 
-            columns += inherited_columns + like_columns
+        if like_property := statement.find(exp.LikeProperty):
+            like_columns = self.find_like_columns(like_property, object_mapping)
+            columns += like_columns
 
         self.column_defs = columns
 
-    def find_inherited_columns(self, table_properties: exp.Expression, object_mapping: mappings.ObjectMapping) -> t.List[exp.ColumnDef]:
+    def find_inherited_columns(self, inherits_properties: t.List[exp.InheritsProperty], object_mapping: mappings.ObjectMapping) -> t.List[exp.ColumnDef]:
         """
         Search for tables referenced as 'CREATE TABLE b INHERITS (a)'
         """
         columns = []
-        inherited_props = list(table_properties.find_all(exp.InheritsProperty))
 
-        for inh_prop in inherited_props:
+        for inh_prop in inherits_properties:
             inh_table = inh_prop.find(exp.Table)
             inh_table_query = object_mapping.find_query(kind='table', table=inh_table)
             columns.extend(inh_table_query.column_defs)
 
         return columns
 
-    def find_like_columns(self, table_properties: exp.Expression, object_mapping: mappings.ObjectMapping) -> t.List[exp.ColumnDef]:
+    def find_like_columns(self, like_property: exp.LikeProperty, object_mapping: mappings.ObjectMapping) -> t.List[exp.ColumnDef]:
         """
-        Search for tables referenced as 'CREATE TABLE b LIKE a'
+        Search for tables referenced as 'CREATE TABLE b (LIKE a)'.
+        Postgres allows only 1 table to be referenced in LIKE.
         """
         columns = []
-        like_props = list(table_properties.find_all(exp.LikeProperty))
+        property_names = []
 
-        for like_prop in like_props:
-            like_table = like_prop.this
-            props = sorted(
-                [p for p in like_prop.expressions if type(p) is exp.Property],
-                reverse=True,
-            )
-            include_props = {
-                "defaults": False,
-                "generated": False,
-                "identity": False,
-            }
+        for like_prop in like_property.expressions:
+            # sqlglot concats properties with '='
+            property_names.append(str(like_prop).replace('=', ' '))
 
-            for prop in sorted(props, reverse=True):
-                if prop.this == "INCLUDING":
-                    val = str(prop.args["value"])
-                    self.set_props(val, props=include_props, to_include=True)
-                elif prop.this == "EXCLUDING":
-                    val = str(prop.args["value"])
-                    self.set_props(val, props=include_props, to_include=False)
+        properties = self.get_properties_to_include(property_names)
 
-            parent_table = object_mapping.find_query(kind='table', table=like_table)
-            parent_columns = parent_table.column_defs
-            # TODO: copy parent_table, change column props based on props
-            for col_def in parent_columns:
-                new_col = col_def.copy()
-                if not include_props["defaults"]:
-                    # Delete the default column
-                    if default := new_col.find(exp.DefaultColumnConstraint):
-                        default.parent.pop()
-                        logger.debug("Excluded column default: %s", str(default))
-                columns.append(new_col)
-                # TODO: below
-                # if col is identity and include_props, include
-                # if col is generated and include_props, include
+        # Look up the like-table's columns and determine which properties to transfer
+        parent_table = object_mapping.find_query(kind='table', table=like_property.this)
+        parent_columns = parent_table.column_defs
+
+        for col_def in parent_columns:
+            new_col = col_def.copy()
+            for prop_name, prop_attrs in properties.items():
+                if not properties[prop_name]["include"]:
+                    # Discard the column's expression
+                    if prop_expr := new_col.find(prop_attrs["expr"]):
+                        prop_expr.parent.pop()
+
+            columns.append(new_col)
 
         return columns
+
+    def get_properties_to_include(self, options: t.List[str]) -> t.Dict:
+        """
+        Determine which column properties to keep within a LIKE according to the rules below.
+
+        From the Postgres docs:
+            Specifying INCLUDING copies the property, specifying EXCLUDING omits the property.
+            EXCLUDING is the default. If multiple specifications are made for the same kind
+            of object, the last one is used. It could be useful to write individual EXCLUDING
+            clauses after INCLUDING ALL to select all but some specific options.
+        """
+
+        # All supported properties
+        properties = {
+              "DEFAULTS": {
+                "include": False,
+                "expr": exp.DefaultColumnConstraint
+            },
+            "GENERATED": {
+                "include": False,
+                "expr": exp.ComputedColumnConstraint
+            },
+            "IDENTITY": {
+                "include": False,
+                "expr": exp.GeneratedAsIdentityColumnConstraint
+            }
+        }
+
+        for opt in options:
+            opt = opt.strip().upper()
+
+            if opt == "INCLUDING ALL":
+                for prop in properties:
+                    properties[prop]["include"] = True
+                continue
+
+            if opt == "EXCLUDING ALL":
+                for prop in properties:
+                    properties[prop]["include"] = False
+                continue
+
+            parts = opt.split()
+            action, prop = parts
+
+            if prop not in properties:
+                continue  # Ignore unknown properties
+
+            if action == "INCLUDING":
+                properties[prop]["include"] = True
+            elif action == "EXCLUDING":
+                properties[prop]["include"] = False
+
+        return properties
 
     def get_column_names_with_types(self) -> t.Dict[str, str]:
         """
@@ -552,19 +592,6 @@ class TableQuery(Query):
                 "kind": str(c.kind),
             }
         return columns
-
-    def set_props(self, val: str, props: t.Dict, to_include: bool = False):
-        if val == "ALL":
-            props["defaults"] = to_include
-            props["generated"] = to_include
-            props["identity"] = to_include
-        elif val == "DEFAULTS":
-            props["defaults"] = to_include
-        elif val == "GENERATED":
-            props["generated"] = to_include
-        elif val == "IDENTITY":
-            props["identity"] = to_include
-        return props
 
 
 class ProcedureQuery(Query):

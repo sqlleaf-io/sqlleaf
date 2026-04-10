@@ -22,7 +22,9 @@ The following types of queries and nodes need to be created.
 
 CREATE TABLE
   - [x] AS
-  - [ ] LIKE
+  - [x] LIKE [wip]
+    - [x] INCLUDING
+    - [x] EXCLUDING
   - [ ] INHERITS
   - [ ] EXTERNAL
   - [ ] FOREIGN
