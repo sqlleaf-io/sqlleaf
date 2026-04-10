@@ -17,56 +17,106 @@ lineage.filter(
 The following types of queries and nodes need to be created.
 
 ### Postgres
-- XML
-- File
+- [ ] XML
+- [ ] File
 
-- CREATE TABLE
-  - LIKE
-  - INHERITS
-  - Generated columns
-  - Default columns
-  - EXTERNAL
-  - FOREIGN
+CREATE TABLE
+  - [ ] AS
+  - [ ] LIKE
+  - [ ] INHERITS
+  - [ ] EXTERNAL
+  - [ ] FOREIGN
+  - [ ] Generated columns
+  - [ ] Identity columns
+  - [ ] Default columns
+  - [ ] OF <type>
 
-- SELECT
-  - LATERAL
-  - ROWS FROM
-  - FROM ONLY
-  - WITH (INSERT ...) AS
-  - WITH ORDINALITY
-  - WINDOW
+CREATE VIEW
+  - [ ] Regular
+  - [ ] MATERIALIZED
+  - [ ] TEMPORARY
 
-- CREATE FUNCTION
-  - CALLED ON NULL INPUT
-  - RETURNS NULL ON NULL INPUT
-  - RETURNS TABLE
-  - RETURNS <expression>
-  - Heredoc extraction
-  - Inner statement parsing
-  - Function parameters (IN, OUT, INOUT)
+CREATE SEQUENCE
+- [ ] Include functions
 
-- CREATE TRIGGER
-  - Implement behaviour
+SELECT
+  - [ ] System functions
+    - [ ] JSON functions
+      - [ ] Hard-code default returned column names
+  - [ ] Window functions
+  - [ ] FROM udf()
+  - [ ] UNION
+  - [ ] CTEs
+    - [ ] Regular
+    - [ ] RECURSIVE
+    - [ ] WITH (INSERT)
+    - [ ] WITH (UPDATE)
+    - [ ] WITH (MERGE)
+    - [ ] WITH (VALUES)
+  - [ ] LATERAL
+    - sqlglot optimize() creates weird output
+  - [ ] ROWS FROM
+    - [ ] Aliases
+    - [ ] No aliases
+    - [ ] LATERAL ROWS FROM
+      - Not supported by sqlglot
+  - [ ] INTO
+  - [ ] FROM ONLY
+  - [ ] WITH ORDINALITY
+  - [ ] WINDOW
+  - [ ] SELECT FROM ( VALUES ())
 
-- CREATE TYPE
+MERGE
 
-- INSERT
-  - RETURNING
-  - ON CONFLICT DO UPDATE
-  - VALUES
-  - OVERRIDING {SYSTEM|USER} VALUE
+UPDATE
+
+INSERT
+  - [ ] RETURNING
+  - [ ] ON CONFLICT DO UPDATE
+  - [ ] VALUES
+  - [ ] OVERRIDING {SYSTEM|USER} VALUE
+  - [ ] INTO VIEW (automatically updatable views)
+
+CREATE FUNCTION (language SQL)
+  - [ ] CALLED ON NULL INPUT
+  - [ ] RETURNS NULL ON NULL INPUT
+  - [ ] RETURNS TABLE
+  - [ ] RETURNS <expression>
+  - [ ] Heredoc extraction
+  - [ ] Inner statement parsing
+  - [ ] Function parameters (IN, OUT, INOUT)
+
+CREATE PROCEDURE (language SQL)
+
+PREPARE
+
+EXECUTE
+
+CREATE TRIGGER
+  - [ ] INSTEAD OF
+  - [ ] BEFORE / AFTER
+
+CREATE TYPE
 
 - COPY 
-  - FROM
-  - TO
+  - [ ] FROM
+  - [ ] TO
+
+DO
 
 
 ### Redshift
-- CREATE TABLE
-  - EXTERNAL
+CREATE TABLE
+  - [ ] EXTERNAL
 
-- Multi-row INSERT
-- UNLOAD
+SELECT
+  - [ ] PIVOT
+  - [ ] UNPIVOT
+
+INSERT
+  - [ ] Multi-row
+
+- [ ] UNLOAD
 
 ### Snowflake
 - CREATE STAGE
@@ -74,16 +124,17 @@ The following types of queries and nodes need to be created.
 - CREATE TASK
 - CREATE SEMANTIC VIEW
 - CREATE TABLE
-  - HYBRID
-  - DYNAMIC
-  - USING TEMPLATE
-  - CLONE
-  - FROM ARCHIVE OF
-  - FROM BACKUP OF
-  - AS SELECT
-- TO_QUERY
-- UDTF (user defined table function)
-- COPY FILES
-- PUT
-- GET
-- Multi-table INSERT
+  - [ ] EXTERNAL
+  - [ ] HYBRID
+  - [ ] DYNAMIC
+  - [ ] USING TEMPLATE
+  - [ ] CLONE
+  - [ ] FROM ARCHIVE OF
+  - [ ] FROM BACKUP OF
+  - [ ] AS SELECT
+- [ ] TO_QUERY
+- [ ] UDTF (user defined table function)
+- [ ] COPY FILES
+- [ ] PUT
+- [ ] GET
+- [ ] Multi-table INSERT
