@@ -21,34 +21,34 @@ The following types of queries and nodes need to be created.
 - [ ] File
 
 CREATE TABLE
-  - [ ] AS
+  - [x] AS
   - [ ] LIKE
   - [ ] INHERITS
   - [ ] EXTERNAL
   - [ ] FOREIGN
   - [ ] Generated columns
   - [ ] Identity columns
-  - [ ] Default columns
+  - [x] Default columns
   - [ ] OF <type>
 
 CREATE VIEW
-  - [ ] Regular
-  - [ ] MATERIALIZED
+  - [x] Regular
+  - [x] MATERIALIZED
   - [ ] TEMPORARY
 
 CREATE SEQUENCE
-- [ ] Include functions
+- [x] Include functions
 
 SELECT
-  - [ ] System functions
-    - [ ] JSON functions
+  - [x] System functions
+    - [x] JSON functions
       - [ ] Hard-code default returned column names
-  - [ ] Window functions
+  - [x] Window functions
   - [ ] FROM udf()
   - [ ] UNION
-  - [ ] CTEs
-    - [ ] Regular
-    - [ ] RECURSIVE
+  - [x] CTEs
+    - [x] Regular
+    - [x] RECURSIVE
     - [ ] WITH (INSERT)
     - [ ] WITH (UPDATE)
     - [ ] WITH (MERGE)
@@ -56,24 +56,26 @@ SELECT
   - [ ] LATERAL
     - sqlglot optimize() creates weird output
   - [ ] ROWS FROM
-    - [ ] Aliases
+    - [x] Aliases
     - [ ] No aliases
     - [ ] LATERAL ROWS FROM
       - Not supported by sqlglot
-  - [ ] INTO
+  - [x] INTO
   - [ ] FROM ONLY
   - [ ] WITH ORDINALITY
   - [ ] WINDOW
   - [ ] SELECT FROM ( VALUES ())
 
 MERGE
+- [x] Regular
 
 UPDATE
+- [x] Regular
 
 INSERT
   - [ ] RETURNING
   - [ ] ON CONFLICT DO UPDATE
-  - [ ] VALUES
+  - [x] VALUES
   - [ ] OVERRIDING {SYSTEM|USER} VALUE
   - [ ] INTO VIEW (automatically updatable views)
 
