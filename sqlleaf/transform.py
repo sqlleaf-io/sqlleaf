@@ -67,6 +67,9 @@ def add_aliases_to_selects(statement: exp.Insert, object_mapping: mappings.Objec
     cols = object_mapping.find_columns_for_table(child_table)
     if not cols:
         obj = object_mapping.find_query(kind='stage', table=child_table)
+        if not obj:
+            raise exception.SqlLeafException(message=f"Unknown table: {child_table}")
+
         cols = obj.get_columns()
 
     table_columns = list(cols)[:len(selects)]

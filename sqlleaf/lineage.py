@@ -6,6 +6,7 @@ from dataclasses import replace
 import networkx as nx
 import sqlglot
 from sqlglot import exp
+from sqlglot.optimizer import build_scope
 
 if t.TYPE_CHECKING:
     pass
@@ -83,7 +84,7 @@ def generate_column_lineage_for_query(
     """
     child_table = query.child_table
     statement = query.statement
-    scope = sqlglot.optimizer.build_scope(statement)
+    scope = build_scope(statement)
 
     logger.info(f"Getting lineage for query: {statement.sql(comments=False)}")
 
@@ -130,7 +131,12 @@ def generate_column_lineage_for_query(
         col_expr.parent = child_table
 
         ctx = structs.NodeContext(select_index=select_idx, statement_index=query.get_statement_index())
-        processor_ctx = replace(processor_ctx, expr=col_expr)
+        processor_ctx = structs.ProcessorContext(
+            graph=graph,
+            object_mapping=object_mapping,
+            query=query,
+            expr=col_expr,
+        )
 
         child_node = structs.ColumnNode(
             catalog=child_table.catalog,

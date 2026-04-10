@@ -35,6 +35,7 @@ class Node:
     parent_pivot_aliases: t.List[Node] = field(default_factory=list)
     is_parent_a_cte: bool = False
     is_parent_a_recursive_cte: bool = False
+    is_parent_a_derived_table: bool = False
     recursive_cte_member_kind: str = ''         # anchor | recursive
     source_name: str = ""
     reference_node_name: str = ""
@@ -272,6 +273,9 @@ def to_node(
         table = c.table
         source = scope.sources.get(table)
 
+        if isinstance(source, exp.Table) and 'rows_from' in source.args:
+            node.is_parent_a_derived_table = True
+
         if isinstance(source, Scope):
             reference_node_name = None
             if source.scope_type == ScopeType.DERIVED_TABLE and table not in source_names:
@@ -375,6 +379,9 @@ def to_node(
                 expression=source,
                 parent_pivot_aliases=parent_pivot_aliases,
             )
+            if isinstance(source, exp.Table) and 'rows_from' in source.args:
+                n.is_parent_a_derived_table = True
+
             node.downstream.append(n)
             logger.debug("[5] Created Node '%s', Expr: %s, Id: %s", c, source.sql(), id(n))
 

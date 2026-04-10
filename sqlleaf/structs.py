@@ -937,8 +937,11 @@ class ColumnNode(NodeAttributes):
         """
         Figure out the table's type (view/table) by inspecting the original query in the mapping.
         """
-        if processor_ctx.node and processor_ctx.node.is_parent_a_cte:
-            return "cte"
+        if processor_ctx.node:
+            if processor_ctx.node.is_parent_a_cte:
+                return "cte"
+            if processor_ctx.node.is_parent_a_derived_table:
+                return "derived_table"
 
         tokens = [catalog, schema, table]
         name = ".".join([tok for tok in tokens if tok])
@@ -1377,6 +1380,7 @@ class LineageBuilder:
             exp.WithinGroup: self.process_within_group,
             exp.Select: self.process_select,
             exp.Interval: self.process_interval,
+            exp.ColumnDef: self.process_column_def,
 
             skip: self.skip,
         }
@@ -1436,18 +1440,17 @@ class LineageBuilder:
                 ctx,
             )
             nodes_created.append(parent_node_attrs)
+            if parent_node_attrs.kind in ['function', 'udf']:
+                ctx = replace(ctx, function_depth=ctx.function_depth + 1)
         else:
             # Re-use the parent
             parent_node_attrs = child_node_attrs
 
-        # For every function arg, add the node
-        child_ctx = replace(ctx, function_depth=ctx.function_depth + 1)
-
         for child_expr in children:
             child_processor_ctx = replace(processor_ctx, expr=child_expr, child_node_attrs=parent_node_attrs)
-            nodes = self.walk_tree_and_build_graph(child_processor_ctx, child_ctx)
+            nodes = self.walk_tree_and_build_graph(child_processor_ctx, ctx)
             nodes_created.extend(nodes)
-            child_ctx = replace(child_ctx, function_arg_index=child_ctx.function_arg_index + 1)
+            ctx = replace(ctx, function_arg_index=ctx.function_arg_index + 1)
 
         return nodes_created
 
@@ -1541,7 +1544,7 @@ class LineageBuilder:
             full_name = f"{schema}.{function}"
         else:
             # e.g. The PG sequence function nextval('serial') is anonymous
-            schema = None
+            schema = ''
             function = expr.name
             full_name = function
 
@@ -1670,6 +1673,10 @@ class LineageBuilder:
         node_attrs = IntervalNode(processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
+    def process_column_def(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+        logger.debug(f"Skipping exp.ColumnDef: {str(processor_ctx.expr)}")
+        return None, []
+
     def skip(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         logger.debug("Skipping expression {}".format(str(processor_ctx.expr)))
         return processor_ctx.child_node_attrs, []
@@ -1724,6 +1731,52 @@ class LineageBuilder:
 
 class PostgresLineageBuilder(LineageBuilder):
     dialect = "postgres"
+
+    def process_table(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+        expr: exp.Table = processor_ctx.expr
+        if 'rows_from' in expr.args:
+
+            downstream_exprs = []
+            for table_function in expr.args['rows_from']:
+                # Determine the immediate children of the expression.
+                # These are either table functions or aliases to table functions (ColumnDefs)
+                cols = list(table_function.find_all(exp.ColumnDef))
+                downstream_exprs.extend(cols if cols else [table_function])
+
+            child_column_name = processor_ctx.child_node_attrs.expr.name
+            # Get the expression associated with the column name
+            for i, col in enumerate(expr.alias_column_names):
+                if col == child_column_name:
+                    return None, [downstream_exprs[i]]
+
+        elif expr.arg_key == 'rows_from':
+            # A table function inside a 'ROWS FROM'
+            return None, [expr.this]
+
+        return super().process_table(processor_ctx, ctx)
+
+    def process_column_def(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+        expr: exp.ColumnDef = processor_ctx.expr
+        processor_ctx = replace(processor_ctx, new_data_type=expr.kind)
+
+        if isinstance(expr.parent, exp.TableAlias):
+            # An alias to a table function inside 'ROWS FROM'
+            table_alias = expr.parent.alias
+            if not table_alias:
+                # The table alias isn't found in any attribute. Get it from the SQL string.
+                # e.g. "_t0" from "_t0(x, y)"
+                table_alias = expr.parent.sql().split('(')[0]
+
+            node_attrs = ColumnNode(
+                catalog='',
+                schema='',
+                table=table_alias,
+                column=expr.name,
+                processor_ctx=processor_ctx,
+                ctx=ctx,
+            )
+            table_function: exp.Table = expr.parent.parent
+            return node_attrs, [table_function]
 
 
 class SnowflakeLineageBuilder(LineageBuilder):

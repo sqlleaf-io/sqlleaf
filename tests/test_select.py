@@ -215,3 +215,37 @@ def test__select_assorted(holder):
         'literal[{1,2,3} type=ARRAY<INT> node_depth=0 statement=1 select=0 func_depth=0 func_arg=0]',
         'interval["-10.75 MINUTE" type=INTERVAL node_depth=0 statement=1 select=1 func_depth=0 func_arg=0]'
     ], arr=nodes)
+
+
+# TODO: add JSON_TO_RECORDSET() as a Postgres functions in sqlglot
+def test__select_rows_from(holder):
+    queries = '''
+    INSERT INTO fruit.processed (name, age, kind, amount)
+    SELECT *
+    FROM ROWS FROM
+        (
+            unnest(ARRAY['x', 'y']),
+            json_to_recordset('[{"a":40,"b":"foo"}]')
+                AS (a INTEGER, b TEXT),
+            generate_series(1, 3)
+        ) AS x (name, age, kind, amount)
+    ORDER BY age;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    paths = h.get_friendly_paths()
+    assert paths == [
+        ['literal[{"x","y"}]', 'function[UNNEST()]', 'column[x.name]', 'column[fruit.processed.name]'],
+        ['literal["[{"a":40,"b":"foo"}]"]', 'udf[JSON_TO_RECORDSET()]', 'column[_t0.b]', 'column[x.kind]', 'column[fruit.processed.kind]'],
+        ['literal["[{"a":40,"b":"foo"}]"]', 'udf[JSON_TO_RECORDSET()]', 'column[_t0.a]', 'column[x.age]', 'column[fruit.processed.age]'],
+        ['literal[1]', 'function[EXPLODINGGENERATESERIES()]', 'column[x.amount]', 'column[fruit.processed.amount]'],
+        ['literal[3]', 'function[EXPLODINGGENERATESERIES()]', 'column[x.amount]', 'column[fruit.processed.amount]']
+    ]
+    assert is_subset(subarr=[
+        'column[x.age type=UNKNOWN subkind=derived_table]',
+        'column[_t0.a type=INT subkind=derived_table]',
+    ], arr=nodes)
+
+# TODO: sqlglot parser breaks on 'LATERAL ROWS FROM'
+# TODO: support ROWS FROM without table alias
