@@ -7,7 +7,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from sqlleaf import structs
 
 from tests.new_fixtures import (
-    holder
+    holder, is_subset
 )
 
 DIALECT = 'postgres'
@@ -38,6 +38,35 @@ def test__table_like_table(holder):
         ['column[fruit.a.age]', 'column[fruit.b_like_a.age]'],
         ['column[fruit.a.id]', 'column[fruit.b_like_a.id]']
     ]
+
+
+def test__table_like_table_generated(holder):
+    queries = '''
+    CREATE TABLE fruit.a (
+        name VARCHAR,
+        kind TEXT,
+        gen TEXT GENERATED ALWAYS AS ( concat(name, kind) ) STORED
+    );
+    CREATE TABLE fruit.b_like_a (LIKE fruit.a INCLUDING GENERATED);
+
+    INSERT INTO fruit.b_like_a (name, kind) SELECT 'banana' as name, 'fruit' as kind;
+    '''
+    h = holder()
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+
+    assert len(edges) == 5
+    assert paths == [
+        ['literal["banana"]', 'column[fruit.b_like_a.name]', 'function[CONCAT()]', 'column[fruit.b_like_a.gen]'],
+        ['literal["fruit"]', 'column[fruit.b_like_a.kind]', 'function[CONCAT()]', 'column[fruit.b_like_a.gen]']
+    ]
+    assert is_subset(subarr=[
+        'column[fruit.b_like_a.gen type=TEXT subkind=table]',
+        'column[fruit.b_like_a.kind type=TEXT subkind=table]',
+        'column[fruit.b_like_a.name type=VARCHAR subkind=table]'
+    ], arr=nodes)
 
 
 def test__table_with_default_columns(holder):

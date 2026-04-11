@@ -28,7 +28,7 @@ CREATE TABLE
   - [ ] INHERITS
   - [ ] EXTERNAL
   - [ ] FOREIGN
-  - [ ] Generated columns
+  - [x] Generated columns
   - [ ] Identity columns
   - [x] Default columns
   - [ ] OF <type>

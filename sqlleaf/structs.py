@@ -458,15 +458,32 @@ class TableQuery(Query):
         properties = self.get_properties_to_include(property_names)
 
         # Look up the like-table's columns and determine which properties to transfer
-        parent_table = object_mapping.find_query(kind='table', table=like_property.this)
-        parent_columns = parent_table.column_defs
+        parent_table_query = object_mapping.find_query(kind='table', table=like_property.this)
+        parent_columns = parent_table_query.column_defs
 
-        for col_def in parent_columns:
-            new_col = col_def.copy()
+        for parent_col_def in parent_columns:
+            new_col = parent_col_def.copy()
             for prop_name, prop_attrs in properties.items():
-                if not properties[prop_name]["include"]:
+                prop_expr = new_col.find(prop_attrs["expr"])
+
+                if properties[prop_name]["include"]:
+                    # Set the expression's parent to be the new table (it's missing)
+                    if prop_expr:
+                        for inner_col in prop_expr.find_all(exp.Column):
+                            # A GENERATED column expression might refer to other columns
+                            try:
+                                referenced_parent_col_def = [c for c in parent_columns if c.name == inner_col.name][0]
+                            except IndexError:
+                                message = f"Column '{inner_col.name}' does not exist in table '{self.child_table}'."
+                                raise exception.SqlLeafException(message=message)
+
+                            inner_col.set('catalog', exp.to_identifier(self.child_table.catalog))
+                            inner_col.set('db', exp.to_identifier(self.child_table.db))
+                            inner_col.set('table', exp.to_identifier(self.child_table.this))
+                            inner_col.type = referenced_parent_col_def.kind
+                else:
                     # Discard the column's expression
-                    if prop_expr := new_col.find(prop_attrs["expr"]):
+                    if prop_expr:
                         prop_expr.parent.pop()
 
             columns.append(new_col)
@@ -533,19 +550,6 @@ class TableQuery(Query):
         Returns: {'col1': 'INT', 'col2': 'VARCHAR'}
         """
         columns = {c.name: str(c.kind) for c in self.column_defs}
-        return columns
-
-    def get_columns(self) -> t.Dict[str, t.Dict[str, str]]:
-        columns = {}
-        for c in self.column_defs:
-            default = c.find(exp.DefaultColumnConstraint)
-            if default:
-                default = default.this
-
-            columns[c.name] = {
-                "default": default,
-                "kind": str(c.kind),
-            }
         return columns
 
 
@@ -896,7 +900,7 @@ class ColumnNode(NodeAttributes):
         processor_ctx: ProcessorContext,
         ctx: NodeContext,
     ):
-        expr: exp.Column = processor_ctx.expr
+        expr: exp.ColumnDef = processor_ctx.expr
 
         super().__init__(
             kind="column",
@@ -914,6 +918,10 @@ class ColumnNode(NodeAttributes):
             self.member = processor_ctx.node.recursive_cte_member_kind
 
         self.table_type = table_type
+
+    def get_column_constraint_expressions(self):
+        constraints = (exp. DefaultColumnConstraint, exp.ComputedColumnConstraint)
+        return [c.kind for c in self.expr.constraints if isinstance(c.kind, constraints)]
 
     def _table_type(self, catalog, schema, table, processor_ctx) -> str:
         """
@@ -1614,7 +1622,8 @@ class LineageBuilder:
 
     def process_column(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         expr: exp.Column = processor_ctx.expr
-        if expr.table in processor_ctx.node.parent_pivot_aliases:
+
+        if processor_ctx.node and expr.table in processor_ctx.node.parent_pivot_aliases:
             # On a path toward a pivot. Skip until we reach it.
             return None, []
 
