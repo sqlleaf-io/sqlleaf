@@ -17,6 +17,7 @@ from sqlleaf import (
     mappings,
     sqlglot_lineage,
     transform,
+    exception,
 )
 
 logger = logging.getLogger("sqlleaf")
@@ -62,6 +63,33 @@ def get_lineage_for_query(parent_query: structs.Query, object_mapping) -> nx.Mul
     return graph
 
 
+def _validate_and_get_selects(statement: exp.Insert, child_columns: t.List[exp.ColumnDef], child_table: exp.Table) -> t.List[str]:
+    """
+    Ensure that the selected columns exist inside the child table.
+    """
+    child_column_names = [c.name for c in child_columns]
+    if isinstance(statement.expression, exp.Values):
+        selects = [s.name for s in statement.this.expressions]
+    else:
+        selects = statement.named_selects
+
+    unknown_columns = [s for s in selects if s not in child_column_names]
+
+    if unknown_columns:
+        raise exception.SqlLeafException(
+            message=f"Unknown columns used in SELECT: {list(unknown_columns)}",
+            table=str(child_table),
+        )
+
+    if "*" in selects:
+        raise exception.SqlLeafException(
+            message="Statement has unresolved star column",
+            table=str(child_table)
+        )
+
+    return selects
+
+
 def generate_column_lineage_for_query(
     query: structs.Query,
     graph: nx.MultiDiGraph,
@@ -98,7 +126,7 @@ def generate_column_lineage_for_query(
 
     builder = structs.LineageBuilder.from_dialect(query.dialect)
     if isinstance(query, structs.PutQuery):
-        # Short-circuit this function for simplicity
+        # Short-circuit this function; it's not an insert
         builder.process_put(processor_ctx, ctx)
         return graph
 
@@ -111,32 +139,21 @@ def generate_column_lineage_for_query(
 
             return graph
 
-
-    """
-    For each child table column, calculate the lineage
-    """
     # Ensure the child table exists with the expected columns
-    child_columns = query.determine_selected_columns(object_mapping)
+    child_table_query = object_mapping.get_table_or_stage(query.child_table)
+    child_columns = child_table_query.get_column_defs()
+    selected_column_names = _validate_and_get_selects(query.statement, child_columns, child_table)
+
     select_idx = 0
-    for col_name, col_props in child_columns.items():
-
-        # TODO: refactor
-        col_expr = exp.column(
-            catalog=child_table.catalog,
-            db=child_table.db,
-            table=child_table.name,
-            col=col_name,
-        )
-        col_expr.type = exp.DataType.build(col_props["kind"])
-        col_expr.parent = child_table
-
+    for col_def in child_columns:
         ctx = structs.NodeContext(select_index=select_idx, statement_index=query.get_statement_index())
         processor_ctx = structs.ProcessorContext(
             graph=graph,
             object_mapping=object_mapping,
             query=query,
-            expr=col_expr,
+            expr=col_def,
         )
+        col_name = col_def.name
 
         child_node = structs.ColumnNode(
             catalog=child_table.catalog,
@@ -147,13 +164,13 @@ def generate_column_lineage_for_query(
             ctx=ctx,
         )
 
-        if default_expr:= col_props["default"]:
+        if default_expr := col_def.find(exp.DefaultColumnConstraint):
             # Add the default column expression to the lineage
             # TODO: make this a CLI flag
-            default_ctx = replace(processor_ctx, expr=default_expr, child_node_attrs=child_node)
+            default_ctx = replace(processor_ctx, expr=default_expr.this, child_node_attrs=child_node)
             builder.walk_tree_and_build_graph(processor_ctx=default_ctx, ctx=ctx)
 
-        if not col_props['selected']:
+        if col_name not in selected_column_names:
             continue
 
         logger.info(

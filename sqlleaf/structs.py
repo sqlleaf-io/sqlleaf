@@ -104,54 +104,6 @@ class Query:
             queries.extend(child.get_all_child_queries())
         return queries
 
-    def determine_selected_columns(self, object_mapping: mappings.ObjectMapping) -> t.Dict:
-        """
-         Determine whether the selected columns exist inside the table's mapping.
-        An error is thrown if any non-existent or invalid columns are used.
-
-        Parameters:
-            mapping (sqlglot.MappingSchema): the mapping of table schemas
-
-        Returns:
-            child_columns: {col_name: {'kind': 'table', 'selected': False, 'default': '42'}, ...}
-        """
-        child_table = self.child_table
-        # Get the 'CREATE TABLE' query for this query's child table
-        if str(child_table).startswith("@"):
-            child_table_query = object_mapping.find_query(kind='stage', table=child_table)
-        else:
-            child_table_query = object_mapping.find_query(kind='table', table=child_table)
-
-        if not child_table_query:
-            raise exception.SqlLeafException(message="Unknown table", table=str(child_table))
-
-        statement = self.statement
-        child_columns = child_table_query.get_columns()
-
-        if isinstance(statement.expression, exp.Values):
-            selects = [s.name for s in statement.this.expressions]
-        else:
-            selects = statement.named_selects
-
-        unknown_columns = util.unique(selects - child_columns.keys())
-
-        if unknown_columns:
-            raise exception.SqlLeafException(
-                message=f"Unknown columns used in SELECT: {list(unknown_columns)}",
-                table=str(child_table),
-            )
-
-        if "*" in selects:
-            # TODO: shouldn't this check statement.named_selects instead?
-            raise exception.SqlLeafException(message="Statement has unresolved star column", table=str(child_table))
-
-
-        # Set the query's columns as being selected (required by sqlglot's lineage())
-        for col_name, col_props in child_columns.items():
-            col_props["selected"] = col_name in selects
-
-        return child_columns
-
     def to_dict(self):
         result = {
             "id": self.id,
@@ -383,7 +335,7 @@ class CTASQuery(Query):
         self,
         statement: exp.Create,
         dialect: str,
-        columns: t.Dict[str, t.Dict[str, str]],
+        columns: t.List[exp.ColumnDef],
         statement_index: int,
     ):
         super().__init__(
@@ -393,16 +345,16 @@ class CTASQuery(Query):
             statement_index=statement_index,
             child_table=util.get_table(statement),
         )
-        self.columns = columns
+        self.column_defs = columns
 
-    def get_columns(self) -> t.Dict[str, t.Dict[str, str]]:
-        return self.columns
+    def get_column_defs(self) -> t.List[exp.ColumnDef]:
+        return self.column_defs
 
     def get_column_names_with_types(self) -> t.Dict[str, str]:
         """
         Used by sqlglot's MappingSchema
         """
-        columns = {name: str(props["kind"]) for name, props in self.columns.items()}
+        columns = {col.name: str(col.kind) for col in self.column_defs}
         return columns
 
 
@@ -411,7 +363,7 @@ class ViewQuery(Query):
         self,
         statement: exp.Create,
         dialect: str,
-        columns: t.Dict[str, t.Dict[str, str]],
+        columns: t.List[exp.ColumnDef],
         statement_index: int,
     ):
         super().__init__(
@@ -421,16 +373,16 @@ class ViewQuery(Query):
             statement_index=statement_index,
             child_table=util.get_table(statement),
         )
-        self.columns = columns
+        self.column_defs = columns
 
-    def get_columns(self) -> t.Dict[str, t.Dict[str, str]]:
-        return self.columns
+    def get_column_defs(self) -> t.List[exp.ColumnDef]:
+        return self.column_defs
 
     def get_column_names_with_types(self) -> t.Dict[str, str]:
         """
         Used by sqlglot's MappingSchema
         """
-        columns = {name: str(props["kind"]) for name, props in self.columns.items()}
+        columns = {col.name: str(col.kind) for col in self.column_defs}
         return columns
 
 
@@ -448,6 +400,9 @@ class TableQuery(Query):
         self.column_defs = []
 
         self.set_column_defs(object_mapping)
+
+    def get_column_defs(self) -> t.List[exp.ColumnDef]:
+        return self.column_defs
 
     def set_column_defs(self, object_mapping: mappings.ObjectMapping):
         """
@@ -734,8 +689,8 @@ class StageQuery(Query):
         self.child_table.this.set("this", "@" + stage_name)
         self.child_table.this.set("quoted", False)
 
-    def get_columns(self) -> t.Dict[str, t.Dict[str, str]]:
-        return self.columns
+    def get_column_defs(self) -> t.List[exp.ColumnDef]:
+        return self.column_defs
 
 
 class CopyQuery(Query):
@@ -812,10 +767,10 @@ class CopyQuery(Query):
         if self.is_target_a_stage:
             # Any object that is referenced as a source table needs to be added to the table mapping
             # for the lineage functions to work - such as this Stage
-            named_columns = {s.alias_or_name: {"default": None, "kind": s.type or "UNKNOWN"} for s in expr_insert.selects}
+            col_defs = [exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(type)) for name, type in child_columns.items()]
 
             child_table_query = object_mapping.find_query(kind='stage', table=child_table)
-            child_table_query.columns = named_columns
+            child_table_query.column_defs = col_defs
 
         # We don't worry about `self.is_source_a_stage` here as that is handled in the process_column() later
 
@@ -973,9 +928,7 @@ class ColumnNode(NodeAttributes):
         tokens = [catalog, schema, table]
         name = ".".join([tok for tok in tokens if tok])
         tab = exp.to_table(name, dialect=processor_ctx.query.dialect)
-        query = processor_ctx.object_mapping.find_query(kind='table', table=tab)
-        if not query:
-            query = processor_ctx.object_mapping.find_query(kind='stage', table=tab)
+        query = processor_ctx.object_mapping.get_table_or_stage(table=tab, raise_on_missing=False)
 
         if not query:
             return 'table'
@@ -1355,7 +1308,9 @@ class ProcessorContext:
         if new_data_type:
             expr_type = new_data_type
         else:
-            if (not self.expr.type or self.expr.type == exp.DataType.Type.UNKNOWN) and self.expr.parent:
+            if isinstance(self.expr, exp.ColumnDef):
+                expr_type = self.expr.kind
+            elif (not self.expr.type or self.expr.type == exp.DataType.Type.UNKNOWN) and self.expr.parent:
                 expr_type = self.expr.parent.type
             else:
                 expr_type = self.expr.type

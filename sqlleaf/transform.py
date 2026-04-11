@@ -70,7 +70,7 @@ def add_aliases_to_selects(statement: exp.Insert, object_mapping: mappings.Objec
         if not obj:
             raise exception.SqlLeafException(message=f"Unknown table: {child_table}")
 
-        cols = obj.get_columns()
+        cols = [c.name for c in obj.get_column_defs()]
 
     table_columns = list(cols)[:len(selects)]
 

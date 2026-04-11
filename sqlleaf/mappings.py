@@ -7,6 +7,8 @@ from sqlglot.trie import new_trie
 
 ColumnMapping = t.Union[t.Dict, str, t.List]
 
+from sqlleaf import exception
+
 
 class ObjectMapping(MappingSchema):
     """
@@ -141,3 +143,17 @@ class ObjectMapping(MappingSchema):
     @property
     def supported_table_args(self) -> t.Tuple[str, ...]:
         return exp.TABLE_PARTS
+
+    def get_table_or_stage(self, table: exp.Table, raise_on_missing: bool = True):
+        """
+        Get the 'CREATE' query for a table or stage.
+        """
+        if str(table).startswith("@"):
+            child_table_query = self.find_query(kind='stage', table=table)
+        else:
+            child_table_query = self.find_query(kind='table', table=table)
+
+        if not child_table_query and raise_on_missing:
+            raise exception.SqlLeafException(message="Unknown table", table=str(table))
+
+        return child_table_query

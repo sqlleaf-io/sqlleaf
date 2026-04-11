@@ -217,16 +217,15 @@ def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping:
     # Add types from the mapping if available
     stmt = annotate_types(stmt, dialect=dialect, schema=object_mapping)
 
-    # We may not know the column types until we parse the Creates's SELECT query / connect it to the lineage
-    named_columns = {s.alias_or_name: {"default": None, "kind": s.type or "UNKNOWN"} for s in stmt.selects}
+    col_defs = [exp.ColumnDef(this=exp.to_identifier(s.alias), kind=s.type) for s in stmt.selects]
 
     if stmt.kind == "VIEW":
         # CREATE VIEW ...
-        query = structs.ViewQuery(statement=stmt, dialect=dialect, columns=named_columns, statement_index=statement_index)
+        query = structs.ViewQuery(statement=stmt, dialect=dialect, columns=col_defs, statement_index=statement_index)
 
     elif stmt.kind == "TABLE":
         # CREATE TABLE AS SELECT ...
-        query = structs.CTASQuery(statement=stmt, dialect=dialect, columns=named_columns, statement_index=statement_index)
+        query = structs.CTASQuery(statement=stmt, dialect=dialect, columns=col_defs, statement_index=statement_index)
 
     object_mapping.add_query(
         kind='table',
