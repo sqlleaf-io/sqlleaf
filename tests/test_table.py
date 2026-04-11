@@ -118,11 +118,12 @@ def test__view_simple(holder, case):
 
 def test__views_and_ctas_with_every_hierarchy(holder):
     queries = '''
-    CREATE TABLE base (one int);
-    CREATE TABLE ctas AS SELECT one FROM base;
-    CREATE VIEW vie AS SELECT * FROM ctas;
-    CREATE VIEW tab.vie AS SELECT one AS two FROM vie;
-    CREATE VIEW sch.tab.vie AS SELECT two AS three FROM tab.vie;
+    CREATE TABLE b.a (ba int);
+    CREATE TABLE a.b (ab int);
+    CREATE TABLE ctas AS SELECT ab as one FROM a.b;
+    CREATE VIEW vie.tab AS SELECT * FROM ctas;
+    CREATE VIEW tab.vie AS SELECT ABS(one) AS two FROM vie.tab;
+    CREATE VIEW sch.tab.vie AS SELECT two AS three FROM tab.vie
     '''
     h = holder()
     h.generate(queries, dialect=DIALECT)
@@ -130,10 +131,10 @@ def test__views_and_ctas_with_every_hierarchy(holder):
     edges = h.get_edges()
     paths = h.get_friendly_paths()
 
-    assert len(nodes) == 5
-    assert len(edges) == 4
+    assert len(nodes) == 6
+    assert len(edges) == 5
     assert paths == [
-        ['column[base.one]', 'column[ctas.one]', 'column[vie.one]', 'column[tab.vie.two]', 'column[sch.tab.vie.three]']
+        ['column[a.b.ab]', 'column[ctas.one]', 'column[vie.tab.one]', 'function[ABS()]', 'column[tab.vie.two]', 'column[sch.tab.vie.three]']
     ]
 
 
@@ -153,13 +154,6 @@ def test__view_with_cte(holder):
         ['literal["a"]', 'column[inner1.name]', 'column[v.name]']
     ]
 
-
-
-# TODO: test views using interchanging schema/view name to see if conflicts in mapping hierarchy
-# create view par.chi ...
-# create view chi.par ...
-# create view par
-# create view chi
 
 def test__simple_sequence(holder):
     queries = '''
