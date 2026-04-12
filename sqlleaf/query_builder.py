@@ -22,6 +22,7 @@ def get_query_processors():
         "procedure": _process_stored_procedures,
         "function": _process_functions,
         "trigger": _process_triggers,
+        "select": _process_unnamed,
         "insert": _process_unnamed,
         "update": _process_unnamed,
         "merge": _process_unnamed,
@@ -144,9 +145,6 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
             unsupported.append((index, stmt))
             continue
 
-        if kind == 'select':
-            raise exception.SqlLeafException(message=f"SELECT queries have no lineage. Provide an INSERT, UPDATE or any CREATE statement.")
-
         if kind not in processors:
             raise exception.SqlLeafException(message=f"Unsupported query kind: '{kind}'. Are you missing a processor for this kind?")
 
@@ -154,8 +152,9 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         stmt = normalize_identifiers(stmt, dialect=dialect, store_original_column_identifiers=True)
 
         query: structs.Query = processors[kind](statement=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=index)
-        queries[_id] = query
-        counts[kind] += 1
+        if query:
+            queries[_id] = query
+            counts[kind] += 1
 
     logger.debug("Found statements: %s", dict(counts.items()))
     logger.warning("Unsupported statements: %s", len(unsupported))
@@ -166,6 +165,8 @@ def _process_unnamed(statement: exp.Expression, dialect: str, object_mapping: ma
     """
     Process an unnamed statement - one not inside a 'CREATE <name>' statement.
     """
+    query = None
+
     if isinstance(statement, exp.Merge):
         query = structs.MergeQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
     if isinstance(statement, exp.Insert):
@@ -176,6 +177,11 @@ def _process_unnamed(statement: exp.Expression, dialect: str, object_mapping: ma
         query = structs.CopyQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
     elif isinstance(statement, exp.Put):
         query = structs.PutQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+    elif isinstance(statement, exp.Select):
+        if statement.find(exp.Insert, exp.Update, exp.Merge):
+            query = structs.SelectQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+        else:
+            logger.warning("Skipping statement: A SELECT query must have a data-modifying statement, such as an INSERT, to contain lineage.")
     return query
 
 

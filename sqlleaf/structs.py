@@ -141,9 +141,9 @@ class MergeQuery(Query):
 
         self.whens = []
         self.child_expressions = []
-        self.collect_and_transform_child_expressions(expr, object_mapping)
+        self.collect_and_transform_child_expressions(expr, dialect, object_mapping)
 
-    def collect_and_transform_child_expressions(self, expr: exp.Merge, object_mapping: mappings.ObjectMapping):
+    def collect_and_transform_child_expressions(self, expr: exp.Merge, dialect: str, object_mapping: mappings.ObjectMapping):
         """
         Transform any nested statements (INSERT or UPDATE) into fully qualified queries.
 
@@ -207,12 +207,41 @@ class MergeQuery(Query):
                     expression=new_select,
                     columns=[col.this for col in when.this.expressions],
                     into=merge.child_table,
+                    dialect=dialect,
                 )
                 for cte in new_ctes:
                     insert_expr = insert_expr.with_(alias=cte["alias"], as_=cte["as_"])
 
                 insert_query = InsertQuery(expr=insert_expr, dialect=self.dialect, object_mapping=object_mapping, statement_index=i)
                 self.add_child_query(insert_query)
+
+
+class SelectQuery(Query):
+    def __init__(self, expr: exp.Select, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
+        child_table = util.get_table(expr)
+        super().__init__(
+            kind="select",
+            statement=expr,
+            dialect=dialect,
+            statement_index=statement_index,
+            child_table=child_table,
+        )
+        self.collect_and_transform_child_expressions(expr, dialect, object_mapping)
+
+    def collect_and_transform_child_expressions(self, expr: exp.Select, dialect: str, object_mapping: mappings.ObjectMapping):
+        """
+        Transform any nested statements (INSERT or UPDATE) into fully qualified queries.
+        """
+        for i, cte in enumerate(expr.ctes):
+            cte_expr = cte.this
+
+            if isinstance(cte_expr, exp.Merge):
+                query = MergeQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
+            if isinstance(cte_expr, exp.Insert):
+                query = InsertQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
+            elif isinstance(cte_expr, exp.Update):
+                query = UpdateQuery(expr=cte_expr, dialect=dialect, statement_index=i)
+            self.add_child_query(query)
 
 
 class InsertQuery(Query):
