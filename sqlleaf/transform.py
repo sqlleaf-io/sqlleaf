@@ -37,6 +37,7 @@ def apply_optimizations(statement: exp.Expression, dialect: str, object_mapping:
     except sqlglot.errors.OptimizeError as e:
         raise exception.SqlGlotException(message=str(e))
 
+    stmt = expand_returning_columns(stmt, object_mapping, child_table)
     stmt = add_aliases_to_selects(stmt, object_mapping, child_table)
 
     # Apply sqlglot's optimization rules.
@@ -46,6 +47,35 @@ def apply_optimizations(statement: exp.Expression, dialect: str, object_mapping:
     stmt = merge_derived_tables(stmt)   # Skip merge_ctes()
 
     return stmt
+
+
+def expand_returning_columns(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
+    """
+    Given an (INSERT .. RETURNING *) statement, expand the star to the table's column names.
+    """
+    returning = statement.args.get('returning', None)
+    if not returning:
+        return statement
+
+    new_expressions = []
+    table_columns = list(object_mapping.find_columns_for_table(child_table).keys())
+    for expr in returning.expressions:
+        if expr.is_star:
+            if isinstance(expr, exp.Column):
+                if expr.table != child_table.alias_or_name:
+                    raise exception.SqlLeafException(f"The alias '{expr.table}' in RETURNING must refer to table '{exp.table_name(child_table)}'")
+
+            new_columns = [exp.column(c) for c in table_columns]
+            new_expressions.extend(new_columns)
+
+        else:
+            if expr.unalias().name not in table_columns:
+                raise exception.SqlLeafException(f"Column '{expr.name}' does not exist in table '{exp.table_name(child_table)}'")
+
+            new_expressions.append(expr)
+
+    returning.set('expressions', new_expressions)
+    return statement
 
 
 def add_aliases_to_selects(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
