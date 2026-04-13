@@ -12,6 +12,15 @@ from sqlleaf import exception, mappings
 
 logger = logging.getLogger("sqleaf")
 
+RULES_OVERRIDE = [
+    r for r in RULES if r.__name__ not in [
+        'eliminate_ctes',       # Preserve CTEs
+        'merge_subqueries',     # Preserve CTEs
+        'qualify',              # We qualify when we need to
+        'quote_identifiers',    # Preserve identifiers
+    ]
+]
+
 
 def apply_optimizations(statement: exp.Expression, dialect: str, object_mapping: mappings.ObjectMapping, child_table, match_columns: bool = True):
     """
@@ -40,10 +49,8 @@ def apply_optimizations(statement: exp.Expression, dialect: str, object_mapping:
     stmt = expand_returning_columns(stmt, dialect, object_mapping, child_table)
     stmt = add_aliases_to_selects(stmt, object_mapping, child_table, match_columns)
 
-    # Apply sqlglot's optimization rules.
-    # Some of them cause undesirable effects for our purposes.
-    rules = [r for r in RULES if r.__name__ not in ['eliminate_ctes', 'merge_subqueries', 'qualify', 'quote_identifiers']]
-    stmt = optimize(expression=stmt, dialect=dialect, schema=object_mapping, rules=rules)
+    # Selectively apply sqlglot's optimization rules.
+    stmt = optimize(expression=stmt, dialect=dialect, schema=object_mapping, rules=RULES_OVERRIDE)
     stmt = merge_derived_tables(stmt)   # Skip merge_ctes()
 
     return stmt
@@ -62,6 +69,7 @@ def expand_returning_columns(statement: exp.Insert, dialect: str, object_mapping
     is rewritten to:
         INSERT INTO fruit.raw (name)
         SELECT UPPER(name)
+        FROM fruit.raw
 
     and then passed through apply_optimizations() so that the correct
     aliases and expanded column names are set.
