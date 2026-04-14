@@ -22,7 +22,7 @@ RULES_OVERRIDE = [
 ]
 
 
-def apply_optimizations(statement: exp.Expression, dialect: str, object_mapping: mappings.ObjectMapping, child_table, match_columns: bool = True):
+def apply_optimizations(statement: exp.Insert, dialect: str, object_mapping: mappings.ObjectMapping, child_table, match_columns: bool = True):
     """
     1. We pass validate=false to prevent errors like: sqlglot.errors.OptimizeError: Column '"v_ca_start_date_id"' could not be resolved
     2. We pass infer_schema=True to source unqualified columns from the source table (if missing from the `schema` param)
@@ -33,6 +33,13 @@ def apply_optimizations(statement: exp.Expression, dialect: str, object_mapping:
         produces
             my.table.name -> my.other.name
     """
+    # Rewrite the columns in any child writable CTEs.
+    # We cannot rely on lineage() to collect the RETURNING statements
+    # due to limitations with the optimizer.build_scope function: it only
+    # considers select statements.
+    for cte_expr in getattr(statement, 'ctes', []):
+        expand_returning_columns(cte_expr.this, dialect, object_mapping, cte_expr.this.this)
+
     try:
         stmt = qualify.qualify(
             statement,
@@ -46,17 +53,19 @@ def apply_optimizations(statement: exp.Expression, dialect: str, object_mapping:
     except sqlglot.errors.OptimizeError as e:
         raise exception.SqlGlotException(message=str(e))
 
-    stmt = expand_returning_columns(stmt, dialect, object_mapping, child_table)
-    stmt = add_aliases_to_selects(stmt, object_mapping, child_table, match_columns)
+    if match_columns:
+        stmt = add_aliases_to_selects(stmt, object_mapping, child_table)
 
     # Selectively apply sqlglot's optimization rules.
+    # TODO: this breaks the aliasings
+    #  Rename the outer SELECT cols to match the RETURNING col aliases
     stmt = optimize(expression=stmt, dialect=dialect, schema=object_mapping, rules=RULES_OVERRIDE)
     stmt = merge_derived_tables(stmt)   # Skip merge_ctes()
 
     return stmt
 
 
-def expand_returning_columns(statement: exp.Insert, dialect: str, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
+def expand_returning_columns(statement: exp.Insert, dialect: str, object_mapping: mappings.ObjectMapping, child_table: exp.Table, overwrite_selects: bool = False) -> exp.Insert:
     """
     Given an (INSERT .. RETURNING *) statement, expand the star to the table's column names
     and add the correct column aliases.
@@ -73,30 +82,22 @@ def expand_returning_columns(statement: exp.Insert, dialect: str, object_mapping
 
     and then passed through apply_optimizations() so that the correct
     aliases and expanded column names are set.
+
+    overwrite_selects: whether to overwrite the SELECT columns with the RETURNING columns
     """
     returning = statement.args.get('returning', None)
     if not returning:
+        # Ensures we don't recurse indefinitely
         return statement
 
-    # Remove all the parts we don't need
-    new_insert = statement.copy()
-    new_insert.selects.pop()
-    new_insert.args['returning'].pop()
-    if from_ := new_insert.expression.args.get('from_', None):
-        from_.pop()
+    child_table.find(exp.TableAlias).set('columns', [])
+    new_select = exp.select(*returning.expressions).from_(child_table)
+    new_select = apply_optimizations(new_select, dialect, object_mapping, child_table, match_columns=False)
 
-    # Add the parts we do need
-    new_insert.set('expression', exp.from_(child_table, dialect=dialect))
-    for r_expr in returning.expressions:
-        new_insert.expression.append('expressions', r_expr.copy())
-
-    new_insert = apply_optimizations(new_insert, dialect, object_mapping, child_table, match_columns=False)
-
-    returning.set('expressions', new_insert.selects)
-    return statement
+    statement.parent.set('this', new_select)
 
 
-def add_aliases_to_selects(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table, match_columns: bool) -> exp.Insert:
+def add_aliases_to_selects(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
     """
     Add aliases to SELECTs that are missing them by looking at the corresponding INSERT column.
     This prevents sqlglot from assigning its own generated names as aliases.
@@ -109,9 +110,6 @@ def add_aliases_to_selects(statement: exp.Insert, object_mapping: mappings.Objec
     match_columns: whether the SELECT aliases should match the INSERT's columns
     """
     if not isinstance(statement, exp.Insert) or not statement.selects:
-        return statement
-
-    if not match_columns:
         return statement
 
     selects = statement.selects

@@ -10,6 +10,7 @@ from sqlleaf import util, mappings, sqlglot_lineage, exception
 
 logger = logging.getLogger("sqleaf")
 
+DMLQueryType = t.Union[exp.Insert, exp.Update, exp.Merge, exp.Select]
 
 def new_graph() -> nx.MultiDiGraph:
     """
@@ -61,8 +62,8 @@ class Query:
             self.property_names = [str(p) for p in table_properties.expressions]
 
     def set_statement(self, statement: exp.Expression):
-        self.statement = statement
-        text = statement.sql()
+        self.statement = statement.copy()
+        text = self.statement.sql()
         self.text_original = text
         self.text_length = len(text)
         self.text_sha256_hash = util.long_sha256_hash(text)
@@ -93,16 +94,54 @@ class Query:
         for query in child_queries:
             self.add_child_query(query)
 
-    def get_all_child_queries(self) -> t.List:
+    def get_all_queries(self, types: t.Tuple = None):
         """
-        Fetch all the child queries recursively
+        Collect all queries (children + self) recursively of a certain type.
+        """
+        all_queries = []
 
-        For example, a MERGE may contain several INSERT, UPDATE.
-        """
-        queries = []
         for child in self.child_queries:
-            queries.extend(child.get_all_child_queries())
-        return queries
+            all_queries.append(child)
+            all_queries.extend(child.get_all_queries())
+
+        if not self.parent_query:
+            # We're the root node
+            all_queries = [self] + self.child_queries
+            all_queries = [q for q in all_queries if types and isinstance(q, types)]
+
+        return all_queries
+
+    def collect_writable_cte_queries(self, expr: DMLQueryType, dialect: str, object_mapping: mappings.ObjectMapping):
+        """
+        Transform any writable CTE statements into a form.
+
+        If this query is of the form:
+            WITH cte AS (
+                INSERT ... RETURNING ...
+            )
+            INSERT INTO ...
+
+        then the outer and inner queries form a parent-child relationship.
+        The inner query is left as-is and copied, while the outer query transforms its
+        inner query's SELECT columns with the RETURNING columns. This is so that
+        the lineage functions collect the right columns during expression traversal.
+        The two queries are processed independently later.
+        """
+        for i, cte in enumerate(getattr(expr, 'ctes', [])):
+            cte_expr = cte.this
+
+            if isinstance(cte_expr, exp.Merge):
+                query = MergeQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
+            elif isinstance(cte_expr, exp.Insert):
+                query = InsertQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
+            elif isinstance(cte_expr, exp.Update):
+                query = UpdateQuery(expr=cte_expr, dialect=dialect, statement_index=i)
+            else:
+                continue
+
+            # Detach the query in the AST so that certain transformations work later
+            query.statement.pop()
+            self.add_child_query(query)
 
     def to_dict(self):
         result = {
@@ -141,6 +180,7 @@ class MergeQuery(Query):
 
         self.whens = []
         self.child_expressions = []
+        self.collect_writable_cte_queries(expr, dialect, object_mapping)
         self.collect_and_transform_child_expressions(expr, dialect, object_mapping)
 
     def collect_and_transform_child_expressions(self, expr: exp.Merge, dialect: str, object_mapping: mappings.ObjectMapping):
@@ -226,22 +266,7 @@ class SelectQuery(Query):
             statement_index=statement_index,
             child_table=child_table,
         )
-        self.collect_and_transform_child_expressions(expr, dialect, object_mapping)
-
-    def collect_and_transform_child_expressions(self, expr: exp.Select, dialect: str, object_mapping: mappings.ObjectMapping):
-        """
-        Transform any nested statements (INSERT or UPDATE) into fully qualified queries.
-        """
-        for i, cte in enumerate(expr.ctes):
-            cte_expr = cte.this
-
-            if isinstance(cte_expr, exp.Merge):
-                query = MergeQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
-            if isinstance(cte_expr, exp.Insert):
-                query = InsertQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
-            elif isinstance(cte_expr, exp.Update):
-                query = UpdateQuery(expr=cte_expr, dialect=dialect, statement_index=i)
-            self.add_child_query(query)
+        self.collect_writable_cte_queries(expr, dialect, object_mapping)
 
 
 class InsertQuery(Query):
@@ -255,6 +280,7 @@ class InsertQuery(Query):
             child_table=child_table,
         )
         self.convert_values_to_select(object_mapping)
+        self.collect_writable_cte_queries(expr, dialect, object_mapping)
 
 
     def convert_values_to_select(self, object_mapping: mappings.ObjectMapping):

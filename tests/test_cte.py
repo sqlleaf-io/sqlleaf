@@ -139,6 +139,53 @@ def test__cte_nested(holder):
     ]
 
 
+def test__cte_insert_returning(holder):
+    queries = '''
+    WITH insert_cte AS (
+        INSERT INTO fruit.raw as r (name)
+        SELECT 'orange' as name
+        RETURNING name, kind
+    )
+    INSERT INTO fruit.processed (name, kind)
+    SELECT name, kind FROM insert_cte;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    paths = h.get_friendly_paths()
+    queries = h.get_queries_created()
+
+    assert len(nodes) == 7
+    assert paths == [
+        ['column[fruit.raw.kind]', 'column[insert_cte.kind]', 'column[fruit.processed.kind]'],
+        ['literal["orange"]', 'column[fruit.raw.name]', 'column[insert_cte.name]', 'column[fruit.processed.name]']
+    ]
+    assert [structs.InsertQuery] == list(map(type, queries))
+    assert [structs.InsertQuery] == list(map(type, queries[0].child_queries))
+
+
+def test__cte_insert(holder):
+    queries = '''
+    WITH insert_cte AS (
+        INSERT INTO fruit.raw (name)
+        SELECT 'orange' as name
+        RETURNING fruit.raw.name, name, *
+    )
+    SELECT 1;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    paths = h.get_friendly_paths()
+    queries = h.get_queries_created()
+
+    assert paths == [
+        ['literal["orange"]', 'column[fruit.raw.name]']
+    ]
+    assert [structs.SelectQuery] == list(map(type, queries))
+    assert [structs.InsertQuery] == list(map(type, queries[0].child_queries))
+
+
 def test__view_with_recursive_cte(holder):
     queries = """
     WITH RECURSIVE numbers AS (

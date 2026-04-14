@@ -26,16 +26,18 @@ class Lineage:
         if not self.object_mapping:
             self.object_mapping = mappings.ObjectMapping(dialect=dialect)
 
-        queries = query_builder.collect_queries(sql, dialect, self.object_mapping)
+        parent_queries = query_builder.collect_queries(sql, dialect, self.object_mapping)
 
-        for query in queries:
-            if query.has_statement:  # Queries without DML statements (e.g. CREATE TABLE) have no lineage
-                query = lineage.transform_query(query, self.object_mapping)
-                graph = lineage.get_lineage_for_query(query, self.object_mapping)
+        for parent_query in parent_queries:
+            if parent_query.has_statement:  # Queries without DML statements (e.g. CREATE TABLE) have no lineage
+                queries = parent_query.get_all_queries(types=(structs.InsertQuery, structs.UpdateQuery, structs.ViewQuery, structs.CTASQuery, structs.PutQuery, structs.CopyQuery))  #  or [parent_query]
+                graph = lineage.get_lineage_for_query(queries, self.object_mapping)
+                graph.graph["attrs"].add_query(parent_query)
                 lineage.update_column_data_types(self.graph)
                 self.merge_graph(graph)
 
-            self.graph.graph["attrs"].add_query(query)
+            # Associate the query with the graph even if it has no lineage
+            self.graph.graph["attrs"].add_query(parent_query)
 
         self.paths = lineage.calculate_paths(graph=self.graph)
 

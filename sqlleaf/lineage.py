@@ -23,29 +23,24 @@ from sqlleaf import (
 logger = logging.getLogger("sqlleaf")
 
 
-def transform_query(parent_query: structs.Query, object_mapping) -> structs.Query:
+def transform_query(query: structs.Query, object_mapping) -> structs.Query:
     """
     Transform the queries so that they have complete information in preparation for lineage calculation.
     """
-    queries = parent_query.child_queries or [parent_query]
+    statement = query.statement
+    logger.info(f"Transforming query: {str(type(statement))}")
 
-    # Process each of the statements
-    for query in queries:
-        statement = query.statement
-        logger.info(f"Transforming query: {str(type(statement))}")
+    # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
+    statement = transform.apply_optimizations(statement, query.dialect, object_mapping, query.child_table)
 
-        # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
-        statement = transform.apply_optimizations(statement, query.dialect, object_mapping, query.child_table)
-
-        # Transform CASE statements to remove false positive lineage; see docs
-        statement = statement.transform(transform.case_statement_transformer)
-        query.statement_transformed = statement
-        query.set_statement(statement)
-
-    return parent_query
+    # Transform CASE statements to remove false positive lineage; see docs
+    statement = statement.transform(transform.case_statement_transformer)
+    query.statement_transformed = statement
+    query.set_statement(statement)
 
 
-def get_lineage_for_query(parent_query: structs.Query, object_mapping) -> nx.MultiDiGraph:
+
+def get_lineage_for_query(queries: t.List[structs.Query], object_mapping) -> nx.MultiDiGraph:
     """
     Calculate the column-level lineage for one or more SQL queries.
 
@@ -53,10 +48,9 @@ def get_lineage_for_query(parent_query: structs.Query, object_mapping) -> nx.Mul
     The individual queries (INSERT, UPDATE) are then extracted.
     """
     graph = structs.new_graph()
-    graph.graph["attrs"].add_query(parent_query)
-    queries = parent_query.child_queries or [parent_query]
 
     for query in queries:
+        transform_query(query, object_mapping)
         generate_column_lineage_for_query(query, graph, object_mapping)
         query.set_to_original()
 
