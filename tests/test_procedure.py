@@ -3,10 +3,11 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from sqlleaf import structs
+
 from tests.new_fixtures import (
     holder
 )
+from sqlleaf.objects.query_types import InsertQuery, UpdateQuery, ProcedureQuery
 
 DIALECT = 'postgres'
 
@@ -42,7 +43,7 @@ def test__procedure_simple(holder):
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
-    assert len(queries) == 1 and isinstance(queries[0], structs.ProcedureQuery)
+    assert len(queries) == 1 and isinstance(queries[0], ProcedureQuery)
     assert paths == [
         ['column[fruit.raw.kind]', 'function[UPPER()]', 'column[cte.knd]', 'function[LOWER()]', 'column[fruit.processed.kind]'],
         ['variable[v_amount]', 'column[fruit.processed.amount]'],

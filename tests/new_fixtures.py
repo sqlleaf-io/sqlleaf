@@ -2,6 +2,8 @@ import sys
 import os
 import pytest
 
+from sqlleaf.objects.query_types import TableQuery
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import logging
@@ -13,7 +15,7 @@ logger = logging.getLogger("sqlleaf")
 logger.setLevel(logging.DEBUG)
 
 import sqlleaf
-from sqlleaf import structs
+
 from sqlglot import exp
 
 DIALECT = 'postgres'
@@ -43,7 +45,7 @@ class LineageDummy(sqlleaf.Lineage):
         new_queries = []
         for query in all_queries:
             # Remove the COMMON_TABLES queries
-            if not (isinstance(query, structs.TableQuery) and exp.table_name(query.child_table).lower() in ['fruit.raw', 'fruit.processed']):
+            if not (isinstance(query, TableQuery) and exp.table_name(query.child_table).lower() in ['fruit.raw', 'fruit.processed']):
                 new_queries.append(query)
         return new_queries
 

@@ -4,11 +4,12 @@ import pytest
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from sqlleaf import structs
+
 
 from tests.new_fixtures import (
     holder
 )
+from sqlleaf.objects.query_types import InsertQuery, UpdateQuery
 
 DIALECT = 'postgres'
 
@@ -30,7 +31,7 @@ def test__update_with_subquery(holder):
         ['literal[5]', 'column[fruit.processed.age]'],
         ['column[fruit.raw.kind]', 'function[COUNT()]', 'column[fruit.processed.amount]'],
     ]
-    assert [structs.UpdateQuery] == list(map(type, queries))
+    assert [UpdateQuery] == list(map(type, queries))
 
 
 def test__update_with_join(holder):
@@ -49,4 +50,4 @@ def test__update_with_join(holder):
     assert paths == [
         ['column[fruit.raw.age]', 'column[fruit.processed.age]']
     ]
-    assert [structs.UpdateQuery] == list(map(type, queries))
+    assert [UpdateQuery] == list(map(type, queries))

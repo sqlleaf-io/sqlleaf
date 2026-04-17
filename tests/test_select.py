@@ -4,11 +4,11 @@ import pytest
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from sqlleaf import structs
 
 from tests.new_fixtures import (
     holder, is_subset
 )
+from sqlleaf.objects.query_types import InsertQuery, UpdateQuery
 
 DIALECT = 'postgres'
 
@@ -59,7 +59,9 @@ def test__case_simple(holder):
 cases = [
     "INSERT INTO fruit.raw VALUES ('yellow', UPPER('banana'));",
     "INSERT INTO fruit.raw (name, kind) VALUES ('yellow', UPPER('banana'));",
-    "INSERT INTO fruit.raw SELECT 'yellow' as name, UPPER('banana') as kind;",
+    "INSERT INTO fruit.raw (kind, name) VALUES (UPPER('banana'), 'yellow');",
+    "INSERT INTO fruit.raw (kind, name) VALUES (UPPER('banana') AS name, 'yellow') AS kind;",
+    "INSERT INTO fruit.raw SELECT 'yellow' as name, UPPER('banana') AS kind;",
     "INSERT INTO fruit.raw SELECT 'yellow', UPPER('banana');",
 ]
 @pytest.mark.parametrize("case", cases)
@@ -75,7 +77,7 @@ def test__insert_values(holder, case):
         ['literal["yellow"]', 'column[fruit.raw.name]'],
         ['literal["banana"]', 'function[UPPER()]', 'column[fruit.raw.kind]'],
     ]
-    assert [structs.InsertQuery] == list(map(type, queries))
+    assert [InsertQuery] == list(map(type, queries))
 
 
 def test__merge_simple_update_and_insert(holder):
@@ -97,7 +99,7 @@ def test__merge_simple_update_and_insert(holder):
 
     assert len(nodes) == 4
     assert len(queries) == 1
-    assert [structs.UpdateQuery, structs.InsertQuery] == list(map(type, queries[0].child_queries))
+    assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries))
     assert paths == [
         ['column[fruit.raw.name]', 'column[fruit.processed.name]'],
         ['column[fruit.raw.kind]', 'column[fruit.processed.label]']
@@ -128,7 +130,7 @@ def test__merge_simple_update_and_insert_with_cte(holder):
 
     assert len(nodes) == 6
     assert len(queries) == 1
-    assert [structs.UpdateQuery, structs.InsertQuery] == list(map(type, queries[0].child_queries))
+    assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries))
     assert paths == [
         ['column[fruit.raw.name]', 'column[merge_cte.name]', 'column[fruit.processed.name]'],
         ['column[fruit.raw.kind]', 'column[merge_cte.kind]', 'column[fruit.processed.label]']
@@ -171,8 +173,8 @@ def test__select_window_function(holder):
     queries = '''
     INSERT INTO fruit.processed (amount, age)
     SELECT 
-        ROW_NUMBER() OVER (ORDER BY created_at DESC) AS amount,
-        RANK() OVER (PARTITION BY age ORDER BY updated_at) AS age
+        ROW_NUMBER() OVER (ORDER BY name DESC) AS amount,
+        RANK() OVER (PARTITION BY age ORDER BY kind) AS age
     FROM fruit.raw;
     '''
     h = holder(with_tables=True)

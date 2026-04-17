@@ -4,7 +4,8 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import pytest
-from sqlleaf import structs
+
+from sqlleaf.objects.query_types import InsertQuery, UpdateQuery, SelectQuery
 
 from tests.new_fixtures import (
     holder, is_subset
@@ -65,7 +66,7 @@ def test__cte_two_identical(holder):
     assert paths == [
         ['literal["a"]', 'column[cte1.name]', 'column[fruit.processed.name]']
     ]
-    assert [structs.InsertQuery] == list(map(type, queries))
+    assert [InsertQuery] == list(map(type, queries))
 
 
 def test__cte_two_same_name_different_query(holder):
@@ -94,7 +95,7 @@ def test__cte_two_same_name_different_query(holder):
         'column[cte1.name type=INT subkind=cte statement=0]',
         'column[cte1.name type=INT subkind=cte statement=1]',
     ], arr=nodes)
-    assert [structs.InsertQuery, structs.InsertQuery] == list(map(type, queries))
+    assert [InsertQuery, InsertQuery] == list(map(type, queries))
 
 
 def test__cte_chained(holder):
@@ -160,8 +161,8 @@ def test__cte_insert_returning(holder):
         ['column[fruit.raw.kind]', 'column[insert_cte.kind]', 'column[fruit.processed.kind]'],
         ['literal["orange"]', 'column[fruit.raw.name]', 'column[insert_cte.name]', 'column[fruit.processed.name]']
     ]
-    assert [structs.InsertQuery] == list(map(type, queries))
-    assert [structs.InsertQuery] == list(map(type, queries[0].child_queries))
+    assert [InsertQuery] == list(map(type, queries))
+    assert [InsertQuery] == list(map(type, queries[0].child_queries))
 
 
 def test__cte_insert(holder):
@@ -170,6 +171,10 @@ def test__cte_insert(holder):
         INSERT INTO fruit.raw (name)
         SELECT 'orange' as name
         RETURNING fruit.raw.name, name, *
+    ),
+    update_cte AS (
+        UPDATE fruit.raw
+        SET name = 'banana'
     )
     SELECT 1;
     '''
@@ -179,11 +184,13 @@ def test__cte_insert(holder):
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
+    assert len(nodes) == 3
     assert paths == [
-        ['literal["orange"]', 'column[fruit.raw.name]']
+        ['literal["orange"]', 'column[fruit.raw.name]'],
+        ['literal["banana"]', 'column[fruit.raw.name]']
     ]
-    assert [structs.SelectQuery] == list(map(type, queries))
-    assert [structs.InsertQuery] == list(map(type, queries[0].child_queries))
+    assert [SelectQuery] == list(map(type, queries))
+    assert [InsertQuery, UpdateQuery] == list(map(type, queries[0].child_queries))
 
 
 def test__view_with_recursive_cte(holder):

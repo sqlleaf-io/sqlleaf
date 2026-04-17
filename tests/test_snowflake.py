@@ -4,11 +4,12 @@ import pytest
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from sqlleaf import structs
+
 
 from tests.new_fixtures import (
     holder,
 )
+from sqlleaf.objects.query_types import InsertQuery, UpdateQuery, PutQuery, StageQuery, CopyQuery, TableQuery
 
 DIALECT = 'snowflake'
 
@@ -43,7 +44,7 @@ def test___copy_stage(holder, case):
     queries = h.get_queries_created()
     paths = h.get_friendly_paths()
 
-    assert [structs.TableQuery, structs.TableQuery, structs.StageQuery, structs.CopyQuery, structs.CopyQuery] == list(map(type, queries))
+    assert [TableQuery, TableQuery, StageQuery, CopyQuery, CopyQuery] == list(map(type, queries))
     # TODO: this is buggy - it should not be many:many. Needs more design thought
     #  to be compatible with single nodes PUT file[] -> stage[]
     #  e.g. maybe file[] -> stage[my_stage] -> N x column[my_stage_col1 kind=stage] ->
@@ -68,7 +69,7 @@ def test___put_stage(holder):
     queries = h.get_queries_created()
     paths = h.get_friendly_paths()
 
-    assert [structs.StageQuery, structs.PutQuery] == list(map(type, queries))
+    assert [StageQuery, PutQuery] == list(map(type, queries))
     assert paths == [
         ['file[/tmp/data/mydata.csv]', 'stage[MY_INT_STAGE]']
     ]

@@ -13,17 +13,21 @@ if t.TYPE_CHECKING:
 
 from sqlleaf import (
     util,
-    structs,
     mappings,
     sqlglot_lineage,
     transform,
-    exception,
 )
+
+from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery
+from sqlleaf.objects.context import ProcessorContext, NodeContext
+from sqlleaf.objects.node_types import NodeAttributes, StageNode, ColumnNode, new_graph
+from sqlleaf.path import LineagePath
+from sqlleaf.processors.generator import LineageBuilder
 
 logger = logging.getLogger("sqlleaf")
 
 
-def transform_query(query: structs.Query, object_mapping) -> structs.Query:
+def transform_query(query: Query, object_mapping) -> Query:
     """
     Transform the queries so that they have complete information in preparation for lineage calculation.
     """
@@ -40,15 +44,15 @@ def transform_query(query: structs.Query, object_mapping) -> structs.Query:
 
 
 
-def get_lineage_for_query(query: structs.Query, object_mapping) -> nx.MultiDiGraph:
+def get_lineage_for_query(query: Query, object_mapping) -> nx.MultiDiGraph:
     """
     Calculate the column-level lineage for one or more SQL queries.
 
     The queries must be the top-level 'container' query, i.e. CREATE PROCEDURE, MERGE, etc.
     The individual queries (INSERT, UPDATE) are then extracted.
     """
-    graph = structs.new_graph()
-    queries = query.get_all_queries(types=(structs.InsertQuery, structs.UpdateQuery, structs.ViewQuery, structs.CTASQuery, structs.PutQuery, structs.CopyQuery))
+    graph = new_graph()
+    queries = query.get_all_queries(types=(InsertQuery, UpdateQuery, ViewQuery, CTASQuery, PutQuery, CopyQuery))
 
     for query in queries:
         transform_query(query, object_mapping)
@@ -72,7 +76,7 @@ def _validate_and_get_selects(statement: exp.Insert, child_columns: t.List[exp.C
 
 
 def generate_column_lineage_for_query(
-    query: structs.Query,
+    query: Query,
     graph: nx.MultiDiGraph,
     object_mapping: mappings.ObjectMapping,
 ) -> nx.MultiDiGraph:
@@ -97,16 +101,16 @@ def generate_column_lineage_for_query(
 
     logger.info(f"Getting lineage for query: {statement.sql(comments=False)}")
 
-    ctx = structs.NodeContext(statement_index=query.get_statement_index())
-    processor_ctx = structs.ProcessorContext(
+    ctx = NodeContext(statement_index=query.get_statement_index())
+    processor_ctx = ProcessorContext(
         graph=graph,
         object_mapping=object_mapping,
         query=query,
         expr=statement,
     )
 
-    builder = structs.LineageBuilder.from_dialect(query.dialect)
-    if isinstance(query, structs.PutQuery):
+    builder = LineageBuilder.from_dialect(query.dialect)
+    if isinstance(query, PutQuery):
         # Short-circuit this function; it's not an insert
         builder.process_put(processor_ctx, ctx)
         return graph
@@ -127,8 +131,8 @@ def generate_column_lineage_for_query(
 
     select_idx = 0
     for col_def in child_columns:
-        ctx = structs.NodeContext(select_index=select_idx, statement_index=query.get_statement_index())
-        processor_ctx = structs.ProcessorContext(
+        ctx = NodeContext(select_index=select_idx, statement_index=query.get_statement_index())
+        processor_ctx = ProcessorContext(
             graph=graph,
             object_mapping=object_mapping,
             query=query,
@@ -136,7 +140,7 @@ def generate_column_lineage_for_query(
         )
         col_name = col_def.name
 
-        child_node = structs.ColumnNode(
+        child_node = ColumnNode(
             catalog=child_table.catalog,
             schema=child_table.db,
             table=child_table.name,
@@ -186,10 +190,10 @@ def generate_column_lineage_for_query(
                 logger.debug("----")
                 # Node depth distinguishes identical query elements across CTEs
 
-                if isinstance(query, structs.CopyQuery) and query.is_target_a_stage:
+                if isinstance(query, CopyQuery) and query.is_target_a_stage:
                     # Set the column to be a StageNode (if applicable) since we now have the lineage from using the dummy column
                     processor_ctx = replace(processor_ctx, expr=query.target.this)
-                    child_node_attrs = structs.StageNode(processor_ctx=processor_ctx, ctx=ctx)
+                    child_node_attrs = StageNode(processor_ctx=processor_ctx, ctx=ctx)
 
                 top_expr = util.unwrap_expression(node.expression)
                 logger.debug(f"Processing node alias: '{node.name}', Expr: {top_expr}, Id: {id(node)}")
@@ -270,8 +274,8 @@ def update_column_data_types(graph: nx.MultiDiGraph):
 
 
 def ensure_correct_data_types(
-    parent_attrs: structs.NodeAttributes,
-    child_attrs: structs.NodeAttributes,
+    parent_attrs: NodeAttributes,
+    child_attrs: NodeAttributes,
     last_function_type: str,
     dialect: str,
 ):
@@ -327,7 +331,7 @@ def ensure_correct_data_types(
     logger.info(f"New types. Parent: {p_type} Child: {c_type}")
 
 
-def calculate_paths(graph: nx.MultiDiGraph) -> t.Dict[str, structs.LineagePath]:
+def calculate_paths(graph: nx.MultiDiGraph) -> t.Dict[str, LineagePath]:
     """
     Find all the unique paths in the graph and give each path a unique ID according to the set of edges it contains.
 
@@ -347,7 +351,7 @@ def calculate_paths(graph: nx.MultiDiGraph) -> t.Dict[str, structs.LineagePath]:
                 continue
 
             logger.debug("Found edge path: %s", [e.id for e in path])
-            lineage_path = structs.LineagePath(root=root, hops=path)
+            lineage_path = LineagePath(root=root, hops=path)
             all_lineage_paths[lineage_path.path_id] = lineage_path
 
     return all_lineage_paths

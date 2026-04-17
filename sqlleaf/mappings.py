@@ -29,7 +29,7 @@ class ObjectMapping(MappingSchema):
     def add_query(
             self,
             kind: str,
-            query,  # structs.TableQuery
+            query,
             column_mapping: t.Optional[ColumnMapping] = None,
             dialect: DialectType = None,
             normalize: t.Optional[bool] = None,

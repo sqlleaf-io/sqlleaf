@@ -4,11 +4,12 @@ import pytest
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from sqlleaf import structs
+
 
 from tests.new_fixtures import (
     holder, is_subset
 )
+from sqlleaf.objects.query_types import InsertQuery, UpdateQuery, SequenceQuery
 
 DIALECT = 'postgres'
 
@@ -166,4 +167,4 @@ def test__simple_sequence(holder):
     paths = h.get_friendly_paths()
 
     assert paths == [['sequence[serial]', 'column[fruit.raw.age]']]
-    assert [structs.SequenceQuery, structs.InsertQuery] == list(map(type, queries))
+    assert [SequenceQuery, InsertQuery] == list(map(type, queries))

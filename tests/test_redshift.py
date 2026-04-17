@@ -4,18 +4,19 @@ import pytest
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from sqlleaf import structs
+
 
 from tests.new_fixtures import (
     holder,
 )
+from sqlleaf.objects.query_types import InsertQuery, UpdateQuery
 
 DIALECT = 'redshift'
 
 def test__select_pivot(holder):
     queries = '''
     CREATE TABLE source(name1 VARCHAR, name2 VARCHAR, age INT);
-    CREATE TABLE target(john_total VARCHAR, mary_total VARCHAR, john_average VARCHAR, mary_average VARCHAR);
+    CREATE TABLE target(john_total INT, mary_total INT, john_average DECIMAL(10,2), mary_average DECIMAL(10,2));
 
     INSERT INTO target
     SELECT * FROM (

@@ -3,7 +3,14 @@ import json
 import typing as t
 import networkx as nx
 
-from sqlleaf import mappings, util, structs, lineage, query_builder
+from sqlleaf import mappings, util, lineage
+
+from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery
+from sqlleaf.objects.context import ProcessorContext, NodeContext
+from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, StageNode, ColumnNode, new_graph
+from sqlleaf.path import LineagePath
+from sqlleaf.processors.generator import LineageBuilder
+from sqlleaf.processors.collector import collect_queries
 
 logger = logging.getLogger("sqleaf")
 
@@ -14,9 +21,9 @@ class Lineage:
     """
 
     def __init__(self):
-        self.graph = structs.new_graph()  # The graph that contains all lineage
+        self.graph = new_graph()  # The graph that contains all lineage
         self.subgraphs: t.List[nx.MultiDiGraph] = []  # The subgraphs that make up the main graph
-        self.paths: t.Dict[str, structs.LineagePath] = {}  # The paths throughout the graph
+        self.paths: t.Dict[str, LineagePath] = {}  # The paths throughout the graph
         self.object_mapping = None
 
     def generate(self, sql: str, dialect: str):
@@ -26,7 +33,7 @@ class Lineage:
         if not self.object_mapping:
             self.object_mapping = mappings.ObjectMapping(dialect=dialect)
 
-        parent_queries = query_builder.collect_queries(sql, dialect, self.object_mapping)
+        parent_queries = collect_queries(sql, dialect, self.object_mapping)
 
         for parent_query in parent_queries:
             if parent_query.has_statement:  # Queries without DML statements (e.g. CREATE TABLE) have no lineage
@@ -62,18 +69,18 @@ class Lineage:
 
         self.graph.add_edges_from(new_graph.edges(data=True))
 
-    def get_edges(self) -> t.List[structs.EdgeAttributes]:
+    def get_edges(self) -> t.List[EdgeAttributes]:
         edges = [data["attrs"] for par, chi, data in self.graph.edges(data=True)]
         edges = sorted(edges, key=lambda e: (e.select_idx, e.path_idx))
         return edges
 
-    def get_nodes(self) -> t.List[structs.NodeAttributes]:
+    def get_nodes(self) -> t.List[NodeAttributes]:
         nodes = [data["attrs"] for n, data in self.graph.nodes(data=True)]
         # TODO: sort on full_name?
         nodes = sorted(nodes, key=lambda e: (e.catalog, e.schema, e.table, e.column))
         return nodes
 
-    def get_queries(self) -> t.List[structs.Query]:
+    def get_queries(self) -> t.List[Query]:
         """
         Get the queries from each of the subgraphs.
         """
@@ -85,7 +92,7 @@ class Lineage:
         """
         return []
 
-    def get_paths(self) -> t.List[structs.LineagePath]:
+    def get_paths(self) -> t.List[LineagePath]:
         """
         paths: [
             {
