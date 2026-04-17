@@ -31,10 +31,9 @@ class Query:
         self.child_queries = []
         self.has_statement = has_statement  # Has a DML statement (Insert, Update, Merge)
 
-        self.statement_original = statement
+        self.statement_original = statement.copy()
         self.statement_transformed = None
-        self.set_properties(statement)
-        self.set_statement(statement)
+        self.set_statement(self.statement_original)
 
         logger.debug(f"Created Query: {self.__class__}")
 
@@ -48,14 +47,8 @@ class Query:
         else:
             return str(self.statement_index)
 
-    def set_properties(self, statement):
-        self.property_names = []
-        table_properties = statement.args.get("properties")
-        if table_properties:
-            self.property_names = [str(p) for p in table_properties.expressions]
-
     def set_statement(self, statement: exp.Expression):
-        self.statement = statement.copy()
+        self.statement = statement
         text = self.statement.sql()
         self.text_original = text
         self.text_length = len(text)
@@ -447,7 +440,6 @@ class TableQuery(Query):
             child_table=util.get_table(statement.this),
             has_statement = False,
         )
-        self.property_names = []
         self.column_defs = []
 
         self.set_column_defs(object_mapping)
@@ -468,9 +460,6 @@ class TableQuery(Query):
                 default.this.type = col_def.kind
 
         # Process the table's properties: INHERITS, LIKE, etc
-        if table_properties := statement.args["properties"]:
-            self.property_names = [str(p) for p in table_properties.expressions]
-
         if inherited_props := list(statement.find_all(exp.InheritsProperty)):
             inherited_columns = self.find_inherited_columns(inherited_props, object_mapping)
             columns += inherited_columns

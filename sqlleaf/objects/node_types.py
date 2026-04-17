@@ -30,7 +30,6 @@ class NodeAttributes:
         schema: str = "",
         catalog: str = "",
         kind: str = "",
-        table_properties: t.List = None,
     ):
         self.expr = expr
         self.data_type = str(data_type)  # TODO: could we just assign expr.type = data_type and remove this?
@@ -40,7 +39,6 @@ class NodeAttributes:
         self.schema = schema
         self.table = table
         self.table_type = ""
-        self.table_properties = sorted(table_properties) if table_properties else []
         self.member = ""
         self.ctx = ctx
 
@@ -85,7 +83,6 @@ class NodeAttributes:
             "data_type": self.data_type,
             "kind": self.kind,
             "table_type": self.table_type,
-            "table_properties": self.table_properties,
         }
 
 
@@ -132,7 +129,6 @@ class ColumnNode(NodeAttributes):
             column=column,
             data_type=processor_ctx.data_type,
             expr=expr,
-            table_properties=processor_ctx.query.property_names,
             ctx=ctx,
         )
         table_type = self._table_type(catalog, schema, table, processor_ctx)
