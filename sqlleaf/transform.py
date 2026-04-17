@@ -38,7 +38,8 @@ def apply_optimizations(statement: exp.Insert, dialect: str, object_mapping: map
     # due to limitations with the optimizer.build_scope function: it only
     # considers select statements.
     for cte_expr in getattr(statement, 'ctes', []):
-        expand_returning_columns(cte_expr.this, dialect, object_mapping, cte_expr.this.this)
+        if (returning := cte_expr.this.args.get('returning', None)):
+            expand_returning_columns(returning, dialect, object_mapping, cte_expr.this.this)
 
     try:
         stmt = qualify.qualify(
@@ -54,7 +55,7 @@ def apply_optimizations(statement: exp.Insert, dialect: str, object_mapping: map
         raise exception.SqlGlotException(message=str(e))
 
     if match_columns:
-        stmt = add_aliases_to_selects(stmt, object_mapping, child_table)
+        stmt = add_column_names_to_insert(stmt, object_mapping, child_table)
 
     # Selectively apply sqlglot's optimization rules.
     # TODO: this breaks the aliasings
@@ -65,7 +66,7 @@ def apply_optimizations(statement: exp.Insert, dialect: str, object_mapping: map
     return stmt
 
 
-def expand_returning_columns(statement: exp.Insert, dialect: str, object_mapping: mappings.ObjectMapping, child_table: exp.Table, overwrite_selects: bool = False) -> exp.Insert:
+def expand_returning_columns(returning: exp.Returning, dialect: str, object_mapping: mappings.ObjectMapping, child_table: exp.Table, overwrite_selects: bool = False) -> exp.Insert:
     """
     Given an (INSERT .. RETURNING *) statement, expand the star to the table's column names
     and add the correct column aliases.
@@ -76,7 +77,6 @@ def expand_returning_columns(statement: exp.Insert, dialect: str, object_mapping
         RETURNING UPPER(name)
 
     is rewritten to:
-        INSERT INTO fruit.raw (name)
         SELECT UPPER(name)
         FROM fruit.raw
 
@@ -85,25 +85,23 @@ def expand_returning_columns(statement: exp.Insert, dialect: str, object_mapping
 
     overwrite_selects: whether to overwrite the SELECT columns with the RETURNING columns
     """
-    returning = statement.args.get('returning', None)
-    if not returning:
-        # Ensures we don't recurse indefinitely
-        return statement
-
     child_table.find(exp.TableAlias).set('columns', [])
     new_select = exp.select(*returning.expressions).from_(child_table)
     new_select = apply_optimizations(new_select, dialect, object_mapping, child_table, match_columns=False)
 
-    statement.parent.set('this', new_select)
+    # Overwrite the insert's SELECT with the new SELECT.
+    # This keeps the INSERT'S table in case any new columns refer to it.
+    returning.parent.set('expression', new_select)
+    returning.pop()
 
 
-def add_aliases_to_selects(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
+def add_column_names_to_insert(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
     """
     Add aliases to SELECTs that are missing them by looking at the corresponding INSERT column.
     This prevents sqlglot from assigning its own generated names as aliases.
 
     For example, the statement:
-        INSERT INTO my.apple (a,b) SELECT name, age FROM my.pear
+        INSERT INTO my.apple SELECT name, age FROM my.pear
     renames to:
         INSERT INTO my.apple (a,b) SELECT name as a, age as b FROM my.pear
 
@@ -116,13 +114,34 @@ def add_aliases_to_selects(statement: exp.Insert, object_mapping: mappings.Objec
     table_query = object_mapping.get_table_or_stage(child_table)
     table_columns = [c.name for c in table_query.get_column_defs()]
 
-    insert_columns = [s.name for s in statement.this.expressions]
+    insert_columns = []
+    if isinstance(statement.this, exp.Schema):
+        # INSERT INTO fruit.raw (name)
+        insert_columns = [s.name for s in statement.this.expressions]
+    elif isinstance(statement.this, exp.Table):
+        # INSERT INTO fruit.raw AS r (name)
+        insert_columns = [s for s in statement.this.alias_column_names]
 
     if not insert_columns:
-        # Add the column names from the mapping
+        # Add the column names from the mapping to the query
         insert_columns = list(table_columns)[:len(selects)]
+        schema = exp.Schema(this=child_table, expressions=[exp.to_identifier(c) for c in insert_columns])
+        statement.set('this', schema)
 
     else:
+        unknown_columns = [col for col in insert_columns if col not in table_columns]
+        if unknown_columns:
+            raise exception.SqlLeafException(
+                message=f"Unknown columns used in SELECT: {list(unknown_columns)}",
+                table=str(exp.table_name(child_table)),
+            )
+
+        if "*" in selects:
+            raise exception.SqlLeafException(
+                message="Statement has unresolved star column",
+                table=str(exp.table_name(child_table)),
+            )
+
         if len(insert_columns) != len(statement.selects):
             message = "Mismatched column count: number of column names (%s) does not match selected columns (%s)" % (
                 len(insert_columns),

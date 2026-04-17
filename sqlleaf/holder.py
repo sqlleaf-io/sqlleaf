@@ -30,9 +30,7 @@ class Lineage:
 
         for parent_query in parent_queries:
             if parent_query.has_statement:  # Queries without DML statements (e.g. CREATE TABLE) have no lineage
-                queries = parent_query.get_all_queries(types=(structs.InsertQuery, structs.UpdateQuery, structs.ViewQuery, structs.CTASQuery, structs.PutQuery, structs.CopyQuery))  #  or [parent_query]
-                graph = lineage.get_lineage_for_query(queries, self.object_mapping)
-                graph.graph["attrs"].add_query(parent_query)
+                graph = lineage.get_lineage_for_query(parent_query, self.object_mapping)
                 lineage.update_column_data_types(self.graph)
                 self.merge_graph(graph)
 

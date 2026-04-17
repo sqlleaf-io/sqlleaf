@@ -40,7 +40,7 @@ def transform_query(query: structs.Query, object_mapping) -> structs.Query:
 
 
 
-def get_lineage_for_query(queries: t.List[structs.Query], object_mapping) -> nx.MultiDiGraph:
+def get_lineage_for_query(query: structs.Query, object_mapping) -> nx.MultiDiGraph:
     """
     Calculate the column-level lineage for one or more SQL queries.
 
@@ -48,12 +48,14 @@ def get_lineage_for_query(queries: t.List[structs.Query], object_mapping) -> nx.
     The individual queries (INSERT, UPDATE) are then extracted.
     """
     graph = structs.new_graph()
+    queries = query.get_all_queries(types=(structs.InsertQuery, structs.UpdateQuery, structs.ViewQuery, structs.CTASQuery, structs.PutQuery, structs.CopyQuery))
 
     for query in queries:
         transform_query(query, object_mapping)
         generate_column_lineage_for_query(query, graph, object_mapping)
         query.set_to_original()
 
+    graph.graph["attrs"].add_query(query)
     return graph
 
 
@@ -61,25 +63,10 @@ def _validate_and_get_selects(statement: exp.Insert, child_columns: t.List[exp.C
     """
     Ensure that the selected columns exist inside the child table.
     """
-    child_column_names = [c.name for c in child_columns]
     if isinstance(statement.expression, exp.Values):
         selects = [s.name for s in statement.this.expressions]
     else:
         selects = statement.named_selects
-
-    unknown_columns = [s for s in selects if s not in child_column_names]
-
-    if unknown_columns:
-        raise exception.SqlLeafException(
-            message=f"Unknown columns used in SELECT: {list(unknown_columns)}",
-            table=str(child_table),
-        )
-
-    if "*" in selects:
-        raise exception.SqlLeafException(
-            message="Statement has unresolved star column",
-            table=str(child_table)
-        )
 
     return selects
 
@@ -197,7 +184,7 @@ def generate_column_lineage_for_query(
 
             for node_depth, node in enumerate(path):
                 logger.debug("----")
-                # Node depth distinguishes identical queries across CTEs
+                # Node depth distinguishes identical query elements across CTEs
 
                 if isinstance(query, structs.CopyQuery) and query.is_target_a_stage:
                     # Set the column to be a StageNode (if applicable) since we now have the lineage from using the dummy column

@@ -335,6 +335,9 @@ class UpdateQuery(Query):
         _UPDATE_ARGS_NOT_SUPPORTED_BY_SELECT: t.Set[str] = set(exp.Update.arg_types.keys()) - set(exp.Select.arg_types.keys())
 
         statement = self.statement.copy()
+        if (where := statement.args.get('where', None)):
+            # WHERE statements aren't relevant to lineage
+            where.pop()
 
         # The "SET" expressions need to be converted.
         # For the update command, it'll be a list of EQ expressions, but the select
@@ -1386,11 +1389,11 @@ class ProcessorContext:
 
 @dataclass(frozen=True)
 class NodeContext:
-    statement_index: str
-    select_index: int = 0
-    function_depth: int = 0
-    function_arg_index: int = 0
-    node_depth: int = 0
+    statement_index: str            # The position of this query inside a list of queries, e.g. SELECT 'a'; SELECT 'b' - a=0, b=1
+    select_index: int = 0           # The position of this column inside a set of selected columns (e.g. SELECT 'a', 'b') - a=0, b=1
+    function_depth: int = 0         # The depth of the function: e.g. SELECT UPPER(LOWER('a')) - LOWER=0, UPPER=1
+    function_arg_index: int = 0     # The argument of a function: e.g. SELECT my.func('a', 'b') - a=0, b=1
+    node_depth: int = 0             # The depth of a subquery, e.g. WITH cte AS ( SELECT 'a' ) SELECT 'a' - The first a=1, second a=0
 
 
 class LineageBuilder:
@@ -1767,7 +1770,7 @@ class LineageBuilder:
         node_name = node_attrs.full_name
 
         if graph.has_node(node_name):
-            logger.debug(f"Re-using Node: {self.__class__}, Name: {node_attrs.full_name}")
+            logger.debug(f"Re-using Node: {node_attrs.__class__}, Name: {node_attrs.full_name}")
             return graph.nodes[node_name]['attrs']
 
         graph.add_node(node_name, attrs=node_attrs)
