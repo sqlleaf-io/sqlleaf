@@ -16,7 +16,7 @@ from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, StageNode
 logger = logging.getLogger("sqleaf")
 
 
-class LineageBuilder:
+class LineageGenerator:
     # A registry to store subclasses
     _dialects = {}
     dialect = ""
@@ -56,7 +56,7 @@ class LineageBuilder:
     def __init_subclass__(cls, **kwargs):
         """Automatically registers subclasses when they are defined."""
         super().__init_subclass__(**kwargs)
-        LineageBuilder._dialects[cls.dialect] = cls
+        LineageGenerator._dialects[cls.dialect] = cls
 
     @classmethod
     def from_dialect(cls, class_name, *args, **kwargs):
@@ -65,7 +65,7 @@ class LineageBuilder:
         if target_class:
             return target_class()
         else:
-            return LineageBuilder()
+            return LineageGenerator()
 
     def get_processor(self, expr: exp.Expression):
         """
@@ -398,7 +398,7 @@ class LineageBuilder:
         return node_attrs
 
 
-class PostgresLineageBuilder(LineageBuilder):
+class PostgresLineageGenerator(LineageGenerator):
     dialect = "postgres"
 
     def process_table(self, processor_ctx: ProcessorContext, ctx: NodeContext):
@@ -448,7 +448,7 @@ class PostgresLineageBuilder(LineageBuilder):
             return node_attrs, [table_function]
 
 
-class SnowflakeLineageBuilder(LineageBuilder):
+class SnowflakeLineageGenerator(LineageGenerator):
     dialect = "snowflake"
 
     def process_put(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:

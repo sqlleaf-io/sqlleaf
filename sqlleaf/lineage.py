@@ -22,7 +22,7 @@ from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQue
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import NodeAttributes, StageNode, ColumnNode, new_graph
 from sqlleaf.path import LineagePath
-from sqlleaf.processors.generator import LineageBuilder
+from sqlleaf.processors.generator import LineageGenerator
 
 logger = logging.getLogger("sqlleaf")
 
@@ -109,7 +109,7 @@ def generate_column_lineage_for_query(
         expr=statement,
     )
 
-    builder = LineageBuilder.from_dialect(query.dialect)
+    builder = LineageGenerator.from_dialect(query.dialect)
     if isinstance(query, PutQuery):
         # Short-circuit this function; it's not an insert
         builder.process_put(processor_ctx, ctx)
