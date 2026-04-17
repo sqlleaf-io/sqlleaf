@@ -12,8 +12,11 @@ from sqlleaf.objects.query_types import StageQuery, ProcedureQuery, TriggerQuery
 
 logger = logging.getLogger("sqleaf")
 
+"""
+Parses text for SQL statements and collects them into Query objects.
+"""
 
-# TODO: determine dependency order based on object relations
+
 def get_query_processors():
     return {
         "table": _process_tables,
@@ -31,71 +34,6 @@ def get_query_processors():
         "copy": _process_unnamed,
         "put": _process_unnamed,
     }
-
-
-def produce_query_objects(statement: exp.Expression, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query:
-    """
-    This follows the same pattern as `walk_tree_and_build_graph()`
-
-    Args:
-        statement_index: the order of the statement in a list of statements.
-    """
-    query = None
-
-    if isinstance(statement, exp.Merge):
-        query = MergeQuery(expr=statement, dialect=dialect, statement_index=statement_index)
-
-        # Link any child queries
-        for child_expr in query.get_child_expressions():
-            statement_index += 1
-            child_query = produce_query_objects(statement=child_expr, object_mapping=object_mapping, dialect=dialect, statement_index=statement_index)
-            query.add_child_query(child_query)
-
-    elif isinstance(statement, exp.Insert):
-        query = InsertQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
-    elif isinstance(statement, exp.Update):
-        query = UpdateQuery(expr=statement, dialect=dialect, statement_index=statement_index)
-
-    return query
-
-
-def get_queries_from_sql(text: str, dialect: str, object_mapping: mappings.ObjectMapping, include_selects=False) -> t.List[Query]:
-    """
-    Extract all the SQL queries from some text.
-    """
-    queries = []
-
-    try:
-        statements = sqlglot.parse(text, dialect=dialect)
-        statements = [statement for statement in statements if statement]
-    except Exception as e:
-        raise exception.SqlGlotException(message=e, table="")
-
-    supported_statements = (
-        exp.Insert,
-        exp.Update,
-        exp.Merge,
-    )
-    if include_selects:
-        supported_statements += (exp.Select,)
-
-    # Process each of the statements
-    for statement_index, statement in enumerate(statements):
-        logger.info(f"Processing parsed statement {statement_index + 1}/{len(statements)} - {str(type(statement))}")
-
-        if isinstance(statement, exp.Command) and statement.this == "CALL":
-            # TODO: add hooks to allow users to include custom logic
-            logging.info("Skipping CALL statement.")
-            continue
-
-        elif not isinstance(statement, supported_statements):
-            logging.info(f"Skipping unsupported '{type(statement)}' statement.")
-            continue
-
-        query = produce_query_objects(statement, dialect, object_mapping, statement_index)
-        queries.append(query)
-
-    return queries
 
 
 def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapping) -> t.List[Query]:
@@ -258,15 +196,6 @@ def _process_functions(statement: exp.Create, dialect: str, object_mapping: mapp
     return_type = None
     return_expr = statement.expression.this  # ADD(a, b)
 
-    if isinstance(statement.expression, exp.Heredoc):
-        # Extract the queries between the $$ .. $$
-        queries = get_queries_from_sql(
-            text=statement.expression.this,
-            dialect=dialect,
-            object_mapping=object_mapping,
-            include_selects=True,
-        )
-
     props = statement.args["properties"].expressions
     for prop in props:
         if isinstance(prop, exp.ReturnsProperty):
@@ -287,12 +216,15 @@ def _process_functions(statement: exp.Create, dialect: str, object_mapping: mapp
         return_expr=return_expr,
         returns_null=returns_null,
         language=language,
+        statement_index=statement_index
     )
     object_mapping.add_query(kind='udf', query=query, dialect=dialect)
 
-    # TODO: swap this with produce_query_objects() like MERGE
-    queries = get_queries_from_sql(text=return_expr.sql(), dialect=dialect)
-    query.add_child_queries(child_queries=queries)
+    if isinstance(statement.expression, exp.Heredoc):
+        # Extract the queries between the $$ .. $$
+        queries = collect_queries(text=statement.expression.this, dialect=dialect, object_mapping=object_mapping)
+        query.add_child_queries(child_queries=queries)
+
     return query
 
 
@@ -318,7 +250,7 @@ def _process_stored_procedures(statement: exp.Create, dialect: str, object_mappi
     query.text_transformed = transformed_text
 
     # The original text is lost, so we are forced to use the transformed text in its place for now
-    queries = get_queries_from_sql(text=transformed_text, object_mapping=object_mapping, dialect=dialect)
+    queries = collect_queries(text=transformed_text, dialect=dialect, object_mapping=object_mapping)
     query.add_child_queries(child_queries=queries)
     return query
 
