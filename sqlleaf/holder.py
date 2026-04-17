@@ -36,10 +36,9 @@ class Lineage:
         parent_queries = collect_queries(sql, dialect, self.object_mapping)
 
         for parent_query in parent_queries:
-            if parent_query.has_statement:  # Queries without DML statements (e.g. CREATE TABLE) have no lineage
-                graph = lineage.get_lineage_for_query(parent_query, self.object_mapping)
-                lineage.update_column_data_types(self.graph)
-                self.merge_graph(graph)
+            graph = lineage.get_lineage_for_query(parent_query, self.object_mapping)
+            lineage.update_column_data_types(self.graph)
+            self.merge_graph(graph)
 
             # Associate the query with the graph even if it has no lineage
             self.graph.graph["attrs"].add_query(parent_query)

@@ -15,34 +15,18 @@ from sqlleaf import (
     util,
     mappings,
     sqlglot_lineage,
-    transform,
 )
 
-from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery
+from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, MergeQuery, CopyQuery, PutQuery, CTASQuery
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import NodeAttributes, StageNode, ColumnNode, new_graph
 from sqlleaf.path import LineagePath
 from sqlleaf.processors.generator import LineageGenerator
+from sqlleaf.processors.transformer import transform_query
 
 logger = logging.getLogger("sqlleaf")
 
-
-def transform_query(query: Query, object_mapping) -> Query:
-    """
-    Transform the queries so that they have complete information in preparation for lineage calculation.
-    """
-    statement = query.statement
-    logger.info(f"Transforming query: {str(type(statement))}")
-
-    # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
-    statement = transform.apply_optimizations(statement, query.dialect, object_mapping, query.child_table)
-
-    # Transform CASE statements to remove false positive lineage; see docs
-    statement = statement.transform(transform.case_statement_transformer)
-    query.statement_transformed = statement
-    query.set_statement(statement)
-
-
+QUERIES_WITH_LINEAGE = (InsertQuery, UpdateQuery, ViewQuery, CTASQuery, PutQuery, CopyQuery)
 
 def get_lineage_for_query(query: Query, object_mapping) -> nx.MultiDiGraph:
     """
@@ -52,11 +36,13 @@ def get_lineage_for_query(query: Query, object_mapping) -> nx.MultiDiGraph:
     The individual queries (INSERT, UPDATE) are then extracted.
     """
     graph = new_graph()
-    queries = query.get_all_queries(types=(InsertQuery, UpdateQuery, ViewQuery, CTASQuery, PutQuery, CopyQuery))
+    queries = query.get_all_queries()
 
     for query in queries:
+        # Transform every query, but only produce lineage for certain ones
         transform_query(query, object_mapping)
-        generate_column_lineage_for_query(query, graph, object_mapping)
+        if isinstance(query, QUERIES_WITH_LINEAGE):
+            generate_column_lineage_for_query(query, graph, object_mapping)
         query.set_to_original()
 
     graph.graph["attrs"].add_query(query)
