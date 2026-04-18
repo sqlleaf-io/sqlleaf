@@ -168,7 +168,7 @@ class LineageGenerator:
         select 'hello' as greeting
         """
         expr: exp.Literal = processor_ctx.expr
-        node_attrs = LiteralNode(name=expr.sql(comments=False), processor_ctx=processor_ctx, ctx=ctx)
+        node_attrs = LiteralNode(name=expr.sql(), processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
     def process_star(self, processor_ctx: ProcessorContext, ctx: NodeContext):

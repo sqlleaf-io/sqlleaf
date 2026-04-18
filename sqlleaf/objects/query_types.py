@@ -23,7 +23,7 @@ class Query:
     ):
         self.kind = kind
         self.dialect = dialect
-        self.statement = statement
+        self.statement = None
         self.child_table = child_table  # The target table
         self.statement_index = statement_index  # The position of this query within a list of queries
         self.parent_query = None
@@ -54,6 +54,11 @@ class Query:
             self.property_names = [str(p) for p in table_properties.expressions]
 
     def set_statement(self, statement: exp.Expression):
+        if not self.statement:
+            # Remove comments at initialisation
+            for expr in statement.walk():
+                expr.pop_comments()
+
         self.statement = statement.copy()
         text = self.statement.sql()
         self.text_original = text
@@ -125,7 +130,9 @@ class MergeQuery(Query):
             statement_index=statement_index,
             child_table=expr.this,
         )
-        self.child_expressions = []
+
+    def get_ctes(self):
+        return getattr(self.statement, 'ctes', [])
 
 
 class SelectQuery(Query):
@@ -139,6 +146,9 @@ class SelectQuery(Query):
             child_table=child_table,
         )
 
+    def get_ctes(self):
+        return getattr(self.statement, 'ctes', [])
+
 
 class InsertQuery(Query):
     def __init__(self, expr: exp.Insert, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
@@ -151,6 +161,9 @@ class InsertQuery(Query):
             child_table=child_table,
         )
 
+    def get_ctes(self):
+        return getattr(self.statement, 'ctes', [])
+
 
 class UpdateQuery(Query):
     def __init__(self, expr: exp.Update, dialect: str, statement_index: int):
@@ -161,6 +174,10 @@ class UpdateQuery(Query):
             statement_index=statement_index,
             child_table=util.get_table(expr),
         )
+
+    def get_ctes(self):
+        with_ = self.statement.args.get('with_', None)
+        return with_.expressions if with_ else []
 
 
 class CTASQuery(Query):

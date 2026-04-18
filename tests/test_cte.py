@@ -6,6 +6,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 import pytest
 
 from sqlleaf.objects.query_types import InsertQuery, UpdateQuery, SelectQuery
+from sqlleaf.exception import SqlLeafException
 
 from tests.new_fixtures import (
     holder, is_subset
@@ -140,6 +141,100 @@ def test__cte_nested(holder):
     ]
 
 
+def test__cte_update_returning_with_old_and_new_aliases(holder):
+    queries = '''
+    WITH first_cte AS (
+        UPDATE fruit.raw
+        SET name = 'pear'
+        RETURNING old.age as age, new.age as new_age
+    )
+    UPDATE fruit.processed
+    SET age = first_cte.age
+    FROM first_cte;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    paths = h.get_friendly_paths()
+    queries = h.get_queries_created()
+
+    assert len(nodes) == 5
+    assert paths == [
+        ['column[fruit.raw.age]', 'column[first_cte.age]', 'column[fruit.processed.age]'],
+        ['literal["pear"]', 'column[fruit.raw.name]'],
+    ]
+    assert [UpdateQuery] == list(map(type, queries))
+    assert [UpdateQuery] == list(map(type, queries[0].child_queries))
+
+
+def test__cte_fails_for_returning_unaliased_function(holder):
+    with pytest.raises(SqlLeafException) as e:
+        queries = '''
+        WITH first_cte AS (
+            UPDATE fruit.raw
+            SET name = 'pear'
+            RETURNING upper(name)
+        )
+        INSERT INTO fruit.processed
+        SELECT name
+        FROM first_cte;
+        '''
+        h = holder(with_tables=True)
+        h.generate(queries, dialect=DIALECT)
+
+    assert e.value.message == "Non-column expression (UPPER(name)) must have an alias inside RETURNING to prevent ambiguity."
+
+
+def test__cte_fails_for_returning_ambiguous_aliases(holder):
+    with pytest.raises(SqlLeafException) as e:
+        queries = '''
+        WITH first_cte AS (
+            UPDATE fruit.raw
+            SET name = 'pear'
+            RETURNING old.name, new.name
+        )
+        INSERT INTO fruit.processed
+        SELECT name
+        FROM first_cte;
+        '''
+        h = holder(with_tables=True)
+        h.generate(queries, dialect=DIALECT)
+
+    assert e.value.message == "Column reference 'first_cte.name' is ambiguous (2 possible options)"
+
+
+def test__cte_update_returning(holder):
+    queries = '''
+    WITH first_cte AS (
+        UPDATE fruit.raw
+        SET name = 'pear'
+        RETURNING age, old.age as old_age, new.age as new_age
+    ),
+    second_cte AS (
+        UPDATE fruit.raw AS r
+        SET name = 'tomato'
+        RETURNING *, OLD.*, NEW.*
+    )
+    UPDATE fruit.processed
+    SET age = first_cte.age
+    FROM first_cte;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    paths = h.get_friendly_paths()
+    queries = h.get_queries_created()
+
+    assert len(nodes) == 6
+    assert paths == [
+        ['column[fruit.raw.age]', 'column[first_cte.age]', 'column[fruit.processed.age]'],
+        ['literal["pear"]', 'column[fruit.raw.name]'],
+        ['literal["tomato"]', 'column[fruit.raw.name]']
+    ]
+    assert [UpdateQuery] == list(map(type, queries))
+    assert [UpdateQuery, UpdateQuery] == list(map(type, queries[0].child_queries))
+
+
 def test__cte_insert_returning(holder):
     queries = '''
     WITH insert_cte AS (
@@ -173,7 +268,7 @@ def test__cte_insert(holder):
         RETURNING fruit.raw.name, name, *
     ),
     update_cte AS (
-        UPDATE fruit.raw
+        UPDATE fruit.raw AS r
         SET name = 'banana'
     )
     SELECT 1;

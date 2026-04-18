@@ -31,8 +31,16 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping) -> Que
 
     # Transform 'RETURNING' columns
     for cte_expr in getattr(statement, 'ctes', []):
+        if isinstance(cte_expr.this, exp.Update):
+            # Replace the inner UPDATE with an INSERT first.
+            # The inner query is different from the child query, which is its own separate copy.
+            inner_expr = _convert_update_to_insert(statement=cte_expr.this)
+            cte_expr.this.replace(inner_expr)
+
         if returning := cte_expr.this.args.get('returning', None):
-            _expand_returning_columns(expr=returning, dialect=query.dialect, object_mapping=object_mapping, child_table=cte_expr.find(exp.Table))
+            # Rename the columns and replace the INSERT with the SELECT
+            select_expr = _rename_returning_columns(expr=returning, dialect=query.dialect, object_mapping=object_mapping, child_table=cte_expr.find(exp.Table))
+            cte_expr.set("this", select_expr)
 
     # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
     statement = _apply_optimizations(statement, query.dialect, object_mapping, query.child_table)
@@ -119,6 +127,12 @@ def _convert_update_to_insert(statement: exp.Update) -> exp.Insert:
                 extra_args[k] = original_from.this.args.get(k)
                 original_from.this.set(k, None)
 
+    # We need to add the CTEs to the insert, not as part of the select.
+    # Otherwise the query will be ordered incorrectly (i.e. INSERT .. WITH () .. SELECT)
+    with_ = statement.args.get("with_", None)
+    if with_:
+        with_.pop()
+
     select_statement = exp.Select(
         **{
             **{k: v for k, v in statement.args.items() if k not in _UPDATE_ARGS_NOT_SUPPORTED_BY_SELECT},
@@ -131,8 +145,12 @@ def _convert_update_to_insert(statement: exp.Update) -> exp.Insert:
     insert_statement = exp.insert(
         expression=select_statement,
         columns=alias_names,
-        into=statement.this
+        into=statement.this,
+        returning=statement.args.get('returning', None),
+        dialect='postgres',
     )
+    if with_:
+        insert_statement.set('with_', with_)
     return insert_statement
 
 
@@ -289,18 +307,15 @@ def _apply_optimizations(statement: exp.Insert, dialect: str, object_mapping: ma
     # We cannot rely on lineage() to collect the RETURNING statements
     # due to limitations with the optimizer.build_scope function: it only
     # considers select statements.
-    try:
-        stmt = qualify.qualify(
-            statement,
-            schema=object_mapping,
-            infer_schema=True,
-            dialect=dialect,
-            isolate_tables=False,
-            validate_qualify_columns=False,
-            quote_identifiers=False,
-        )
-    except sqlglot.errors.OptimizeError as e:
-        raise exception.SqlGlotException(message=str(e))
+    stmt = qualify.qualify(
+        statement,
+        schema=object_mapping,
+        infer_schema=True,
+        dialect=dialect,
+        isolate_tables=False,
+        validate_qualify_columns=False,
+        quote_identifiers=False,
+    )
 
     if match_columns:
         _add_column_names_to_insert(stmt, object_mapping, child_table)
@@ -312,7 +327,7 @@ def _apply_optimizations(statement: exp.Insert, dialect: str, object_mapping: ma
     return stmt
 
 
-def _expand_returning_columns(expr: exp.Returning, dialect: str, object_mapping: mappings.ObjectMapping, child_table: exp.Table, overwrite_selects: bool = False):
+def _rename_returning_columns(expr: exp.Returning, dialect: str, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Select:
     """
     Given an (INSERT .. RETURNING *) statement, expand the star to the table's column names
     and add the correct column aliases.
@@ -328,19 +343,28 @@ def _expand_returning_columns(expr: exp.Returning, dialect: str, object_mapping:
 
     and then passed through apply_optimizations() so that the correct
     aliases and expanded column names are set.
-
-    overwrite_selects: whether to overwrite the SELECT columns with the RETURNING columns
     """
-    if table_alias := child_table.find(exp.TableAlias):
-        table_alias.set('columns', [])
+    for col_expr in expr.expressions:
+        if not isinstance(col_expr, (exp.Alias, exp.Column, exp.Star)):
+            message = f"Non-column expression ({col_expr}) must have an alias inside RETURNING to prevent ambiguity."
+            raise exception.SqlLeafException(message=message)
+
+    # Replace the OLD & NEW aliases with the table alias if it exists. Otherwise, remove it to be valid.
+    returning_columns = list(expr.find_all(exp.Column))
+    for col in returning_columns:
+        if col.table.lower() in ['old', 'new']:
+            if child_table.alias:
+                col.set('table', exp.to_identifier(child_table.alias, quoted=False))
+            else:
+                col.args['table'].pop()
+                if isinstance(col.this, exp.Star):
+                    # optimize() needs Star(), not Column(Star())
+                    col.replace(col.this)
 
     new_select = exp.select(*expr.expressions).from_(child_table)
     new_select = _apply_optimizations(new_select, dialect, object_mapping, child_table, match_columns=False)
 
-    # Overwrite the insert's SELECT with the new SELECT.
-    # This keeps the INSERT'S table in case any new columns refer to it.
-    expr.parent.set('expression', new_select)
-    expr.pop()
+    return new_select
 
 
 def _add_column_names_to_insert(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table):

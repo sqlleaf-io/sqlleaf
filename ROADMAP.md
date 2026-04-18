@@ -19,6 +19,7 @@ The following types of queries and nodes need to be created.
 ### Postgres
 - [ ] XML
 - [ ] File
+- [ ] Hidden (system) columns
 
 CREATE TABLE
   - [x] AS
@@ -30,6 +31,7 @@ CREATE TABLE
   - [ ] FOREIGN
   - [x] Generated columns
   - [ ] Identity columns
+    - [ ] Sequence node
   - [x] Default columns
   - [ ] OF <type>
 
@@ -48,10 +50,11 @@ SELECT
   - [x] Window functions
   - [ ] FROM udf()
   - [ ] UNION
+    - Combine lineage.lineage() first
   - [x] CTEs
     - [x] Regular
     - [x] RECURSIVE
-    - [ ] WITH (INSERT)
+    - [o] WITH (INSERT)
     - [ ] WITH (UPDATE)
     - [ ] WITH (MERGE)
     - [ ] WITH (VALUES)
@@ -70,16 +73,24 @@ SELECT
 
 MERGE
 - [x] Regular
+- [ ] RETURNING + merge_action()
 
 UPDATE
 - [x] Regular
+- [ ] RETURNING
+
+DELETE
+- [ ] RETURNING
 
 INSERT
-  - [ ] RETURNING
+  - [ ] DEFAULT VALUES
+  - [o] RETURNING
   - [ ] ON CONFLICT DO UPDATE
   - [x] VALUES
+    - [ ] (DEFAULT, DEFAULT)
   - [ ] OVERRIDING {SYSTEM|USER} VALUE
   - [ ] INTO VIEW (automatically updatable views)
+  - [ ] CTEs with INSERT, UPDATE, etc, as above with SELECT
 
 CREATE FUNCTION (language SQL)
   - [ ] CALLED ON NULL INPUT

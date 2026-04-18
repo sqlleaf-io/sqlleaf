@@ -85,7 +85,7 @@ def generate_column_lineage_for_query(
     statement = query.statement
     scope = build_scope(statement)
 
-    logger.info(f"Getting lineage for query: {statement.sql(comments=False)}")
+    logger.info(f"Getting lineage for query: {statement.sql(dialect=query.dialect)}")
 
     ctx = NodeContext(statement_index=query.get_statement_index())
     processor_ctx = ProcessorContext(
@@ -170,7 +170,7 @@ def generate_column_lineage_for_query(
 
             child_node_attrs = child_node
             logger.debug("----")
-            logger.debug(f"Found path from lineage.lineage(): {[(n.name, n.expression.sql(comments=False)) for n in path]}")
+            logger.debug(f"Found path from lineage.lineage(): {[(n.name, n.expression.sql()) for n in path]}")
 
             for node_depth, node in enumerate(path):
                 logger.debug("----")

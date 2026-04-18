@@ -138,8 +138,8 @@ column[fruit.processed.label]
 ```
 Internally, the merge query has two inner queries: one insert and one update. Queries form a hierarchy, depending on their type, allowing you to traverse them easily:
 ```python
-query = lineage.get_queries()   # [structs.MergeQuery]
-query[0].child_queries             # [structs.UpdateQuery, structs.InsertQuery]
+query = lineage.get_queries()   # [MergeQuery]
+query[0].child_queries          # [UpdateQuery, InsertQuery]
 ```
 
 ### Common Table Expressions (CTEs)
@@ -267,10 +267,10 @@ column[processed.age]
 You can add your own functionality for per-dialect processing functions:
 
 ```python
-from sqlleaf.structs import LineageBuilder
-from sqlleaf.structs import ColumnNode
+from sqlleaf.objects.node_types import LineageGenerator
+from sqlleaf.objects.node_types import ColumnNode
 
-class MyCustomBuilder(LineageBuilder):
+class MyCustomBuilder(LineageGenerator):
     dialect = 'my_dialect'
     
     # Example: Override the Column node creation logic
@@ -309,8 +309,7 @@ function[CURRENTTIMESTAMP()] -> column[target.birthday]
       "column": "name",
       "data_type": "VARCHAR",
       "kind": "column",
-      "table_type": "table",
-      "table_properties": []
+      "table_type": "table"
     },
     {
       "id": "node:02bb8f43ae05e57c",
@@ -321,8 +320,7 @@ function[CURRENTTIMESTAMP()] -> column[target.birthday]
       "column": "name",
       "data_type": "VARCHAR",
       "kind": "column",
-      "table_type": "table",
-      "table_properties": []
+      "table_type": "table"
     }
   ],
   "edges": [

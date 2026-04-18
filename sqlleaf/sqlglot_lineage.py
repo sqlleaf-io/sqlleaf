@@ -17,7 +17,7 @@ from sqlglot.optimizer.scope import ScopeType
 if t.TYPE_CHECKING:
     from sqlglot.dialects.dialect import DialectType
 
-from sqlleaf import util
+from sqlleaf import util, exception
 
 logger = logging.getLogger("sqlleaf")
 
@@ -119,14 +119,21 @@ def to_node(
     """
     # Find the specific select clause that is the source of the column we want.
     # This can either be a specific, named select or a generic `*` clause.
-    select = (
-        scope.expression.selects[column]
-        if isinstance(column, int)
-        else next(
-            (select for select in scope.expression.selects if select.alias_or_name == column.name),
-            exp.Star() if scope.expression.is_star else scope.expression,
-        )
-    )
+
+    if isinstance(column, int):
+        select = scope.expression.selects[column]
+    else:
+        selects = [select for select in scope.expression.selects if select.alias_or_name == column.name]
+        if len(selects) > 1:
+            message = f"Column reference '{column}' is ambiguous ({len(selects)} possible options)"
+            raise exception.SqlLeafException(message)
+        if selects:
+            select = selects[0]
+        elif scope.expression.is_star:
+            select = exp.Star()
+        else:
+            select = scope.expression
+
     parent_pivot_aliases = []
     pivots = scope.pivots
     pivot = pivots[0] if len(pivots) == 1 and not pivots[0].unpivot else None
@@ -282,6 +289,10 @@ def to_node(
                 reference_node_name = table
             elif source.scope_type == ScopeType.CTE:
                 selected_node, _ = scope.selected_sources.get(table, (None, None))
+                if not selected_node:
+                    message = f"Table '{table}' is referenced but there is no FROM containing it."
+                    raise exception.SqlLeafException(message=message)
+
                 reference_node_name = selected_node.name if selected_node else None
                 # Use the CTE's name instead of its alias
                 c.args["table"] = exp.to_identifier(reference_node_name)
@@ -292,8 +303,9 @@ def to_node(
                 for cte in source.parent.ctes:
                     if cte.alias_or_name == reference_node_name:
                         with_: exp.With = cte.parent
-                        node.is_parent_a_recursive_cte = with_.recursive
-                        logger.debug("Set node to be a recursive CTE.")
+                        if with_.recursive:
+                            node.is_parent_a_recursive_cte = with_.recursive
+                            logger.debug("Set node to be a recursive CTE.")
                         break
 
             if is_node_inside_a_recursive_cte(node):
@@ -341,7 +353,7 @@ def to_node(
                     source = source or exp.Placeholder()
                     n = Node(
                         name=_to_node_name(downstream_column),
-                        # name=downstream_column.sql(comments=False),
+                        # name=downstream_column.sql(),
                         column=downstream_column,
                         source=source,
                         upstream=[node],
@@ -372,7 +384,7 @@ def to_node(
                         c.set("table", exp.to_identifier(source.name))
 
             n = Node(
-                name=c.sql(comments=False),
+                name=c.sql(),
                 column=c,
                 source=source,
                 upstream=[node],

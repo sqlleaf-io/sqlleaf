@@ -119,7 +119,7 @@ def _collect_writable_cte_queries(parent_query: Query, dialect: str, object_mapp
     the lineage functions collect the right columns during expression traversal.
     The two queries are processed independently later.
     """
-    for i, cte in enumerate(getattr(parent_query.statement, 'ctes', [])):
+    for i, cte in enumerate(parent_query.get_ctes()):
         cte_expr = cte.this
 
         if isinstance(cte_expr, exp.Merge):
@@ -410,6 +410,7 @@ def _process_functions(statement: exp.Create, dialect: str, object_mapping: mapp
     Process a "CREATE FUNCTION" statement.
     """
     # TODO: Decide if we can process it or not (i.e. lang = SQL)
+    # TODO: use exp.replace_placeholders() to replace placeholders
 
     udf_expr = statement.this
     udf_table = statement.this.this
