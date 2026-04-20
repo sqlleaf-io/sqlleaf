@@ -49,7 +49,7 @@ SELECT
       - [ ] Hard-code default returned column names
   - [x] Window functions
   - [ ] FROM udf()
-  - [ ] UNION
+  - [x] UNION
     - Combine lineage.lineage() first
   - [x] CTEs
     - [x] Regular

@@ -262,7 +262,7 @@ def test__select_rows_from(holder):
 
 # TODO: test below query
 @pytest.mark.skip(reason="todo")
-def test__select_union(holder):
+def test__select_lateral(holder):
     queries = '''
     SELECT u.name, task.title
     FROM users u,
@@ -275,12 +275,10 @@ def test__select_union(holder):
     assert paths == []
 
 
-# TODO: union does not work due to logic in selecting most recently
-#  created node.
-@pytest.mark.skip(reason="todo")
 def test__select_union(holder):
     queries = '''
     CREATE TABLE fruit.old (name VARCHAR);
+
     INSERT INTO fruit.processed (name)
     SELECT name FROM fruit.raw
     UNION
@@ -288,7 +286,13 @@ def test__select_union(holder):
     '''
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
+    edges = h.get_edges()
     nodes = h.get_full_node_names()
     paths = h.get_friendly_paths()
-    assert paths == []
 
+    assert len(nodes) == 3
+    assert len(edges) == 2
+    assert paths == [
+        ['column[fruit.raw.name]', 'column[fruit.processed.name]'],
+        ['column[fruit.old.name]', 'column[fruit.processed.name]']
+    ]
