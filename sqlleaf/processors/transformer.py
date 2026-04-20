@@ -7,40 +7,34 @@ from sqlglot import exp
 from sqlglot.optimizer import optimize, qualify, RULES
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
-from sqlleaf import exception, mappings
+from sqlleaf import exception, mappings, util
 from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query
 
 logger = logging.getLogger("sqleaf")
 
 
-def transform_query(query: Query, object_mapping: mappings.ObjectMapping) -> Query:
+def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
     """
     Transform a query's expression according to rules specific to its type.
     """
-    statement = query.statement.copy()
-    logger.info(f"Transforming query: {str(type(statement))}")
+    logger.debug(f"Transforming - Query: {query.__class__.__name__}, Statement: {query.statement.__class__.__name__}")
+    statement = util.copy_expression(query.statement)
 
     if isinstance(query, InsertQuery):
         statement = _convert_insert_values_to_select(statement, object_mapping, query.child_table)
+        statement = _add_information_from_merge(statement, query)
+        statement = _process_inner_ctes(statement, query, object_mapping)
+
     elif isinstance(query, UpdateQuery):
-        statement = _convert_update_to_insert(statement)
+        statement = _add_information_from_merge(statement, query)
+        statement = _convert_update_to_insert(statement, query.dialect)
+        statement = _process_inner_ctes(statement, query, object_mapping)
+
     elif isinstance(query, MergeQuery):
-        _transform_merge_children(query)
+        statement = _process_inner_ctes(statement, query, object_mapping)
+
     elif isinstance(query, CopyQuery):
-        statement = _convert_copy_to_insert(query, statement, object_mapping)
-
-    # Transform 'RETURNING' columns
-    for cte_expr in getattr(statement, 'ctes', []):
-        if isinstance(cte_expr.this, exp.Update):
-            # Replace the inner UPDATE with an INSERT first.
-            # The inner query is different from the child query, which is its own separate copy.
-            inner_expr = _convert_update_to_insert(statement=cte_expr.this)
-            cte_expr.this.replace(inner_expr)
-
-        if returning := cte_expr.this.args.get('returning', None):
-            # Rename the columns and replace the INSERT with the SELECT
-            select_expr = _rename_returning_columns(expr=returning, dialect=query.dialect, object_mapping=object_mapping, child_table=cte_expr.find(exp.Table))
-            cte_expr.set("this", select_expr)
+        statement = _convert_copy_to_insert(statement, query, object_mapping)
 
     # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
     statement = _apply_optimizations(statement, query.dialect, object_mapping, query.child_table)
@@ -48,8 +42,27 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping) -> Que
     # Transform CASE statements to remove false positive lineage; see docs
     statement = statement.transform(_case_statement_transformer)
 
+    logger.debug(f"Transformed {str(type(statement))}: {statement.sql(dialect=query.dialect)}")
     query.statement_transformed = statement
     query.set_statement(statement)
+
+
+def _process_inner_ctes(statement: exp.Insert | exp.Merge | exp.Update, query: Query, object_mapping: mappings.ObjectMapping) -> exp.Insert | exp.Merge | exp.Update:
+    """
+    Transform any inner CTE statements.
+    """
+    for cte_expr in getattr(statement, 'ctes', []):
+        if isinstance(cte_expr.this, exp.Update):
+            # Replace the inner UPDATE with an INSERT first.
+            # The inner query is different from the child query, which is its own separate copy.
+            inner_expr = _convert_update_to_insert(statement=cte_expr.this, dialect=query.dialect)
+            cte_expr.this.replace(inner_expr)
+
+        # Rename the columns and replace the INSERT with the SELECT
+        _rename_returning_columns(expr=cte_expr, dialect=query.dialect, object_mapping=object_mapping, child_table=cte_expr.find(exp.Table))
+        # cte_expr.set("this", select_expr)
+
+    return statement
 
 
 def _convert_insert_values_to_select(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
@@ -78,11 +91,12 @@ def _convert_insert_values_to_select(statement: exp.Insert, object_mapping: mapp
             columns=statement.this.expressions,
             into=child_table,
         )
+        statement.replace(insert_expr)
         return insert_expr
     return statement
 
 
-def _convert_update_to_insert(statement: exp.Update) -> exp.Insert:
+def _convert_update_to_insert(statement: exp.Update, dialect: str) -> exp.Insert:
     """
     Taken from function extract_select_from_update() at datahub/metadata-ingestion/src/datahub/sql_parsing/sqlglotlineage.py
 
@@ -145,16 +159,18 @@ def _convert_update_to_insert(statement: exp.Update) -> exp.Insert:
     insert_statement = exp.insert(
         expression=select_statement,
         columns=alias_names,
-        into=statement.this,
+        into=util.get_table(statement),
         returning=statement.args.get('returning', None),
-        dialect='postgres',
+        dialect=dialect,
     )
     if with_:
         insert_statement.set('with_', with_)
+
+    statement.replace(insert_statement)
     return insert_statement
 
 
-def _transform_merge_children(parent_query: MergeQuery):
+def _add_information_from_merge(statement: exp.Insert | exp.Update, query: InsertQuery | UpdateQuery) -> exp.Insert | exp.Update:
     """
     Transform any nested statements (INSERT or UPDATE) into fully qualified queries.
 
@@ -181,13 +197,16 @@ def _transform_merge_children(parent_query: MergeQuery):
         SELECT s.kind as label
         FROM fruit.raw s;
     """
-    merge = parent_query
-    expr = parent_query.statement
-    using = expr.args["using"]
-    on = expr.args["on"]
+    merge_expr = statement.find_ancestor(exp.Merge)
+    if not merge_expr:
+        return statement
 
-    if "with_" in expr.args:
-        ctes = expr.args["with_"].expressions
+    using = merge_expr.args["using"]
+    on = merge_expr.args["on"]
+    returning = merge_expr.args.get("returning", None)
+
+    if "with_" in merge_expr.args:
+        ctes = merge_expr.args["with_"].expressions
     else:
         ctes = []
 
@@ -199,42 +218,46 @@ def _transform_merge_children(parent_query: MergeQuery):
         for cte in ctes
     ]
 
-    for child_query in parent_query.child_queries:
-        child_expr = child_query.statement
+    if isinstance(statement, exp.Update):
+        # Add the missing information to the UPDATE statement
+        update_expr = statement.table(query.child_table).from_(using).where(on)
+        update_expr.set('returning', returning)
 
-        if isinstance(child_query, UpdateQuery):
-            # Add the missing information to the UPDATE statement
-            update_expr = child_expr.table(parent_query.child_table).from_(using).where(on)
+        for cte in new_ctes:
+            update_expr = update_expr.with_(alias=cte["alias"], as_=cte["as_"])
 
-            for cte in new_ctes:
-                update_expr = update_expr.with_(alias=cte["alias"], as_=cte["as_"])
-
-            child_query.set_statement(update_expr)
-
-        elif isinstance(child_query, InsertQuery):
-            # Add the missing information to the INSERT statement
-            new_columns = child_expr.expression.expressions
-            new_aliases = child_expr.this.expressions
-
-            aliases = [exp.alias_(str(col), str(alias)) for col, alias in zip(new_columns, new_aliases)]
-
-            # Build a new SELECT
-            new_select = exp.select(*aliases).from_(using)
-
-            insert_expr = exp.insert(
-                expression=new_select,
-                columns=[col.this for col in child_expr.this.expressions],
-                into=parent_query.child_table,
-                dialect=parent_query.dialect,
-            )
-
-            for cte in new_ctes:
-                insert_expr = insert_expr.with_(alias=cte["alias"], as_=cte["as_"])
-
-            child_query.set_statement(insert_expr)
+        statement.replace(update_expr)
+        return update_expr
 
 
-def _convert_copy_to_insert(query: CopyQuery, statement: exp.Copy, object_mapping) -> exp.Insert:
+    elif isinstance(statement, exp.Insert):
+        # Add the missing information to the INSERT statement
+        new_columns = statement.expression.expressions
+        new_aliases = statement.this.expressions
+
+        aliases = [exp.alias_(str(col), str(alias)) for col, alias in zip(new_columns, new_aliases)]
+
+        # Build a new SELECT
+        new_select = exp.select(*aliases).from_(using)
+
+        insert_expr = exp.insert(
+            expression=new_select,
+            columns=[col.this for col in statement.this.expressions],
+            into=query.child_table,
+            dialect=query.dialect,
+            returning=returning,
+        )
+
+        for cte in new_ctes:
+            insert_expr = insert_expr.with_(alias=cte["alias"], as_=cte["as_"])
+
+        statement.replace(insert_expr)
+        return insert_expr
+
+    return statement
+
+
+def _convert_copy_to_insert(statement: exp.Copy, query: CopyQuery, object_mapping) -> exp.Insert:
     """
     Convert the COPY statement into an INSERT statement so that the lineage functions can process it.
 
@@ -279,6 +302,7 @@ def _convert_copy_to_insert(query: CopyQuery, statement: exp.Copy, object_mappin
         child_table_query.column_defs = col_defs
 
     # We don't worry about `self.is_source_a_stage` here as that is handled in the process_column() later
+    statement.replace(expr_insert)
     return expr_insert
 
 
@@ -327,7 +351,7 @@ def _apply_optimizations(statement: exp.Insert, dialect: str, object_mapping: ma
     return stmt
 
 
-def _rename_returning_columns(expr: exp.Returning, dialect: str, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Select:
+def _rename_returning_columns(expr: exp.CTE, dialect: str, object_mapping: mappings.ObjectMapping, child_table: exp.Table):
     """
     Given an (INSERT .. RETURNING *) statement, expand the star to the table's column names
     and add the correct column aliases.
@@ -341,16 +365,23 @@ def _rename_returning_columns(expr: exp.Returning, dialect: str, object_mapping:
         SELECT UPPER(name)
         FROM fruit.raw
 
-    and then passed through apply_optimizations() so that the correct
-    aliases and expanded column names are set.
+    Note that:
+    MERGE RETURNING * returns all columns from source and target
+    UPDATE RETURNING * returns all columns from target
+    INSERT RETURNING * returns all columns from target
+    DELETE RETURNING * returns all columns from target
     """
-    for col_expr in expr.expressions:
+    returning_expr: exp.Returning = expr.this.args.get('returning', None)
+    if not returning_expr:
+        return expr
+
+    for col_expr in returning_expr.expressions:
         if not isinstance(col_expr, (exp.Alias, exp.Column, exp.Star)):
             message = f"Non-column expression ({col_expr}) must have an alias inside RETURNING to prevent ambiguity."
             raise exception.SqlLeafException(message=message)
 
     # Replace the OLD & NEW aliases with the table alias if it exists. Otherwise, remove it to be valid.
-    returning_columns = list(expr.find_all(exp.Column))
+    returning_columns = list(returning_expr.find_all(exp.Column))
     for col in returning_columns:
         if col.table.lower() in ['old', 'new']:
             if child_table.alias:
@@ -361,10 +392,17 @@ def _rename_returning_columns(expr: exp.Returning, dialect: str, object_mapping:
                     # optimize() needs Star(), not Column(Star())
                     col.replace(col.this)
 
-    new_select = exp.select(*expr.expressions).from_(child_table)
+    if isinstance(expr.this, exp.Merge):
+        using = expr.this.args['using']
+        on = expr.this.args['on']
+        new_select = exp.select(*returning_expr.expressions).from_(child_table).join(using, on=on)
+    else:
+        new_select = exp.select(*returning_expr.expressions).from_(child_table)
+
     new_select = _apply_optimizations(new_select, dialect, object_mapping, child_table, match_columns=False)
 
-    return new_select
+    expr.set("this", new_select)
+    return expr
 
 
 def _add_column_names_to_insert(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table):
@@ -455,7 +493,7 @@ def _case_statement_transformer(expr: exp.Expression):
         case = exp.case()
         for _if in expr.args["ifs"]:
             try:
-                case = case.when("1=1", then=_if.args["true"])
+                case = case.when("'dummy'='value'", then=_if.args["true"])
                 if "default" in expr.args:
                     case = case.else_(expr.args["default"])
             except Exception:

@@ -219,14 +219,13 @@ def to_node(
     node = Node(
         name=f"{scope_name}.{column.name}" if scope_name else str(column),
         column=column,
-        source=source,
+        source=select,
         expression=select,
         source_name=source_name or "",
         reference_node_name=reference_node_name or "",
         parent_pivot_aliases=parent_pivot_aliases,
     )
     logger.debug("[1] Created Node '%s', Expr: %s, Id: %s", column, select.sql(), id(node))
-
     if upstream:
         upstream.downstream.append(node)
         node.upstream.append(upstream)
@@ -370,7 +369,8 @@ def to_node(
             # passed into the `sources` map.
             source = source or exp.Placeholder()
 
-            # Change the column's source table to be its name, not its alias
+            # Change the column's source table to be its fully qualified name, not its alias,
+            # so that the ColumnNode can be created with complete information
             if isinstance(source, exp.Table):
                 if source.catalog:
                     c.set("catalog", exp.to_identifier(source.catalog))

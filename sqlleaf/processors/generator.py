@@ -394,7 +394,7 @@ class LineageGenerator:
             return graph.nodes[node_name]['attrs']
 
         graph.add_node(node_name, attrs=node_attrs)
-        logger.debug(f"Created Node: {node_attrs.__class__}, Name: {node_attrs.full_name}")
+        logger.debug(f"Created Node: {node_attrs.__class__.__name__}, Name: {node_attrs.full_name}")
         return node_attrs
 
 

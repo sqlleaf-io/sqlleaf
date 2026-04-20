@@ -19,21 +19,23 @@ class Query:
         statement: exp.Expression,
         child_table: exp.Table,
         statement_index: int,
-        has_statement: bool = True,
     ):
         self.kind = kind
         self.dialect = dialect
         self.statement = None
         self.child_table = child_table  # The target table
-        self.statement_index = statement_index  # The position of this query within a list of queries
         self.parent_query = None
         self.child_queries = []
-        self.has_statement = has_statement  # Has a DML statement (Insert, Update, Merge)
 
+        # Remove comments at initialisation
+        for expr in statement.walk():
+            expr.pop_comments()
+
+        self.statement_index = statement_index  # The position of this query within a list of queries
         self.statement_original = statement
         self.statement_transformed = None
-        self.set_properties(statement)
-        self.set_statement(statement)
+
+        self.set_statement(self.statement_original)
 
         logger.debug(f"Created Query: {self.__class__}")
 
@@ -47,32 +49,12 @@ class Query:
         else:
             return str(self.statement_index)
 
-    def set_properties(self, statement):
-        self.property_names = []
-        table_properties = statement.args.get("properties")
-        if table_properties:
-            self.property_names = [str(p) for p in table_properties.expressions]
-
     def set_statement(self, statement: exp.Expression):
-        if not self.statement:
-            # Remove comments at initialisation
-            for expr in statement.walk():
-                expr.pop_comments()
+        self.statement = statement
 
-        self.statement = statement.copy()
-        text = self.statement.sql()
-        self.text_original = text
-        self.text_length = len(text)
-        self.text_sha256_hash = util.long_sha256_hash(text)
-
-        self.set_id()
-
-    def set_id(self):
-        """
-        Consider the query's index in the ID as there may be duplicate queries provided
-        (e.g. in a stored procedure).
-        """
-        self.id = "query:" + util.short_sha256_hash(self.text_original + ":" + str(self.statement_index))
+    @property
+    def id(self) -> str:
+        return "query:" + util.short_sha256_hash(self.statement_original.sql() + ":" + str(self.statement_index))
 
     def set_to_original(self):
         """
@@ -93,30 +75,23 @@ class Query:
 
     def get_all_queries(self, types: t.Tuple = None):
         """
-        Collect all queries (children + self) recursively of a certain type.
+        Collect all queries (self + children recursively), optionally filtered by type.
         """
-        all_queries = []
+        queries = [self]
 
         for child in self.child_queries:
-            all_queries.append(child)
-            all_queries.extend(child.get_all_queries())
+            queries.extend(child.get_all_queries(types))
 
-        if not self.parent_query:
-            # We're the root node
-            all_queries = [self] + self.child_queries
-            all_queries.extend([q for q in all_queries if types and isinstance(q, types)])
+        if types:
+            queries = [q for q in queries if isinstance(q, types)]
 
-        return all_queries
+        return queries
 
     def to_dict(self):
         result = {
             "id": self.id,
             "kind": self.kind,
             "index": self.statement_index,
-            "text_original": self.text_original,
-            "text_length": self.text_length,
-            "text_sha256_hash": self.text_sha256_hash,
-            "stored_procedure": {},
         }
         return result
 
@@ -244,9 +219,7 @@ class TableQuery(Query):
             dialect=dialect,
             statement_index=statement_index,
             child_table=util.get_table(statement.this),
-            has_statement = False,
         )
-        self.property_names = []
         self.column_defs = []
 
     def get_column_defs(self) -> t.List[exp.ColumnDef]:
@@ -281,9 +254,6 @@ class ProcedureQuery(Query):
         self.schema = table.db
         self.procedure = table.name
         self.signature = str(statement.this)  # e.g. etl.my_proc(v_session_id VARCHAR)
-        self.text_original = sql  # For tracking/debugging purposes
-        self.text_hash = util.long_sha256_hash(sql)
-        self.set_id()
 
         # TODO: support 'default'
         self.args = [  # e.g. {'name': 'v_session_id', 'type': 'VARCHAR'}
@@ -292,8 +262,9 @@ class ProcedureQuery(Query):
 
         self.set_statement(statement)
 
-    def set_id(self):
-        self.id = "procedure:" + util.short_sha256_hash(self.text_original)
+    @property
+    def id(self):
+        return "procedure:" + util.short_sha256_hash(self.statement_original.sql())
 
     def to_dict(self):
         return {
@@ -301,8 +272,6 @@ class ProcedureQuery(Query):
             "name": self.name,
             "signature": self.signature,
             "args": self.args,
-            "text_hash": self.text_hash,
-            "text": self.text_original,
         }
 
     @property
@@ -357,7 +326,6 @@ class SequenceQuery(Query):
             dialect=dialect,
             statement_index=statement_index,
             child_table=statement.this,
-            has_statement=False,
         )
 
 
@@ -394,7 +362,6 @@ class StageQuery(Query):
             dialect=dialect,
             statement_index=statement_index,
             child_table=util.get_table(statement),
-            has_statement=False,
         )
         # Needed due to a bug in sqlglot. Never access the table name via print()!
         #  as it prints double-double quotes

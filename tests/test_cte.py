@@ -5,7 +5,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import pytest
 
-from sqlleaf.objects.query_types import InsertQuery, UpdateQuery, SelectQuery
+from sqlleaf.objects.query_types import InsertQuery, UpdateQuery, SelectQuery, MergeQuery
 from sqlleaf.exception import SqlLeafException
 
 from tests.new_fixtures import (
@@ -13,6 +13,57 @@ from tests.new_fixtures import (
 )
 
 DIALECT = 'postgres'
+
+def test__cte_simple(holder):
+    queries = '''
+    WITH cte_names AS (
+        SELECT
+            lower(age) as age,
+            'hello' as name
+        FROM fruit.raw r
+    )
+    INSERT INTO fruit.processed (name, age)
+    SELECT
+        name,
+        age
+    FROM cte_names;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_friendly_node_names()
+    paths = h.get_friendly_paths()
+
+    assert paths == [
+        ['literal["hello"]', 'column[cte_names.name]', 'column[fruit.processed.name]'],
+        ['column[fruit.raw.age]', 'function[LOWER()]', 'column[cte_names.age]', 'column[fruit.processed.age]']
+    ]
+
+
+def test__cte_join_same_names(holder):
+    queries = '''
+    CREATE TABLE fruit.old (kind VARCHAR);
+
+    WITH cte_names AS (
+        SELECT
+            LOWER(r.kind || o.kind) as kind
+        FROM fruit.raw r
+        INNER JOIN fruit.old o
+        ON r.kind = o.kind
+    )
+    INSERT INTO fruit.processed (kind)
+    SELECT
+        kind
+    FROM cte_names;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_friendly_node_names()
+    paths = h.get_friendly_paths()
+
+    assert paths == [
+        ['column[fruit.raw.kind]', 'function[DPIPE()]', 'function[LOWER()]', 'column[cte_names.kind]', 'column[fruit.processed.kind]'],
+        ['column[fruit.old.kind]', 'function[DPIPE()]', 'function[LOWER()]', 'column[cte_names.kind]', 'column[fruit.processed.kind]']
+    ]
 
 def test__cte_same_functions_different_levels(holder):
     queries = '''
@@ -235,6 +286,73 @@ def test__cte_update_returning(holder):
     assert [UpdateQuery, UpdateQuery] == list(map(type, queries[0].child_queries))
 
 
+def test__cte_merge(holder):
+    queries = '''
+    WITH cte AS (
+        MERGE INTO fruit.processed AS t
+        USING fruit.raw AS s
+        ON t.kind = s.kind
+        WHEN MATCHED THEN
+            UPDATE SET name = s.name
+        WHEN NOT MATCHED THEN
+            INSERT (label) VALUES (s.kind)
+        RETURNING merge_action() as action, t.*
+    )
+    SELECT 1;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    paths = h.get_friendly_paths()
+    queries = h.get_queries_created()
+
+    assert len(nodes) == 4
+    assert paths == [
+        ['column[fruit.raw.name]', 'column[fruit.processed.name]'],
+        ['column[fruit.raw.kind]', 'column[fruit.processed.label]']
+    ]
+    assert [SelectQuery] == list(map(type, queries))
+    assert [MergeQuery] == list(map(type, queries[0].child_queries))
+    assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries[0].child_queries))
+
+
+# TODO: add function merge_action() as system function (not UDF)
+def test__cte_merge_returning(holder):
+    queries = '''
+    CREATE TABLE fruit (name VARCHAR, kind VARCHAR);
+    CREATE TABLE drink (name2 VARCHAR, kind2 VARCHAR);
+    CREATE TABLE fruit_drink (action VARCHAR, name VARCHAR, kind VARCHAR, name2 VARCHAR, kind2 VARCHAR);
+
+    WITH cte AS (
+        MERGE INTO fruit AS t
+        USING drink AS s
+        ON t.name = s.name2
+        WHEN MATCHED THEN
+            UPDATE SET name = s.name2
+        WHEN NOT MATCHED THEN
+            INSERT (kind) VALUES (s.kind2)
+        RETURNING merge_action() as action, *
+    )
+    INSERT INTO fruit_drink
+    SELECT *
+    FROM cte;
+    '''
+    h = holder(with_tables=False)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    paths = h.get_friendly_paths()
+    queries = h.get_queries_created()
+
+    assert paths == [
+        ['udf[MERGE_ACTION()]', 'column[cte.action]', 'column[fruit_drink.action]'],
+        ['column[drink.name2]', 'column[cte.name2]', 'column[fruit_drink.name2]'],
+        ['column[drink.name2]', 'column[fruit.name]', 'column[cte.name]', 'column[fruit_drink.name]'],
+        ['column[drink.kind2]', 'column[cte.kind2]', 'column[fruit_drink.kind2]'],
+        ['column[drink.kind2]', 'column[fruit.kind]', 'column[cte.kind]', 'column[fruit_drink.kind]']
+    ]
+    assert queries[3].statement_transformed.sql(dialect=DIALECT) == "WITH cte AS (SELECT MERGE_ACTION() AS action, t.name AS name, t.kind AS kind, s.name2 AS name2, s.kind2 AS kind2 FROM fruit AS t JOIN drink AS s ON s.name2 = t.name) INSERT INTO fruit_drink (action, name, kind, name2, kind2) SELECT cte.action AS action, cte.name AS name, cte.kind AS kind, cte.name2 AS name2, cte.kind2 AS kind2 FROM cte AS cte"
+
+
 def test__cte_insert_returning(holder):
     queries = '''
     WITH insert_cte AS (
@@ -288,7 +406,7 @@ def test__cte_insert(holder):
     assert [InsertQuery, UpdateQuery] == list(map(type, queries[0].child_queries))
 
 
-def test__view_with_recursive_cte(holder):
+def test__cte_recursive_view(holder):
     queries = """
     WITH RECURSIVE numbers AS (
         SELECT 1 AS n

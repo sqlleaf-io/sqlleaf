@@ -22,7 +22,7 @@ from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import NodeAttributes, StageNode, ColumnNode, new_graph
 from sqlleaf.path import LineagePath
 from sqlleaf.processors.generator import LineageGenerator
-from sqlleaf.processors.transformer import transform_query
+from sqlleaf.processors import transformer
 
 logger = logging.getLogger("sqlleaf")
 
@@ -40,8 +40,8 @@ def get_lineage_for_query(query: Query, object_mapping) -> nx.MultiDiGraph:
 
     for query in queries:
         # Transform every query, but only produce lineage for certain ones
-        transform_query(query, object_mapping)
         if isinstance(query, QUERIES_WITH_LINEAGE):
+            transformer.transform_query(query, object_mapping)
             generate_column_lineage_for_query(query, graph, object_mapping)
         query.set_to_original()
 
@@ -83,7 +83,6 @@ def generate_column_lineage_for_query(
     """
     child_table = query.child_table
     statement = query.statement
-    scope = build_scope(statement)
 
     logger.info(f"Getting lineage for query: {statement.sql(dialect=query.dialect)}")
 
@@ -114,6 +113,10 @@ def generate_column_lineage_for_query(
     child_table_query = object_mapping.get_table_or_stage(query.child_table)
     child_columns = child_table_query.get_column_defs()
     selected_column_names = _validate_and_get_selects(query.statement, child_columns, child_table)
+
+    # Copy since lineage() transforms columns for generate() to work (see c.set()). TODO: Move all transforms into transform()
+    statement_lineage = statement.copy()
+    scope = build_scope(statement_lineage)
 
     select_idx = 0
     for col_def in child_columns:
@@ -154,7 +157,7 @@ def generate_column_lineage_for_query(
         # trim_selects=false -> 10x faster, skips re-parsing
         lin = sqlglot_lineage.lineage(
             column=col_name,
-            sql=statement,
+            sql=statement_lineage,
             scope=scope,
             dialect=query.dialect,
             schema=object_mapping,
@@ -336,7 +339,7 @@ def calculate_paths(graph: nx.MultiDiGraph) -> t.Dict[str, LineagePath]:
             if not path:
                 continue
 
-            logger.debug("Found edge path: %s", [e.id for e in path])
+            logger.debug("Found edge path: %s --- %s", [e.id for e in path], [(e.parent.friendly_name, e.child.friendly_name) for e in path])
             lineage_path = LineagePath(root=root, hops=path)
             all_lineage_paths[lineage_path.path_id] = lineage_path
 

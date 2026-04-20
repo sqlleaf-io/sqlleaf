@@ -6,7 +6,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 from tests.new_fixtures import (
-    holder, is_subset
+    holder, is_subset, DIALECT
 )
 from sqlleaf.objects.query_types import InsertQuery, UpdateQuery
 
@@ -104,9 +104,14 @@ def test__merge_simple_update_and_insert(holder):
         ['column[fruit.raw.name]', 'column[fruit.processed.name]'],
         ['column[fruit.raw.kind]', 'column[fruit.processed.label]']
     ]
+    assert queries[0].child_queries[0].statement_transformed.sql(dialect=DIALECT) == "INSERT INTO fruit.processed AS t (name) SELECT s.name AS name FROM fruit.raw AS s"
+    assert queries[0].child_queries[1].statement_transformed.sql(dialect=DIALECT) == "INSERT INTO fruit.processed AS t (label) SELECT s.kind AS label FROM fruit.raw AS s"
 
+# TODO: test MERGE ONLY
+# TODO: test MERGE USING (SELECT ...)
 # TODO: test two merge queries that have an identical inner query
 #  expect: the two inner queries are identical (and preserved), but they have different parents
+# TODO: test: "if ONLY is not specified, matching rows are also updated or deleted in any tables inheriting from the named table."
 
 def test__merge_simple_update_and_insert_with_cte(holder):
     queries = '''
@@ -187,10 +192,11 @@ def test__select_window_function(holder):
 
 def test__select_join_to_self(holder):
     queries = '''
-    INSERT INTO fruit.processed (name, age)
+    INSERT INTO fruit.processed (name, age, kind)
     SELECT
         p.name,
-        r.age as age
+        r.age as age,
+        color
     FROM fruit.raw r
     INNER JOIN fruit.processed p ON r.name = p.name;
     '''
@@ -198,6 +204,7 @@ def test__select_join_to_self(holder):
     h.generate(queries, dialect=DIALECT)
     paths = h.get_friendly_paths()
     assert paths == [
+        ['column[fruit.raw.color]', 'column[fruit.processed.kind]'],
         ['column[fruit.raw.age]', 'column[fruit.processed.age]']
         # Exclude self-referential inserts
     ]
@@ -251,3 +258,37 @@ def test__select_rows_from(holder):
 
 # TODO: sqlglot parser breaks on 'LATERAL ROWS FROM'
 # TODO: support ROWS FROM without table alias
+
+
+# TODO: test below query
+@pytest.mark.skip(reason="todo")
+def test__select_union(holder):
+    queries = '''
+    SELECT u.name, task.title
+    FROM users u,
+    LATERAL get_tasks_for_user(u.id) AS task(title, due_date);
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    paths = h.get_friendly_paths()
+    assert paths == []
+
+
+# TODO: union does not work due to logic in selecting most recently
+#  created node.
+@pytest.mark.skip(reason="todo")
+def test__select_union(holder):
+    queries = '''
+    CREATE TABLE fruit.old (name VARCHAR);
+    INSERT INTO fruit.processed (name)
+    SELECT name FROM fruit.raw
+    UNION
+    SELECT name FROM fruit.old;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    paths = h.get_friendly_paths()
+    assert paths == []
+

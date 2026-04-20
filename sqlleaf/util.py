@@ -164,6 +164,21 @@ def unwrap_expression(expr: exp.Expression) -> exp.Expression:
     return ex
 
 
+def copy_expression(expr: exp.Expression) -> exp.Expression:
+    """
+    Copy an expression.
+
+    Unlike sqlglot's copy() method, this preserves the expression's parents.
+    """
+    for i, ex in enumerate(expr.root().walk()):
+        if ex == expr:
+            copy_expr = expr.root().copy()
+            # Get the equivalent statement in the copy
+            for j, new_ex in enumerate(copy_expr.walk()):
+                if j == i:
+                    return new_ex
+
+
 def get_table(expr: exp.Expression) -> exp.Table:
     return expr.find(exp.Table)
 

@@ -74,6 +74,7 @@ COMMON_TABLES = '''
      name VARCHAR,
      kind VARCHAR,
      age  INT,
+     color VARCHAR,
      jsonblob JSONB
  );
 

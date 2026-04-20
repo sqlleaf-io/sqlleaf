@@ -124,6 +124,7 @@ def _collect_writable_cte_queries(parent_query: Query, dialect: str, object_mapp
 
         if isinstance(cte_expr, exp.Merge):
             query = MergeQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
+            _collect_merge_children(query, object_mapping)
         elif isinstance(cte_expr, exp.Insert):
             query = InsertQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
         elif isinstance(cte_expr, exp.Update):
@@ -133,7 +134,6 @@ def _collect_writable_cte_queries(parent_query: Query, dialect: str, object_mapp
             continue
 
         # Detach the query in the AST so that certain transformations work later
-        query.statement.pop()
         parent_query.add_child_query(query)
 
 
@@ -165,17 +165,20 @@ def _collect_merge_children(parent_query: MergeQuery, object_mapping: mappings.O
         FROM fruit.raw s;
     """
     merge = parent_query
-    expr = parent_query.statement
-    whens = [when.args["then"] for when in expr.args["whens"].expressions]
+    parent_expr = parent_query.statement
+    whens = [when.args["then"] for when in parent_expr.args["whens"].expressions]
 
     for i, when in enumerate(whens):
-        if isinstance(when, exp.Update):
-            update_query = UpdateQuery(expr=when, dialect=parent_query.dialect, statement_index=i)
+        # Ensure the full expression tree is kept
+        when_expr = util.copy_expression(when)
+
+        if isinstance(when_expr, exp.Update):
+            update_query = UpdateQuery(expr=when_expr, dialect=parent_query.dialect, statement_index=i)
             update_query.child_table = merge.child_table
             parent_query.add_child_query(update_query)
 
-        elif isinstance(when, exp.Insert):
-            insert_query = InsertQuery(expr=when, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i)
+        elif isinstance(when_expr, exp.Insert):
+            insert_query = InsertQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i)
             insert_query.child_table = merge.child_table
             merge.add_child_query(insert_query)
 
@@ -324,21 +327,21 @@ def _process_unnamed(statement: exp.Expression, dialect: str, object_mapping: ma
     """
     query = None
 
+    if isinstance(statement, exp.Copy):
+        return CopyQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+    elif isinstance(statement, exp.Put):
+        return PutQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+
     if isinstance(statement, exp.Insert):
         query = InsertQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
     elif isinstance(statement, exp.Update):
         query = UpdateQuery(expr=statement, dialect=dialect, statement_index=statement_index)
-    elif isinstance(statement, exp.Copy):
-        return CopyQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
-    elif isinstance(statement, exp.Put):
-        return PutQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
     elif isinstance(statement, exp.Select):
         if statement.find((exp.Insert, exp.Update, exp.Merge)):
             query = SelectQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
         else:
             logger.warning("Skipping statement: A SELECT query must have a data-modifying statement, such as an INSERT, to contain lineage.")
-
-    if isinstance(statement, exp.Merge):
+    elif isinstance(statement, exp.Merge):
         query = MergeQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
         _collect_merge_children(query, object_mapping)
 
@@ -471,7 +474,7 @@ def _process_stored_procedures(statement: exp.Create, dialect: str, object_mappi
     # TODO: find a way to get each SP's text from a query that has multiple SPs defined in it.
     #  sqlglot will parse the 2 SPs, but does not provide the original, raw text. This is imperfect
     #  as we would like to keep the original text for various reasons.
-    transformed_text = clean_stored_procedure_text(query.text_original)
+    transformed_text = clean_stored_procedure_text(query.statement_original.sql())
     query.text_transformed = transformed_text
 
     # The original text is lost, so we are forced to use the transformed text in its place for now
