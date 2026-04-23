@@ -83,7 +83,7 @@ tests = [
 ]
 
 @pytest.mark.parametrize("case", tests)
-def test__select_value_twice(case, holder):
+def test__select_value_twice(holder, case):
     value, kind = case
     queries = f'''
     INSERT INTO fruit.processed (name, age)
@@ -206,13 +206,15 @@ def test__select_lateral(holder):
     assert paths == []
 
 
-def test__select_union(holder):
-    queries = '''
+set_operations = ['EXCEPT', 'INTERSECT', 'UNION']
+@pytest.mark.parametrize("op", set_operations)
+def test__select_union(holder, op):
+    queries = f'''
     CREATE TABLE fruit.old (name VARCHAR);
 
     INSERT INTO fruit.processed (name)
     SELECT name FROM fruit.raw
-    UNION
+    {op}
     SELECT name FROM fruit.old;
     '''
     h = holder(with_tables=True)

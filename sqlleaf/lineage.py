@@ -177,7 +177,7 @@ def generate_column_lineage_for_query(
             logger.debug(f"Found path from lineage.lineage(): {[(n.name, n.expression.sql()) for n in path]}")
 
             for node_depth, node in enumerate(path):
-                if node.name == 'UNION':
+                if node.name in ['EXCEPT', 'INTERSECT', 'UNION']:
                     continue
 
                 logger.debug("----")

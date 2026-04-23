@@ -52,8 +52,8 @@ SELECT
   - [x] Window functions
   - [ ] FROM udf()
   - [x] UNION
-  - [ ] EXCEPT
-  - [ ] INTERSECT
+  - [x] EXCEPT
+  - [x] INTERSECT
   - [x] CTEs
     - [x] Regular
     - [x] RECURSIVE
