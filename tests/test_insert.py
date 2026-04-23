@@ -15,7 +15,6 @@ from sqlleaf.objects.query_types import InsertQuery, UpdateQuery
 DIALECT = 'postgres'
 
 
-
 cases = [
     "INSERT INTO fruit.raw VALUES ('yellow', UPPER('banana'));",
     "INSERT INTO fruit.raw (name, kind) VALUES ('yellow', UPPER('banana'));",
@@ -32,13 +31,37 @@ def test__insert_values(holder, case):
     edges = h.get_edges()
     queries = h.get_queries_created()
     paths = h.get_friendly_paths()
-    print()
+
     assert paths == [
         ['literal["yellow"]', 'column[fruit.raw.name]'],
         ['literal["banana"]', 'function[UPPER()]', 'column[fruit.raw.kind]'],
     ]
     assert [InsertQuery] == list(map(type, queries))
 
+
+def test__insert_default_values(holder):
+    queries = '''
+    CREATE TABLE fruit.a (
+        name VARCHAR,
+        kind VARCHAR,
+        size INT DEFAULT 99
+    );
+    INSERT INTO fruit.a (name, kind, size) VALUES (DEFAULT, NULL, DEFAULT);
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_friendly_node_names()
+    edges = h.get_edges()
+    queries = h.get_queries_created()
+    paths = h.get_friendly_paths()
+
+    assert len(nodes) == 6
+    assert paths == [
+        ['null[NULL]', 'column[fruit.a.name]'],
+        ['null[NULL]', 'column[fruit.a.kind]'],
+        ['literal[99]', 'column[fruit.a.size]']
+    ]
+    assert queries[1].statement_transformed.sql() == "INSERT INTO fruit.a (name, kind, size) SELECT NULL AS name, NULL AS kind, 99 AS size"
 
 # Not supported by sqlglot: exception - unexpected token 'OVERRIDING'
 def test__insert_overriding(holder):

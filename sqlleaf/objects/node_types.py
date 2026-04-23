@@ -137,9 +137,14 @@ class ColumnNode(NodeAttributes):
 
         self.table_type = table_type
 
-    def get_column_constraint_expressions(self):
-        constraints = (exp. DefaultColumnConstraint, exp.ComputedColumnConstraint)
-        return [c.kind for c in self.expr.constraints if isinstance(c.kind, constraints)]
+    def get_column_constraint_expression(self) -> exp.ColumnConstraintKind:
+        """
+        Get the DEFAULT or GENERATED expression for this column, if it exists.
+        There is only one, but this
+        """
+        types = (exp.DefaultColumnConstraint, exp.ComputedColumnConstraint)
+        constraints = [c.kind for c in self.expr.constraints if isinstance(c.kind, types)]
+        return constraints[0] if constraints else None
 
     def _table_type(self, catalog, schema, table, processor_ctx) -> str:
         """

@@ -21,6 +21,7 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
     statement = util.copy_expression(query.statement)
 
     if isinstance(query, InsertQuery):
+        statement = _convert_defaults_to_values(statement, object_mapping, query.child_table)
         statement = _convert_insert_values_to_select(statement, object_mapping, query.child_table)
         statement = _add_information_from_merge(statement, query)
         statement = _process_inner_ctes(statement, query, object_mapping)
@@ -93,6 +94,35 @@ def _convert_insert_values_to_select(statement: exp.Insert, object_mapping: mapp
         )
         statement.replace(insert_expr)
         return insert_expr
+    return statement
+
+
+def _convert_defaults_to_values(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
+    """
+    Transform the query:
+        INSERT INTO x (name, age) VALUES (DEFAULT, DEFAULT);
+    into its default values (as defined in its table):
+        INSERT INTO x (name, age) VALUES (NULL, 42);
+    """
+    values = statement.expression
+    if not isinstance(values, exp.Values):
+        return statement
+
+    columns = statement.this.expressions
+
+    for value_expr in values.expressions:
+        if isinstance(value_expr, exp.Tuple):
+            for i, tuple_expr in enumerate(value_expr.expressions):
+                if isinstance(tuple_expr, exp.Var) and tuple_expr.name.upper() == 'DEFAULT':
+                    # Replace 'DEFAULT' with the associated column's default expression
+                    table_query = object_mapping.find_query(kind='table', table=child_table)
+                    col_def = [col for col in table_query.get_column_defs() if col.name == columns[i].name][0]
+
+                    if default_expr := col_def.find(exp.DefaultColumnConstraint):
+                        tuple_expr.replace(default_expr.this)
+                    else:
+                        tuple_expr.replace(exp.Null())
+
     return statement
 
 

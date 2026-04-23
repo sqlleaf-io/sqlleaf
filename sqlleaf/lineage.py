@@ -138,8 +138,8 @@ def generate_column_lineage_for_query(
             ctx=ctx,
         )
 
-        constraint_exprs = child_node.get_column_constraint_expressions()
-        for constraint_expr in constraint_exprs:
+        if constraint_expr := child_node.get_column_constraint_expression():
+            # Process the column's default expression
             # TODO: make this a CLI flag for whether to include these exprs in lineage
             constraint_ctx = replace(processor_ctx, expr=constraint_expr.this, new_data_type=col_def.kind, child_node_attrs=child_node)
             builder.walk_tree_and_build_graph(processor_ctx=constraint_ctx, ctx=ctx)

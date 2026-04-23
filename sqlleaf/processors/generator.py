@@ -360,7 +360,9 @@ class LineageGenerator:
         return node_attrs, args
 
     def process_var(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        """ """
+        """
+         A variable in a stored procedure or UDF, or the keyword 'DEFAULT'
+         """
         node_attrs = VarNode(processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 

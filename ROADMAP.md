@@ -88,8 +88,9 @@ INSERT
   - [x] RETURNING
   - [ ] ON CONFLICT DO UPDATE
   - [x] VALUES
-    - [ ] (DEFAULT, DEFAULT)
+    - [x] (DEFAULT, DEFAULT)
   - [ ] OVERRIDING {SYSTEM|USER} VALUE
+    - not supported by sqlglot
   - [ ] INTO VIEW (automatically updatable views)
   - [x] CTEs with INSERT, UPDATE, etc, as above with SELECT
 
