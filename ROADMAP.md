@@ -109,20 +109,24 @@ CREATE FUNCTION (language SQL)
 CREATE PROCEDURE (language SQL)
 
 PREPARE
+- not supported by sqlglot
 
 EXECUTE
+- not supported by sqlglot
 
 CREATE TRIGGER
   - [ ] INSTEAD OF
   - [ ] BEFORE / AFTER
 
 CREATE TYPE
+- not supported by sqlglot
 
 - COPY 
   - [ ] FROM
   - [ ] TO
 
 DO
+- not supported by sqlglot
 
 
 ### Redshift
