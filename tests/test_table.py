@@ -193,6 +193,40 @@ def test__table_inherits_with_merge(holder):
     ]
 
 
+# Not supported by sqlglot: 'Falling back to Command'
+def test__table_foreign(holder):
+    queries = '''
+    CREATE FOREIGN TABLE foreign_users (
+        id integer NOT NULL,
+        username text,
+        email text
+    )
+    SERVER remote_server_name
+    OPTIONS (schema_name 'public', table_name 'users');
+    '''
+    h = holder()
+    h.generate(queries, dialect=DIALECT)
+    assert len(h.get_queries()) == 0
+
+
+# Not supported by sqlglot (both): 'Falling back to Command'
+def test__table_of_type(holder):
+    queries = '''
+    CREATE TYPE person_type AS (
+        first_name text,
+        last_name text,
+        age integer
+    );
+
+    CREATE TABLE employees OF person_type (
+        PRIMARY KEY (first_name, last_name)
+    );
+    '''
+    h = holder()
+    h.generate(queries, dialect=DIALECT)
+
+
+
 # TODO: UPDATE and SELECT from different inherited tables in the same query
 # TODO: test ONLY inside a CTE to verify new table lookup logic
 

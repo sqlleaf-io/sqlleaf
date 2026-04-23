@@ -23,17 +23,18 @@ The following types of queries and nodes need to be created.
 
 CREATE TABLE
   - [x] AS
-  - [x] LIKE [wip]
+  - [x] LIKE
     - [x] INCLUDING
     - [x] EXCLUDING
   - [x] INHERITS
-  - [ ] EXTERNAL
   - [ ] FOREIGN
+    - not supported by sqlglot
   - [x] Generated columns
   - [ ] Identity columns
     - [ ] Sequence node
   - [x] Default columns
   - [ ] OF <type>
+    - not supported by sqlglot
 
 CREATE VIEW
   - [x] Regular
@@ -51,7 +52,6 @@ SELECT
   - [x] Window functions
   - [ ] FROM udf()
   - [x] UNION
-    - Combine lineage.lineage() first
   - [x] CTEs
     - [x] Regular
     - [x] RECURSIVE

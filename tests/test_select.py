@@ -2,14 +2,14 @@ import os
 import sys
 import pytest
 
-from sqlleaf.exception import SqlLeafException
-
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
+import sqlglot
 
 from tests.new_fixtures import (
     holder, is_subset, DIALECT
 )
+from sqlleaf.exception import SqlLeafException
 from sqlleaf.objects.query_types import InsertQuery, UpdateQuery
 
 DIALECT = 'postgres'
@@ -80,6 +80,18 @@ def test__insert_values(holder, case):
         ['literal["banana"]', 'function[UPPER()]', 'column[fruit.raw.kind]'],
     ]
     assert [InsertQuery] == list(map(type, queries))
+
+
+# Not supported by sqlglot: exception - unexpected token 'OVERRIDING'
+def test__insert_overriding(holder):
+    with pytest.raises(sqlglot.errors.ParseError) as e:
+        queries = '''
+        INSERT INTO products (id, name) OVERRIDING SYSTEM VALUE VALUES (500, 'Legacy Item');
+        '''
+        h = holder()
+        h.generate(queries, dialect=DIALECT)
+
+    assert e.value.args[0].startswith("Invalid expression / Unexpected token.")
 
 
 def test__select_fails_unknown_column(holder):
