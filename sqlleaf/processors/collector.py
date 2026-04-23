@@ -188,29 +188,33 @@ def _set_column_defs(query: TableQuery, object_mapping: mappings.ObjectMapping):
     Collect all the column definitions for this table.
     """
     statement = query.statement
-    columns = list(statement.find_all(exp.ColumnDef))
+    all_columns = []
+
+    for expression in statement.this.expressions:
+        if isinstance(expression, exp.ColumnDef):
+            all_columns.append(expression)
+        elif isinstance(expression, exp.LikeProperty):
+            like_columns = _collect_like_columns(expression, object_mapping, query.child_table)
+            all_columns.extend(like_columns)
+        else:
+            raise exception.SqlLeafException(message=f"Unsupported column expression: {type(expression)}")
+
+    if inherited_props := list(statement.find_all(exp.InheritsProperty)):
+        inherited_columns = _collect_inherited_columns(inherited_props, object_mapping, query)
+        all_columns = inherited_columns + all_columns
 
     # Set the column's 'default' type to the column's own type (it is sometimes missing)
-    for col_def in columns:
+    for col_def in all_columns:
         if default := col_def.find(exp.DefaultColumnConstraint):
             default.this.type = col_def.kind
 
-    # Process the table's properties: INHERITS, LIKE, etc
-    if inherited_props := list(statement.find_all(exp.InheritsProperty)):
-        inherited_columns = _collect_inherited_columns(inherited_props, object_mapping, query)
-        columns = inherited_columns + columns
-
-    # TODO: fix/consider column positioning - col, LIKE, col => LIKE is 2nd
-    if like_property := statement.find(exp.LikeProperty):
-        like_columns = _collect_like_columns(like_property, object_mapping, query.child_table)
-        columns += like_columns
-
-    query.column_defs = columns
+    query.column_defs = all_columns
 
 
 def _collect_inherited_columns(inherits_properties: t.List[exp.InheritsProperty], object_mapping: mappings.ObjectMapping, query: TableQuery) -> t.List[exp.ColumnDef]:
     """
     Search for tables referenced as 'CREATE TABLE b INHERITS (a)' and collect all their columns.
+    A table can have multiple tables in an INHERITS clause.
     """
     column_defs = []
 
@@ -233,7 +237,7 @@ def _collect_inherited_columns(inherits_properties: t.List[exp.InheritsProperty]
 def _collect_like_columns(like_property: exp.LikeProperty, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> t.List[exp.ColumnDef]:
     """
     Search for tables referenced as 'CREATE TABLE b (LIKE a)'.
-    Postgres allows only 1 table to be referenced in LIKE.
+    A table can have multiple LIKE clauses.
     """
     columns = []
     property_names = []

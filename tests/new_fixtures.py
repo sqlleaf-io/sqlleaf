@@ -1,8 +1,9 @@
 import sys
 import os
+import typing as t
 import pytest
 
-from sqlleaf.objects.query_types import TableQuery
+from sqlleaf.objects.query_types import TableQuery, Query
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -40,7 +41,7 @@ class LineageDummy(sqlleaf.Lineage):
             paths.append([hop.full_name for hop in path.node_hops()])
         return paths
 
-    def get_queries_created(self):
+    def get_queries_created(self) -> t.List[Query]:
         all_queries = self.get_queries()
         new_queries = []
         for query in all_queries:
