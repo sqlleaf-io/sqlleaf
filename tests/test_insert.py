@@ -18,6 +18,7 @@ DIALECT = 'postgres'
 cases = [
     "INSERT INTO fruit.raw VALUES ('yellow', UPPER('banana'));",
     "INSERT INTO fruit.raw (name, kind) VALUES ('yellow', UPPER('banana'));",
+    "INSERT INTO fruit.raw (name, kind) VALUES ('yellow', UPPER('banana')), ('yellow', UPPER('banana'));",
     "INSERT INTO fruit.raw (kind, name) VALUES (UPPER('banana'), 'yellow');",
     "INSERT INTO fruit.raw (kind, name) VALUES (UPPER('banana') AS name, 'yellow') AS kind;",
     "INSERT INTO fruit.raw SELECT 'yellow' as name, UPPER('banana') AS kind;",
@@ -46,7 +47,12 @@ def test__insert_default_values(holder):
         kind VARCHAR,
         size INT DEFAULT 99
     );
-    INSERT INTO fruit.a (name, kind, size) VALUES (DEFAULT, NULL, DEFAULT);
+    CREATE TABLE fruit.b (
+        color VARCHAR,
+        age INT DEFAULT -1
+    );
+    INSERT INTO fruit.b DEFAULT VALUES;
+    INSERT INTO fruit.a VALUES (DEFAULT, NULL, DEFAULT);
     '''
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
@@ -55,13 +61,15 @@ def test__insert_default_values(holder):
     queries = h.get_queries_created()
     paths = h.get_friendly_paths()
 
-    assert len(nodes) == 6
+    assert len(nodes) == 10
     assert paths == [
+        ['null[NULL]', 'column[fruit.b.color]'],
+        ['literal[-1]', 'column[fruit.b.age]'],
         ['null[NULL]', 'column[fruit.a.name]'],
         ['null[NULL]', 'column[fruit.a.kind]'],
         ['literal[99]', 'column[fruit.a.size]']
     ]
-    assert queries[1].statement_transformed.sql() == "INSERT INTO fruit.a (name, kind, size) SELECT NULL AS name, NULL AS kind, 99 AS size"
+    assert queries[2].statement_transformed.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
 
 # Not supported by sqlglot: exception - unexpected token 'OVERRIDING'
 def test__insert_overriding(holder):

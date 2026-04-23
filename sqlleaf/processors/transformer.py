@@ -69,13 +69,10 @@ def _process_inner_ctes(statement: exp.Insert | exp.Merge | exp.Update, query: Q
 def _convert_insert_values_to_select(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
     """
     Transform an
-        INSERT INTO x VALUES (...)
+        INSERT INTO x (name) VALUES (...)
     into an
-        INSERT INTO x SELECT ...
+        INSERT INTO x (name) SELECT ...
     so that the lineage functions can process it.
-
-    We don't attempt to add the column names from the mapping as we may have
-    stars in the columns. This comes later.
     """
     if isinstance(statement.expression, exp.Values):
         values = statement.expression.expressions[0].expressions
@@ -100,23 +97,46 @@ def _convert_insert_values_to_select(statement: exp.Insert, object_mapping: mapp
 def _convert_defaults_to_values(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
     """
     Transform the query:
-        INSERT INTO x (name, age) VALUES (DEFAULT, DEFAULT);
+        INSERT INTO x DEFAULT VALUES
+    into:
+        INSERT INTO x VALUES (DEFAULT, DEFAULT)
+
+    And then transform the query:
+        INSERT INTO x VALUES (DEFAULT, DEFAULT)
     into its default values (as defined in its table):
-        INSERT INTO x (name, age) VALUES (NULL, 42);
+        INSERT INTO x VALUES (NULL, 42)
     """
+    is_default_values = statement.args.get('default', False)
     values = statement.expression
-    if not isinstance(values, exp.Values):
+
+    if not (isinstance(values, exp.Values) or is_default_values):
         return statement
 
-    columns = statement.this.expressions
+    table_query = object_mapping.find_query(kind='table', table=child_table)
+    table_columns = table_query.get_column_defs()
+
+    if is_default_values:
+        # Transform 'DEFAULT VALUES' into 'VALUES (DEFAULT,)'
+        values = exp.Values(expressions=[
+            exp.Tuple(expressions=[
+                exp.Var(this='DEFAULT') for _ in table_columns
+            ])
+        ])
+        statement.set('expression', values)
+        statement.set('default', False)
+
+    named_columns = [e for e in statement.this.expressions]
+
+    if not named_columns:
+        # Use the associated column names from the mapping
+        named_columns = list(table_columns)[:len(values.expressions[0].expressions)]
 
     for value_expr in values.expressions:
         if isinstance(value_expr, exp.Tuple):
             for i, tuple_expr in enumerate(value_expr.expressions):
                 if isinstance(tuple_expr, exp.Var) and tuple_expr.name.upper() == 'DEFAULT':
                     # Replace 'DEFAULT' with the associated column's default expression
-                    table_query = object_mapping.find_query(kind='table', table=child_table)
-                    col_def = [col for col in table_query.get_column_defs() if col.name == columns[i].name][0]
+                    col_def = [col for col in table_columns if col.name == named_columns[i].name][0]
 
                     if default_expr := col_def.find(exp.DefaultColumnConstraint):
                         tuple_expr.replace(default_expr.this)

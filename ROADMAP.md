@@ -52,6 +52,8 @@ SELECT
   - [x] Window functions
   - [ ] FROM udf()
   - [x] UNION
+  - [ ] EXCEPT
+  - [ ] INTERSECT
   - [x] CTEs
     - [x] Regular
     - [x] RECURSIVE
@@ -84,11 +86,12 @@ DELETE
 - [ ] RETURNING
 
 INSERT
-  - [ ] DEFAULT VALUES
+  - [x] DEFAULT VALUES
   - [x] RETURNING
   - [ ] ON CONFLICT DO UPDATE
   - [x] VALUES
     - [x] (DEFAULT, DEFAULT)
+    - [x] Multi-row
   - [ ] OVERRIDING {SYSTEM|USER} VALUE
     - not supported by sqlglot
   - [ ] INTO VIEW (automatically updatable views)
