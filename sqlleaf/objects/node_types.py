@@ -167,6 +167,9 @@ class ColumnNode(NodeAttributes):
         tokens = [self.catalog, self.schema, self.table, self.column]
         return ".".join([tok for tok in tokens if tok])
 
+    def as_table(self) -> exp.Table:
+        return exp.table_(catalog=self.catalog, db=self.schema, table=self.table)
+
     @property
     def full_name(self):
         if 'cte' in self.table_type:

@@ -158,6 +158,7 @@ def generate_column_lineage_for_query(
         lin = sqlglot_lineage.lineage(
             column=col_name,
             sql=statement_lineage,
+            query=query,
             scope=scope,
             dialect=query.dialect,
             schema=object_mapping,

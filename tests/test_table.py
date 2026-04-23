@@ -91,20 +91,97 @@ def test__table_with_default_columns(holder):
     ]
 
 
-@pytest.mark.skip(reason="todo")
-def test__table_inherits_table(holder):
+def test__table_inherits_with_select(holder):
     queries = '''
-    CREATE TABLE fruit.a (name varchar, age int default 42);
-    CREATE TABLE fruit.b_inherits_a (label varchar) INHERITS (fruit.a);
-    CREATE TABLE fruit.c (name varchar);
+    CREATE TABLE fruit.b (type VARCHAR, kind VARCHAR);
+    CREATE TABLE fruit.b_only (type VARCHAR);
+    CREATE TABLE fruit.x (label VARCHAR) INHERITS (fruit.b);
+    CREATE TABLE fruit.y (label VARCHAR) INHERITS (fruit.b);
+    CREATE TABLE fruit.x_y (value VARCHAR);
+    CREATE TABLE fruit.all (name VARCHAR);
 
-    INSERT INTO fruit.c SELECT name FROM fruit.a;
+    INSERT INTO fruit.b (type) SELECT 'apple' AS type;
+    -- Ensure only parent is selected
+    INSERT INTO fruit.b_only (type) SELECT type FROM ONLY fruit.b;
+
+    -- Ensure parent includes children
+    INSERT INTO fruit.all (name) SELECT kind from fruit.b;
+
+    -- Ensure children include only themselves
+    INSERT INTO fruit.x_y (value) SELECT label FROM fruit.x;
+    INSERT INTO fruit.x_y (value) SELECT label FROM fruit.y;
     '''
     h = holder()
     h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
 
-    # expect: fruit.a.name -> fruit.processed.name
-    # expect: fruit.b_inherits_a.name -> fruit.processed.name
+    assert len(nodes) == 10
+    assert paths == [
+        ['literal["apple"]', 'column[fruit.b.type]', 'column[fruit.b_only.type]'],
+        ['column[fruit.b.kind]', 'column[fruit.all.name]'],
+        ['column[fruit.x.kind]', 'column[fruit.all.name]'],
+        ['column[fruit.y.kind]', 'column[fruit.all.name]'],
+        ['column[fruit.x.label]', 'column[fruit.x_y.value]'],
+        ['column[fruit.y.label]', 'column[fruit.x_y.value]']
+    ]
+
+
+def test__table_inherits_with_merge(holder):
+    queries = '''
+    CREATE TABLE a (type VARCHAR, kind VARCHAR);
+    CREATE TABLE b (type VARCHAR, kind VARCHAR, color VARCHAR);
+    CREATE TABLE c (color VARCHAR);
+    CREATE TABLE fruit.x (label VARCHAR) INHERITS (b);
+    CREATE TABLE fruit.y (label VARCHAR) INHERITS (b);
+
+    -- Ensure parent includes children
+    MERGE INTO b AS t
+    USING a AS s
+    ON t.type = s.type
+    WHEN MATCHED THEN
+        UPDATE SET type = s.type
+    WHEN NOT MATCHED THEN
+        INSERT (type) VALUES (s.type);
+
+    -- Ensure only parent is selected as target
+    MERGE INTO ONLY b AS t
+    USING a AS s
+    ON t.kind = s.kind
+    WHEN MATCHED THEN
+        UPDATE SET kind = s.kind
+    WHEN NOT MATCHED THEN
+        INSERT (kind) VALUES (s.kind);
+
+    -- Ensure only parent is selected as source
+    MERGE INTO c AS t
+    USING ONLY b AS s
+    ON t.color = s.color
+    WHEN MATCHED THEN
+        UPDATE SET color = s.color
+    WHEN NOT MATCHED THEN
+        INSERT (color) VALUES (s.color);
+    '''
+    h = holder()
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+
+    assert len(nodes) == 8
+    assert paths == [
+        ['column[a.type]', 'column[b.type]'],
+        ['column[a.type]', 'column[fruit.x.type]'],
+        ['column[a.type]', 'column[fruit.y.type]'],
+        ['column[a.kind]', 'column[b.kind]'],
+        ['column[b.color]', 'column[c.color]']
+    ]
+
+
+# TODO: UPDATE and SELECT from different inherited tables in the same query
+# TODO: test ONLY inside a CTE to verify new table lookup logic
+
 
 view_types = ['', 'MATERIALIZED']
 @pytest.mark.parametrize("case", view_types)

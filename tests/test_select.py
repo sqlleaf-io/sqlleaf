@@ -2,6 +2,8 @@ import os
 import sys
 import pytest
 
+from sqlleaf.exception import SqlLeafException
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
@@ -80,6 +82,19 @@ def test__insert_values(holder, case):
     assert [InsertQuery] == list(map(type, queries))
 
 
+def test__select_fails_unknown_column(holder):
+    with pytest.raises(SqlLeafException) as e:
+        queries = '''
+        INSERT INTO fruit.processed (name)
+        SELECT hello
+        FROM fruit.raw;
+        '''
+        h = holder(with_tables=True)
+        h.generate(queries, dialect=DIALECT)
+
+    assert e.value.message == "Unknown column 'hello' in query: SELECT hello AS name FROM fruit.raw AS raw"
+
+
 def test__merge_simple_update_and_insert(holder):
     queries = '''
     MERGE INTO fruit.processed AS t
@@ -107,11 +122,9 @@ def test__merge_simple_update_and_insert(holder):
     assert queries[0].child_queries[0].statement_transformed.sql(dialect=DIALECT) == "INSERT INTO fruit.processed AS t (name) SELECT s.name AS name FROM fruit.raw AS s"
     assert queries[0].child_queries[1].statement_transformed.sql(dialect=DIALECT) == "INSERT INTO fruit.processed AS t (label) SELECT s.kind AS label FROM fruit.raw AS s"
 
-# TODO: test MERGE ONLY
 # TODO: test MERGE USING (SELECT ...)
 # TODO: test two merge queries that have an identical inner query
 #  expect: the two inner queries are identical (and preserved), but they have different parents
-# TODO: test: "if ONLY is not specified, matching rows are also updated or deleted in any tables inheriting from the named table."
 
 def test__merge_simple_update_and_insert_with_cte(holder):
     queries = '''

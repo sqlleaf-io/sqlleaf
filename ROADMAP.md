@@ -26,7 +26,7 @@ CREATE TABLE
   - [x] LIKE [wip]
     - [x] INCLUDING
     - [x] EXCLUDING
-  - [ ] INHERITS
+  - [x] INHERITS
   - [ ] EXTERNAL
   - [ ] FOREIGN
   - [x] Generated columns
@@ -39,6 +39,7 @@ CREATE VIEW
   - [x] Regular
   - [x] MATERIALIZED
   - [ ] TEMPORARY
+  - [ ] RECURSIVE
 
 CREATE SEQUENCE
 - [x] Include functions
@@ -55,8 +56,8 @@ SELECT
     - [x] Regular
     - [x] RECURSIVE
     - [o] WITH (INSERT)
-    - [ ] WITH (UPDATE)
-    - [ ] WITH (MERGE)
+    - [x] WITH (UPDATE)
+    - [x] WITH (MERGE)
     - [ ] WITH (VALUES)
   - [ ] LATERAL
     - sqlglot optimize() creates weird output
@@ -66,31 +67,31 @@ SELECT
     - [ ] LATERAL ROWS FROM
       - Not supported by sqlglot
   - [x] INTO
-  - [ ] FROM ONLY
+  - [x] FROM ONLY
   - [ ] WITH ORDINALITY
   - [ ] WINDOW
   - [ ] SELECT FROM ( VALUES ())
 
 MERGE
 - [x] Regular
-- [ ] RETURNING + merge_action()
+- [x] RETURNING + merge_action()
 
 UPDATE
 - [x] Regular
-- [ ] RETURNING
+- [x] RETURNING
 
 DELETE
 - [ ] RETURNING
 
 INSERT
   - [ ] DEFAULT VALUES
-  - [o] RETURNING
+  - [x] RETURNING
   - [ ] ON CONFLICT DO UPDATE
   - [x] VALUES
     - [ ] (DEFAULT, DEFAULT)
   - [ ] OVERRIDING {SYSTEM|USER} VALUE
   - [ ] INTO VIEW (automatically updatable views)
-  - [ ] CTEs with INSERT, UPDATE, etc, as above with SELECT
+  - [x] CTEs with INSERT, UPDATE, etc, as above with SELECT
 
 CREATE FUNCTION (language SQL)
   - [ ] CALLED ON NULL INPUT

@@ -100,13 +100,22 @@ class LineageGenerator:
         parent_node_attrs, children = processor_func(processor_ctx=processor_ctx, ctx=ctx)
 
         if parent_node_attrs:
-            self.add_nodes_with_edge_to_graph(
-                parent_node_attrs,
-                child_node_attrs,
-                processor_ctx.graph,
-                processor_ctx.query,
-                ctx,
-            )
+            """
+            Considering Postgres inheritance operates 'behind the scenes' outside of the query's syntax), we are
+            justified in implementing this behaviour in our own way: by mapping each inherited column to the query's columns.
+            """
+            inherited_columns_of_parent = self.find_inherited_columns_for_parent(column_node=parent_node_attrs, processor_ctx=processor_ctx, ctx=ctx)
+            inherited_columns_of_child = self.find_inherited_columns_for_child(column_node=child_node_attrs, processor_ctx=processor_ctx, ctx=ctx)
+
+            for parent_node in [parent_node_attrs] + inherited_columns_of_parent:
+                for child_node in [child_node_attrs] + inherited_columns_of_child:
+                    self.add_nodes_with_edge_to_graph(
+                        parent_node,
+                        child_node,
+                        processor_ctx.graph,
+                        processor_ctx.query,
+                        ctx,
+                    )
             nodes_created.append(parent_node_attrs)
             if parent_node_attrs.kind in ['function', 'udf']:
                 ctx = replace(ctx, function_depth=ctx.function_depth + 1)
@@ -122,27 +131,84 @@ class LineageGenerator:
 
         return nodes_created
 
-    def process_function(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def find_inherited_columns_for_parent(self, column_node: ColumnNode, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.List[ColumnNode]:
+        """
+        Find the inherited columns for a particular column, but only for the form 'SELECT FROM ONLY <table>'
+        """
+        inherited_columns = []
+        if not isinstance(column_node, ColumnNode) or column_node.table_type == 'cte':  #(processor_ctx.node and processor_ctx.node.is_parent_a_cte):
+            return inherited_columns
+
+        # Find the column's exp.Table in the expression, and check if it has 'ONLY' set
+        if not column_node.expr.parent_select:
+            return inherited_columns
+
+        for table in column_node.expr.parent_select.find_all(exp.Table):
+            if table.catalog == column_node.catalog and table.db == column_node.schema and table.name == column_node.table:
+                parent_table = table
+                if parent_table.args.get("only", False):
+                    inherited_columns = []
+                else:
+                    inherited_columns = self.find_inherited_columns(column_node=column_node, processor_ctx=processor_ctx, ctx=ctx)
+                    logger.debug(f"Including inherited columns as sources: {[c.friendly_name for c in inherited_columns]}")
+
+        return inherited_columns
+
+    def find_inherited_columns_for_child(self, column_node: ColumnNode, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.List[ColumnNode]:
+        """
+        Find the inherited columns for a particular column, but only for the form 'MERGE|UPDATE ONLY <table>'
+        """
+        inherited_columns = []
+        if not isinstance(column_node, ColumnNode) or column_node.table_type == 'cte':
+            return inherited_columns
+
+        # Only return inherited columns for UPDATE
+        if isinstance(processor_ctx.query, UpdateQuery) and not processor_ctx.query.only:
+            inherited_columns = self.find_inherited_columns(column_node=column_node, processor_ctx=processor_ctx, ctx=ctx)
+            logger.debug(f"Including inherited columns as targets: {[c.friendly_name for c in inherited_columns]}")
+
+        return inherited_columns
+
+    def find_inherited_columns(self, column_node: ColumnNode, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.List[ColumnNode]:
+        """
+        Find all inherited columns from a table that are similar to some column.
+
+        For example, if we have
+            CREATE TABLE a (name VARCHAR);
+            CREATE TABLE b (age VARCHAR) INHERITS (a);
+        then whenever we process column `a.name`, we also need to include `b.name`.
+        """
+        inherited_column_nodes = []
+        table = column_node.as_table()
+        table_query = processor_ctx.object_mapping.find_query(kind='table', table=table)
+
+        # Collect any columns from inherited tables with the same name
+        for inh_table in table_query.inherited_by:
+            col_def = [c for c in inh_table.column_defs if c.name == column_node.column][0]
+            col = util.column_def_to_column(column_def=col_def, parent_table=inh_table.child_table)
+            col_ctx = replace(processor_ctx, expr=col)
+            inh_node_attrs, _ = self.process_column(col_ctx, ctx)
+            inherited_column_nodes.append(inh_node_attrs)
+
+        return inherited_column_nodes
+
+    def process_function(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         node_attrs = FunctionNode(processor_ctx, ctx)
         args = util.get_function_args(expr=processor_ctx.expr)
         return node_attrs, args
 
-    def process_placeholder(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_placeholder(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         CREATE PROCEDURE proc(v_amount INT) AS
         SELECT v_amount     <-- placeholder
         """
-        args = processor_ctx.query.parent_query.args
-        try:
-            col_type = [arg["type"] for arg in args if arg["name"] == processor_ctx.node.name][0]
-        except IndexError:
-            col_type = "UNKNOWN"
+        expr: exp.ColumnDef = processor_ctx.expr.this
 
-        processor_ctx = replace(processor_ctx, new_data_type=exp.DataType.build(col_type))
+        processor_ctx = replace(processor_ctx, new_data_type=expr.kind)
         node_attrs = VariableNode(processor_ctx, ctx)
         return node_attrs, []
 
-    def process_array(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_array(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT ARRAY[1,2,3]
         """
@@ -151,7 +217,7 @@ class LineageGenerator:
         node_attrs = LiteralNode(name=values, processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_window(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_window(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT ROW_NUMBER() OVER (ORDER BY name DESC) AS amount
         """
@@ -163,7 +229,7 @@ class LineageGenerator:
         node_attrs = WindowNode(processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_literal(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_literal(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         select 'hello' as greeting
         """
@@ -171,25 +237,25 @@ class LineageGenerator:
         node_attrs = LiteralNode(name=expr.sql(), processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_star(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_star(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         select count(*) as cnt
         """
         node_attrs = StarNode(processor_ctx, ctx)
         return node_attrs, []
 
-    def process_null(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_null(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         node_attrs = NullNode(processor_ctx, ctx)
         return node_attrs, []
 
-    def process_cast(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_cast(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT col1::timestamp AS col1_time
         """
         processor_ctx_to = replace(processor_ctx, new_data_type=processor_ctx.expr.to)
         return self.process_function(processor_ctx_to, ctx)
 
-    def process_neg(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_neg(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT -10
         """
@@ -197,7 +263,7 @@ class LineageGenerator:
         node_attrs = LiteralNode(name="-" + expr.name, processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_anonymous(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_anonymous(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         Either user-defined functions or sequence functions.
 
@@ -249,7 +315,7 @@ class LineageGenerator:
 
         return node_attrs, node_args
 
-    def process_within_group(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_within_group(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT MODE() WITHIN GROUP (ORDER BY name DESC) AS name
         """
@@ -260,13 +326,13 @@ class LineageGenerator:
         children = list(expr.expression.find_all(exp.Column))  # expr.expression is type(exp.Order)
         return parent, children
 
-    def process_select(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_select(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT (SELECT 1) AS name
         """
         return None, []
 
-    def process_case(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_case(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT CASE WHEN count(*) > 1 THEN 1 ELSE 0 END AS my_var
         """
@@ -277,7 +343,7 @@ class LineageGenerator:
         children = [default] + thens
         return None, children
 
-    def process_binary(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_binary(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT 1 + 2 AS age
         """
@@ -293,12 +359,12 @@ class LineageGenerator:
 
         return node_attrs, args
 
-    def process_var(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_var(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """ """
         node_attrs = VarNode(processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_column(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_column(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         expr: exp.Column = processor_ctx.expr
 
         if processor_ctx.node and expr.table in processor_ctx.node.parent_pivot_aliases:
@@ -317,13 +383,9 @@ class LineageGenerator:
             processor_ctx=processor_ctx,
             ctx=ctx,
         )
-
-        ### Add the column's default expression as lineage
-        # TODO: make this optional via a CLI flag
-
         return node_attrs, []
 
-    def process_table(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_table(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         logger.debug(f"Skipping exp.Table: {str(processor_ctx.expr)}")
         return None, []
 
@@ -342,11 +404,11 @@ class LineageGenerator:
         node_attrs = IntervalNode(processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_column_def(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_column_def(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         logger.debug(f"Skipping exp.ColumnDef: {str(processor_ctx.expr)}")
         return None, []
 
-    def skip(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def skip(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         logger.debug("Skipping expression {}".format(str(processor_ctx.expr)))
         return processor_ctx.child_node_attrs, []
 
@@ -401,7 +463,7 @@ class LineageGenerator:
 class PostgresLineageGenerator(LineageGenerator):
     dialect = "postgres"
 
-    def process_table(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_table(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         expr: exp.Table = processor_ctx.expr
         if 'rows_from' in expr.args:
 
@@ -424,7 +486,7 @@ class PostgresLineageGenerator(LineageGenerator):
 
         return super().process_table(processor_ctx, ctx)
 
-    def process_column_def(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_column_def(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         expr: exp.ColumnDef = processor_ctx.expr
         processor_ctx = replace(processor_ctx, new_data_type=expr.kind)
 
@@ -467,7 +529,7 @@ class SnowflakeLineageGenerator(LineageGenerator):
 
         self.add_nodes_with_edge_to_graph(file_node, stage_node, processor_ctx.graph, processor_ctx.query, ctx)
 
-    def process_column(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def process_column(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         If the source is actually a Stage, don't try to create a Column.
         """

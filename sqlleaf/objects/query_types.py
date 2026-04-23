@@ -6,7 +6,7 @@ from dataclasses import dataclass, replace, InitVar
 import networkx as nx
 from sqlglot import exp
 
-from sqlleaf import util, mappings, sqlglot_lineage, exception
+from sqlleaf import util, mappings
 
 logger = logging.getLogger("sqleaf")
 
@@ -22,7 +22,6 @@ class Query:
     ):
         self.kind = kind
         self.dialect = dialect
-        self.statement = None
         self.child_table = child_table  # The target table
         self.parent_query = None
         self.child_queries = []
@@ -35,6 +34,7 @@ class Query:
         self.statement_original = statement
         self.statement_transformed = None
 
+        self.statement = statement
         self.set_statement(self.statement_original)
 
         logger.debug(f"Created Query: {self.__class__}")
@@ -86,6 +86,9 @@ class Query:
             queries = [q for q in queries if isinstance(q, types)]
 
         return queries
+
+    def get_root_query(self):
+        return self if not self.parent_query else self.parent_query.get_root_query()
 
     def to_dict(self):
         result = {
@@ -142,13 +145,15 @@ class InsertQuery(Query):
 
 class UpdateQuery(Query):
     def __init__(self, expr: exp.Update, dialect: str, statement_index: int):
+        table = util.get_table(expr)
         super().__init__(
             kind="update",
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=util.get_table(expr),
+            child_table=table,
         )
+        self.only = table.args.get('only', False) if table else False    # Not available inside a MERGE
 
     def get_ctes(self):
         with_ = self.statement.args.get('with_', None)
@@ -171,6 +176,7 @@ class CTASQuery(Query):
             child_table=util.get_table(statement),
         )
         self.column_defs = columns
+        self.inherited_by = []
 
     def get_column_defs(self) -> t.List[exp.ColumnDef]:
         return self.column_defs
@@ -199,6 +205,7 @@ class ViewQuery(Query):
             child_table=util.get_table(statement),
         )
         self.column_defs = columns
+        self.inherited_by = []
 
     def get_column_defs(self) -> t.List[exp.ColumnDef]:
         return self.column_defs
@@ -220,7 +227,10 @@ class TableQuery(Query):
             statement_index=statement_index,
             child_table=util.get_table(statement.this),
         )
-        self.column_defs = []
+        self.column_defs: t.List[exp.ColumnDef] = []
+        self.inherited_column_defs: t.List[exp.ColumnDef] = []
+        self.inherits: t.List[TableQuery] = []
+        self.inherited_by: t.List[TableQuery] = []
 
     def get_column_defs(self) -> t.List[exp.ColumnDef]:
         return self.column_defs
@@ -256,11 +266,22 @@ class ProcedureQuery(Query):
         self.signature = str(statement.this)  # e.g. etl.my_proc(v_session_id VARCHAR)
 
         # TODO: support 'default'
+        self.column_defs = statement.this.expressions
         self.args = [  # e.g. {'name': 'v_session_id', 'type': 'VARCHAR'}
             {"name": str(col.this), "type": str(col.kind)} for col in statement.this.find_all(exp.ColumnDef)
         ]
 
         self.set_statement(statement)
+
+    def get_column_defs(self) -> t.List[exp.ColumnDef]:
+        return self.column_defs
+
+    def get_column_names_with_types(self) -> t.Dict[str, str]:
+        """
+        Used by sqlglot's MappingSchema
+        """
+        columns = {col.name: str(col.kind) for col in self.column_defs}
+        return columns
 
     @property
     def id(self):

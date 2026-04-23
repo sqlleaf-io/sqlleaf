@@ -5,6 +5,8 @@ from sqlglot.dialects.dialect import DialectType
 from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
 
+from sqlleaf.objects.query_types import TableQuery
+
 ColumnMapping = t.Union[t.Dict, str, t.List]
 
 from sqlleaf import exception
@@ -103,7 +105,7 @@ class ObjectMapping(MappingSchema):
         kind: str,
         table: exp.Table,
         raise_on_missing: bool = True,
-    ) -> t.Optional[t.Any]:
+    ) -> t.Optional[TableQuery]:
         """
         Returns the Query for a given object kind and exp.Table.
 

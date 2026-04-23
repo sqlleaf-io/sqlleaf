@@ -197,30 +197,40 @@ def _set_column_defs(query: TableQuery, object_mapping: mappings.ObjectMapping):
 
     # Process the table's properties: INHERITS, LIKE, etc
     if inherited_props := list(statement.find_all(exp.InheritsProperty)):
-        inherited_columns = _find_inherited_columns(inherited_props, object_mapping)
-        columns += inherited_columns
+        inherited_columns = _collect_inherited_columns(inherited_props, object_mapping, query)
+        columns = inherited_columns + columns
 
+    # TODO: fix/consider column positioning - col, LIKE, col => LIKE is 2nd
     if like_property := statement.find(exp.LikeProperty):
-        like_columns = _find_like_columns(like_property, object_mapping, query.child_table)
+        like_columns = _collect_like_columns(like_property, object_mapping, query.child_table)
         columns += like_columns
 
     query.column_defs = columns
 
 
-def _find_inherited_columns(inherits_properties: t.List[exp.InheritsProperty], object_mapping: mappings.ObjectMapping) -> t.List[exp.ColumnDef]:
+def _collect_inherited_columns(inherits_properties: t.List[exp.InheritsProperty], object_mapping: mappings.ObjectMapping, query: TableQuery) -> t.List[exp.ColumnDef]:
     """
-    Search for tables referenced as 'CREATE TABLE b INHERITS (a)'
+    Search for tables referenced as 'CREATE TABLE b INHERITS (a)' and collect all their columns.
     """
-    columns = []
+    column_defs = []
 
     for inh_prop in inherits_properties:
-        inh_table = inh_prop.find(exp.Table)
-        inh_table_query = object_mapping.find_query(kind='table', table=inh_table)
-        columns.extend(inh_table_query.column_defs)
+        for inh_table in inh_prop.expressions:
+            parent_table_query = object_mapping.find_query(kind='table', table=inh_table)
+            parent_table_query.inherited_by.append(query)
+            query.inherits.append(parent_table_query)
 
-    return columns
+            # Re-assign the columns to a copy of the correct table
+            schema = util.copy_expression(query.child_table.parent)
+            for parent_col_def in parent_table_query.column_defs:
+                col_def = parent_col_def.copy()
+                schema.append('expressions', col_def)
+                column_defs.append(col_def)
 
-def _find_like_columns(like_property: exp.LikeProperty, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> t.List[exp.ColumnDef]:
+    return column_defs
+
+
+def _collect_like_columns(like_property: exp.LikeProperty, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> t.List[exp.ColumnDef]:
     """
     Search for tables referenced as 'CREATE TABLE b (LIKE a)'.
     Postgres allows only 1 table to be referenced in LIKE.

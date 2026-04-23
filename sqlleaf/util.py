@@ -179,6 +179,32 @@ def copy_expression(expr: exp.Expression) -> exp.Expression:
                     return new_ex
 
 
+def column_def_to_column(column_def: exp.ColumnDef, parent_table: exp.Table = None) -> exp.Column:
+    """
+    Convert an exp.ColumnDef to a exp.Column
+
+    Parameters:
+        column_def:
+        parent_table: a table to copy attributes from (schema, table)
+        copy:
+    """
+    if parent_table:
+        table = parent_table
+    elif isinstance(column_def.parent, exp.Schema):
+        table: exp.Table = column_def.parent.this
+    else:
+        table: exp.Table = column_def.parent
+
+    col = exp.column(
+        column_def.name,
+        table=table.name,
+        db=table.db or None,
+        catalog=table.catalog or None,
+    )
+    col.type = column_def.kind
+    return col
+
+
 def get_table(expr: exp.Expression) -> exp.Table:
     return expr.find(exp.Table)
 

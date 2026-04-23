@@ -18,6 +18,7 @@ if t.TYPE_CHECKING:
     from sqlglot.dialects.dialect import DialectType
 
 from sqlleaf import util, exception
+from sqlleaf.objects.query_types import Query, ProcedureQuery
 
 logger = logging.getLogger("sqlleaf")
 
@@ -50,6 +51,7 @@ class Node:
 def lineage(
     column: str | exp.Column,
     sql: str | exp.Expression,
+    query: Query,
     schema: t.Optional[t.Dict | Schema] = None,
     sources: t.Optional[t.Mapping[str, str | exp.Query]] = None,
     dialect: DialectType = None,
@@ -100,12 +102,13 @@ def lineage(
     if not any(select.alias_or_name == column.name for select in scope.expression.selects):
         raise SqlglotError(f"Cannot find column '{column.name}' in query.")
 
-    return to_node(column, scope, dialect, trim_selects=trim_selects)
+    return to_node(column, scope, query, dialect, trim_selects=trim_selects)
 
 
 def to_node(
     column: exp.Column,
     scope: Scope,
+    query: Query,
     dialect: DialectType,
     scope_name: t.Optional[str] = None,
     upstream: t.Optional[Node] = None,
@@ -163,6 +166,7 @@ def to_node(
             return to_node(
                 column=column,
                 scope=source,
+                query=query,
                 dialect=dialect,
                 upstream=upstream,
                 source_name=source_name,
@@ -197,6 +201,7 @@ def to_node(
             to_node(
                 column=index,
                 scope=s,
+                query=query,
                 dialect=dialect,
                 upstream=upstream,
                 source_name=source_name,
@@ -242,6 +247,7 @@ def to_node(
             to_node(
                 column=exp.column(name),
                 scope=subquery_scope,
+                query=query,
                 dialect=dialect,
                 upstream=node,
                 trim_selects=trim_selects,
@@ -315,6 +321,7 @@ def to_node(
             to_node(
                 column=c,
                 scope=source,
+                query=query,
                 dialect=dialect,
                 scope_name=reference_node_name,
                 upstream=node,
@@ -341,6 +348,7 @@ def to_node(
                     to_node(
                         column=downstream_column,
                         scope=source,
+                        query=query,
                         scope_name=table,
                         dialect=dialect,
                         upstream=node,
@@ -367,7 +375,18 @@ def to_node(
             # of the line. At this point, if a source is not found it means this column's lineage
             # is unknown. This can happen if the definition of a source used in a query is not
             # passed into the `sources` map.
-            source = source or exp.Placeholder()
+
+            if not source:
+                # Check if the column is a variable from a procedure definition
+                if isinstance(root_query := query.get_root_query(), ProcedureQuery):
+                    for col_def in root_query.get_column_defs():
+                        if c.name == col_def.name and not c.table:
+                            source = exp.Placeholder(this=col_def)
+                            break
+
+            if not source:
+                message = f"Unknown column '{c.sql()}' in query: {c.parent_select.sql()}"
+                raise exception.SqlLeafException(message)
 
             # Change the column's source table to be its fully qualified name, not its alias,
             # so that the ColumnNode can be created with complete information

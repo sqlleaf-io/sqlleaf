@@ -197,6 +197,7 @@ def _add_information_from_merge(statement: exp.Insert | exp.Update, query: Inser
         SELECT s.kind as label
         FROM fruit.raw s;
     """
+    # TODO: what if we're inside a WITH ( UPDATE ) MERGE ? Shouldn't run
     merge_expr = statement.find_ancestor(exp.Merge)
     if not merge_expr:
         return statement
@@ -220,6 +221,7 @@ def _add_information_from_merge(statement: exp.Insert | exp.Update, query: Inser
 
     if isinstance(statement, exp.Update):
         # Add the missing information to the UPDATE statement
+        query.only = query.child_table.args.get('only', False)
         update_expr = statement.table(query.child_table).from_(using).where(on)
         update_expr.set('returning', returning)
 
