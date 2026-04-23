@@ -254,7 +254,7 @@ def test__cte_fails_for_returning_ambiguous_aliases(holder):
     assert e.value.message == "Column reference 'first_cte.name' is ambiguous (2 possible options)"
 
 
-def test__cte_update_returning(holder):
+def test__cte_update_with_two_updates_returning(holder):
     queries = '''
     WITH first_cte AS (
         UPDATE fruit.raw
@@ -351,6 +351,35 @@ def test__cte_merge_returning(holder):
         ['column[drink.kind2]', 'column[fruit.kind]', 'column[cte.kind]', 'column[fruit_drink.kind]']
     ]
     assert queries[3].statement_transformed.sql(dialect=DIALECT) == "WITH cte AS (SELECT MERGE_ACTION() AS action, t.name AS name, t.kind AS kind, s.name2 AS name2, s.kind2 AS kind2 FROM fruit AS t JOIN drink AS s ON s.name2 = t.name) INSERT INTO fruit_drink (action, name, kind, name2, kind2) SELECT cte.action AS action, cte.name AS name, cte.kind AS kind, cte.name2 AS name2, cte.kind2 AS kind2 FROM cte AS cte"
+
+
+def test__cte_merge_with_update_and_insert(holder):
+    queries = '''
+    WITH merge_cte AS (
+        SELECT kind, name
+        FROM fruit.raw
+    )
+    MERGE INTO fruit.processed AS t
+    USING merge_cte AS s
+    ON t.kind = s.kind
+    WHEN MATCHED THEN
+        UPDATE SET name = s.name
+    WHEN NOT MATCHED THEN
+        INSERT (label) VALUES (s.kind);
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_friendly_node_names()
+    paths = h.get_friendly_paths()
+    queries = h.get_queries_created()
+
+    assert len(nodes) == 6
+    assert len(queries) == 1
+    assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries))
+    assert paths == [
+        ['column[fruit.raw.name]', 'column[merge_cte.name]', 'column[fruit.processed.name]'],
+        ['column[fruit.raw.kind]', 'column[merge_cte.kind]', 'column[fruit.processed.label]']
+    ]
 
 
 def test__cte_insert_returning(holder):

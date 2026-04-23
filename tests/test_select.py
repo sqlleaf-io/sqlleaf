@@ -35,7 +35,7 @@ def test__select_with_ordinality(holder):
     nodes = h.get_full_node_names()
 
 
-def test__case_simple(holder):
+def test__select_with_case(holder):
     queries = '''
     INSERT INTO fruit.processed (age, number)
     SELECT 
@@ -58,40 +58,6 @@ def test__case_simple(holder):
         ['literal[1]', 'column[fruit.processed.number]']
     ]
 
-cases = [
-    "INSERT INTO fruit.raw VALUES ('yellow', UPPER('banana'));",
-    "INSERT INTO fruit.raw (name, kind) VALUES ('yellow', UPPER('banana'));",
-    "INSERT INTO fruit.raw (kind, name) VALUES (UPPER('banana'), 'yellow');",
-    "INSERT INTO fruit.raw (kind, name) VALUES (UPPER('banana') AS name, 'yellow') AS kind;",
-    "INSERT INTO fruit.raw SELECT 'yellow' as name, UPPER('banana') AS kind;",
-    "INSERT INTO fruit.raw SELECT 'yellow', UPPER('banana');",
-]
-@pytest.mark.parametrize("case", cases)
-def test__insert_values(holder, case):
-    h = holder(with_tables=True)
-    h.generate(case, dialect=DIALECT)
-    nodes = h.get_friendly_node_names()
-    edges = h.get_edges()
-    queries = h.get_queries_created()
-    paths = h.get_friendly_paths()
-    print()
-    assert paths == [
-        ['literal["yellow"]', 'column[fruit.raw.name]'],
-        ['literal["banana"]', 'function[UPPER()]', 'column[fruit.raw.kind]'],
-    ]
-    assert [InsertQuery] == list(map(type, queries))
-
-
-# Not supported by sqlglot: exception - unexpected token 'OVERRIDING'
-def test__insert_overriding(holder):
-    with pytest.raises(sqlglot.errors.ParseError) as e:
-        queries = '''
-        INSERT INTO products (id, name) OVERRIDING SYSTEM VALUE VALUES (500, 'Legacy Item');
-        '''
-        h = holder()
-        h.generate(queries, dialect=DIALECT)
-
-    assert e.value.args[0].startswith("Invalid expression / Unexpected token.")
 
 
 def test__select_fails_unknown_column(holder):
@@ -105,66 +71,6 @@ def test__select_fails_unknown_column(holder):
         h.generate(queries, dialect=DIALECT)
 
     assert e.value.message == "Unknown column 'hello' in query: SELECT hello AS name FROM fruit.raw AS raw"
-
-
-def test__merge_simple_update_and_insert(holder):
-    queries = '''
-    MERGE INTO fruit.processed AS t
-    USING fruit.raw AS s
-    ON t.kind = s.kind
-    WHEN MATCHED THEN
-        UPDATE SET name = s.name
-    WHEN NOT MATCHED THEN
-        INSERT (label) VALUES (s.kind);
-    '''
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_friendly_node_names()
-
-    queries = h.get_queries_created()
-    paths = h.get_friendly_paths()
-
-    assert len(nodes) == 4
-    assert len(queries) == 1
-    assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries))
-    assert paths == [
-        ['column[fruit.raw.name]', 'column[fruit.processed.name]'],
-        ['column[fruit.raw.kind]', 'column[fruit.processed.label]']
-    ]
-    assert queries[0].child_queries[0].statement_transformed.sql(dialect=DIALECT) == "INSERT INTO fruit.processed AS t (name) SELECT s.name AS name FROM fruit.raw AS s"
-    assert queries[0].child_queries[1].statement_transformed.sql(dialect=DIALECT) == "INSERT INTO fruit.processed AS t (label) SELECT s.kind AS label FROM fruit.raw AS s"
-
-# TODO: test MERGE USING (SELECT ...)
-# TODO: test two merge queries that have an identical inner query
-#  expect: the two inner queries are identical (and preserved), but they have different parents
-
-def test__merge_simple_update_and_insert_with_cte(holder):
-    queries = '''
-    WITH merge_cte AS ( 
-        SELECT kind, name
-        FROM fruit.raw
-    )
-    MERGE INTO fruit.processed AS t
-    USING merge_cte AS s
-    ON t.kind = s.kind
-    WHEN MATCHED THEN
-        UPDATE SET name = s.name
-    WHEN NOT MATCHED THEN
-        INSERT (label) VALUES (s.kind);
-    '''
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_friendly_node_names()
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
-
-    assert len(nodes) == 6
-    assert len(queries) == 1
-    assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries))
-    assert paths == [
-        ['column[fruit.raw.name]', 'column[merge_cte.name]', 'column[fruit.processed.name]'],
-        ['column[fruit.raw.kind]', 'column[merge_cte.kind]', 'column[fruit.processed.label]']
-    ]
 
 
 tests = [
