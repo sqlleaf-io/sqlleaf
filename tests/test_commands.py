@@ -40,3 +40,18 @@ def test__do_fails(holder):
     queries = h.get_queries_created()
 
     assert len(queries) == 0
+
+
+# sqlglot doesn't support CREATE RULE - Falling back to parsing as a 'Command'.
+def test__rule(holder):
+    queries = '''
+    CREATE RULE "_RETURN" AS
+    ON SELECT TO t1
+    DO INSTEAD
+        SELECT * FROM t2;
+    '''
+    h = holder()
+    h.generate(queries, dialect=DIALECT)
+    queries = h.get_queries_created()
+
+    assert len(queries) == 0

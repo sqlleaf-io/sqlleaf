@@ -51,6 +51,7 @@ CREATE SEQUENCE
 - [x] Include functions
 
 CREATE RULE
+- not supported by sqlglot
 
 SELECT
   - [x] System functions
