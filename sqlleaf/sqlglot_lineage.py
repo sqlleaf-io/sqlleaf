@@ -126,7 +126,11 @@ def to_node(
     if isinstance(column, int):
         select = scope.expression.selects[column]
     else:
-        selects = [select for select in scope.expression.selects if select.alias_or_name == column.name]
+        if isinstance(scope.expression, exp.Values):
+            # SELECT FROM (VALUES ())
+            selects = [scope.expression]
+        else:
+            selects = [select for select in scope.expression.selects if select.alias_or_name == column.name]
         if len(selects) > 1:
             message = f"Column reference '{column}' is ambiguous ({len(selects)} possible options)"
             raise exception.SqlLeafException(message)
@@ -292,6 +296,9 @@ def to_node(
             reference_node_name = None
             if source.scope_type == ScopeType.DERIVED_TABLE and table not in source_names:
                 reference_node_name = table
+            elif isinstance(source.expression, exp.Values):
+                # SELECT FROM (VALUES())
+                node.is_parent_a_derived_table = True
             elif source.scope_type == ScopeType.CTE:
                 selected_node, _ = scope.selected_sources.get(table, (None, None))
                 if not selected_node:

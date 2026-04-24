@@ -20,6 +20,7 @@ The following types of queries and nodes need to be created.
 - [ ] XML
 - [ ] File
 - [ ] Hidden (system) columns
+- [ ] System tables (pg_class, pg_attribute)
 
 CREATE TABLE
   - [x] AS
@@ -72,7 +73,7 @@ SELECT
   - [x] FROM ONLY
   - [ ] WITH ORDINALITY
   - [ ] WINDOW
-  - [ ] SELECT FROM ( VALUES ())
+  - [x] SELECT FROM ( VALUES ())
 
 MERGE
 - [x] Regular

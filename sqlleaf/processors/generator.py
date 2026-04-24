@@ -49,6 +49,7 @@ class LineageGenerator:
             exp.Select: self.process_select,
             exp.Interval: self.process_interval,
             exp.ColumnDef: self.process_column_def,
+            exp.Values: self.process_values,
 
             skip: self.skip,
         }
@@ -408,6 +409,22 @@ class LineageGenerator:
 
     def process_column_def(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         logger.debug(f"Skipping exp.ColumnDef: {str(processor_ctx.expr)}")
+        return None, []
+
+    def process_values(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        """
+        SELECT FROM (VALUES ())
+        """
+        expr: exp.Values = processor_ctx.expr
+        node = processor_ctx.node
+
+        # Select the correct values from the list according to the column's position in the alias
+        if isinstance(expr.parent, exp.From):
+            table_alias = expr.args["alias"]
+            col_idx = [c.name for c in table_alias.columns].index(node.column.name)
+            value_exprs = [tup_expr.expressions[col_idx] for tup_expr in expr.expressions]
+            return None, value_exprs
+
         return None, []
 
     def skip(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:

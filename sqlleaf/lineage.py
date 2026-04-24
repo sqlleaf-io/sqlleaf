@@ -178,6 +178,7 @@ def generate_column_lineage_for_query(
 
             for node_depth, node in enumerate(path):
                 if node.name in ['EXCEPT', 'INTERSECT', 'UNION']:
+                    logger.debug(f"Skipping SetOp node: {node.name}")
                     continue
 
                 logger.debug("----")

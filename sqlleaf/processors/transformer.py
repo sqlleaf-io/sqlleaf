@@ -37,6 +37,8 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
     elif isinstance(query, CopyQuery):
         statement = _convert_copy_to_insert(statement, query, object_mapping)
 
+    statement = _validate_basic(statement, query.dialect, object_mapping, query.child_table)
+
     # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
     statement = _apply_optimizations(statement, query.dialect, object_mapping, query.child_table)
 
@@ -367,6 +369,18 @@ RULES_OVERRIDE = [
     ]
 ]
 
+
+def _validate_basic(statement: exp.Insert, dialect: str, object_mapping: mappings.ObjectMapping, child_table, match_columns: bool = True) -> exp.Insert :
+    """
+    Perform some basic validation of the query. This needs a better place, long-term.
+    """
+    for expr in statement.walk():
+        if isinstance(expr, exp.Values) and isinstance(expr.parent, exp.From):
+            if not expr.args["alias"] or not len(expr.args["alias"].columns):
+                message = "Expression 'SELECT FROM (VALUES)' requires an alias with column names."
+                raise exception.SqlLeafException(message=message)
+
+    return statement
 
 def _apply_optimizations(statement: exp.Insert, dialect: str, object_mapping: mappings.ObjectMapping, child_table, match_columns: bool = True) -> exp.Insert :
     """

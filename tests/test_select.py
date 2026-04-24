@@ -35,7 +35,29 @@ def test__select_with_ordinality(holder):
     nodes = h.get_full_node_names()
 
 
-def test__select_with_case(holder):
+def test__select_values(holder):
+    queries = '''
+    INSERT INTO fruit.processed (name, kind)
+    SELECT * FROM (VALUES (1, 'one'), (2, 'two')) AS t (num, letter);
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+
+    assert len(nodes) == 8
+    assert len(edges) == 6
+    assert paths == [
+        ['literal[1]', 'column[t.num]', 'column[fruit.processed.name]'],
+        ['literal[2]', 'column[t.num]', 'column[fruit.processed.name]'],
+        ['literal["one"]', 'column[t.letter]', 'column[fruit.processed.kind]'],
+        ['literal["two"]', 'column[t.letter]', 'column[fruit.processed.kind]']
+    ]
+    assert 'column[t.letter type=VARCHAR subkind=derived_table]' in nodes
+
+
+def test__select_case(holder):
     queries = '''
     INSERT INTO fruit.processed (age, number)
     SELECT 
@@ -215,7 +237,10 @@ def test__select_union(holder, op):
     INSERT INTO fruit.processed (name)
     SELECT name FROM fruit.raw
     {op}
-    SELECT name FROM fruit.old;
+    SELECT name FROM fruit.old
+    {op}
+    SELECT 'hello' as name
+    ;
     '''
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
@@ -223,9 +248,10 @@ def test__select_union(holder, op):
     nodes = h.get_full_node_names()
     paths = h.get_friendly_paths()
 
-    assert len(nodes) == 3
-    assert len(edges) == 2
+    assert len(nodes) == 4
+    assert len(edges) == 3
     assert paths == [
         ['column[fruit.raw.name]', 'column[fruit.processed.name]'],
-        ['column[fruit.old.name]', 'column[fruit.processed.name]']
+        ['column[fruit.old.name]', 'column[fruit.processed.name]'],
+        ['literal["hello"]', 'column[fruit.processed.name]']
     ]
