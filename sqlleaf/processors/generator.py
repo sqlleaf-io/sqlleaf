@@ -185,7 +185,7 @@ class LineageGenerator:
 
         # Collect any columns from inherited tables with the same name
         for inh_table in table_query.inherited_by:
-            col_def = [c for c in inh_table.column_defs if c.name == column_node.column][0]
+            col_def = [c for c in inh_table.get_column_defs() if c.name == column_node.column][0]
             col = util.column_def_to_column(column_def=col_def, parent_table=inh_table.child_table)
             col_ctx = replace(processor_ctx, expr=col)
             inh_node_attrs, _ = self.process_column(col_ctx, ctx)

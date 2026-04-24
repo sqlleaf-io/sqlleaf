@@ -175,17 +175,18 @@ class CTASQuery(Query):
             statement_index=statement_index,
             child_table=util.get_table(statement),
         )
-        self.column_defs = columns
-        self.inherited_by = []
+        self.column_defs: t.List[exp.ColumnDef] = columns
+        self.system_column_defs: t.List[exp.ColumnDef] = []
+        self.inherited_by: t.List[TableQuery] = []
 
-    def get_column_defs(self) -> t.List[exp.ColumnDef]:
-        return self.column_defs
+    def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
+        return self.column_defs + self.system_column_defs if include_system else self.column_defs
 
-    def get_column_names_with_types(self) -> t.Dict[str, str]:
+    def get_column_names_with_types(self, include_system: bool = False) -> t.Dict[str, str]:
         """
         Used by sqlglot's MappingSchema
         """
-        columns = {col.name: str(col.kind) for col in self.column_defs}
+        columns = {col.name: str(col.kind) for col in self.get_column_defs(include_system=include_system)}
         return columns
 
 
@@ -210,11 +211,11 @@ class ViewQuery(Query):
     def get_column_defs(self) -> t.List[exp.ColumnDef]:
         return self.column_defs
 
-    def get_column_names_with_types(self) -> t.Dict[str, str]:
+    def get_column_names_with_types(self, include_system: bool = False) -> t.Dict[str, str]:
         """
         Used by sqlglot's MappingSchema
         """
-        columns = {col.name: str(col.kind) for col in self.column_defs}
+        columns = {col.name: str(col.kind) for col in self.get_column_defs()}
         return columns
 
 
@@ -228,20 +229,18 @@ class TableQuery(Query):
             child_table=util.get_table(statement.this),
         )
         self.column_defs: t.List[exp.ColumnDef] = []
-        self.inherited_column_defs: t.List[exp.ColumnDef] = []
+        self.system_column_defs: t.List[exp.ColumnDef] = []
         self.inherits: t.List[TableQuery] = []
         self.inherited_by: t.List[TableQuery] = []
 
-    def get_column_defs(self) -> t.List[exp.ColumnDef]:
-        return self.column_defs
+    def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
+        return self.column_defs + self.system_column_defs if include_system else self.column_defs
 
-    def get_column_names_with_types(self) -> t.Dict[str, str]:
+    def get_column_names_with_types(self, include_system: bool = False) -> t.Dict[str, str]:
         """
         Used by sqlglot's MappingSchema
-
-        Returns: {'col1': 'INT', 'col2': 'VARCHAR'}
         """
-        columns = {c.name: str(c.kind) for c in self.column_defs}
+        columns = {col.name: str(col.kind) for col in self.get_column_defs(include_system=include_system)}
         return columns
 
 
@@ -276,11 +275,11 @@ class ProcedureQuery(Query):
     def get_column_defs(self) -> t.List[exp.ColumnDef]:
         return self.column_defs
 
-    def get_column_names_with_types(self) -> t.Dict[str, str]:
+    def get_column_names_with_types(self, include_system: bool = False) -> t.Dict[str, str]:
         """
         Used by sqlglot's MappingSchema
         """
-        columns = {col.name: str(col.kind) for col in self.column_defs}
+        columns = {col.name: str(col.kind) for col in self.get_column_defs()}
         return columns
 
     @property
@@ -390,7 +389,7 @@ class StageQuery(Query):
         self.child_table.this.set("this", "@" + stage_name)
         self.child_table.this.set("quoted", False)
 
-    def get_column_defs(self) -> t.List[exp.ColumnDef]:
+    def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs
 
 

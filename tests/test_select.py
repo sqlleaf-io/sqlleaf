@@ -81,9 +81,40 @@ def test__select_case(holder):
     ]
 
 
+def test__select_hidden_system_columns(holder):
+    queries = '''
+    CREATE TABLE fruit.new AS SELECT 'hello' AS name;
+
+    -- Ensure CTAS works
+    INSERT INTO fruit.processed (name)
+    SELECT xmax
+    FROM fruit.new;
+
+    -- Ensure aliases work
+    INSERT INTO fruit.processed (age, amount, number)
+    SELECT age, r.xmax, xmax
+    FROM fruit.raw AS r;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+
+    assert len(nodes) == 9
+    assert len(edges) == 5
+    assert paths == [
+        ['literal["hello"]', 'column[fruit.new.name]'],
+        ['column[fruit.new.xmax]', 'column[fruit.processed.name]'],
+        ['column[fruit.raw.age]', 'column[fruit.processed.age]'],
+        ['column[fruit.raw.xmax]', 'column[fruit.processed.amount]'],
+        ['column[fruit.raw.xmax]', 'column[fruit.processed.number]']
+    ]
+    assert 'column[fruit.new.xmax type=OID subkind=table]' in nodes
+
 
 def test__select_fails_unknown_column(holder):
-    with pytest.raises(SqlLeafException) as e:
+    with pytest.raises(sqlglot.errors.OptimizeError) as e:
         queries = '''
         INSERT INTO fruit.processed (name)
         SELECT hello
@@ -92,7 +123,7 @@ def test__select_fails_unknown_column(holder):
         h = holder(with_tables=True)
         h.generate(queries, dialect=DIALECT)
 
-    assert e.value.message == "Unknown column 'hello' in query: SELECT hello AS name FROM fruit.raw AS raw"
+    assert e.value.args[0].startswith("Column 'hello' could not be resolved.")
 
 
 tests = [

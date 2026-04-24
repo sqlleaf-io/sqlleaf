@@ -20,6 +20,9 @@ The following types of queries and nodes need to be created.
 - [ ] XML
 - [ ] File
 - [ ] Hidden (system) columns
+  - [x] TABLE
+  - [x] CTAS
+  - [ ] MATERIALIZED VIEW
 - [ ] System tables (pg_class, pg_attribute)
 
 CREATE TABLE
@@ -30,6 +33,7 @@ CREATE TABLE
   - [x] INHERITS
   - [ ] FOREIGN
     - not supported by sqlglot
+    - Include 'tableoid' system column
   - [x] Generated columns
   - [ ] Identity columns
     - [ ] Sequence node
@@ -45,6 +49,8 @@ CREATE VIEW
 
 CREATE SEQUENCE
 - [x] Include functions
+
+CREATE RULE
 
 SELECT
   - [x] System functions

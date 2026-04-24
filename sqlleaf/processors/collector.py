@@ -15,6 +15,13 @@ logger = logging.getLogger("sqleaf")
 
 DMLQueryType = t.Union[exp.Insert, exp.Update, exp.Merge, exp.Select]
 
+# sqlglot is missing pseudocolumns for Postgres
+PSEUDOCOLUMNS = ['ctid', 'xmin', 'xmax', 'cmin', 'cmax', 'tableoid', 'oid']
+from sqlglot.dialects import postgres
+postgres.Postgres.PSEUDOCOLUMNS = {c.upper() for c in PSEUDOCOLUMNS}
+postgres.Postgres.EXCLUDES_PSEUDOCOLUMNS_FROM_STAR = True
+
+
 """
 Parses text for SQL statements and collects them into Query objects.
 """
@@ -209,6 +216,17 @@ def _set_column_defs(query: TableQuery, object_mapping: mappings.ObjectMapping):
             default.this.type = col_def.kind
 
     query.column_defs = all_columns
+    query.system_column_defs = _system_columns()
+
+
+def _system_columns() -> t.List[exp.ColumnDef]:
+    """
+    Create a set of ColumnDefs representing system columns.
+    """
+    type = exp.DataType.build('OID', dialect='postgres')
+    col_defs = [exp.ColumnDef(this=exp.to_identifier(name), kind=type) for name in PSEUDOCOLUMNS]
+
+    return col_defs
 
 
 def _collect_inherited_columns(inherits_properties: t.List[exp.InheritsProperty], object_mapping: mappings.ObjectMapping, query: TableQuery) -> t.List[exp.ColumnDef]:
@@ -250,7 +268,7 @@ def _collect_like_columns(like_property: exp.LikeProperty, object_mapping: mappi
 
     # Look up the like-table's columns and determine which properties to transfer
     parent_table_query = object_mapping.find_query(kind='table', table=like_property.this)
-    parent_columns = parent_table_query.column_defs
+    parent_columns = parent_table_query.get_column_defs()
 
     for parent_col_def in parent_columns:
         new_col = parent_col_def.copy()
@@ -375,7 +393,7 @@ def _process_tables(statement: exp.Create, dialect: str, object_mapping: mapping
         object_mapping.add_query(
             kind='table',
             query=query,
-            column_mapping=query.get_column_names_with_types(),
+            column_mapping=query.get_column_names_with_types(include_system=True),
             match_depth=False,
             dialect=dialect,
         )
@@ -412,11 +430,12 @@ def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping:
     elif stmt.kind == "TABLE":
         # CREATE TABLE AS SELECT ...
         query = CTASQuery(statement=stmt, dialect=dialect, columns=col_defs, statement_index=statement_index)
+        query.system_column_defs = _system_columns()
 
     object_mapping.add_query(
         kind='table',
         query=query,
-        column_mapping=query.get_column_names_with_types(),
+        column_mapping=query.get_column_names_with_types(include_system=True),
         match_depth=False,
     )
     return query

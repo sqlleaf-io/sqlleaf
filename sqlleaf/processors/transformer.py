@@ -8,7 +8,7 @@ from sqlglot.optimizer import optimize, qualify, RULES
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query
+from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query, ProcedureQuery
 
 logger = logging.getLogger("sqleaf")
 
@@ -40,7 +40,7 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
     statement = _validate_basic(statement, query.dialect, object_mapping, query.child_table)
 
     # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
-    statement = _apply_optimizations(statement, query.dialect, object_mapping, query.child_table)
+    statement = _apply_optimizations(statement, query, object_mapping, query.child_table)
 
     # Transform CASE statements to remove false positive lineage; see docs
     statement = statement.transform(_case_statement_transformer)
@@ -48,6 +48,25 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
     logger.debug(f"Transformed {str(type(statement))}: {statement.sql(dialect=query.dialect)}")
     query.statement_transformed = statement
     query.set_statement(statement)
+
+
+def _add_aliases_to_pseudocolumns(statement: exp.Insert):
+    """
+    Given a query:
+        SELECT xmax FROM fruit.raw
+    rename it to:
+        SELECT raw.xmax FROM fruit.raw
+    or use the table's alias instead.
+
+    This requires that the tables and columns have run through qualify()
+    """
+    print()
+    for pseudo in statement.find_all(exp.Pseudocolumn):
+        if pseudo.table:
+            continue
+
+        from_table_alias = pseudo.parent_select.args['from_'].alias_or_name
+        pseudo.set('table', exp.to_identifier(from_table_alias))
 
 
 def _process_inner_ctes(statement: exp.Insert | exp.Merge | exp.Update, query: Query, object_mapping: mappings.ObjectMapping) -> exp.Insert | exp.Merge | exp.Update:
@@ -62,7 +81,7 @@ def _process_inner_ctes(statement: exp.Insert | exp.Merge | exp.Update, query: Q
             cte_expr.this.replace(inner_expr)
 
         # Rename the columns and replace the INSERT with the SELECT
-        _rename_returning_columns(expr=cte_expr, dialect=query.dialect, object_mapping=object_mapping, child_table=cte_expr.find(exp.Table))
+        _rename_returning_columns(expr=cte_expr, query=query, object_mapping=object_mapping, child_table=cte_expr.find(exp.Table))
         # cte_expr.set("this", select_expr)
 
     return statement
@@ -336,7 +355,8 @@ def _convert_copy_to_insert(statement: exp.Copy, query: CopyQuery, object_mappin
         parent_table = expr.args['files'][0]
         source_table = parent_table
 
-    child_columns = object_mapping.find_columns_for_table(table=source_table)
+    table_query = object_mapping.find_query(kind='table', table=source_table)
+    child_columns = table_query.get_column_names_with_types()
     column_names = tuple(child_columns.keys())
 
     # Convert the Copy to an Insert so that the lineage functions work
@@ -382,7 +402,7 @@ def _validate_basic(statement: exp.Insert, dialect: str, object_mapping: mapping
 
     return statement
 
-def _apply_optimizations(statement: exp.Insert, dialect: str, object_mapping: mappings.ObjectMapping, child_table, match_columns: bool = True) -> exp.Insert :
+def _apply_optimizations(statement: exp.Insert, query: Query, object_mapping: mappings.ObjectMapping, child_table, match_columns: bool = True) -> exp.Insert :
     """
     1. We pass validate=false to prevent errors like: sqlglot.errors.OptimizeError: Column '"v_ca_start_date_id"' could not be resolved
     2. We pass infer_schema=True to source unqualified columns from the source table (if missing from the `schema` param)
@@ -401,23 +421,24 @@ def _apply_optimizations(statement: exp.Insert, dialect: str, object_mapping: ma
         statement,
         schema=object_mapping,
         infer_schema=True,
-        dialect=dialect,
+        dialect=query.dialect,
         isolate_tables=False,
-        validate_qualify_columns=False,
+        validate_qualify_columns=True,
         quote_identifiers=False,
     )
+    _add_aliases_to_pseudocolumns(statement)
 
     if match_columns:
         _add_column_names_to_insert(stmt, object_mapping, child_table)
 
     # Selectively apply sqlglot's optimization rules.
-    stmt = optimize(expression=stmt, dialect=dialect, schema=object_mapping, rules=RULES_OVERRIDE)
+    stmt = optimize(expression=stmt, dialect=query.dialect, schema=object_mapping, rules=RULES_OVERRIDE)
     stmt = merge_derived_tables(stmt)   # Skip merge_ctes()
 
     return stmt
 
 
-def _rename_returning_columns(expr: exp.CTE, dialect: str, object_mapping: mappings.ObjectMapping, child_table: exp.Table):
+def _rename_returning_columns(expr: exp.CTE, query: Query, object_mapping: mappings.ObjectMapping, child_table: exp.Table):
     """
     Given an (INSERT .. RETURNING *) statement, expand the star to the table's column names
     and add the correct column aliases.
@@ -465,7 +486,7 @@ def _rename_returning_columns(expr: exp.CTE, dialect: str, object_mapping: mappi
     else:
         new_select = exp.select(*returning_expr.expressions).from_(child_table)
 
-    new_select = _apply_optimizations(new_select, dialect, object_mapping, child_table, match_columns=False)
+    new_select = _apply_optimizations(new_select, query, object_mapping, child_table, match_columns=False)
 
     expr.set("this", new_select)
     return expr
@@ -488,9 +509,9 @@ def _add_column_names_to_insert(statement: exp.Insert, object_mapping: mappings.
 
     selects = statement.selects
     table_query = object_mapping.get_table_or_stage(child_table)
-    table_columns = [c.name for c in table_query.get_column_defs()]
-
+    table_columns = [c.name for c in table_query.get_column_defs(include_system=True)]
     insert_columns = []
+
     if isinstance(statement.this, exp.Schema):
         # INSERT INTO fruit.raw (name)
         insert_columns = [s.name for s in statement.this.expressions]
