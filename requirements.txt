@@ -1,1 +1,2 @@
 sqlglot==30.4.3
+networkx==3.4.2
