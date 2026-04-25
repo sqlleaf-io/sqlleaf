@@ -57,6 +57,35 @@ def test__select_values(holder):
     assert 'column[t.letter type=VARCHAR subkind=derived_table]' in nodes
 
 
+def test__select_double_pipe(holder):
+    queries = '''
+    INSERT INTO fruit.processed (kind)
+    SELECT
+        name || r.name || upper(r.name) as kind
+    FROM fruit.raw AS r;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_friendly_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+
+    # a || b || c  ->  (a || b) || c
+    #                     ^     ^
+    #                  DPIPE1  DPIPE2
+    #
+    # expect: a -> dpipe1 -> dpipe2
+    # expect: b -> dpipe1 -> dpipe2
+    # expect: c -> dpipe2
+
+    assert paths == [
+        ['column[fruit.raw.name]', 'function[DPIPE()]', 'function[DPIPE()]', 'column[fruit.processed.kind]'],
+        ['column[fruit.raw.name]', 'function[UPPER()]', 'function[DPIPE()]', 'column[fruit.processed.kind]']
+    ]
+    assert len(nodes) == 5
+    assert len(edges) == 6
+
+
 def test__select_case(holder):
     queries = '''
     INSERT INTO fruit.processed (age, number)
@@ -200,6 +229,7 @@ def test__select_assorted(holder):
     SELECT
         ARRAY[1,2,3] as name1,
         INTERVAL '-10.75 MINUTE' as name2;
+    INSERT INTO anything SELECT 1;
     '''
     h = holder()
     h.generate(queries, dialect=DIALECT)

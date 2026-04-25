@@ -71,6 +71,60 @@ def test__insert_default_values(holder):
     ]
     assert queries[2].statement_transformed.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
 
+
+def test__insert_on_conflict_with_table(holder):
+    queries = '''
+    INSERT INTO fruit.processed (name, kind)
+    SELECT name, 'apple' as kind
+    FROM fruit.raw AS r
+    ON CONFLICT (name)
+    DO UPDATE SET
+        kind = EXCLUDED.kind || r.kind;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    queries = h.get_queries_created()
+    paths = h.get_friendly_paths()
+
+    assert paths == [
+        ['column[fruit.raw.name]', 'column[fruit.processed.name]'],
+        ['literal["apple"]', 'column[fruit.processed.kind]'],
+        ['literal["apple"]', 'function[DPIPE()]', 'column[fruit.processed.kind]'],
+        ['column[fruit.raw.kind]', 'function[DPIPE()]', 'column[fruit.processed.kind]']
+    ]
+    assert len(nodes) == 7
+    assert len(edges) == 5
+
+
+def test__insert_on_conflict_with_values(holder):
+    queries = '''
+    INSERT INTO fruit.processed (name, created_at)
+    VALUES ('pear', CURRENT_TIMESTAMP)
+    ON CONFLICT (name)
+    DO UPDATE SET
+        created_at = EXCLUDED.created_at,
+        name = LOWER(EXCLUDED.name),
+        kind = EXCLUDED.kind;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    queries = h.get_queries_created()
+    paths = h.get_friendly_paths()
+
+    assert paths == [
+        ['literal["pear"]', 'column[fruit.processed.name]'],
+        ['function[CURRENTTIMESTAMP()]', 'column[fruit.processed.created_at]'],
+        ['literal["pear"]', 'function[LOWER()]', 'column[fruit.processed.name]'],
+        ['function[CURRENTTIMESTAMP()]', 'column[fruit.processed.created_at]']
+    ]
+    assert len(nodes) == 7
+    assert len(edges) == 5
+
+
 # Not supported by sqlglot: exception - unexpected token 'OVERRIDING'
 def test__insert_overriding(holder):
     with pytest.raises(sqlglot.errors.ParseError) as e:

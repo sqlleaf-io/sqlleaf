@@ -96,7 +96,7 @@ DELETE
 INSERT
   - [x] DEFAULT VALUES
   - [x] RETURNING
-  - [ ] ON CONFLICT DO UPDATE
+  - [x] ON CONFLICT DO UPDATE
   - [x] VALUES
     - [x] (DEFAULT, DEFAULT)
     - [x] Multi-row

@@ -27,6 +27,7 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
         statement = _process_inner_ctes(statement, query, object_mapping)
 
     elif isinstance(query, UpdateQuery):
+        statement = _convert_on_conflict_to_update(statement, object_mapping, query)
         statement = _add_information_from_merge(statement, query)
         statement = _convert_update_to_insert(statement, query.dialect)
         statement = _process_inner_ctes(statement, query, object_mapping)
@@ -109,7 +110,9 @@ def _convert_insert_values_to_select(statement: exp.Insert, object_mapping: mapp
             expression=new_select,
             columns=statement.this.expressions,
             into=child_table,
+            returning=statement.args['returning'],
         )
+        insert_expr.set('conflict', statement.args['conflict'])
         statement.replace(insert_expr)
         return insert_expr
     return statement
@@ -239,6 +242,48 @@ def _convert_update_to_insert(statement: exp.Update, dialect: str) -> exp.Insert
 
     statement.replace(insert_statement)
     return insert_statement
+
+
+def _convert_on_conflict_to_update(statement: exp.Update, object_mapping: mappings.ObjectMapping, query: UpdateQuery) -> exp.Update:
+    """
+    Convert the 'DO UPDATE' in:
+        INSERT INTO <table> as t
+        ON CONFLICT
+        DO UPDATE SET name = EXCLUDED.name
+    to:
+        UPDATE <table> AS t
+        SET name = name
+    so that the expression has the correct columns/values.
+    """
+    if not isinstance(statement, exp.OnConflict) or statement.args['action'].name == 'DO NOTHING':
+        return statement
+
+    parent_insert_expr = _convert_insert_values_to_select(statement.parent, object_mapping, query.child_table)
+    statement = parent_insert_expr.args['conflict']
+
+    update_expr = exp.update(table=query.child_table)
+    update_expr.set('expressions', statement.expressions)
+
+    if parent_table := statement.parent.expression.args.get('from_', None):
+        update_expr = update_expr.from_(parent_table.this)
+
+    for eq_expr in list(update_expr.expressions):
+        for col in eq_expr.right.find_all(exp.Column):
+            if col.table.upper() == 'EXCLUDED':
+                if col.name not in parent_insert_expr.named_selects:
+                    # Use the column's default (Postgres)
+                    eq_expr.pop()
+                else:
+                    # Set it to the unaliased expression
+                    select_expr = [alias_expr for alias_expr in parent_insert_expr.selects if alias_expr.alias == col.name][0]
+                    new_expr = select_expr.unalias().copy()
+
+                    if isinstance(new_expr, exp.Column):
+                        new_expr.set('table', exp.to_identifier(parent_table.alias_or_name))
+
+                    col.replace(new_expr)
+
+    return update_expr
 
 
 def _add_information_from_merge(statement: exp.Insert | exp.Update, query: InsertQuery | UpdateQuery) -> exp.Insert | exp.Update:
@@ -496,13 +541,12 @@ def _add_column_names_to_insert(statement: exp.Insert, object_mapping: mappings.
     """
     Add aliases to SELECTs that are missing them by looking at the corresponding INSERT column.
     This prevents sqlglot from assigning its own generated names as aliases.
+    This needs to run after qualify() as it expands stars and aliases.
 
     For example, the statement:
         INSERT INTO my.apple SELECT name, age FROM my.pear
     renames to:
         INSERT INTO my.apple (a,b) SELECT name as a, age as b FROM my.pear
-
-    match_columns: whether the SELECT aliases should match the INSERT's columns
     """
     if not isinstance(statement, exp.Insert) or not statement.selects:
         return statement

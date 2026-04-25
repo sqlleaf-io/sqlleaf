@@ -92,12 +92,11 @@ class LineageGenerator:
         expr = processor_ctx.expr
         child_node_attrs = processor_ctx.child_node_attrs
 
-        logger.debug("walk_tree_and_build_graph(): %s", type(expr))
-
         processor_func = self.get_processor(expr)
         if not processor_func:
             raise ValueError(f"Unknown expression type: {type(expr)}")
 
+        logger.debug(f"Generating node '{expr.__class__.__name__}' with generator '{processor_func.__name__}'")
         parent_node_attrs, children = processor_func(processor_ctx=processor_ctx, ctx=ctx)
 
         if parent_node_attrs:

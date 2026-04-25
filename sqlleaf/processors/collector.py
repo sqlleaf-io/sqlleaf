@@ -134,6 +134,7 @@ def _collect_writable_cte_queries(parent_query: Query, dialect: str, object_mapp
             _collect_merge_children(query, object_mapping)
         elif isinstance(cte_expr, exp.Insert):
             query = InsertQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
+            _collect_insert_children(query)
         elif isinstance(cte_expr, exp.Update):
             query = UpdateQuery(expr=cte_expr, dialect=dialect, statement_index=i)
         else:
@@ -142,6 +143,20 @@ def _collect_writable_cte_queries(parent_query: Query, dialect: str, object_mapp
 
         # Detach the query in the AST so that certain transformations work later
         parent_query.add_child_query(query)
+
+
+def _collect_insert_children(query: InsertQuery):
+    """
+    Collect any additional queries inside an INSERT. For Postgres, this is 'INSERT .. ON CONFLICT DO UPDATE'.
+    """
+    on_conflict = query.statement.args['conflict']
+
+    if not isinstance(on_conflict, exp.OnConflict):
+        return
+
+    update_query = UpdateQuery(expr=on_conflict, dialect=query.dialect, statement_index=0)
+    update_query.child_table = query.child_table
+    query.add_child_query(update_query)
 
 
 def _collect_merge_children(parent_query: MergeQuery, object_mapping: mappings.ObjectMapping):
@@ -366,6 +381,7 @@ def _process_unnamed(statement: exp.Expression, dialect: str, object_mapping: ma
 
     if isinstance(statement, exp.Insert):
         query = InsertQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+        _collect_insert_children(query)
     elif isinstance(statement, exp.Update):
         query = UpdateQuery(expr=statement, dialect=dialect, statement_index=statement_index)
     elif isinstance(statement, exp.Select):

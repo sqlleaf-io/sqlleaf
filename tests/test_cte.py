@@ -407,6 +407,34 @@ def test__cte_insert_returning(holder):
     assert [InsertQuery] == list(map(type, queries[0].child_queries))
 
 
+def test__cte_insert_conflict_returning(holder):
+    queries = '''
+    WITH insert_cte AS (
+        INSERT INTO fruit.raw (name)
+        VALUES ('pear')
+        ON CONFLICT (name)
+        DO UPDATE SET
+            name = LOWER(EXCLUDED.name)
+        RETURNING name, 'pear' as kind
+    )
+    INSERT INTO fruit.processed (name, kind, label)
+    SELECT name, kind, 'pear' as label FROM insert_cte;
+    '''
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    paths = h.get_friendly_paths()
+    queries = h.get_queries_created()
+
+    assert len(nodes) == 11
+    assert paths == [
+        ['literal["pear"]', 'column[insert_cte.kind]', 'column[fruit.processed.kind]'],
+        ['literal["pear"]', 'column[fruit.processed.label]'],
+        ['literal["pear"]', 'column[fruit.raw.name]', 'column[insert_cte.name]', 'column[fruit.processed.name]'],
+        ['literal["pear"]', 'function[LOWER()]', 'column[fruit.raw.name]', 'column[insert_cte.name]', 'column[fruit.processed.name]']
+    ]
+
+
 def test__cte_insert(holder):
     queries = '''
     WITH insert_cte AS (
