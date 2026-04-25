@@ -32,13 +32,13 @@ def test__merge_simple_update_and_insert(holder):
     queries = h.get_queries_created()
     paths = h.get_friendly_paths()
 
-    assert len(nodes) == 4
-    assert len(queries) == 1
-    assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries))
     assert paths == [
         ['column[fruit.raw.name]', 'column[fruit.processed.name]'],
         ['column[fruit.raw.kind]', 'column[fruit.processed.label]']
     ]
+    assert len(nodes) == 4
+    assert len(queries) == 1
+    assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries))
     assert queries[0].child_queries[0].statement_transformed.sql(dialect=DIALECT) == "INSERT INTO fruit.processed AS t (name) SELECT s.name AS name FROM fruit.raw AS s"
     assert queries[0].child_queries[1].statement_transformed.sql(dialect=DIALECT) == "INSERT INTO fruit.processed AS t (label) SELECT s.kind AS label FROM fruit.raw AS s"
 

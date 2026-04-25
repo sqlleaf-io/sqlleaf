@@ -22,7 +22,7 @@ def test__json_one_selector(holder):
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_friendly_node_names()
 
-    assert ['jsonpath[.fruits]', 'column[fruit.processed.name]', 'column[fruit.raw.jsonblob]'] == nodes
+    assert nodes == ['jsonpath[.fruits]', 'column[fruit.processed.name]', 'column[fruit.raw.jsonblob]']
 
 
 def test__json_two_selectors(holder):
@@ -35,4 +35,4 @@ def test__json_two_selectors(holder):
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_friendly_node_names()
 
-    assert ['jsonpath[.fruits.apple]', 'column[fruit.processed.name]', 'column[fruit.raw.jsonblob]'] == nodes
+    assert nodes == ['jsonpath[.fruits.apple]', 'column[fruit.processed.name]', 'column[fruit.raw.jsonblob]']

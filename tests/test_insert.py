@@ -61,7 +61,6 @@ def test__insert_default_values(holder):
     queries = h.get_queries_created()
     paths = h.get_friendly_paths()
 
-    assert len(nodes) == 10
     assert paths == [
         ['null[NULL]', 'column[fruit.b.color]'],
         ['literal[-1]', 'column[fruit.b.age]'],
@@ -69,6 +68,7 @@ def test__insert_default_values(holder):
         ['null[NULL]', 'column[fruit.a.kind]'],
         ['literal[99]', 'column[fruit.a.size]']
     ]
+    assert len(nodes) == 10
     assert queries[2].statement_transformed.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
 
 

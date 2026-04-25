@@ -41,11 +41,11 @@ def test__views_and_ctas_with_every_hierarchy(holder):
     edges = h.get_edges()
     paths = h.get_friendly_paths()
 
-    assert len(nodes) == 6
-    assert len(edges) == 5
     assert paths == [
         ['column[a.b.ab]', 'column[ctas.one]', 'column[vie.tab.one]', 'function[ABS()]', 'column[tab.vie.two]', 'column[sch.tab.vie.three]']
     ]
+    assert len(nodes) == 6
+    assert len(edges) == 5
 
 
 def test__view_with_cte(holder):

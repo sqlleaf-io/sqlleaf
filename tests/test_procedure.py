@@ -43,11 +43,11 @@ def test__procedure_simple(holder):
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
-    assert len(queries) == 1 and isinstance(queries[0], ProcedureQuery)
     assert paths == [
         ['column[fruit.raw.kind]', 'function[UPPER()]', 'column[cte.knd]', 'function[LOWER()]', 'column[fruit.processed.kind]'],
         ['variable[v_amount]', 'column[fruit.processed.amount]'],
         ['literal[1]', 'column[fruit.processed.number]']
     ]
+    assert len(queries) == 1 and isinstance(queries[0], ProcedureQuery)
 
 # TODO: test an SP with a merge. This creates a 3-level query hierarchy

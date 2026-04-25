@@ -209,11 +209,11 @@ def test__cte_update_returning_with_old_and_new_aliases(holder):
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
-    assert len(nodes) == 5
     assert paths == [
         ['column[fruit.raw.age]', 'column[first_cte.age]', 'column[fruit.processed.age]'],
         ['literal["pear"]', 'column[fruit.raw.name]'],
     ]
+    assert len(nodes) == 5
     assert [UpdateQuery] == list(map(type, queries))
     assert [UpdateQuery] == list(map(type, queries[0].child_queries))
 
@@ -276,12 +276,12 @@ def test__cte_update_with_two_updates_returning(holder):
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
-    assert len(nodes) == 6
     assert paths == [
         ['column[fruit.raw.age]', 'column[first_cte.age]', 'column[fruit.processed.age]'],
         ['literal["pear"]', 'column[fruit.raw.name]'],
         ['literal["tomato"]', 'column[fruit.raw.name]']
     ]
+    assert len(nodes) == 6
     assert [UpdateQuery] == list(map(type, queries))
     assert [UpdateQuery, UpdateQuery] == list(map(type, queries[0].child_queries))
 
@@ -306,11 +306,11 @@ def test__cte_merge(holder):
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
-    assert len(nodes) == 4
     assert paths == [
         ['column[fruit.raw.name]', 'column[fruit.processed.name]'],
         ['column[fruit.raw.kind]', 'column[fruit.processed.label]']
     ]
+    assert len(nodes) == 4
     assert [SelectQuery] == list(map(type, queries))
     assert [MergeQuery] == list(map(type, queries[0].child_queries))
     assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries[0].child_queries))
@@ -373,13 +373,13 @@ def test__cte_merge_with_update_and_insert(holder):
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
-    assert len(nodes) == 6
-    assert len(queries) == 1
-    assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries))
     assert paths == [
         ['column[fruit.raw.name]', 'column[merge_cte.name]', 'column[fruit.processed.name]'],
         ['column[fruit.raw.kind]', 'column[merge_cte.kind]', 'column[fruit.processed.label]']
     ]
+    assert len(nodes) == 6
+    assert len(queries) == 1
+    assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries))
 
 
 def test__cte_insert_returning(holder):
@@ -398,11 +398,11 @@ def test__cte_insert_returning(holder):
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
-    assert len(nodes) == 7
     assert paths == [
         ['column[fruit.raw.kind]', 'column[insert_cte.kind]', 'column[fruit.processed.kind]'],
         ['literal["orange"]', 'column[fruit.raw.name]', 'column[insert_cte.name]', 'column[fruit.processed.name]']
     ]
+    assert len(nodes) == 7
     assert [InsertQuery] == list(map(type, queries))
     assert [InsertQuery] == list(map(type, queries[0].child_queries))
 
@@ -426,13 +426,13 @@ def test__cte_insert_conflict_returning(holder):
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
-    assert len(nodes) == 11
     assert paths == [
         ['literal["pear"]', 'column[insert_cte.kind]', 'column[fruit.processed.kind]'],
         ['literal["pear"]', 'column[fruit.processed.label]'],
         ['literal["pear"]', 'column[fruit.raw.name]', 'column[insert_cte.name]', 'column[fruit.processed.name]'],
         ['literal["pear"]', 'function[LOWER()]', 'column[fruit.raw.name]', 'column[insert_cte.name]', 'column[fruit.processed.name]']
     ]
+    assert len(nodes) == 11
 
 
 def test__cte_insert(holder):
@@ -454,11 +454,11 @@ def test__cte_insert(holder):
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
-    assert len(nodes) == 3
     assert paths == [
         ['literal["orange"]', 'column[fruit.raw.name]'],
         ['literal["banana"]', 'column[fruit.raw.name]']
     ]
+    assert len(nodes) == 3
     assert [SelectQuery] == list(map(type, queries))
     assert [InsertQuery, UpdateQuery] == list(map(type, queries[0].child_queries))
 

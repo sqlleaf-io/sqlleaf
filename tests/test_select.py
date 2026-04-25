@@ -100,14 +100,14 @@ def test__select_case(holder):
     edges = h.get_edges()
     paths = h.get_friendly_paths()
 
-    assert len(nodes) == 6
-    assert len(edges) == 4
     assert paths == [
         ['literal[2]', 'column[fruit.processed.age]'],
         ['literal[1]', 'column[fruit.processed.age]'],
         ['null[NULL]', 'column[fruit.processed.number]'],
         ['literal[1]', 'column[fruit.processed.number]']
     ]
+    assert len(nodes) == 6
+    assert len(edges) == 4
 
 
 def test__select_hidden_system_columns(holder):
@@ -130,8 +130,6 @@ def test__select_hidden_system_columns(holder):
     edges = h.get_edges()
     paths = h.get_friendly_paths()
 
-    assert len(nodes) == 9
-    assert len(edges) == 5
     assert paths == [
         ['literal["hello"]', 'column[fruit.new.name]'],
         ['column[fruit.new.xmax]', 'column[fruit.processed.name]'],
@@ -140,6 +138,8 @@ def test__select_hidden_system_columns(holder):
         ['column[fruit.raw.xmax]', 'column[fruit.processed.number]']
     ]
     assert 'column[fruit.new.xmax type=OID subkind=table]' in nodes
+    assert len(nodes) == 9
+    assert len(edges) == 5
 
 
 def test__select_fails_unknown_column(holder):
@@ -177,11 +177,11 @@ def test__select_value_twice(holder, case):
     nodes = h.get_friendly_node_names()
     paths = h.get_friendly_paths()
 
-    assert len(nodes) == 4
     assert paths == [
         [f'{kind}[{value}]', 'column[fruit.processed.name]'],
         [f'{kind}[{value}]', 'column[fruit.processed.age]'],
     ]
+    assert len(nodes) == 4
 
 # TODO: select_query_twice
 # TODO: select_query_twice, but slightly different second
@@ -309,10 +309,10 @@ def test__select_union(holder, op):
     nodes = h.get_full_node_names()
     paths = h.get_friendly_paths()
 
-    assert len(nodes) == 4
-    assert len(edges) == 3
     assert paths == [
         ['column[fruit.raw.name]', 'column[fruit.processed.name]'],
         ['column[fruit.old.name]', 'column[fruit.processed.name]'],
         ['literal["hello"]', 'column[fruit.processed.name]']
     ]
+    assert len(nodes) == 4
+    assert len(edges) == 3
