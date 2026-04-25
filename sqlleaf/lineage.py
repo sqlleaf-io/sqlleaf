@@ -4,7 +4,6 @@ import typing as t
 from dataclasses import replace
 
 import networkx as nx
-import sqlglot
 from sqlglot import exp
 from sqlglot.optimizer import build_scope
 
@@ -17,7 +16,7 @@ from sqlleaf import (
     sqlglot_lineage,
 )
 
-from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, MergeQuery, CopyQuery, PutQuery, CTASQuery
+from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import NodeAttributes, StageNode, ColumnNode, new_graph
 from sqlleaf.path import LineagePath

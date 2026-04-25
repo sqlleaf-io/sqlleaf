@@ -1,5 +1,6 @@
 import os
 import sys
+
 import pytest
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -8,7 +9,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from tests.new_fixtures import (
     holder,
 )
-from sqlleaf.objects.query_types import InsertQuery, UpdateQuery, PutQuery, StageQuery, CopyQuery, TableQuery
+from sqlleaf.objects.query_types import PutQuery, StageQuery, CopyQuery, TableQuery
 
 DIALECT = "snowflake"
 

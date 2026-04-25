@@ -5,7 +5,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 from tests.new_fixtures import holder
-from sqlleaf.objects.query_types import InsertQuery, UpdateQuery, ProcedureQuery
+from sqlleaf.objects.query_types import ProcedureQuery
 
 DIALECT = "postgres"
 

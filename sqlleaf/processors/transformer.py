@@ -2,13 +2,12 @@ import typing as t
 import logging
 import copy
 
-import sqlglot
 from sqlglot import exp
 from sqlglot.optimizer import optimize, qualify, RULES
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query, ProcedureQuery
+from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query
 
 logger = logging.getLogger("sqleaf")
 

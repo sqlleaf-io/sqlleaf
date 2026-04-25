@@ -1,21 +1,20 @@
 from __future__ import annotations
 import logging
 import typing as t
-from dataclasses import dataclass, replace, InitVar
+from dataclasses import replace
 
 import networkx as nx
 from sqlglot import exp
 
-from sqlleaf import util, mappings, sqlglot_lineage, exception
+from sqlleaf import util
 
-from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery, ProcedureQuery
+from sqlleaf.objects.query_types import Query, UpdateQuery, CopyQuery, ProcedureQuery
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import (
     EdgeAttributes,
     NodeAttributes,
     StageNode,
     ColumnNode,
-    new_graph,
     IntervalNode,
     JsonPathNode,
     VarNode,

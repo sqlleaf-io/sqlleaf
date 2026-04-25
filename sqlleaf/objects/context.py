@@ -1,12 +1,12 @@
 from __future__ import annotations
 import logging
 import typing as t
-from dataclasses import dataclass, replace, InitVar
+from dataclasses import dataclass, InitVar
 
 import networkx as nx
 from sqlglot import exp
 
-from sqlleaf import util, mappings, sqlglot_lineage, exception
+from sqlleaf import util, mappings, sqlglot_lineage
 
 if t.TYPE_CHECKING:
     from sqlleaf.objects.query_types import Query

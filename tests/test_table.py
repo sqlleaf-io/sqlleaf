@@ -1,12 +1,11 @@
 import os
 import sys
-import pytest
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 from tests.new_fixtures import holder, is_subset
-from sqlleaf.objects.query_types import InsertQuery, UpdateQuery, SequenceQuery
+from sqlleaf.objects.query_types import InsertQuery, SequenceQuery
 
 DIALECT = "postgres"
 

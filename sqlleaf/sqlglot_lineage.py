@@ -1,7 +1,7 @@
 from __future__ import annotations
 import logging
 import typing as t
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 from sqlglot import Schema, exp, maybe_parse
 from sqlglot.errors import SqlglotError
@@ -17,7 +17,7 @@ from sqlglot.optimizer.scope import ScopeType
 if t.TYPE_CHECKING:
     from sqlglot.dialects.dialect import DialectType
 
-from sqlleaf import util, exception
+from sqlleaf import exception
 from sqlleaf.objects.query_types import Query, ProcedureQuery
 
 logger = logging.getLogger("sqlleaf")
