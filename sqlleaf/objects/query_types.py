@@ -45,7 +45,7 @@ class Query:
         """
         if self.parent_query:
             index = self.parent_query.get_statement_index()
-            return index + ':' + str(self.statement_index)
+            return index + ":" + str(self.statement_index)
         else:
             return str(self.statement_index)
 
@@ -110,7 +110,7 @@ class MergeQuery(Query):
         )
 
     def get_ctes(self):
-        return getattr(self.statement, 'ctes', [])
+        return getattr(self.statement, "ctes", [])
 
 
 class SelectQuery(Query):
@@ -125,7 +125,7 @@ class SelectQuery(Query):
         )
 
     def get_ctes(self):
-        return getattr(self.statement, 'ctes', [])
+        return getattr(self.statement, "ctes", [])
 
 
 class InsertQuery(Query):
@@ -140,7 +140,7 @@ class InsertQuery(Query):
         )
 
     def get_ctes(self):
-        return getattr(self.statement, 'ctes', [])
+        return getattr(self.statement, "ctes", [])
 
 
 class UpdateQuery(Query):
@@ -153,10 +153,10 @@ class UpdateQuery(Query):
             statement_index=statement_index,
             child_table=table,
         )
-        self.only = table.args.get('only', False) if table else False    # Not available inside a MERGE
+        self.only = table.args.get("only", False) if table else False  # Not available inside a MERGE
 
     def get_ctes(self):
-        with_ = self.statement.args.get('with_', None)
+        with_ = self.statement.args.get("with_", None)
         return with_.expressions if with_ else []
 
 
@@ -402,12 +402,12 @@ class CopyQuery(Query):
             statement_index=statement_index,
             child_table=expr.this,
         )
-        self.source = expr.args['files'][0]
-        self.target = expr.args['this']
+        self.source = expr.args["files"][0]
+        self.target = expr.args["this"]
         self.is_source_a_stage = False
         self.is_target_a_stage = False
 
-        if dialect == 'snowflake':
+        if dialect == "snowflake":
             self.configure_stage(expr)
 
         self.set_statement(expr)
@@ -418,8 +418,8 @@ class CopyQuery(Query):
         This involves manually normalising (uppercasing) the name.
         sqlglot only normalizes columns - see comments in `sqlglot.optimizer.normalize_identifiers()`
         """
-        source = expr.args['files'][0]
-        target = expr.args['this']
+        source = expr.args["files"][0]
+        target = expr.args["this"]
 
         if str(source).startswith("@"):
             self.is_source_a_stage = True
@@ -442,4 +442,4 @@ class PutQuery(Query):
             child_table=expr.this,
         )
         self.source = expr.name
-        self.target = expr.args['target'].name
+        self.target = expr.args["target"].name

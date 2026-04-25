@@ -4,15 +4,14 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
-from tests.new_fixtures import (
-    holder
-)
+from tests.new_fixtures import holder
 from sqlleaf.objects.query_types import InsertQuery, UpdateQuery, ProcedureQuery
 
-DIALECT = 'postgres'
+DIALECT = "postgres"
+
 
 def test__procedure_simple(holder):
-    queries = '''
+    queries = """
     CREATE OR REPLACE PROCEDURE fruit.process(v_kind VARCHAR, v_amount INT)
     LANGUAGE plpgsql
     SECURITY DEFINER
@@ -37,17 +36,18 @@ def test__procedure_simple(holder):
         SELECT 1;
         END;
     $$;
-    '''
+    """
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
     assert paths == [
-        ['column[fruit.raw.kind]', 'function[UPPER()]', 'column[cte.knd]', 'function[LOWER()]', 'column[fruit.processed.kind]'],
-        ['variable[v_amount]', 'column[fruit.processed.amount]'],
-        ['literal[1]', 'column[fruit.processed.number]']
+        ["column[fruit.raw.kind]", "function[UPPER()]", "column[cte.knd]", "function[LOWER()]", "column[fruit.processed.kind]"],
+        ["variable[v_amount]", "column[fruit.processed.amount]"],
+        ["literal[1]", "column[fruit.processed.number]"],
     ]
     assert len(queries) == 1 and isinstance(queries[0], ProcedureQuery)
+
 
 # TODO: test an SP with a merge. This creates a 3-level query hierarchy

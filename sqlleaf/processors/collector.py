@@ -8,7 +8,23 @@ from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.objects.query_types import StageQuery, ProcedureQuery, TriggerQuery, UserDefinedFunctionQuery, CTASQuery, ViewQuery, SequenceQuery, TableQuery, SelectQuery, PutQuery, CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query
+from sqlleaf.objects.query_types import (
+    StageQuery,
+    ProcedureQuery,
+    TriggerQuery,
+    UserDefinedFunctionQuery,
+    CTASQuery,
+    ViewQuery,
+    SequenceQuery,
+    TableQuery,
+    SelectQuery,
+    PutQuery,
+    CopyQuery,
+    UpdateQuery,
+    InsertQuery,
+    MergeQuery,
+    Query,
+)
 from sqlleaf.processors.transformer import clean_stored_procedure_text
 
 logger = logging.getLogger("sqleaf")
@@ -16,8 +32,9 @@ logger = logging.getLogger("sqleaf")
 DMLQueryType = t.Union[exp.Insert, exp.Update, exp.Merge, exp.Select]
 
 # sqlglot is missing pseudocolumns for Postgres
-PSEUDOCOLUMNS = ['ctid', 'xmin', 'xmax', 'cmin', 'cmax', 'tableoid', 'oid']
+PSEUDOCOLUMNS = ["ctid", "xmin", "xmax", "cmin", "cmax", "tableoid", "oid"]
 from sqlglot.dialects import postgres
+
 postgres.Postgres.PSEUDOCOLUMNS = {c.upper() for c in PSEUDOCOLUMNS}
 postgres.Postgres.EXCLUDES_PSEUDOCOLUMNS_FROM_STAR = True
 
@@ -149,7 +166,7 @@ def _collect_insert_children(query: InsertQuery):
     """
     Collect any additional queries inside an INSERT. For Postgres, this is 'INSERT .. ON CONFLICT DO UPDATE'.
     """
-    on_conflict = query.statement.args['conflict']
+    on_conflict = query.statement.args["conflict"]
 
     if not isinstance(on_conflict, exp.OnConflict):
         return
@@ -238,13 +255,15 @@ def _system_columns() -> t.List[exp.ColumnDef]:
     """
     Create a set of ColumnDefs representing system columns.
     """
-    type = exp.DataType.build('OID', dialect='postgres')
+    type = exp.DataType.build("OID", dialect="postgres")
     col_defs = [exp.ColumnDef(this=exp.to_identifier(name), kind=type) for name in PSEUDOCOLUMNS]
 
     return col_defs
 
 
-def _collect_inherited_columns(inherits_properties: t.List[exp.InheritsProperty], object_mapping: mappings.ObjectMapping, query: TableQuery) -> t.List[exp.ColumnDef]:
+def _collect_inherited_columns(
+    inherits_properties: t.List[exp.InheritsProperty], object_mapping: mappings.ObjectMapping, query: TableQuery
+) -> t.List[exp.ColumnDef]:
     """
     Search for tables referenced as 'CREATE TABLE b INHERITS (a)' and collect all their columns.
     A table can have multiple tables in an INHERITS clause.
@@ -253,7 +272,7 @@ def _collect_inherited_columns(inherits_properties: t.List[exp.InheritsProperty]
 
     for inh_prop in inherits_properties:
         for inh_table in inh_prop.expressions:
-            parent_table_query = object_mapping.find_query(kind='table', table=inh_table)
+            parent_table_query = object_mapping.find_query(kind="table", table=inh_table)
             parent_table_query.inherited_by.append(query)
             query.inherits.append(parent_table_query)
 
@@ -261,7 +280,7 @@ def _collect_inherited_columns(inherits_properties: t.List[exp.InheritsProperty]
             schema = util.copy_expression(query.child_table.parent)
             for parent_col_def in parent_table_query.column_defs:
                 col_def = parent_col_def.copy()
-                schema.append('expressions', col_def)
+                schema.append("expressions", col_def)
                 column_defs.append(col_def)
 
     return column_defs
@@ -277,12 +296,12 @@ def _collect_like_columns(like_property: exp.LikeProperty, object_mapping: mappi
 
     for like_prop in like_property.expressions:
         # sqlglot concats properties with '='
-        property_names.append(str(like_prop).replace('=', ' '))
+        property_names.append(str(like_prop).replace("=", " "))
 
     properties = _get_properties_to_include(property_names)
 
     # Look up the like-table's columns and determine which properties to transfer
-    parent_table_query = object_mapping.find_query(kind='table', table=like_property.this)
+    parent_table_query = object_mapping.find_query(kind="table", table=like_property.this)
     parent_columns = parent_table_query.get_column_defs()
 
     for parent_col_def in parent_columns:
@@ -301,9 +320,9 @@ def _collect_like_columns(like_property: exp.LikeProperty, object_mapping: mappi
                             message = f"Column '{inner_col.name}' does not exist in table '{child_table}'."
                             raise exception.SqlLeafException(message=message)
 
-                        inner_col.set('catalog', exp.to_identifier(child_table.catalog))
-                        inner_col.set('db', exp.to_identifier(child_table.db))
-                        inner_col.set('table', exp.to_identifier(child_table.this))
+                        inner_col.set("catalog", exp.to_identifier(child_table.catalog))
+                        inner_col.set("db", exp.to_identifier(child_table.db))
+                        inner_col.set("table", exp.to_identifier(child_table.this))
                         inner_col.type = referenced_parent_col_def.kind
             else:
                 # Discard the column's expression
@@ -327,18 +346,9 @@ def _get_properties_to_include(options: t.List[str]) -> t.Dict:
     """
     # All supported properties
     properties = {
-          "DEFAULTS": {
-            "include": False,
-            "expr": exp.DefaultColumnConstraint
-        },
-        "GENERATED": {
-            "include": False,
-            "expr": exp.ComputedColumnConstraint
-        },
-        "IDENTITY": {
-            "include": False,
-            "expr": exp.GeneratedAsIdentityColumnConstraint
-        }
+        "DEFAULTS": {"include": False, "expr": exp.DefaultColumnConstraint},
+        "GENERATED": {"include": False, "expr": exp.ComputedColumnConstraint},
+        "IDENTITY": {"include": False, "expr": exp.GeneratedAsIdentityColumnConstraint},
     }
 
     for opt in options:
@@ -407,7 +417,7 @@ def _process_tables(statement: exp.Create, dialect: str, object_mapping: mapping
         query = TableQuery(statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
         _set_column_defs(query, object_mapping)
         object_mapping.add_query(
-            kind='table',
+            kind="table",
             query=query,
             column_mapping=query.get_column_names_with_types(include_system=True),
             match_depth=False,
@@ -415,7 +425,7 @@ def _process_tables(statement: exp.Create, dialect: str, object_mapping: mapping
         )
     elif statement.kind == "SEQUENCE":
         query = SequenceQuery(statement=statement, dialect=dialect, statement_index=statement_index)
-        object_mapping.add_query(kind='sequence', query=query, dialect=dialect)
+        object_mapping.add_query(kind="sequence", query=query, dialect=dialect)
     return query
 
 
@@ -449,7 +459,7 @@ def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping:
         query.system_column_defs = _system_columns()
 
     object_mapping.add_query(
-        kind='table',
+        kind="table",
         query=query,
         column_mapping=query.get_column_names_with_types(include_system=True),
         match_depth=False,
@@ -493,9 +503,9 @@ def _process_functions(statement: exp.Create, dialect: str, object_mapping: mapp
         return_expr=return_expr,
         returns_null=returns_null,
         language=language,
-        statement_index=statement_index
+        statement_index=statement_index,
     )
-    object_mapping.add_query(kind='udf', query=query, dialect=dialect)
+    object_mapping.add_query(kind="udf", query=query, dialect=dialect)
 
     if isinstance(statement.expression, exp.Heredoc):
         # Extract the queries between the $$ .. $$
@@ -510,7 +520,7 @@ def _process_triggers(statement: exp.Create, dialect: str, object_mapping: mappi
     Process a "CREATE TRIGGER" statement.
     """
     query = TriggerQuery(statement, dialect)
-    object_mapping.add_query(kind='trigger', query=query, dialect=dialect)
+    object_mapping.add_query(kind="trigger", query=query, dialect=dialect)
     return query
 
 
@@ -519,7 +529,7 @@ def _process_stored_procedures(statement: exp.Create, dialect: str, object_mappi
     Process a "CREATE PROCEDURE" statement.
     """
     query = ProcedureQuery(statement=statement, dialect=dialect, statement_index=statement_index)
-    object_mapping.add_query(kind='procedure', query=query, dialect=dialect)
+    object_mapping.add_query(kind="procedure", query=query, dialect=dialect)
     # TODO: find a way to get each SP's text from a query that has multiple SPs defined in it.
     #  sqlglot will parse the 2 SPs, but does not provide the original, raw text. This is imperfect
     #  as we would like to keep the original text for various reasons.
@@ -531,7 +541,8 @@ def _process_stored_procedures(statement: exp.Create, dialect: str, object_mappi
     query.add_child_queries(child_queries=queries)
     return query
 
+
 def _process_stage(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query:
     query = StageQuery(statement, dialect, statement_index)
-    object_mapping.add_query(kind='stage', query=query, dialect=dialect)
+    object_mapping.add_query(kind="stage", query=query, dialect=dialect)
     return query

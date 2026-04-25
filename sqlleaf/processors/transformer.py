@@ -66,15 +66,17 @@ def _add_aliases_to_pseudocolumns(statement: exp.Insert):
         if pseudo.table:
             continue
 
-        from_table_alias = pseudo.parent_select.args['from_'].alias_or_name
-        pseudo.set('table', exp.to_identifier(from_table_alias))
+        from_table_alias = pseudo.parent_select.args["from_"].alias_or_name
+        pseudo.set("table", exp.to_identifier(from_table_alias))
 
 
-def _process_inner_ctes(statement: exp.Insert | exp.Merge | exp.Update, query: Query, object_mapping: mappings.ObjectMapping) -> exp.Insert | exp.Merge | exp.Update:
+def _process_inner_ctes(
+    statement: exp.Insert | exp.Merge | exp.Update, query: Query, object_mapping: mappings.ObjectMapping
+) -> exp.Insert | exp.Merge | exp.Update:
     """
     Transform any inner CTE statements.
     """
-    for cte_expr in getattr(statement, 'ctes', []):
+    for cte_expr in getattr(statement, "ctes", []):
         if isinstance(cte_expr.this, exp.Update):
             # Replace the inner UPDATE with an INSERT first.
             # The inner query is different from the child query, which is its own separate copy.
@@ -102,7 +104,7 @@ def _convert_insert_values_to_select(statement: exp.Insert, object_mapping: mapp
 
         if not columns:
             cols = object_mapping.find_columns_for_table(child_table)
-            columns = list(cols)[:len(values)]
+            columns = list(cols)[: len(values)]
 
         selects = [exp.alias_(val, str(col)) for col, val in zip(columns, values)]
         new_select = exp.select(*selects)
@@ -110,9 +112,9 @@ def _convert_insert_values_to_select(statement: exp.Insert, object_mapping: mapp
             expression=new_select,
             columns=statement.this.expressions,
             into=child_table,
-            returning=statement.args['returning'],
+            returning=statement.args["returning"],
         )
-        insert_expr.set('conflict', statement.args['conflict'])
+        insert_expr.set("conflict", statement.args["conflict"])
         statement.replace(insert_expr)
         return insert_expr
     return statement
@@ -130,35 +132,31 @@ def _convert_defaults_to_values(statement: exp.Insert, object_mapping: mappings.
     into its default values (as defined in its table):
         INSERT INTO x VALUES (NULL, 42)
     """
-    is_default_values = statement.args.get('default', False)
+    is_default_values = statement.args.get("default", False)
     values = statement.expression
 
     if not (isinstance(values, exp.Values) or is_default_values):
         return statement
 
-    table_query = object_mapping.find_query(kind='table', table=child_table)
+    table_query = object_mapping.find_query(kind="table", table=child_table)
     table_columns = table_query.get_column_defs()
 
     if is_default_values:
         # Transform 'DEFAULT VALUES' into 'VALUES (DEFAULT,)'
-        values = exp.Values(expressions=[
-            exp.Tuple(expressions=[
-                exp.Var(this='DEFAULT') for _ in table_columns
-            ])
-        ])
-        statement.set('expression', values)
-        statement.set('default', False)
+        values = exp.Values(expressions=[exp.Tuple(expressions=[exp.Var(this="DEFAULT") for _ in table_columns])])
+        statement.set("expression", values)
+        statement.set("default", False)
 
     named_columns = [e for e in statement.this.expressions]
 
     if not named_columns:
         # Use the associated column names from the mapping
-        named_columns = list(table_columns)[:len(values.expressions[0].expressions)]
+        named_columns = list(table_columns)[: len(values.expressions[0].expressions)]
 
     for value_expr in values.expressions:
         if isinstance(value_expr, exp.Tuple):
             for i, tuple_expr in enumerate(value_expr.expressions):
-                if isinstance(tuple_expr, exp.Var) and tuple_expr.name.upper() == 'DEFAULT':
+                if isinstance(tuple_expr, exp.Var) and tuple_expr.name.upper() == "DEFAULT":
                     # Replace 'DEFAULT' with the associated column's default expression
                     col_def = [col for col in table_columns if col.name == named_columns[i].name][0]
 
@@ -179,7 +177,7 @@ def _convert_update_to_insert(statement: exp.Update, dialect: str) -> exp.Insert
     _UPDATE_FROM_TABLE_ARGS_TO_MOVE = {"joins", "laterals", "pivot"}
     _UPDATE_ARGS_NOT_SUPPORTED_BY_SELECT: t.Set[str] = set(exp.Update.arg_types.keys()) - set(exp.Select.arg_types.keys())
 
-    if where := statement.args.get('where', None):
+    if where := statement.args.get("where", None):
         # WHERE statements aren't relevant to lineage
         where.pop()
 
@@ -234,11 +232,11 @@ def _convert_update_to_insert(statement: exp.Update, dialect: str) -> exp.Insert
         expression=select_statement,
         columns=alias_names,
         into=util.get_table(statement),
-        returning=statement.args.get('returning', None),
+        returning=statement.args.get("returning", None),
         dialect=dialect,
     )
     if with_:
-        insert_statement.set('with_', with_)
+        insert_statement.set("with_", with_)
 
     statement.replace(insert_statement)
     return insert_statement
@@ -255,21 +253,21 @@ def _convert_on_conflict_to_update(statement: exp.Update, object_mapping: mappin
         SET name = name
     so that the expression has the correct columns/values.
     """
-    if not isinstance(statement, exp.OnConflict) or statement.args['action'].name == 'DO NOTHING':
+    if not isinstance(statement, exp.OnConflict) or statement.args["action"].name == "DO NOTHING":
         return statement
 
     parent_insert_expr = _convert_insert_values_to_select(statement.parent, object_mapping, query.child_table)
-    statement = parent_insert_expr.args['conflict']
+    statement = parent_insert_expr.args["conflict"]
 
     update_expr = exp.update(table=query.child_table)
-    update_expr.set('expressions', statement.expressions)
+    update_expr.set("expressions", statement.expressions)
 
-    if parent_table := statement.parent.expression.args.get('from_', None):
+    if parent_table := statement.parent.expression.args.get("from_", None):
         update_expr = update_expr.from_(parent_table.this)
 
     for eq_expr in list(update_expr.expressions):
         for col in eq_expr.right.find_all(exp.Column):
-            if col.table.upper() == 'EXCLUDED':
+            if col.table.upper() == "EXCLUDED":
                 if col.name not in parent_insert_expr.named_selects:
                     # Use the column's default (Postgres)
                     eq_expr.pop()
@@ -279,7 +277,7 @@ def _convert_on_conflict_to_update(statement: exp.Update, object_mapping: mappin
                     new_expr = select_expr.unalias().copy()
 
                     if isinstance(new_expr, exp.Column):
-                        new_expr.set('table', exp.to_identifier(parent_table.alias_or_name))
+                        new_expr.set("table", exp.to_identifier(parent_table.alias_or_name))
 
                     col.replace(new_expr)
 
@@ -337,16 +335,15 @@ def _add_information_from_merge(statement: exp.Insert | exp.Update, query: Inser
 
     if isinstance(statement, exp.Update):
         # Add the missing information to the UPDATE statement
-        query.only = query.child_table.args.get('only', False)
+        query.only = query.child_table.args.get("only", False)
         update_expr = statement.table(query.child_table).from_(using).where(on)
-        update_expr.set('returning', returning)
+        update_expr.set("returning", returning)
 
         for cte in new_ctes:
             update_expr = update_expr.with_(alias=cte["alias"], as_=cte["as_"])
 
         statement.replace(update_expr)
         return update_expr
-
 
     elif isinstance(statement, exp.Insert):
         # Add the missing information to the INSERT statement
@@ -393,14 +390,14 @@ def _convert_copy_to_insert(statement: exp.Copy, query: CopyQuery, object_mappin
 
     if query.is_source_a_stage:
         child_table = expr.this
-        parent_table = expr.args['files'][0]
+        parent_table = expr.args["files"][0]
         source_table = child_table
     elif query.is_target_a_stage:
         child_table = expr.this
-        parent_table = expr.args['files'][0]
+        parent_table = expr.args["files"][0]
         source_table = parent_table
 
-    table_query = object_mapping.find_query(kind='table', table=source_table)
+    table_query = object_mapping.find_query(kind="table", table=source_table)
     child_columns = table_query.get_column_names_with_types()
     column_names = tuple(child_columns.keys())
 
@@ -417,7 +414,7 @@ def _convert_copy_to_insert(statement: exp.Copy, query: CopyQuery, object_mappin
         # for the lineage functions to work - such as this Stage
         col_defs = [exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(type)) for name, type in child_columns.items()]
 
-        child_table_query = object_mapping.find_query(kind='stage', table=child_table)
+        child_table_query = object_mapping.find_query(kind="stage", table=child_table)
         child_table_query.column_defs = col_defs
 
     # We don't worry about `self.is_source_a_stage` here as that is handled in the process_column() later
@@ -426,16 +423,21 @@ def _convert_copy_to_insert(statement: exp.Copy, query: CopyQuery, object_mappin
 
 
 RULES_OVERRIDE = [
-    r for r in RULES if r.__name__ not in [
-        'eliminate_ctes',       # Preserve CTEs
-        'merge_subqueries',     # Preserve CTEs
-        'qualify',              # We qualify when we need to
-        'quote_identifiers',    # Preserve identifiers
+    r
+    for r in RULES
+    if r.__name__
+    not in [
+        "eliminate_ctes",  # Preserve CTEs
+        "merge_subqueries",  # Preserve CTEs
+        "qualify",  # We qualify when we need to
+        "quote_identifiers",  # Preserve identifiers
     ]
 ]
 
 
-def _validate_basic(statement: exp.Insert, dialect: str, object_mapping: mappings.ObjectMapping, child_table, match_columns: bool = True) -> exp.Insert :
+def _validate_basic(
+    statement: exp.Insert, dialect: str, object_mapping: mappings.ObjectMapping, child_table, match_columns: bool = True
+) -> exp.Insert:
     """
     Perform some basic validation of the query. This needs a better place, long-term.
     """
@@ -447,7 +449,10 @@ def _validate_basic(statement: exp.Insert, dialect: str, object_mapping: mapping
 
     return statement
 
-def _apply_optimizations(statement: exp.Insert, query: Query, object_mapping: mappings.ObjectMapping, child_table, match_columns: bool = True) -> exp.Insert :
+
+def _apply_optimizations(
+    statement: exp.Insert, query: Query, object_mapping: mappings.ObjectMapping, child_table, match_columns: bool = True
+) -> exp.Insert:
     """
     1. We pass validate=false to prevent errors like: sqlglot.errors.OptimizeError: Column '"v_ca_start_date_id"' could not be resolved
     2. We pass infer_schema=True to source unqualified columns from the source table (if missing from the `schema` param)
@@ -478,7 +483,7 @@ def _apply_optimizations(statement: exp.Insert, query: Query, object_mapping: ma
 
     # Selectively apply sqlglot's optimization rules.
     stmt = optimize(expression=stmt, dialect=query.dialect, schema=object_mapping, rules=RULES_OVERRIDE)
-    stmt = merge_derived_tables(stmt)   # Skip merge_ctes()
+    stmt = merge_derived_tables(stmt)  # Skip merge_ctes()
 
     return stmt
 
@@ -503,7 +508,7 @@ def _rename_returning_columns(expr: exp.CTE, query: Query, object_mapping: mappi
     INSERT RETURNING * returns all columns from target
     DELETE RETURNING * returns all columns from target
     """
-    returning_expr: exp.Returning = expr.this.args.get('returning', None)
+    returning_expr: exp.Returning = expr.this.args.get("returning", None)
     if not returning_expr:
         return expr
 
@@ -515,18 +520,18 @@ def _rename_returning_columns(expr: exp.CTE, query: Query, object_mapping: mappi
     # Replace the OLD & NEW aliases with the table alias if it exists. Otherwise, remove it to be valid.
     returning_columns = list(returning_expr.find_all(exp.Column))
     for col in returning_columns:
-        if col.table.lower() in ['old', 'new']:
+        if col.table.lower() in ["old", "new"]:
             if child_table.alias:
-                col.set('table', exp.to_identifier(child_table.alias, quoted=False))
+                col.set("table", exp.to_identifier(child_table.alias, quoted=False))
             else:
-                col.args['table'].pop()
+                col.args["table"].pop()
                 if isinstance(col.this, exp.Star):
                     # optimize() needs Star(), not Column(Star())
                     col.replace(col.this)
 
     if isinstance(expr.this, exp.Merge):
-        using = expr.this.args['using']
-        on = expr.this.args['on']
+        using = expr.this.args["using"]
+        on = expr.this.args["on"]
         new_select = exp.select(*returning_expr.expressions).from_(child_table).join(using, on=on)
     else:
         new_select = exp.select(*returning_expr.expressions).from_(child_table)
@@ -565,9 +570,9 @@ def _add_column_names_to_insert(statement: exp.Insert, object_mapping: mappings.
 
     if not insert_columns:
         # Add the column names from the mapping to the query
-        insert_columns = list(table_columns)[:len(selects)]
+        insert_columns = list(table_columns)[: len(selects)]
         schema = exp.Schema(this=child_table, expressions=[exp.to_identifier(c) for c in insert_columns])
-        statement.set('this', schema)
+        statement.set("this", schema)
 
     else:
         unknown_columns = [col for col in insert_columns if col not in table_columns]

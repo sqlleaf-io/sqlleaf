@@ -28,6 +28,7 @@ logger = logging.getLogger("sqlleaf")
 
 QUERIES_WITH_LINEAGE = (InsertQuery, UpdateQuery, ViewQuery, CTASQuery, PutQuery, CopyQuery)
 
+
 def get_lineage_for_query(query: Query, object_mapping) -> nx.MultiDiGraph:
     """
     Calculate the column-level lineage for one or more SQL queries.
@@ -101,7 +102,7 @@ def generate_column_lineage_for_query(
         return graph
 
     # Check if a trigger overrides the query's behaviour
-    if t := object_mapping.find_query(kind='trigger', table=child_table):
+    if t := object_mapping.find_query(kind="trigger", table=child_table):
         if t.timing == "INSTEAD OF":
             logger.debug("Skipping lineage for all columns of table '%s' since trigger '%s' overrides it." % (exp.table_name(child_table), t.name))
             # TODO: Use the trigger's function as the lineage
@@ -177,7 +178,7 @@ def generate_column_lineage_for_query(
             logger.debug(f"Found path from lineage.lineage(): {[(n.name, n.expression.sql()) for n in path]}")
 
             for node_depth, node in enumerate(path):
-                if node.name in ['EXCEPT', 'INTERSECT', 'UNION']:
+                if node.name in ["EXCEPT", "INTERSECT", "UNION"]:
                     logger.debug(f"Skipping SetOp node: {node.name}")
                     continue
 
@@ -232,10 +233,10 @@ def set_cte_properties(path: t.List[sqlglot_lineage.Node]) -> None:
         for n in path[1:]:
             if sqlglot_lineage.is_node_inside_a_recursive_cte(n):
                 if n.is_parent_a_recursive_cte:
-                    root_node.recursive_cte_member_kind = 'recursive'
-                    n.recursive_cte_member_kind = 'anchor'
+                    root_node.recursive_cte_member_kind = "recursive"
+                    n.recursive_cte_member_kind = "anchor"
                 else:
-                    root_node.recursive_cte_member_kind = 'anchor'
+                    root_node.recursive_cte_member_kind = "anchor"
             break
 
 
@@ -261,7 +262,7 @@ def update_column_data_types(graph: nx.MultiDiGraph):
             parent_attrs = edge_attrs.parent
             child_attrs = edge_attrs.child
             # last_function_type = edge_attrs.get_last_function_type()
-            last_function_type = ''
+            last_function_type = ""
             dialect = edge_attrs.query.dialect
 
             ensure_correct_data_types(parent_attrs, child_attrs, last_function_type, dialect)
@@ -385,6 +386,7 @@ def _get_all_paths_from_lineage(node: sqlglot_lineage.Node, path=None):
             yield from _get_all_paths_from_lineage(child, path)
 
     path.pop()
+
 
 def are_types_compatible(subtyp: str, typ: str, dialect: str) -> bool:
     """

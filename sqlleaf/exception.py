@@ -1,5 +1,5 @@
 class SqlGlotException(Exception):
-    def __init__(self, message, table=''):
+    def __init__(self, message, table=""):
         super().__init__(message)
 
         self.message = message
@@ -12,7 +12,7 @@ class SqlGlotException(Exception):
 
 
 class SqlLeafException(Exception):
-    def __init__(self, message, table=''):
+    def __init__(self, message, table=""):
         super().__init__(message)
 
         self.message = message

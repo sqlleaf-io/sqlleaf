@@ -10,8 +10,25 @@ from sqlleaf import util, mappings, sqlglot_lineage, exception
 
 from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery, ProcedureQuery
 from sqlleaf.objects.context import ProcessorContext, NodeContext
-from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, StageNode, ColumnNode, new_graph, IntervalNode, JsonPathNode, VarNode, FunctionNode, UserDefinedFunctionNode, LiteralNode, NullNode, StarNode, WindowNode, VariableNode, \
-    SequenceNode, FileNode
+from sqlleaf.objects.node_types import (
+    EdgeAttributes,
+    NodeAttributes,
+    StageNode,
+    ColumnNode,
+    new_graph,
+    IntervalNode,
+    JsonPathNode,
+    VarNode,
+    FunctionNode,
+    UserDefinedFunctionNode,
+    LiteralNode,
+    NullNode,
+    StarNode,
+    WindowNode,
+    VariableNode,
+    SequenceNode,
+    FileNode,
+)
 
 logger = logging.getLogger("sqleaf")
 
@@ -50,7 +67,6 @@ class LineageGenerator:
             exp.Interval: self.process_interval,
             exp.ColumnDef: self.process_column_def,
             exp.Values: self.process_values,
-
             skip: self.skip,
         }
 
@@ -117,7 +133,7 @@ class LineageGenerator:
                         ctx,
                     )
             nodes_created.append(parent_node_attrs)
-            if parent_node_attrs.kind in ['function', 'udf']:
+            if parent_node_attrs.kind in ["function", "udf"]:
                 ctx = replace(ctx, function_depth=ctx.function_depth + 1)
         else:
             # Re-use the parent
@@ -136,7 +152,7 @@ class LineageGenerator:
         Find the inherited columns for a particular column, but only for the form 'SELECT FROM ONLY <table>'
         """
         inherited_columns = []
-        if not isinstance(column_node, ColumnNode) or column_node.table_type == 'cte':  #(processor_ctx.node and processor_ctx.node.is_parent_a_cte):
+        if not isinstance(column_node, ColumnNode) or column_node.table_type == "cte":  # (processor_ctx.node and processor_ctx.node.is_parent_a_cte):
             return inherited_columns
 
         # Find the column's exp.Table in the expression, and check if it has 'ONLY' set
@@ -159,7 +175,7 @@ class LineageGenerator:
         Find the inherited columns for a particular column, but only for the form 'MERGE|UPDATE ONLY <table>'
         """
         inherited_columns = []
-        if not isinstance(column_node, ColumnNode) or column_node.table_type == 'cte':
+        if not isinstance(column_node, ColumnNode) or column_node.table_type == "cte":
             return inherited_columns
 
         # Only return inherited columns for UPDATE
@@ -180,7 +196,7 @@ class LineageGenerator:
         """
         inherited_column_nodes = []
         table = column_node.as_table()
-        table_query = processor_ctx.object_mapping.find_query(kind='table', table=table)
+        table_query = processor_ctx.object_mapping.find_query(kind="table", table=table)
 
         # Collect any columns from inherited tables with the same name
         for inh_table in table_query.inherited_by:
@@ -213,7 +229,7 @@ class LineageGenerator:
         SELECT ARRAY[1,2,3]
         """
         values = [str(e) for e in processor_ctx.expr.expressions]
-        values = '{' + ','.join(values) + '}'
+        values = "{" + ",".join(values) + "}"
         node_attrs = LiteralNode(name=values, processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
@@ -278,7 +294,7 @@ class LineageGenerator:
             full_name = f"{schema}.{function}"
         else:
             # e.g. The PG sequence function nextval('serial') is anonymous
-            schema = ''
+            schema = ""
             function = expr.name
             full_name = function
 
@@ -294,7 +310,7 @@ class LineageGenerator:
 
             # Ensure the sequence exists
             seq_table = exp.table_(table=seq_name_expr.name, db=schema)
-            if not processor_ctx.object_mapping.find_query(kind='sequence', table=seq_table):
+            if not processor_ctx.object_mapping.find_query(kind="sequence", table=seq_table):
                 logger.warning(f"Sequence '{full_name}' not found.")
 
             node_attrs = SequenceNode(name=seq_name_expr.name, processor_ctx=processor_ctx, ctx=ctx)
@@ -305,7 +321,7 @@ class LineageGenerator:
         node_attrs = UserDefinedFunctionNode(name=function, schema=schema, processor_ctx=processor_ctx, ctx=ctx)
 
         table_expr = exp.table_(table=function, db=schema)
-        udf_obj = processor_ctx.object_mapping.find_query(kind='udf', table=table_expr)
+        udf_obj = processor_ctx.object_mapping.find_query(kind="udf", table=table_expr)
 
         # if the udf has a return_expr, insert it in here
         # if it's a literal, set the parent of 'this' as the return expr. Discard the args in lineage, but record in object
@@ -361,8 +377,8 @@ class LineageGenerator:
 
     def process_var(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
-         A variable in a stored procedure or UDF, or the keyword 'DEFAULT'
-         """
+        A variable in a stored procedure or UDF, or the keyword 'DEFAULT'
+        """
         node_attrs = VarNode(processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
@@ -471,7 +487,7 @@ class LineageGenerator:
 
         if graph.has_node(node_name):
             logger.debug(f"Re-using Node: {node_attrs.__class__}, Name: {node_attrs.full_name}")
-            return graph.nodes[node_name]['attrs']
+            return graph.nodes[node_name]["attrs"]
 
         graph.add_node(node_name, attrs=node_attrs)
         logger.debug(f"Created Node: {node_attrs.__class__.__name__}, Name: {node_attrs.full_name}")
@@ -483,10 +499,9 @@ class PostgresLineageGenerator(LineageGenerator):
 
     def process_table(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         expr: exp.Table = processor_ctx.expr
-        if 'rows_from' in expr.args:
-
+        if "rows_from" in expr.args:
             downstream_exprs = []
-            for table_function in expr.args['rows_from']:
+            for table_function in expr.args["rows_from"]:
                 # Determine the immediate children of the expression.
                 # These are either table functions or aliases to table functions (ColumnDefs)
                 cols = list(table_function.find_all(exp.ColumnDef))
@@ -498,7 +513,7 @@ class PostgresLineageGenerator(LineageGenerator):
                 if col == child_column_name:
                     return None, [downstream_exprs[i]]
 
-        elif expr.arg_key == 'rows_from':
+        elif expr.arg_key == "rows_from":
             # A table function inside a 'ROWS FROM'
             return None, [expr.this]
 
@@ -514,11 +529,11 @@ class PostgresLineageGenerator(LineageGenerator):
             if not table_alias:
                 # The table alias isn't found in any attribute. Get it from the SQL string.
                 # e.g. "_t0" from "_t0(x, y)"
-                table_alias = expr.parent.sql().split('(')[0]
+                table_alias = expr.parent.sql().split("(")[0]
 
             node_attrs = ColumnNode(
-                catalog='',
-                schema='',
+                catalog="",
+                schema="",
                 table=table_alias,
                 column=expr.name,
                 processor_ctx=processor_ctx,
@@ -539,8 +554,8 @@ class SnowflakeLineageGenerator(LineageGenerator):
         # This steps outside the 'process_node_objects()' main method, as
         # adding logic inside the default functions is too messy.
         # We may need to return to this later.
-        file_ctx = replace(processor_ctx, expr=processor_ctx.expr.args['this'])
-        stage_ctx = replace(processor_ctx, expr=processor_ctx.expr.args['target'])
+        file_ctx = replace(processor_ctx, expr=processor_ctx.expr.args["this"])
+        stage_ctx = replace(processor_ctx, expr=processor_ctx.expr.args["target"])
 
         file_node = FileNode(processor_ctx=file_ctx, ctx=ctx)
         stage_node = StageNode(processor_ctx=stage_ctx, ctx=ctx)
@@ -560,6 +575,7 @@ class SnowflakeLineageGenerator(LineageGenerator):
                 return parent_node_attrs, []
 
         return super().process_column(processor_ctx, ctx)
+
 
 def is_node_a_placeholder(expr: exp.Column, query: Query) -> bool:
     """

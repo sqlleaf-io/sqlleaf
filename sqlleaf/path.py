@@ -7,6 +7,7 @@ from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes
 
 logger = logging.getLogger("sqleaf")
 
+
 class LineagePath:
     def __init__(self, root: str, hops: t.List[EdgeAttributes]):
         self.root = root

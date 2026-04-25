@@ -25,6 +25,8 @@ logger = logging.getLogger("sqlleaf")
 """
 This file was taken from sqlglot and slightly modified.
 """
+
+
 @dataclass(frozen=False)
 class Node:
     name: str
@@ -37,7 +39,7 @@ class Node:
     is_parent_a_cte: bool = False
     is_parent_a_recursive_cte: bool = False
     is_parent_a_derived_table: bool = False
-    recursive_cte_member_kind: str = ''         # anchor | recursive
+    recursive_cte_member_kind: str = ""  # anchor | recursive
     source_name: str = ""
     reference_node_name: str = ""
 
@@ -299,8 +301,8 @@ def to_node(
             if source.db:
                 c.set("db", exp.to_identifier(source.db))
             if source.name:
-                if dialect == 'snowflake':
-                    if source.this.args.get('quoted', False):  # exp.Identifier
+                if dialect == "snowflake":
+                    if source.this.args.get("quoted", False):  # exp.Identifier
                         c.set("table", exp.to_identifier(source.name))
                 else:
                     c.set("table", exp.to_identifier(source.name))
@@ -310,7 +312,7 @@ def to_node(
         if c in seen_source_columns:
             continue
 
-        if isinstance(source, exp.Table) and 'rows_from' in source.args:
+        if isinstance(source, exp.Table) and "rows_from" in source.args:
             node.is_parent_a_derived_table = True
 
         if isinstance(source, Scope):
@@ -424,7 +426,7 @@ def to_node(
                 expression=source,
                 parent_pivot_aliases=parent_pivot_aliases,
             )
-            if isinstance(source, exp.Table) and 'rows_from' in source.args:
+            if isinstance(source, exp.Table) and "rows_from" in source.args:
                 n.is_parent_a_derived_table = True
 
             node.downstream.append(n)
@@ -443,7 +445,7 @@ def is_node_inside_a_recursive_cte(node: Node) -> bool:
     """
     Check if we're inside a recursive CTE
     """
-    if (parent_cte := node.expression.find_ancestor(exp.CTE)):
+    if parent_cte := node.expression.find_ancestor(exp.CTE):
         if parent_cte.parent.recursive:
             return True
     return False

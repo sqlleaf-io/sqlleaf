@@ -5,16 +5,14 @@ import pytest
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
-
-from tests.new_fixtures import (
-    holder
-)
+from tests.new_fixtures import holder
 from sqlleaf.objects.query_types import InsertQuery, UpdateQuery
 
-DIALECT = 'postgres'
+DIALECT = "postgres"
+
 
 def test__ignore_transaction_statements(holder):
-    queries = '''
+    queries = """
     BEGIN;
     COMMIT;
     ROLLBACK;
@@ -23,7 +21,7 @@ def test__ignore_transaction_statements(holder):
     END TRANSACTION;
     ROLLBACK TO 'hello';
     --SAVEPOINT 'hello';    -- Not recognised by sqlglot
-    '''
+    """
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_friendly_node_names()

@@ -5,17 +5,14 @@ import pytest
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
-
-from tests.new_fixtures import (
-    holder, is_subset
-)
+from tests.new_fixtures import holder, is_subset
 from sqlleaf.objects.query_types import InsertQuery, UpdateQuery, SequenceQuery
 
-DIALECT = 'postgres'
+DIALECT = "postgres"
 
 
 def test__table_like_table(holder):
-    queries = '''
+    queries = """
     CREATE TABLE fruit.a (
         name VARCHAR,
         age INT DEFAULT 42,
@@ -26,7 +23,7 @@ def test__table_like_table(holder):
     CREATE TABLE fruit.b_like_a (LIKE fruit.a EXCLUDING ALL INCLUDING DEFAULTS, label VARCHAR, color VARCHAR);
 
     INSERT INTO fruit.b_like_a (name, age, id) SELECT name, age, id FROM fruit.a;
-    '''
+    """
     h = holder()
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_friendly_node_names()
@@ -37,23 +34,23 @@ def test__table_like_table(holder):
     assert len(nodes) == 7
     assert len(edges) == 4
     assert paths == [
-        ['column[fruit.a.name]', 'column[fruit.b_like_a.name]'],
-        ['literal[42]', 'column[fruit.b_like_a.age]'],
-        ['column[fruit.a.age]', 'column[fruit.b_like_a.age]'],
-        ['column[fruit.a.id]', 'column[fruit.b_like_a.id]']
+        ["column[fruit.a.name]", "column[fruit.b_like_a.name]"],
+        ["literal[42]", "column[fruit.b_like_a.age]"],
+        ["column[fruit.a.age]", "column[fruit.b_like_a.age]"],
+        ["column[fruit.a.id]", "column[fruit.b_like_a.id]"],
     ]
     # Test the LIKE declaration position
     cols = queries[1].column_defs
-    assert (cols[0].name, cols[-1].name) == ('label', 'color')
+    assert (cols[0].name, cols[-1].name) == ("label", "color")
     cols = queries[2].column_defs
-    assert (cols[0].name, cols[-1].name) == ('name', 'color')
+    assert (cols[0].name, cols[-1].name) == ("name", "color")
 
 
 # TODO: LIKE with column default overrides
 
 
 def test__table_like_table_generated(holder):
-    queries = '''
+    queries = """
     CREATE TABLE fruit.a (
         name VARCHAR,
         kind TEXT,
@@ -62,7 +59,7 @@ def test__table_like_table_generated(holder):
     CREATE TABLE fruit.b_like_a (LIKE fruit.a INCLUDING GENERATED);
 
     INSERT INTO fruit.b_like_a (name, kind) SELECT 'banana' as name, 'fruit' as kind;
-    '''
+    """
     h = holder()
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
@@ -71,23 +68,26 @@ def test__table_like_table_generated(holder):
 
     assert len(edges) == 5
     assert paths == [
-        ['literal["banana"]', 'column[fruit.b_like_a.name]', 'function[CONCAT()]', 'column[fruit.b_like_a.gen]'],
-        ['literal["fruit"]', 'column[fruit.b_like_a.kind]', 'function[CONCAT()]', 'column[fruit.b_like_a.gen]']
+        ['literal["banana"]', "column[fruit.b_like_a.name]", "function[CONCAT()]", "column[fruit.b_like_a.gen]"],
+        ['literal["fruit"]', "column[fruit.b_like_a.kind]", "function[CONCAT()]", "column[fruit.b_like_a.gen]"],
     ]
-    assert is_subset(subarr=[
-        'column[fruit.b_like_a.gen type=TEXT subkind=table]',
-        'column[fruit.b_like_a.kind type=TEXT subkind=table]',
-        'column[fruit.b_like_a.name type=VARCHAR subkind=table]'
-    ], arr=nodes)
+    assert is_subset(
+        subarr=[
+            "column[fruit.b_like_a.gen type=TEXT subkind=table]",
+            "column[fruit.b_like_a.kind type=TEXT subkind=table]",
+            "column[fruit.b_like_a.name type=VARCHAR subkind=table]",
+        ],
+        arr=nodes,
+    )
 
 
 def test__table_with_default_columns(holder):
-    queries = '''
+    queries = """
     CREATE TABLE fruit (name varchar, size int default 1, age int default 42);
 
     INSERT INTO fruit
     SELECT 'apple' as name, 10 as size;
-    '''
+    """
     h = holder()
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_friendly_node_names()
@@ -95,10 +95,10 @@ def test__table_with_default_columns(holder):
     paths = h.get_friendly_paths()
 
     assert paths == [
-        ['literal["apple"]', 'column[fruit.name]'],
-        ['literal[1]', 'column[fruit.size]'],
-        ['literal[10]', 'column[fruit.size]'],
-        ['literal[42]', 'column[fruit.age]']
+        ['literal["apple"]', "column[fruit.name]"],
+        ["literal[1]", "column[fruit.size]"],
+        ["literal[10]", "column[fruit.size]"],
+        ["literal[42]", "column[fruit.age]"],
     ]
 
 
@@ -106,7 +106,7 @@ def test__table_with_default_columns(holder):
 
 
 def test__table_inherits_with_select(holder):
-    queries = '''
+    queries = """
     CREATE TABLE fruit.b (type VARCHAR, kind VARCHAR);
     CREATE TABLE fruit.b_only (type VARCHAR);
     CREATE TABLE fruit.x (label VARCHAR) INHERITS (fruit.b);
@@ -124,7 +124,7 @@ def test__table_inherits_with_select(holder):
     -- Ensure children include only themselves
     INSERT INTO fruit.x_y (value) SELECT label FROM fruit.x;
     INSERT INTO fruit.x_y (value) SELECT label FROM fruit.y;
-    '''
+    """
     h = holder()
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
@@ -133,17 +133,17 @@ def test__table_inherits_with_select(holder):
 
     assert len(nodes) == 10
     assert paths == [
-        ['literal["apple"]', 'column[fruit.b.type]', 'column[fruit.b_only.type]'],
-        ['column[fruit.b.kind]', 'column[fruit.all.name]'],
-        ['column[fruit.x.kind]', 'column[fruit.all.name]'],
-        ['column[fruit.y.kind]', 'column[fruit.all.name]'],
-        ['column[fruit.x.label]', 'column[fruit.x_y.value]'],
-        ['column[fruit.y.label]', 'column[fruit.x_y.value]']
+        ['literal["apple"]', "column[fruit.b.type]", "column[fruit.b_only.type]"],
+        ["column[fruit.b.kind]", "column[fruit.all.name]"],
+        ["column[fruit.x.kind]", "column[fruit.all.name]"],
+        ["column[fruit.y.kind]", "column[fruit.all.name]"],
+        ["column[fruit.x.label]", "column[fruit.x_y.value]"],
+        ["column[fruit.y.label]", "column[fruit.x_y.value]"],
     ]
 
 
 def test__table_inherits_with_merge(holder):
-    queries = '''
+    queries = """
     CREATE TABLE a (type VARCHAR, kind VARCHAR);
     CREATE TABLE b (type VARCHAR, kind VARCHAR, color VARCHAR);
     CREATE TABLE c (color VARCHAR);
@@ -176,7 +176,7 @@ def test__table_inherits_with_merge(holder):
         UPDATE SET color = s.color
     WHEN NOT MATCHED THEN
         INSERT (color) VALUES (s.color);
-    '''
+    """
     h = holder()
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
@@ -185,17 +185,17 @@ def test__table_inherits_with_merge(holder):
 
     assert len(nodes) == 8
     assert paths == [
-        ['column[a.type]', 'column[b.type]'],
-        ['column[a.type]', 'column[fruit.x.type]'],
-        ['column[a.type]', 'column[fruit.y.type]'],
-        ['column[a.kind]', 'column[b.kind]'],
-        ['column[b.color]', 'column[c.color]']
+        ["column[a.type]", "column[b.type]"],
+        ["column[a.type]", "column[fruit.x.type]"],
+        ["column[a.type]", "column[fruit.y.type]"],
+        ["column[a.kind]", "column[b.kind]"],
+        ["column[b.color]", "column[c.color]"],
     ]
 
 
 # Not supported by sqlglot: 'Falling back to Command'
 def test__table_foreign(holder):
-    queries = '''
+    queries = """
     CREATE FOREIGN TABLE foreign_users (
         id integer NOT NULL,
         username text,
@@ -203,7 +203,7 @@ def test__table_foreign(holder):
     )
     SERVER remote_server_name
     OPTIONS (schema_name 'public', table_name 'users');
-    '''
+    """
     h = holder()
     h.generate(queries, dialect=DIALECT)
     assert len(h.get_queries()) == 0
@@ -211,7 +211,7 @@ def test__table_foreign(holder):
 
 # Not supported by sqlglot (both): 'Falling back to Command'
 def test__table_of_type(holder):
-    queries = '''
+    queries = """
     CREATE TYPE person_type AS (
         first_name text,
         last_name text,
@@ -221,28 +221,24 @@ def test__table_of_type(holder):
     CREATE TABLE employees OF person_type (
         PRIMARY KEY (first_name, last_name)
     );
-    '''
+    """
     h = holder()
     h.generate(queries, dialect=DIALECT)
-
 
 
 # TODO: UPDATE and SELECT from different inherited tables in the same query
 # TODO: test ONLY inside a CTE to verify new table lookup logic
 
 
-
-
-
 def test__simple_sequence(holder):
-    queries = '''
+    queries = """
     CREATE SEQUENCE serial START 101;
     INSERT INTO fruit.raw (age) SELECT nextval('serial') as age;
-    '''
+    """
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     queries = h.get_queries_created()
     paths = h.get_friendly_paths()
 
-    assert paths == [['sequence[serial]', 'column[fruit.raw.age]']]
+    assert paths == [["sequence[serial]", "column[fruit.raw.age]"]]
     assert [SequenceQuery, InsertQuery] == list(map(type, queries))

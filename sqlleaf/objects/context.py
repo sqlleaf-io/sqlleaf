@@ -7,11 +7,13 @@ import networkx as nx
 from sqlglot import exp
 
 from sqlleaf import util, mappings, sqlglot_lineage, exception
+
 if t.TYPE_CHECKING:
     from sqlleaf.objects.query_types import Query
     from sqlleaf.objects.node_types import NodeAttributes
 
 logger = logging.getLogger("sqleaf")
+
 
 @dataclass(frozen=True)
 class ProcessorContext:
@@ -57,8 +59,17 @@ class ProcessorContext:
 
 @dataclass(frozen=True)
 class NodeContext:
-    statement_index: str            # The position of this query inside a list of queries, e.g. SELECT 'a'; SELECT 'b' - a=0, b=1
-    select_index: int = 0           # The position of this column inside a set of selected columns (e.g. SELECT 'a', 'b') - a=0, b=1
-    function_depth: int = 0         # The depth of the function: e.g. SELECT UPPER(LOWER('a')) - LOWER=0, UPPER=1
-    function_arg_index: int = 0     # The argument of a function: e.g. SELECT my.func('a', 'b') - a=0, b=1
-    node_depth: int = 0             # The depth of a subquery, e.g. WITH cte AS ( SELECT 'a' ) SELECT 'a' - The first a=1, second a=0
+    # The position of this query inside a list of queries, e.g. SELECT 'a'; SELECT 'b' -> a=0, b=1
+    statement_index: str
+
+    # The position of this column inside a set of selected columns (e.g. SELECT 'a', 'b') -> a=0, b=1
+    select_index: int = 0
+
+    # The depth of the function: e.g. SELECT UPPER(LOWER('a')) -> LOWER=0, UPPER=1
+    function_depth: int = 0
+
+    # The argument of a function: e.g. SELECT my.func('a', 'b') -> a=0, b=1
+    function_arg_index: int = 0
+
+    # The depth of a subquery, e.g. WITH cte AS ( SELECT 'a' ) SELECT 'a' -> The first a=1, second a=0
+    node_depth: int = 0

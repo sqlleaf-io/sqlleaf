@@ -12,6 +12,7 @@ from sqlleaf.objects.query_types import Query
 
 logger = logging.getLogger("sqleaf")
 
+
 def new_graph() -> nx.MultiDiGraph:
     """
     A graph has attributes along with its node and edges.
@@ -132,7 +133,7 @@ class ColumnNode(NodeAttributes):
             ctx=ctx,
         )
         table_type = self._table_type(catalog, schema, table, processor_ctx)
-        if table_type == 'cte':
+        if table_type == "cte":
             self.member = processor_ctx.node.recursive_cte_member_kind
 
         self.table_type = table_type
@@ -162,10 +163,10 @@ class ColumnNode(NodeAttributes):
         query = processor_ctx.object_mapping.get_table_or_stage(table=tab, raise_on_missing=False)
 
         if not query:
-            return 'table'
+            return "table"
 
-        if query.kind == 'ctas':
-            return 'table'
+        if query.kind == "ctas":
+            return "table"
         return query.kind
 
     def get_name(self):
@@ -177,11 +178,13 @@ class ColumnNode(NodeAttributes):
 
     @property
     def full_name(self):
-        if 'cte' in self.table_type:
+        if "cte" in self.table_type:
             # A CTE name can be reused across statements
             if self.member:
                 # Recursive CTE has the field 'member'
-                return self.wrap(f"{self.get_name()} type={self.data_type} subkind={self.table_type} member={self.member} statement={self.ctx.statement_index}")
+                return self.wrap(
+                    f"{self.get_name()} type={self.data_type} subkind={self.table_type} member={self.member} statement={self.ctx.statement_index}"
+                )
             return self.wrap(f"{self.get_name()} type={self.data_type} subkind={self.table_type} statement={self.ctx.statement_index}")
         else:
             return self.wrap(f"{self.get_name()} type={self.data_type} subkind={self.table_type}")
@@ -474,9 +477,7 @@ class EdgeAttributes:
                 "select_idx": self.select_idx,
                 "path_idx": self.path_idx,
             },
-            "query": {
-                "id": self.query.id
-            },
+            "query": {"id": self.query.id},
         }
         return result
 

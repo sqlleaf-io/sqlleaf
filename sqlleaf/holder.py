@@ -53,7 +53,7 @@ class Lineage:
 
         for n, data in new_graph.nodes(data=True):
             if self.graph.has_node(n):
-                old_node_attrs = self.graph.nodes[n]['attrs']
+                old_node_attrs = self.graph.nodes[n]["attrs"]
 
                 # The incoming graph's edges must have their NodeAttributes updated to match the existing graph's NodeAttributes.
                 # This is because different graphs with identical Nodes will have different NodeAttributes Python objects.
@@ -119,14 +119,18 @@ class Lineage:
         _sps = [s.to_dict() for s in sps]
         _paths = [p.to_dict() for p in paths]
 
-
-        print(json.dumps({
-            "nodes": _nodes,
-            "edges": _edges,
-            "queries": _queries,
-            "stored_procedures": _sps,
-            "paths": _paths,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "nodes": _nodes,
+                    "edges": _edges,
+                    "queries": _queries,
+                    "stored_procedures": _sps,
+                    "paths": _paths,
+                },
+                indent=2,
+            )
+        )
 
     def print_tree(self, full_name=False):
         """
@@ -159,8 +163,8 @@ class Lineage:
                 child_name = edge_attrs.parent.full_name
                 num_descendents_of_child = len(nx.descendants(g, child_name))
 
-                parent_node = g.nodes[parent_name]['attrs']
-                child_node = g.nodes[child_name]['attrs']
+                parent_node = g.nodes[parent_name]["attrs"]
+                child_node = g.nodes[child_name]["attrs"]
 
                 if parent_name not in seen:
                     symbol = "└──"
@@ -194,8 +198,8 @@ class Lineage:
             nodes = path.node_hops()
 
             for i, node in enumerate(nodes):
-                print(node.friendly_name, end='')
+                print(node.friendly_name, end="")
                 if i < len(nodes) - 1:
-                    print(' -> ', end='')
+                    print(" -> ", end="")
                 else:
-                    print('\n')
+                    print("\n")

@@ -19,10 +19,10 @@ import sqlleaf
 
 from sqlglot import exp
 
-DIALECT = 'postgres'
+DIALECT = "postgres"
+
 
 class LineageDummy(sqlleaf.Lineage):
-
     def get_full_node_names(self):
         return [n.full_name for n in self.get_nodes()]
 
@@ -46,18 +46,19 @@ class LineageDummy(sqlleaf.Lineage):
         new_queries = []
         for query in all_queries:
             # Remove the COMMON_TABLES queries
-            if not (isinstance(query, TableQuery) and exp.table_name(query.child_table).lower() in ['fruit.raw', 'fruit.processed']):
+            if not (isinstance(query, TableQuery) and exp.table_name(query.child_table).lower() in ["fruit.raw", "fruit.processed"]):
                 new_queries.append(query)
         return new_queries
 
 
-@pytest.fixture(scope='function')
+@pytest.fixture(scope="function")
 def holder():
-    def _create_holder(with_tables: bool = False, dialect: str = ''):
+    def _create_holder(with_tables: bool = False, dialect: str = ""):
         h = LineageDummy()
         if with_tables:
             h.generate(COMMON_TABLES, dialect=dialect or DIALECT)
         return h
+
     return _create_holder
 
 
@@ -69,7 +70,7 @@ def is_subset(subarr, arr):
     return len(missing) == 0
 
 
-COMMON_TABLES = '''
+COMMON_TABLES = """
  CREATE TABLE fruit.raw
  (
      name VARCHAR,
@@ -98,4 +99,4 @@ COMMON_TABLES = '''
      jsonblob    JSONB
  );
 
- '''
+ """

@@ -29,13 +29,13 @@ class ObjectMapping(MappingSchema):
         self.kind_mapping_trie = {}
 
     def add_query(
-            self,
-            kind: str,
-            query,
-            column_mapping: t.Optional[ColumnMapping] = None,
-            dialect: DialectType = None,
-            normalize: t.Optional[bool] = None,
-            match_depth: bool = False,
+        self,
+        kind: str,
+        query,
+        column_mapping: t.Optional[ColumnMapping] = None,
+        dialect: DialectType = None,
+        normalize: t.Optional[bool] = None,
+        match_depth: bool = False,
     ) -> None:
         """
         Register or update a table. Updates are only performed if a new column mapping is provided.
@@ -59,7 +59,7 @@ class ObjectMapping(MappingSchema):
         nested_set(self.kind_mapping[kind], tuple(reversed(parts)), query)
         new_trie([parts], self.kind_mapping_trie[kind])
 
-        if kind == 'table' and column_mapping is not None:
+        if kind == "table" and column_mapping is not None:
             # Track the table's columns
             self.add_columns_for_table(
                 table=table,
@@ -122,7 +122,7 @@ class ObjectMapping(MappingSchema):
         if kind not in self.kind_mapping:
             return None
 
-        parts = self.table_parts(table)[0: len(self.supported_table_args)]
+        parts = self.table_parts(table)[0 : len(self.supported_table_args)]
         resolved_parts = self._find_in_trie(parts, self.kind_mapping_trie[kind], raise_on_missing)
 
         if resolved_parts is None:
@@ -151,9 +151,9 @@ class ObjectMapping(MappingSchema):
         Get the 'CREATE' query for a table or stage.
         """
         if str(table).startswith("@"):
-            child_table_query = self.find_query(kind='stage', table=table)
+            child_table_query = self.find_query(kind="stage", table=table)
         else:
-            child_table_query = self.find_query(kind='table', table=table)
+            child_table_query = self.find_query(kind="table", table=table)
 
         if not child_table_query and raise_on_missing:
             raise exception.SqlLeafException(message="Unknown table", table=str(table))
