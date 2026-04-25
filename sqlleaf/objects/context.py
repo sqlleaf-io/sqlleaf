@@ -26,21 +26,33 @@ class ProcessorContext:
     new_data_type: InitVar[exp.DataType] = None
 
     def __post_init__(self, new_data_type: exp.DataType = None):
-        # Called via replace() or if a new object is instantiated
-        if new_data_type:
-            expr_type = new_data_type
-        else:
-            if isinstance(self.expr, exp.ColumnDef):
-                expr_type = self.expr.kind
-            elif (not self.expr.type or self.expr.type == exp.DataType.Type.UNKNOWN) and self.expr.parent:
-                expr_type = self.expr.parent.type
-            else:
-                expr_type = self.expr.type
-
+        """
+        Called via replace() or if a new object is instantiated
+        """
+        expr_type = new_data_type if new_data_type else self.get_expr_type(self.expr)
         unwrapped_expr = util.unwrap_expression(self.expr)
 
         object.__setattr__(self, "data_type", expr_type)
         object.__setattr__(self, "expr", unwrapped_expr)
+
+    def get_expr_type(self, expr: exp.Expression) -> exp.DataType:
+        """
+        Determine the expression's data type. If it's missing, use an ancestor's data type.
+        """
+        is_missing_type: t.Callable[[exp.Expression], bool] = lambda x: not (x.type or x.is_type(exp.DataType.Type.UNKNOWN))
+
+        if isinstance(expr, exp.ColumnDef):
+            return expr.kind
+        elif is_missing_type(expr) and expr.parent:
+            # Use an ancestor's type
+            parent = expr.parent
+            while parent:
+                if not is_missing_type(parent):
+                    return parent.type
+                parent = parent.parent
+
+            return expr.parent.type
+        return expr.type
 
 
 @dataclass(frozen=True)
