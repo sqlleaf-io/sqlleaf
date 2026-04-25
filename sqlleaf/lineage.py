@@ -49,18 +49,6 @@ def get_lineage_for_query(query: Query, object_mapping) -> nx.MultiDiGraph:
     return graph
 
 
-def _validate_and_get_selects(statement: exp.Insert, child_columns: t.List[exp.ColumnDef], child_table: exp.Table) -> t.List[str]:
-    """
-    Ensure that the selected columns exist inside the child table.
-    """
-    if isinstance(statement.expression, exp.Values):
-        selects = [s.name for s in statement.this.expressions]
-    else:
-        selects = statement.named_selects
-
-    return selects
-
-
 def generate_column_lineage_for_query(
     query: Query,
     graph: nx.MultiDiGraph,
@@ -72,14 +60,6 @@ def generate_column_lineage_for_query(
     We collect all the columns from the query's target table, and then iterate
     over sqlglot's abstract syntax tree (AST) to determine the set of nodes
     and transformations used along the path to reach the table's columns.
-
-    Parameters:
-        query: the Query to calculate lineage for
-        child_columns: the table's columns, marked as selected in the query or not
-        child_table: the child table
-        dialect:
-        object_mapping:
-        statement_index: the statement's index within a list of statements [detects duplicates]
     """
     child_table = query.child_table
     statement = query.statement
@@ -101,18 +81,18 @@ def generate_column_lineage_for_query(
         return graph
 
     # Check if a trigger overrides the query's behaviour
-    if t := object_mapping.find_query(kind="trigger", table=child_table):
-        if t.timing == "INSTEAD OF":
+    if trigger := object_mapping.find_query(kind="trigger", table=child_table):
+        if trigger.timing == "INSTEAD OF":
             logger.debug("Skipping lineage for all columns of table '%s' since trigger '%s' overrides it." % (exp.table_name(child_table), t.name))
             # TODO: Use the trigger's function as the lineage
-            func = t.execute
+            #func = trigger.execute
 
             return graph
 
     # Ensure the child table exists with the expected columns
     child_table_query = object_mapping.get_table_or_stage(query.child_table)
     child_columns = child_table_query.get_column_defs()
-    selected_column_names = _validate_and_get_selects(query.statement, child_columns, child_table)
+    selected_column_names = query.get_selected_column_names()
 
     # Copy since lineage() transforms columns for generate() to work (see c.set()). TODO: Move all transforms into transform()
     statement_lineage = statement.copy()
@@ -254,18 +234,6 @@ def update_column_data_types(graph: nx.MultiDiGraph):
     logger.debug("Skipping data types as it's faulty")
     return
 
-    root_columns = _get_root_nodes(graph)
-
-    for i, root in enumerate(root_columns):
-        for depth, edge_attrs in util.find_edges_downward(graph, root):
-            parent_attrs = edge_attrs.parent
-            child_attrs = edge_attrs.child
-            # last_function_type = edge_attrs.get_last_function_type()
-            last_function_type = ""
-            dialect = edge_attrs.query.dialect
-
-            ensure_correct_data_types(parent_attrs, child_attrs, last_function_type, dialect)
-
 
 def ensure_correct_data_types(
     parent_attrs: NodeAttributes,
@@ -337,7 +305,7 @@ def calculate_paths(graph: nx.MultiDiGraph) -> t.Dict[str, LineagePath]:
     so we permit it.
     """
     all_lineage_paths = {}
-    root_columns = _get_root_nodes(graph)
+    root_columns = get_root_nodes(graph)
 
     for i, root in enumerate(root_columns):
         for path in util.find_edge_paths(graph, root):
@@ -351,14 +319,8 @@ def calculate_paths(graph: nx.MultiDiGraph) -> t.Dict[str, LineagePath]:
     return all_lineage_paths
 
 
-def _get_root_nodes(graph: nx.MultiDiGraph) -> t.List[str]:
+def get_root_nodes(graph: nx.MultiDiGraph) -> t.List[str]:
     return [n for n in graph.nodes if graph.in_degree(n) == 0 and graph.out_degree(n) > 0]
-
-
-def _get_node_leaves(expr: exp.Expression):
-    excl_types = (exp.DataType, exp.Var, exp.Table, exp.Column, exp.Identifier)
-    leaves = [l for l in expr.walk() if l.is_leaf() and not isinstance(l, excl_types)]
-    return leaves
 
 
 def _get_all_paths_from_lineage(node: sqlglot_lineage.Node, path=None):

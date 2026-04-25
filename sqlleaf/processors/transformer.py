@@ -37,7 +37,7 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
     elif isinstance(query, CopyQuery):
         statement = _convert_copy_to_insert(statement, query, object_mapping)
 
-    statement = _validate_basic(statement, query.dialect, object_mapping, query.child_table)
+    statement = _validate_basic(statement)
 
     # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
     statement = _apply_optimizations(statement, query, object_mapping, query.child_table)
@@ -387,13 +387,12 @@ def _convert_copy_to_insert(statement: exp.Copy, query: CopyQuery, object_mappin
     expr = statement
     dialect = query.dialect
 
-    if query.is_source_a_stage:
-        child_table = expr.this
-        parent_table = expr.args["files"][0]
-        source_table = child_table
-    elif query.is_target_a_stage:
-        child_table = expr.this
-        parent_table = expr.args["files"][0]
+    # Assume the stage is a source
+    child_table = expr.this
+    parent_table = expr.args["files"][0]
+    source_table = child_table
+
+    if query.is_target_a_stage:
         source_table = parent_table
 
     table_query = object_mapping.find_query(kind="table", table=source_table)
@@ -411,7 +410,7 @@ def _convert_copy_to_insert(statement: exp.Copy, query: CopyQuery, object_mappin
     if query.is_target_a_stage:
         # Any object that is referenced as a source table needs to be added to the table mapping
         # for the lineage functions to work - such as this Stage
-        col_defs = [exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(type)) for name, type in child_columns.items()]
+        col_defs = [exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(data_type)) for name, data_type in child_columns.items()]
 
         child_table_query = object_mapping.find_query(kind="stage", table=child_table)
         child_table_query.column_defs = col_defs
@@ -434,9 +433,7 @@ RULES_OVERRIDE = [
 ]
 
 
-def _validate_basic(
-    statement: exp.Insert, dialect: str, object_mapping: mappings.ObjectMapping, child_table, match_columns: bool = True
-) -> exp.Insert:
+def _validate_basic(statement: exp.Insert) -> exp.Insert:
     """
     Perform some basic validation of the query. This needs a better place, long-term.
     """
@@ -553,7 +550,7 @@ def _add_column_names_to_insert(statement: exp.Insert, object_mapping: mappings.
         INSERT INTO my.apple (a,b) SELECT name as a, age as b FROM my.pear
     """
     if not isinstance(statement, exp.Insert) or not statement.selects:
-        return statement
+        return None
 
     selects = statement.selects
     table_query = object_mapping.get_table_or_stage(child_table)
@@ -627,12 +624,9 @@ def _case_statement_transformer(expr: exp.Expression):
     if isinstance(expr, exp.Case):
         case = exp.case()
         for _if in expr.args["ifs"]:
-            try:
-                case = case.when("'dummy'='value'", then=_if.args["true"])
-                if "default" in expr.args:
-                    case = case.else_(expr.args["default"])
-            except Exception:
-                pass
+            case = case.when("'dummy'='value'", then=_if.args["true"])
+            if "default" in expr.args:
+                case = case.else_(expr.args["default"])
         return case
     return expr
 
@@ -674,8 +668,8 @@ def remove_lines_before_begin(lines: t.List[str], comment=False) -> t.List[str]:
 
     # Comment out every line until we reach 'begin'
     for i, line in enumerate(lines):
-        l = line.lower().strip()
-        if not l.startswith("--"):
+        text = line.lower().strip()
+        if not text.startswith("--"):
             if comment:
                 line = "-- " + line
             else:
@@ -683,7 +677,7 @@ def remove_lines_before_begin(lines: t.List[str], comment=False) -> t.List[str]:
 
         # Only overwrite/strip new lines
         new_lines[i] = line
-        if l == "begin":
+        if text == "begin":
             break
 
     return new_lines

@@ -21,14 +21,13 @@ def flatten(lst: t.List):
     returns
         [a, 1, b, c]
     """
-    new_list = []
-    for l in lst:
-        if isinstance(l, list):
-            for ll in l:
-                new_list.append(ll)
+    result = []
+    for item in lst:
+        if isinstance(item, list):
+            result.extend(flatten(item))
         else:
-            new_list.append(l)
-    return new_list
+            result.append(item)
+    return result
 
 
 def type_name(typ) -> str:
@@ -177,16 +176,12 @@ def copy_expression(expr: exp.Expression) -> exp.Expression:
             for j, new_ex in enumerate(copy_expr.walk()):
                 if j == i:
                     return new_ex
+    return expr
 
 
 def column_def_to_column(column_def: exp.ColumnDef, parent_table: exp.Table = None) -> exp.Column:
     """
-    Convert an exp.ColumnDef to a exp.Column
-
-    Parameters:
-        column_def:
-        parent_table: a table to copy attributes from (schema, table)
-        copy:
+    Convert an exp.ColumnDef to an exp.Column
     """
     if parent_table:
         table = parent_table

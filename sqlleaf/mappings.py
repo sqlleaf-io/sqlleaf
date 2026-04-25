@@ -5,11 +5,10 @@ from sqlglot.dialects.dialect import DialectType
 from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
 
-from sqlleaf.objects.query_types import TableQuery
+from sqlleaf import exception
+from sqlleaf.objects.query_types import Query
 
 ColumnMapping = t.Union[t.Dict, str, t.List]
-
-from sqlleaf import exception
 
 
 class ObjectMapping(MappingSchema):
@@ -31,7 +30,7 @@ class ObjectMapping(MappingSchema):
     def add_query(
         self,
         kind: str,
-        query,
+        query: Query,
         column_mapping: t.Optional[ColumnMapping] = None,
         dialect: DialectType = None,
         normalize: t.Optional[bool] = None,
@@ -42,7 +41,8 @@ class ObjectMapping(MappingSchema):
         The added table must have the necessary number of qualifiers in its path to match the schema's nesting level.
 
         Args:
-            table: the `Table` expression instance or string representing the table.
+            kind: the expression's kind
+            query: the query to store
             column_mapping: a column mapping that describes the structure of the table.
             dialect: the SQL dialect that will be used to parse `table` if it's a string.
             normalize: whether to normalize identifiers according to the dialect of interest.
@@ -105,7 +105,7 @@ class ObjectMapping(MappingSchema):
         kind: str,
         table: exp.Table,
         raise_on_missing: bool = True,
-    ) -> t.Optional[TableQuery]:
+    ) -> t.Optional[Query]:
         """
         Returns the Query for a given object kind and exp.Table.
 
@@ -113,6 +113,7 @@ class ObjectMapping(MappingSchema):
         This returns an exp.Table.
 
         Args:
+            kind: the expression's kind
             table: the target table.
             raise_on_missing: whether to raise in case the schema is not found.
 

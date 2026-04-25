@@ -41,7 +41,8 @@ class ProcessorContext:
         """
         Determine the expression's data type. If it's missing, use an ancestor's data type.
         """
-        is_missing_type: t.Callable[[exp.Expression], bool] = lambda x: not (x.type or x.is_type(exp.DataType.Type.UNKNOWN))
+        def is_missing_type(x: exp.Expression) -> bool:
+            return not (x.type or x.is_type(exp.DataType.Type.UNKNOWN))
 
         if isinstance(expr, exp.ColumnDef):
             return expr.kind

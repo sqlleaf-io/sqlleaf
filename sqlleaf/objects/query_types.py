@@ -88,6 +88,11 @@ class Query:
     def get_root_query(self):
         return self if not self.parent_query else self.parent_query.get_root_query()
 
+    def get_selected_column_names(self) -> t.List[str]:
+        if isinstance(self.statement.expression, exp.Values):
+            return [s.name for s in self.statement.this.expressions]
+        return self.statement.named_selects
+
     def to_dict(self):
         result = {
             "id": self.id,
@@ -203,17 +208,17 @@ class ViewQuery(Query):
             statement_index=statement_index,
             child_table=util.get_table(statement),
         )
-        self.column_defs = columns
-        self.inherited_by = []
+        self.column_defs: t.List[exp.ColumnDef] = columns
+        self.inherited_by: t.List[TableQuery] = []
 
-    def get_column_defs(self) -> t.List[exp.ColumnDef]:
+    def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs
 
     def get_column_names_with_types(self, include_system: bool = False) -> t.Dict[str, str]:
         """
         Used by sqlglot's MappingSchema
         """
-        columns = {col.name: str(col.kind) for col in self.get_column_defs()}
+        columns = {col.name: str(col.kind) for col in self.get_column_defs(include_system=include_system)}
         return columns
 
 
@@ -256,28 +261,26 @@ class ProcedureQuery(Query):
             statement_index=statement_index,
             child_table=table,
         )
-
-        sql = statement.sql()
         self.schema = table.db
         self.procedure = table.name
         self.signature = str(statement.this)  # e.g. etl.my_proc(v_session_id VARCHAR)
 
         # TODO: support 'default'
-        self.column_defs = statement.this.expressions
+        self.column_defs: t.List[exp.ColumnDef] = statement.this.expressions
         self.args = [  # e.g. {'name': 'v_session_id', 'type': 'VARCHAR'}
             {"name": str(col.this), "type": str(col.kind)} for col in statement.this.find_all(exp.ColumnDef)
         ]
 
         self.set_statement(statement)
 
-    def get_column_defs(self) -> t.List[exp.ColumnDef]:
+    def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs
 
     def get_column_names_with_types(self, include_system: bool = False) -> t.Dict[str, str]:
         """
         Used by sqlglot's MappingSchema
         """
-        columns = {col.name: str(col.kind) for col in self.get_column_defs()}
+        columns = {col.name: str(col.kind) for col in self.get_column_defs(include_system=include_system)}
         return columns
 
     @property
@@ -381,6 +384,7 @@ class StageQuery(Query):
             statement_index=statement_index,
             child_table=util.get_table(statement),
         )
+        self.column_defs: t.List[exp.ColumnDef] = []
         # Needed due to a bug in sqlglot. Never access the table name via print()!
         #  as it prints double-double quotes
         stage_name = str(self.child_table.this)

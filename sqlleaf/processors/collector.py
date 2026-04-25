@@ -3,6 +3,7 @@ import typing as t
 
 import sqlglot
 from sqlglot import exp
+from sqlglot.dialects import postgres
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
@@ -29,12 +30,11 @@ from sqlleaf.processors.transformer import clean_stored_procedure_text
 
 logger = logging.getLogger("sqleaf")
 
-DMLQueryType = t.Union[exp.Insert, exp.Update, exp.Merge, exp.Select]
+DMLQueryType = InsertQuery | UpdateQuery | MergeQuery | SelectQuery
+DMLExprType = exp.Insert | exp.Update | exp.Merge | exp.Select
 
 # sqlglot is missing pseudocolumns for Postgres
 PSEUDOCOLUMNS = ["ctid", "xmin", "xmax", "cmin", "cmax", "tableoid", "oid"]
-from sqlglot.dialects import postgres
-
 postgres.Postgres.PSEUDOCOLUMNS = {c.upper() for c in PSEUDOCOLUMNS}
 postgres.Postgres.EXCLUDES_PSEUDOCOLUMNS_FROM_STAR = True
 
@@ -127,7 +127,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     return list(queries.values())
 
 
-def _collect_writable_cte_queries(parent_query: Query, dialect: str, object_mapping: mappings.ObjectMapping):
+def _collect_writable_cte_queries(parent_query: DMLQueryType, dialect: str, object_mapping: mappings.ObjectMapping):
     """
     Transform any writable CTE statements into a form.
 
@@ -255,8 +255,8 @@ def _system_columns() -> t.List[exp.ColumnDef]:
     """
     Create a set of ColumnDefs representing system columns.
     """
-    type = exp.DataType.build("OID", dialect="postgres")
-    col_defs = [exp.ColumnDef(this=exp.to_identifier(name), kind=type) for name in PSEUDOCOLUMNS]
+    data_type = exp.DataType.build("OID", dialect="postgres")
+    col_defs = [exp.ColumnDef(this=exp.to_identifier(name), kind=data_type) for name in PSEUDOCOLUMNS]
 
     return col_defs
 
@@ -412,6 +412,7 @@ def _process_tables(statement: exp.Create, dialect: str, object_mapping: mapping
     """
     Process a 'CREATE TABLE' statement.
     """
+    query = None
     if statement.kind == "TABLE":
         # CREATE TABLE ...
         query = TableQuery(statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
@@ -426,6 +427,7 @@ def _process_tables(statement: exp.Create, dialect: str, object_mapping: mapping
     elif statement.kind == "SEQUENCE":
         query = SequenceQuery(statement=statement, dialect=dialect, statement_index=statement_index)
         object_mapping.add_query(kind="sequence", query=query, dialect=dialect)
+
     return query
 
 
@@ -448,6 +450,7 @@ def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping:
     stmt = annotate_types(stmt, dialect=dialect, schema=object_mapping)
 
     col_defs = [exp.ColumnDef(this=exp.to_identifier(s.alias), kind=s.type) for s in stmt.selects]
+    query = None
 
     if stmt.kind == "VIEW":
         # CREATE VIEW ...
@@ -519,7 +522,7 @@ def _process_triggers(statement: exp.Create, dialect: str, object_mapping: mappi
     """
     Process a "CREATE TRIGGER" statement.
     """
-    query = TriggerQuery(statement, dialect)
+    query = TriggerQuery(statement, dialect, statement_index)
     object_mapping.add_query(kind="trigger", query=query, dialect=dialect)
     return query
 

@@ -68,6 +68,7 @@ def lineage(
     Args:
         column: The column to build the lineage for.
         sql: The SQL string or expression.
+        query: the Query containing this expression
         schema: The schema of tables.
         sources: A mapping of queries which will be used to continue building sqlleaf.
         dialect: The dialect of input SQL.
@@ -144,6 +145,8 @@ def to_node(
             select = scope.expression
 
     parent_pivot_aliases = []
+    pivot_columns = []
+    pivot_column_mapping = {}
     pivots = scope.pivots
     pivot = pivots[0] if len(pivots) == 1 and not pivots[0].unpivot else None
     if pivot:
@@ -159,7 +162,6 @@ def to_node(
         pivot_columns = pivot.args["columns"]
         pivot_aggs_count = len(pivot.expressions)
 
-        pivot_column_mapping = {}
         for i, agg in enumerate(pivot.expressions):
             agg_cols = list(agg.find_all(exp.Column))
             for col_index in range(i, len(pivot_columns), pivot_aggs_count):

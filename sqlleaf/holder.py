@@ -43,19 +43,19 @@ class Lineage:
 
         self.paths = lineage.calculate_paths(graph=self.graph)
 
-    def merge_graph(self, new_graph: nx.MultiDiGraph):
+    def merge_graph(self, subgraph: nx.MultiDiGraph):
         """
         Merge the subgraph into the main graph, and also track the individual subgraphs.
         """
-        self.subgraphs.append(new_graph)
+        self.subgraphs.append(subgraph)
 
-        for n, data in new_graph.nodes(data=True):
+        for n, data in subgraph.nodes(data=True):
             if self.graph.has_node(n):
                 old_node_attrs = self.graph.nodes[n]["attrs"]
 
                 # The incoming graph's edges must have their NodeAttributes updated to match the existing graph's NodeAttributes.
                 # This is because different graphs with identical Nodes will have different NodeAttributes Python objects.
-                for par, chi, edge_data in new_graph.edges(data=True):
+                for par, chi, edge_data in subgraph.edges(data=True):
                     # Overwrite the new edge's Node to be the old Node
                     if edge_data["attrs"].parent.full_name == n:
                         edge_data["attrs"].parent = old_node_attrs
@@ -64,7 +64,7 @@ class Lineage:
             else:
                 self.graph.add_node(n, **data)
 
-        self.graph.add_edges_from(new_graph.edges(data=True))
+        self.graph.add_edges_from(subgraph.edges(data=True))
 
     def get_edges(self) -> t.List[EdgeAttributes]:
         edges = [data["attrs"] for par, chi, data in self.graph.edges(data=True)]
@@ -104,7 +104,7 @@ class Lineage:
         """
         return list(self.paths.values())
 
-    def print_json(self) -> t.Dict:
+    def print_json(self):
         nodes = self.get_nodes()
         edges = self.get_edges()
         queries = self.get_queries()
@@ -148,8 +148,9 @@ class Lineage:
             └── 4
         """
         g = self.graph.reverse()  # We print from the leaves to the roots
-        root_columns = lineage._get_root_nodes(g)
+        root_columns = lineage.get_root_nodes(g)
         seen = set()
+        symbol = "└──"
 
         attr = "full_name" if full_name else "friendly_name"
 
@@ -181,7 +182,7 @@ class Lineage:
                         # Direct load (source -> target)
                         prefix = "└── "
                     else:
-                        prefix = ((depth) * 4 * " ") + f"{symbol} "
+                        prefix = (depth * 4 * " ") + f"{symbol} "
                     print("%s%s" % (prefix, getattr(child_node, attr)))
                     seen.add(child_name)
 

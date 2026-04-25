@@ -1,1 +1,1 @@
-from sqlleaf.holder import Lineage
+from sqlleaf.holder import Lineage as Lineage

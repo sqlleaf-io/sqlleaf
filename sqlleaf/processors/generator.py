@@ -408,7 +408,7 @@ class LineageGenerator:
 
     def process_json(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         expr: exp.JSONExtract = processor_ctx.expr
-        node_attrs = JsonPathNode(name=expr.name, processor_ctx=processor_ctx, ctx=ctx)
+        node_attrs = JsonPathNode(processor_ctx=processor_ctx, ctx=ctx)
 
         # Get the bottom expression to extract the JSON paths
         source = expr.this
@@ -540,6 +540,8 @@ class PostgresLineageGenerator(LineageGenerator):
             )
             table_function: exp.Table = expr.parent.parent
             return node_attrs, [table_function]
+
+        return None, []
 
 
 class SnowflakeLineageGenerator(LineageGenerator):

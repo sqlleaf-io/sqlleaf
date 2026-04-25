@@ -249,7 +249,7 @@ class UserDefinedFunctionNode(NodeAttributes):
 
 
 class JsonPathNode(NodeAttributes):
-    def __init__(self, name: str, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         expr: exp.JSONExtract = processor_ctx.expr
 
         self.selectors = self.json_selectors(expr)
@@ -442,9 +442,8 @@ class EdgeAttributes:
         self.select_idx = select_idx  # The position of this column inside a set of selected columns (e.g. SELECT 'a', 'b', 'c')
         self.path_idx = path_idx  # <TODO: can I rely on the query hash instead?> The position of this edge inside a set of identical edges (e.g. two edges between nodes A->B). This can occur if the same query is used across multiple files.
 
-        self.create_edge_id()
-
-    def create_edge_id(self):
+    @property
+    def id(self):
         # TODO: get the correct prefix from the parent queries
         prefix = "todo_sp_or_udf"
         edge_id = ":".join(
@@ -459,7 +458,7 @@ class EdgeAttributes:
                 ]
             ]
         )
-        self.id = "edge:" + util.short_sha256_hash(edge_id)
+        return "edge:" + util.short_sha256_hash(edge_id)
 
     def to_dict(self):
         result = {
