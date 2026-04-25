@@ -274,7 +274,8 @@ def to_node(
             logger.debug("[2] Created Node from star: %s", node.name)
 
     # Find all columns that went into creating this one to list their lineage nodes.
-    source_columns = util.unique(find_all_in_scope(select, exp.Column))
+    source_columns = list(find_all_in_scope(select, exp.Column))
+    seen_source_columns = []
 
     # If the source is a UDTF find columns used in the UTDF to generate the table
     if isinstance(source, exp.UDTF):
@@ -288,6 +289,26 @@ def to_node(
     for c in source_columns:
         table = c.table
         source = scope.sources.get(table)
+
+        # Change the column's source table to be its fully qualified name, not its alias,
+        # so that the ColumnNode can be created with complete information
+        _c = c.copy()
+        if isinstance(source, exp.Table):
+            if source.catalog:
+                c.set("catalog", exp.to_identifier(source.catalog))
+            if source.db:
+                c.set("db", exp.to_identifier(source.db))
+            if source.name:
+                if dialect == 'snowflake':
+                    if source.this.args.get('quoted', False):  # exp.Identifier
+                        c.set("table", exp.to_identifier(source.name))
+                else:
+                    c.set("table", exp.to_identifier(source.name))
+            if _c != c:
+                logger.debug(f"Renamed node {_c.sql()} to {c.sql()}")
+
+        if c in seen_source_columns:
+            continue
 
         if isinstance(source, exp.Table) and 'rows_from' in source.args:
             node.is_parent_a_derived_table = True
@@ -395,20 +416,6 @@ def to_node(
                 message = f"Unknown column '{c.sql()}' in query: {c.parent_select.sql()}"
                 raise exception.SqlLeafException(message)
 
-            # Change the column's source table to be its fully qualified name, not its alias,
-            # so that the ColumnNode can be created with complete information
-            if isinstance(source, exp.Table):
-                if source.catalog:
-                    c.set("catalog", exp.to_identifier(source.catalog))
-                if source.db:
-                    c.set("db", exp.to_identifier(source.db))
-                if source.name:
-                    if dialect == 'snowflake':
-                        if source.this.args.get('quoted', False):   # exp.Identifier
-                            c.set("table", exp.to_identifier(source.name))
-                    else:
-                        c.set("table", exp.to_identifier(source.name))
-
             n = Node(
                 name=c.sql(),
                 column=c,
@@ -422,6 +429,8 @@ def to_node(
 
             node.downstream.append(n)
             logger.debug("[5] Created Node '%s', Expr: %s, Id: %s", c, source.sql(), id(n))
+
+        seen_source_columns.append(c)
 
     return node
 
