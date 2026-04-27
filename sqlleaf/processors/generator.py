@@ -384,7 +384,7 @@ class LineageGenerator:
     def process_column(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         expr: exp.Column = processor_ctx.expr
 
-        if processor_ctx.node and expr.table in processor_ctx.node.parent_pivot_aliases:
+        if processor_ctx.node and processor_ctx.node.pivot and expr.table == processor_ctx.node.pivot.alias:
             # On a path toward a pivot. Skip until we reach it.
             return None, []
 

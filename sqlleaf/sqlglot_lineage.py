@@ -3,19 +3,14 @@ import logging
 import typing as t
 from dataclasses import dataclass, field
 
-from sqlglot import Schema, exp, maybe_parse
+from sqlglot import exp
 from sqlglot.errors import SqlglotError
 from sqlglot.optimizer import (
     Scope,
-    build_scope,
     find_all_in_scope,
     normalize_identifiers,
-    qualify,
 )
 from sqlglot.optimizer.scope import ScopeType
-
-if t.TYPE_CHECKING:
-    from sqlglot.dialects.dialect import DialectType
 
 from sqlleaf import exception
 from sqlleaf.objects.query_types import Query, ProcedureQuery
@@ -35,13 +30,12 @@ class Node:
     source: exp.Expression
     downstream: t.List[Node] = field(default_factory=list)
     upstream: t.List[Node] = field(default_factory=list)
-    parent_pivot_aliases: t.List[Node] = field(default_factory=list)
+    pivot: exp.Pivot = None
     is_parent_a_cte: bool = False
     is_parent_a_recursive_cte: bool = False
     is_parent_a_derived_table: bool = False
     recursive_cte_member_kind: str = ""  # anchor | recursive
     source_name: str = ""
-    reference_node_name: str = ""
 
     def walk(self) -> t.Iterator[Node]:
         yield self
@@ -52,14 +46,8 @@ class Node:
 
 def lineage(
     column: str | exp.Column,
-    sql: str | exp.Expression,
     query: Query,
-    schema: t.Optional[t.Dict | Schema] = None,
-    sources: t.Optional[t.Mapping[str, str | exp.Query]] = None,
-    dialect: DialectType = None,
     scope: t.Optional[Scope] = None,
-    trim_selects: bool = True,
-    **kwargs,
 ) -> Node:
     """Build the lineage graph for a column of a SQL query.
 
@@ -67,57 +55,27 @@ def lineage(
 
     Args:
         column: The column to build the lineage for.
-        sql: The SQL string or expression.
         query: the Query containing this expression
-        schema: The schema of tables.
-        sources: A mapping of queries which will be used to continue building sqlleaf.
-        dialect: The dialect of input SQL.
         scope: A pre-created scope to use instead.
-        trim_selects: Whether or not to clean up selects by trimming to only relevant columns.
-        **kwargs: Qualification optimizer kwargs.
 
     Returns:
         A lineage node.
     """
-    expression = maybe_parse(sql, dialect=dialect)
-    column = normalize_identifiers.normalize_identifiers(column, dialect=dialect)
-
-    if sources:
-        expression = exp.expand(
-            expression,
-            {k: t.cast(exp.Query, maybe_parse(v, dialect=dialect)) for k, v in sources.items()},
-            dialect=dialect,
-        )
-
-    if not scope:
-        expression = qualify.qualify(
-            expression,
-            dialect=dialect,
-            schema=schema,
-            **{"validate_qualify_columns": False, "identify": False, **kwargs},  # type: ignore
-        )
-
-        scope = build_scope(expression)
-
-    if not scope:
-        raise SqlglotError("Cannot build lineage, sql must be SELECT")
+    column = normalize_identifiers.normalize_identifiers(column, dialect=query.dialect)
 
     if not any(select.alias_or_name == column.name for select in scope.expression.selects):
         raise SqlglotError(f"Cannot find column '{column.name}' in query.")
 
-    return to_node(column, scope, query, dialect, trim_selects=trim_selects)
+    return to_node(column, scope, query)
 
 
 def to_node(
     column: exp.Column,
     scope: Scope,
     query: Query,
-    dialect: DialectType,
     scope_name: t.Optional[str] = None,
     upstream: t.Optional[Node] = None,
     source_name: t.Optional[str] = None,
-    reference_node_name: t.Optional[str] = None,
-    trim_selects: bool = True,
 ) -> Node:
     """
     This function was taken from sqlglot and modified somewhat to produce better lineage.
@@ -126,48 +84,8 @@ def to_node(
     # Find the specific select clause that is the source of the column we want.
     # This can either be a specific, named select or a generic `*` clause.
 
-    if isinstance(column, int):
-        select = scope.expression.selects[column]
-    else:
-        if isinstance(scope.expression, exp.Values):
-            # SELECT FROM (VALUES ())
-            selects = [scope.expression]
-        else:
-            selects = [select for select in scope.expression.selects if select.alias_or_name == column.name]
-        if len(selects) > 1:
-            message = f"Column reference '{column}' is ambiguous ({len(selects)} possible options)"
-            raise exception.SqlLeafException(message)
-        if selects:
-            select = selects[0]
-        elif scope.expression.is_star:
-            select = exp.Star()
-        else:
-            select = scope.expression
-
-    parent_pivot_aliases = []
-    pivot_columns = []
-    pivot_column_mapping = {}
-    pivots = scope.pivots
-    pivot = pivots[0] if len(pivots) == 1 and not pivots[0].unpivot else None
-    if pivot:
-        # For each aggregation function, the pivot creates a new column for each field in category
-        # combined with the aggfunc. So the columns parsed have this order: cat_a_value_sum, cat_a,
-        # b_value_sum, b. Because of this step wise manner the aggfunc 'sum(value) as value_sum'
-        # belongs to the column indices 0, 2, and the aggfunc 'max(price)' without an alias belongs
-        # to the column indices 1, 3. Here, only the columns used in the aggregations are of interest
-        # in the lineage, so lookup the pivot column name by index and map that with the columns used
-        # in the aggregation.
-        #
-        # Example: PIVOT (SUM(value) AS value_sum, MAX(price)) FOR category IN ('a' AS cat_a, 'b')
-        pivot_columns = pivot.args["columns"]
-        pivot_aggs_count = len(pivot.expressions)
-
-        for i, agg in enumerate(pivot.expressions):
-            agg_cols = list(agg.find_all(exp.Column))
-            for col_index in range(i, len(pivot_columns), pivot_aggs_count):
-                pivot_column_mapping[pivot_columns[col_index].name] = agg_cols
-
-        parent_pivot_aliases.append(pivot.alias)
+    select = get_select(column, scope)
+    pivot, pivot_column_mapping = get_pivot(scope)
 
     if isinstance(scope.expression, exp.Subquery):
         for source in scope.subquery_scopes:
@@ -175,21 +93,20 @@ def to_node(
                 column=column,
                 scope=source,
                 query=query,
-                dialect=dialect,
                 upstream=upstream,
                 source_name=source_name,
-                reference_node_name=reference_node_name,
-                trim_selects=trim_selects,
             )
     if isinstance(scope.expression, exp.SetOperation):
+        # UNION, EXCEPT, etc
         name = type(scope.expression).__name__.upper()
+        # TODO: skip this if possible?; it's dropped by outside func
         if not upstream:
             upstream = Node(
                 name=name,
                 column=column,
                 source=scope.expression,
                 expression=select,
-                parent_pivot_aliases=parent_pivot_aliases,
+                pivot=pivot,
             )
             logger.debug("[6] Created Node '%s'", column)
 
@@ -197,7 +114,7 @@ def to_node(
             column
             if isinstance(column, int)
             else next(
-                (i for i, select in enumerate(scope.expression.selects) if select.alias_or_name == column.name or select.is_star),
+                (i for i, sel in enumerate(scope.expression.selects) if sel.alias_or_name == column.name),
                 -1,  # mypy will not allow a None here, but a negative index should never be returned
             )
         )
@@ -210,23 +127,10 @@ def to_node(
                 column=index,
                 scope=s,
                 query=query,
-                dialect=dialect,
                 upstream=upstream,
                 source_name=source_name,
-                reference_node_name=reference_node_name,
-                trim_selects=trim_selects,
             )
-
         return upstream
-
-    if trim_selects and isinstance(scope.expression, exp.Select):
-        # For better ergonomics in our node labels, replace the full select with
-        # a version that has only the column we care about.
-        #   "x", SELECT x, y FROM foo
-        #     => "x", SELECT x FROM foo
-        source = t.cast(exp.Expression, scope.expression.select(select, append=False))
-    else:
-        source = scope.expression
 
     # Create the node for this step in the lineage chain, and attach it to the previous one.
     node = Node(
@@ -235,8 +139,7 @@ def to_node(
         source=select,
         expression=select,
         source_name=source_name or "",
-        reference_node_name=reference_node_name or "",
-        parent_pivot_aliases=parent_pivot_aliases,
+        pivot=pivot,
     )
     logger.debug("[1] Created Node '%s', Expr: %s, Id: %s", column, select.sql(), id(node))
     if upstream:
@@ -248,7 +151,7 @@ def to_node(
     for subquery in find_all_in_scope(select, exp.UNWRAPPED_QUERIES):
         subquery_scope = subquery_scopes.get(id(subquery))
         if not subquery_scope:
-            logger.warning("Unknown subquery scope: %s", subquery.sql(dialect=dialect))
+            logger.warning("Unknown subquery scope: %s", subquery.sql(dialect=query.dialect))
             continue
 
         for name in subquery.named_selects:
@@ -256,60 +159,23 @@ def to_node(
                 column=exp.column(name),
                 scope=subquery_scope,
                 query=query,
-                dialect=dialect,
                 upstream=node,
-                trim_selects=trim_selects,
             )
-
-    # if the select is a star add all scope sources as downstreams
-    if select.is_star:
-        for source in scope.sources.values():
-            if isinstance(source, Scope):
-                source = source.expression
-            n = Node(
-                name=_to_node_name(select),
-                column=column,
-                source=source,
-                upstream=[node],
-                expression=source,
-                parent_pivot_aliases=parent_pivot_aliases,
-            )
-            node.downstream.append(n)
-            logger.debug("[2] Created Node from star: %s", node.name)
 
     # Find all columns that went into creating this one to list their lineage nodes.
     source_columns = list(find_all_in_scope(select, exp.Column))
     seen_source_columns = []
 
+    source = scope.expression
     # If the source is a UDTF find columns used in the UTDF to generate the table
     if isinstance(source, exp.UDTF):
         source_columns.extend(list(set(source.find_all(exp.Column))))
-        derived_tables = [source.expression.parent for source in scope.sources.values() if isinstance(source, Scope) and source.is_derived_table]
-    else:
-        derived_tables = scope.derived_tables
-
-    source_names = {dt.alias: dt.comments[0].split()[1] for dt in derived_tables if dt.comments and dt.comments[0].startswith("source: ")}
 
     for c in source_columns:
         table = c.table
         source = scope.sources.get(table)
 
-        # Change the column's source table to be its fully qualified name, not its alias,
-        # so that the ColumnNode can be created with complete information
-        _c = c.copy()
-        if isinstance(source, exp.Table):
-            if source.catalog:
-                c.set("catalog", exp.to_identifier(source.catalog))
-            if source.db:
-                c.set("db", exp.to_identifier(source.db))
-            if source.name:
-                if dialect == "snowflake":
-                    if source.this.args.get("quoted", False):  # exp.Identifier
-                        c.set("table", exp.to_identifier(source.name))
-                else:
-                    c.set("table", exp.to_identifier(source.name))
-            if _c != c:
-                logger.debug(f"Renamed node {_c.sql()} to {c.sql()}")
+        rename_table(c, source, query.dialect)
 
         if c in seen_source_columns:
             continue
@@ -318,10 +184,9 @@ def to_node(
             node.is_parent_a_derived_table = True
 
         if isinstance(source, Scope):
-            reference_node_name = None
-            if source.scope_type == ScopeType.DERIVED_TABLE and table not in source_names:
-                reference_node_name = table
-            elif isinstance(source.expression, exp.Values):
+            selected_node = None
+
+            if isinstance(source.expression, exp.Values):
                 # SELECT FROM (VALUES())
                 node.is_parent_a_derived_table = True
             elif source.scope_type == ScopeType.CTE:
@@ -330,15 +195,14 @@ def to_node(
                     message = f"Table '{table}' is referenced but there is no FROM containing it."
                     raise exception.SqlLeafException(message=message)
 
-                reference_node_name = selected_node.name if selected_node else None
                 # Use the CTE's name instead of its alias
-                c.args["table"] = exp.to_identifier(reference_node_name)
+                c.args["table"] = exp.to_identifier(selected_node.name)
                 node.is_parent_a_cte = True
                 logger.debug("Set node to be a CTE.")
 
                 # Check if the parent is a recursive CTE
                 for cte in source.parent.ctes:
-                    if cte.alias_or_name == reference_node_name:
+                    if cte.alias_or_name == selected_node.name:
                         with_: exp.With = cte.parent
                         if with_.recursive:
                             node.is_parent_a_recursive_cte = with_.recursive
@@ -354,18 +218,15 @@ def to_node(
                 column=c,
                 scope=source,
                 query=query,
-                dialect=dialect,
-                scope_name=reference_node_name,
+                scope_name=selected_node,
                 upstream=node,
-                source_name=source_names.get(table) or source_name,
-                reference_node_name=reference_node_name,
-                trim_selects=trim_selects,
+                source_name=source_name,
             )
         elif pivot and pivot.alias_or_name == c.table:
             downstream_columns = []
 
             column_name = c.name
-            if any(column_name == pivot_column.name for pivot_column in pivot_columns):
+            if any(column_name == pivot_column.name for pivot_column in pivot.args["columns"]):
                 downstream_columns.extend(pivot_column_mapping[column_name])
             else:
                 # The column is not in the pivot, so it must be an implicit column of the
@@ -382,22 +243,19 @@ def to_node(
                         scope=source,
                         query=query,
                         scope_name=table,
-                        dialect=dialect,
                         upstream=node,
-                        source_name=source_names.get(table) or source_name,
-                        reference_node_name=reference_node_name,
-                        trim_selects=trim_selects,
+                        # source_name=source_names.get(table) or source_name,
+                        source_name=source_name,
                     )
                 else:
                     source = source or exp.Placeholder()
                     n = Node(
                         name=_to_node_name(downstream_column),
-                        # name=downstream_column.sql(),
                         column=downstream_column,
                         source=source,
                         upstream=[node],
                         expression=source,
-                        parent_pivot_aliases=parent_pivot_aliases,
+                        pivot=pivot,
                     )
                     node.downstream.append(n)
                     logger.debug("[4] Created Node '%s' downstream of '%s'", n.name, node.name)
@@ -426,7 +284,7 @@ def to_node(
                 source=source,
                 upstream=[node],
                 expression=source,
-                parent_pivot_aliases=parent_pivot_aliases,
+                pivot=pivot,
             )
             if isinstance(source, exp.Table) and "rows_from" in source.args:
                 n.is_parent_a_derived_table = True
@@ -437,6 +295,74 @@ def to_node(
         seen_source_columns.append(c)
 
     return node
+
+
+def get_select(column, scope):
+    if isinstance(column, int):
+        select = scope.expression.selects[column]
+    else:
+        if isinstance(scope.expression, exp.Values):
+            # SELECT FROM (VALUES ())
+            selects = [scope.expression]
+        else:
+            selects = [select for select in scope.expression.selects if select.alias_or_name == column.name]
+        if len(selects) > 1:
+            message = f"Column reference '{column}' is ambiguous ({len(selects)} possible options)"
+            raise exception.SqlLeafException(message)
+        if selects:
+            select = selects[0]
+        else:
+            select = scope.expression
+    return select
+
+
+def get_pivot(scope: Scope) -> t.Tuple[exp.Pivot, dict]:
+    """
+    Get information related to PIVOT statements.
+    """
+    pivot_column_mapping = {}
+    pivots = scope.pivots
+    pivot = pivots[0] if len(pivots) == 1 and not pivots[0].unpivot else None
+    if pivot:
+        # For each aggregation function, the pivot creates a new column for each field in category
+        # combined with the aggfunc. So the columns parsed have this order: cat_a_value_sum, cat_a,
+        # b_value_sum, b. Because of this step wise manner the aggfunc 'sum(value) as value_sum'
+        # belongs to the column indices 0, 2, and the aggfunc 'max(price)' without an alias belongs
+        # to the column indices 1, 3. Here, only the columns used in the aggregations are of interest
+        # in the lineage, so lookup the pivot column name by index and map that with the columns used
+        # in the aggregation.
+        #
+        # Example: PIVOT (SUM(value) AS value_sum, MAX(price)) FOR category IN ('a' AS cat_a, 'b')
+        pivot_columns = pivot.args["columns"]
+        pivot_aggs_count = len(pivot.expressions)
+
+        for i, agg in enumerate(pivot.expressions):
+            agg_cols = list(agg.find_all(exp.Column))
+            for col_index in range(i, len(pivot_columns), pivot_aggs_count):
+                pivot_column_mapping[pivot_columns[col_index].name] = agg_cols
+
+    return pivot, pivot_column_mapping
+
+
+def rename_table(c: exp.Column, source, dialect: str):
+    """
+    Change the column's source table to be its fully qualified name, not its alias,
+    so that the ColumnNode is provided complete information.
+    """
+    if isinstance(source, exp.Table):
+        _c = c.copy()
+        if source.catalog:
+            c.set("catalog", exp.to_identifier(source.catalog))
+        if source.db:
+            c.set("db", exp.to_identifier(source.db))
+        if source.name:
+            if dialect == "snowflake":
+                if source.this.args.get("quoted", False):  # exp.Identifier
+                    c.set("table", exp.to_identifier(source.name))
+            else:
+                c.set("table", exp.to_identifier(source.name))
+        if _c != c:
+            logger.debug(f"Renamed node {_c.sql()} to {c.sql()}")
 
 
 def _to_node_name(expr):

@@ -14,6 +14,7 @@ from sqlleaf import (
     util,
     mappings,
     sqlglot_lineage,
+    exception,
 )
 
 from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery
@@ -97,6 +98,8 @@ def generate_column_lineage_for_query(
     # Copy since lineage() transforms columns for generate() to work (see c.set()). TODO: Move all transforms into transform()
     statement_lineage = statement.copy()
     scope = build_scope(statement_lineage)
+    if not scope:
+        raise exception.SqlGlotException("Cannot build scope. Expression must be a SELECT")
 
     select_idx = 0
     for col_def in child_columns:
@@ -137,12 +140,8 @@ def generate_column_lineage_for_query(
         # trim_selects=false -> 10x faster, skips re-parsing
         lin = sqlglot_lineage.lineage(
             column=col_name,
-            sql=statement_lineage,
             query=query,
             scope=scope,
-            dialect=query.dialect,
-            schema=object_mapping,
-            trim_selects=False,
         )
 
         """
