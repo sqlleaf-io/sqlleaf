@@ -141,9 +141,19 @@ CREATE TRIGGER
 CREATE TYPE
 - not supported by sqlglot
 
-- COPY 
-  - [ ] FROM
-  - [ ] TO
+COPY
+  Sources:
+    - [ ] Table
+    - [ ] Table with named columns
+    - [ ] SELECT
+    - [ ] VALUES
+    - [ ] INSERT|UPDATE|MERGE|DELETE .. RETURNING
+    - [ ] STDIN
+  Targets:
+    - [ ] STDOUT
+    - [ ] Table
+    - [ ] Table with named columns
+    - [ ] PROGRAM
 
 DO
 - not supported by sqlglot
