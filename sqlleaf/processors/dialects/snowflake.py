@@ -3,9 +3,11 @@ from __future__ import annotations
 import logging
 import typing as t
 from dataclasses import replace
+from functools import singledispatchmethod
 
 from sqlglot import exp
 
+from sqlleaf import exception
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import (
     NodeAttributes,
@@ -20,7 +22,12 @@ logger = logging.getLogger("sqlleaf")
 class SnowflakeBaseGenerator(BaseGenerator):
     dialect = "snowflake"
 
-    def process_put(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @singledispatchmethod
+    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        return super().process(expr, processor_ctx, ctx)
+
+    @process.register
+    def process_put(self, cls: exp.Put, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         PUT 'file:///tmp/data/mydata.csv' @my_int_stage;
         - Creates two nodes: FileNode and StageNode
@@ -36,7 +43,8 @@ class SnowflakeBaseGenerator(BaseGenerator):
 
         return file_node, [stage_node]
 
-    def process_column(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_column(self, cls: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         If the source is actually a Stage, don't try to create a Column.
         """
@@ -48,4 +56,4 @@ class SnowflakeBaseGenerator(BaseGenerator):
                 parent_node_attrs = StageNode(processor_ctx=stage_ctx, ctx=ctx)
                 return parent_node_attrs, []
 
-        return super().process_column(processor_ctx, ctx)
+        return super().process_column(None, processor_ctx, ctx)

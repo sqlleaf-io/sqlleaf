@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import typing as t
 from dataclasses import replace
+from functools import singledispatchmethod
 
 from sqlglot import exp
 from sqlglot.optimizer import Scope
@@ -34,38 +35,9 @@ class BaseGenerator:
     _dialects = {}
     dialect = ""
 
-    def get_expression_processors(self) -> t.Dict:
-        """
-        These are processed in the order they are defined.
-        This is due to subclasses generally needing to be processed first.
-        """
-        skip = (exp.DataType, exp.Identifier)
-        return {
-            exp.Placeholder: self.process_placeholder,
-            exp.Array: self.process_array,
-            (exp.JSONExtract, exp.JSONBExtract): self.process_json,
-            exp.Window: self.process_window,
-            (exp.Literal, exp.Boolean): self.process_literal,
-            exp.Star: self.process_star,
-            exp.Cast: self.process_cast,
-            exp.Null: self.process_null,
-            exp.Neg: self.process_neg,
-            exp.Anonymous: self.process_anonymous,
-            exp.Case: self.process_case,
-            exp.Var: self.process_var,
-            exp.Func: self.process_function,
-            exp.Binary: self.process_binary,
-            # exp.Identifier: self.process_identifier,
-            exp.Column: self.process_column,
-            exp.Table: self.process_table,
-            exp.WithinGroup: self.process_within_group,
-            exp.Select: self.process_select,
-            exp.Interval: self.process_interval,
-            exp.ColumnDef: self.process_column_def,
-            exp.Values: self.process_values,
-            exp.Pivot: self.process_pivot,
-            skip: self.skip,
-        }
+    @singledispatchmethod
+    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        raise exception.SqlLeafException(message=f"Unhandled expression type: {type(expr)}")
 
     def __init_subclass__(cls, **kwargs):
         """Automatically registers subclasses when they are defined."""
@@ -80,24 +52,14 @@ class BaseGenerator:
             raise exception.SqlLeafException("Unknown dialect: '%s'" % class_name)
         return target_class()
 
-
-    def get_processor(self, expr: exp.Expression):
-        """
-        Find the processor for the expression.
-        We iterate over the list in order because earlier processors (usually subclasses)
-        often take precedence.
-        """
-        for types, processor in self.get_expression_processors().items():
-            if isinstance(expr, types):
-                return processor
-        return None
-
-    def process_function(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_function(self, cls: exp.Func, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         node_attrs = FunctionNode(processor_ctx, ctx)
         args = util.get_function_args(expr=processor_ctx.expr)
         return node_attrs, args
 
-    def process_placeholder(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_placeholder(self, cls: exp.Placeholder, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         CREATE PROCEDURE proc(v_amount INT) AS
         SELECT v_amount     <-- placeholder
@@ -108,7 +70,8 @@ class BaseGenerator:
         node_attrs = VariableNode(processor_ctx, ctx)
         return node_attrs, []
 
-    def process_array(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_array(self, cls: exp.Array, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT ARRAY[1,2,3]
         """
@@ -117,7 +80,8 @@ class BaseGenerator:
         node_attrs = LiteralNode(name=values, processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_window(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_window(self, cls: exp.Window, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT ROW_NUMBER() OVER (ORDER BY name DESC) AS amount
         """
@@ -129,7 +93,9 @@ class BaseGenerator:
         node_attrs = WindowNode(processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_literal(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register(exp.Literal)
+    @process.register(exp.Boolean)
+    def process_literal(self, cls: exp.Literal, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         select 'hello' as greeting
         """
@@ -137,25 +103,29 @@ class BaseGenerator:
         node_attrs = LiteralNode(name=expr.sql(), processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_star(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_star(self, cls: exp.Star, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         select count(*) as cnt
         """
         node_attrs = StarNode(processor_ctx, ctx)
         return node_attrs, []
 
-    def process_null(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_null(self, cls: exp.Null, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         node_attrs = NullNode(processor_ctx, ctx)
         return node_attrs, []
 
-    def process_cast(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_cast(self, cls: exp.Cast, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT col1::timestamp AS col1_time
         """
         processor_ctx_to = replace(processor_ctx, new_data_type=processor_ctx.expr.to)
-        return self.process_function(processor_ctx_to, ctx)
+        return self.process_function(None, processor_ctx_to, ctx)
 
-    def process_neg(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_neg(self, cls: exp.Neg, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT -10
         """
@@ -163,7 +133,8 @@ class BaseGenerator:
         node_attrs = LiteralNode(name="-" + expr.name, processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_anonymous(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_anonymous(self, cls: exp.Anonymous, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         Either user-defined functions or sequence functions.
 
@@ -215,24 +186,27 @@ class BaseGenerator:
 
         return node_attrs, node_args
 
-    def process_within_group(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_within_group(self, cls: exp.WithinGroup, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT MODE() WITHIN GROUP (ORDER BY name DESC) AS name
         """
         expr: exp.WithinGroup = processor_ctx.expr
         processor_ctx = replace(processor_ctx, expr=expr.this)
 
-        parent, children = self.process_function(processor_ctx, ctx)
+        parent, children = self.process_function(None, processor_ctx, ctx)
         children = list(expr.expression.find_all(exp.Column))  # expr.expression is type(exp.Order)
         return parent, children
 
-    def process_select(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_select(self, cls: exp.Select, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT (SELECT 1) AS name
         """
         return None, []
 
-    def process_case(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_case(self, cls: exp.Case, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT CASE WHEN count(*) > 1 THEN 1 ELSE 0 END AS my_var
         """
@@ -243,7 +217,8 @@ class BaseGenerator:
         children = [default] + thens
         return None, children
 
-    def process_binary(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_binary(self, cls: exp.Binary, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT 1 + 2 AS age
         """
@@ -252,21 +227,23 @@ class BaseGenerator:
             # Process this as a UDF
             logger.debug("Found exp.Dot inside exp.Binary")
             processor_ctx = replace(processor_ctx, expr=expr.right)
-            return self.process_anonymous(processor_ctx, ctx)
+            return self.process_anonymous(None, processor_ctx, ctx)
 
         node_attrs = FunctionNode(processor_ctx, ctx)
         args = [expr.left, expr.right]
 
         return node_attrs, args
 
-    def process_var(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_var(self, cls: exp.Var, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         A variable in a stored procedure or UDF, or the keyword 'DEFAULT'
         """
         node_attrs = VarNode(processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_column(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_column(self, cls: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         expr: exp.Column = processor_ctx.expr
         scope = processor_ctx.scope
         if scope:
@@ -306,11 +283,13 @@ class BaseGenerator:
 
         return node_attrs, []
 
-    def process_table(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_table(self, cls: exp.Table, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         logger.debug(f"Skipping exp.Table: {str(processor_ctx.expr)}")
         return None, []
 
-    def process_pivot(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_pivot(self, cls: exp.Pivot, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT * FROM (SELECT  ...) PIVOT ( ... )
         """
@@ -332,7 +311,9 @@ class BaseGenerator:
 
         return None, downstream_columns
 
-    def process_json(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register(exp.JSONExtract)
+    @process.register(exp.JSONBExtract)
+    def process_json(self, cls: exp.JSONExtract, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         expr: exp.JSONExtract = processor_ctx.expr
         node_attrs = JsonPathNode(processor_ctx=processor_ctx, ctx=ctx)
 
@@ -343,15 +324,21 @@ class BaseGenerator:
 
         return node_attrs, [source]
 
-    def process_interval(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_interval(self, cls: exp.Interval, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         node_attrs = IntervalNode(processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
-    def process_column_def(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        logger.debug(f"Skipping exp.ColumnDef: {str(processor_ctx.expr)}")
+    @process.register(exp.DataType)
+    @process.register(exp.Identifier)
+    @process.register(exp.ColumnDef)
+    @process.register(exp.Table)
+    def skip(self, cls, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        logger.debug(f"Skipping expression: {str(processor_ctx.expr)}")
         return None, []
 
-    def process_values(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_values(self, cls: exp.Values, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT FROM (VALUES ())
         """
@@ -366,10 +353,6 @@ class BaseGenerator:
             return None, value_exprs
 
         return None, []
-
-    def skip(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        logger.debug("Skipping expression {}".format(str(processor_ctx.expr)))
-        return processor_ctx.child_node_attrs, []
 
 
 def is_node_a_placeholder(expr: exp.Column, query: Query) -> bool:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import typing as t
 from dataclasses import replace
+from functools import singledispatchmethod
 
 from sqlglot import exp
 
@@ -19,7 +20,12 @@ logger = logging.getLogger("sqlleaf")
 class PostgresBaseGenerator(BaseGenerator):
     dialect = "postgres"
 
-    def process_table(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @singledispatchmethod
+    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        return super().process(expr, processor_ctx, ctx)
+
+    @process.register
+    def process_table(self, cls: exp.Table, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         expr: exp.Table = processor_ctx.expr
         if "rows_from" in expr.args:
             downstream_exprs = []
@@ -39,9 +45,10 @@ class PostgresBaseGenerator(BaseGenerator):
             # A table function inside a 'ROWS FROM'
             return None, [expr.this]
 
-        return super().process_table(processor_ctx, ctx)
+        return super().process_table(None, processor_ctx, ctx)
 
-    def process_column_def(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    @process.register
+    def process_column_def(self, cls: exp.ColumnDef, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         expr: exp.ColumnDef = processor_ctx.expr
         processor_ctx = replace(processor_ctx, new_data_type=expr.kind)
 

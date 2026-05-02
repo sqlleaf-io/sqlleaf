@@ -50,7 +50,7 @@ def generate_column_lineage_for_query(
     generator = BaseGenerator.from_dialect(query.dialect)
     if isinstance(query, PutQuery):
         # Short-circuit this function; it's not an insert
-        file_node, [stage_node] = generator.process_put(processor_ctx, ctx)
+        file_node, [stage_node] = generator.process_put(None, processor_ctx, ctx)
         add_nodes_with_edge_to_graph(file_node, stage_node, graph, query, ctx)
         return graph
 
@@ -229,14 +229,11 @@ def walk_expressions_and_build_graph(
     """
     expr = processor_ctx.expr
 
-    processor_func = generator.get_processor(expr)
-    if not processor_func:
-        raise ValueError(f"Unknown expression type: {type(expr)}")
-
     nodes_created = []
     child_node_attrs = processor_ctx.child_node_attrs
-    logger.debug(f"Generating node '{expr.__class__.__name__}' with generator '{processor_func.__name__}'")
-    parent_node_attrs, grandparent_exprs = processor_func(processor_ctx=processor_ctx, ctx=ctx)
+    # TODO: upgrade Python to easily access the called function
+    # logger.debug(f"Generating node '{expr.__class__.__name__}' with generator '{processor_func.__name__}'")
+    parent_node_attrs, grandparent_exprs = generator.process(expr, processor_ctx, ctx)
 
     if parent_node_attrs:
         node_exists = processor_ctx.graph.has_node(parent_node_attrs.full_name)
@@ -333,7 +330,7 @@ def find_inherited_columns(column_node: ColumnNode, generator: BaseGenerator, pr
         col_def = [c for c in inh_table.get_column_defs() if c.name == column_node.column][0]
         col = util.column_def_to_column(column_def=col_def, parent_table=inh_table.child_table)
         col_ctx = replace(processor_ctx, expr=col, scope=None)  # Remove the node so that the column isn't renamed
-        inh_node_attrs, _ = generator.process_column(col_ctx, ctx)
+        inh_node_attrs, _ = generator.process_column(None, col_ctx, ctx)
         inherited_column_nodes.append(inh_node_attrs)
 
     return inherited_column_nodes
