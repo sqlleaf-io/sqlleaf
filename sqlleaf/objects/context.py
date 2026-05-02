@@ -7,7 +7,7 @@ import networkx as nx
 from sqlglot import exp
 from sqlglot.optimizer import Scope
 
-from sqlleaf import util, mappings, sqlglot_lineage
+from sqlleaf import util, mappings
 
 if t.TYPE_CHECKING:
     from sqlleaf.objects.query_types import Query

@@ -3,14 +3,16 @@ import json
 import typing as t
 import networkx as nx
 
-from sqlleaf import mappings, util, lineage, path, types
+from sqlleaf import mappings, util, path, types
 
-from sqlleaf.objects.query_types import Query
+from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery, ProcedureQuery
 from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, new_graph
 from sqlleaf.path import LineagePath
-from sqlleaf.processors.collector import collect_queries
+from sqlleaf.processors import collector, transformer, generator
 
 logger = logging.getLogger("sqlleaf")
+
+QUERIES_WITH_LINEAGE = (InsertQuery, UpdateQuery, ViewQuery, CTASQuery, PutQuery, CopyQuery)
 
 
 class Lineage:
@@ -31,14 +33,25 @@ class Lineage:
         if not self.object_mapping:
             self.object_mapping = mappings.ObjectMapping(dialect=dialect)
 
-        parent_queries = collect_queries(sql, dialect, self.object_mapping)
+        parent_queries = collector.collect_queries(sql, dialect, self.object_mapping)
 
         for parent_query in parent_queries:
-            graph = lineage.get_lineage_for_query(parent_query, self.object_mapping)
+            graph = new_graph()
+            queries = parent_query.get_all_queries()
+
+            for query in queries:
+                # Transform every query, but only produce lineage for certain ones
+                if isinstance(query, QUERIES_WITH_LINEAGE):
+                    transformer.transform_query(query, self.object_mapping)
+                    generator.generate_column_lineage_for_query(query, graph, self.object_mapping)
+                query.set_to_original()
+
+            graph.graph["attrs"].add_query(parent_query)
+
             types.update_column_data_types(self.graph)
-            self.merge_graph(graph)
 
             # Associate the query with the graph even if it has no lineage
+            self.merge_graph(graph)
             self.graph.graph["attrs"].add_query(parent_query)
 
         self.paths = path.calculate_paths(graph=self.graph)

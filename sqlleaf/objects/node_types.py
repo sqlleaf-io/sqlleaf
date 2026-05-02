@@ -134,7 +134,7 @@ class ColumnNode(NodeAttributes):
             ctx=ctx,
         )
         self.source_scope: TableOrScopeType = None
-        self.has_child_scope: bool = False    # Whether the scope has further nodes to resolve/connect to
+        self.has_child_scope: bool = False    # Whether the query's source is inside an inner scope that still need to be resolved
         table_type = self.set_table_properties(catalog, schema, table, processor_ctx)
         self.table_type = table_type
 

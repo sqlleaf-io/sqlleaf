@@ -68,7 +68,11 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     Parse a series of SQL statements provided as text.
     This includes tables, views, procedures, functions, sequences, etc.
 
-    The statements must be provided in the order in which they depend.
+    Each query may contain multiple child queries. For example, a stored procedure often
+    has multiple individual queries. Each of these individual queries may also have
+    subqueries. For example, a MERGE query often has INSERTs or UPDATEs in its WHEN clauses.
+
+    The statements must be provided in the order in which they depend on each other.
     If B depends on A, A must be created before B.
     """
     queries = {}

@@ -1,14 +1,14 @@
 # sqlleaf
 Extract detailed column-level lineage and SQL functions from SQL statements.
 
+#### This is currently under early development and is not yet 0.0.1. Expect breaking changes!
+
 This extends the wonderful open source SQL transpiler [sqlglot](https://github.com/tobymao/sqlglot) with the following features:
 - detailed column-level lineage with columns, views, functions, literals and other objects as data sources 
 - extraction of SQL functions - their names, arguments and positions
 - parsing of stored procedures and user-defined functions
 - representation of SQL queries as networkx graphs for simple analysis
 - useful traversal functions for common lineage use cases
-
-This is currently under early development and is not yet 0.0.1
 
 ### Contents
 * [Example](#example)
@@ -267,10 +267,10 @@ column[processed.age]
 You can add your own functionality for per-dialect processing functions:
 
 ```python
-from sqlleaf.objects.node_types import LineageGenerator
+from sqlleaf.objects.node_types import BaseGenerator
 from sqlleaf.objects.node_types import ColumnNode
 
-class MyCustomBuilder(LineageGenerator):
+class MyCustomBuilder(BaseGenerator):
     dialect = 'my_dialect'
     
     # Example: Override the Column node creation logic
