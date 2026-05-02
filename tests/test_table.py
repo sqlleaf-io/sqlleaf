@@ -30,8 +30,6 @@ def test__table_like_table(holder):
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
-    assert len(nodes) == 7
-    assert len(edges) == 4
     assert paths == [
         ["column[fruit.a.name]", "column[fruit.b_like_a.name]"],
         ["literal[42]", "column[fruit.b_like_a.age]"],
@@ -43,6 +41,8 @@ def test__table_like_table(holder):
     assert (cols[0].name, cols[-1].name) == ("label", "color")
     cols = queries[2].column_defs
     assert (cols[0].name, cols[-1].name) == ("name", "color")
+    assert len(nodes) == 7
+    assert len(edges) == 4
 
 
 # TODO: LIKE with column default overrides
@@ -65,7 +65,6 @@ def test__table_like_table_generated(holder):
     edges = h.get_edges()
     paths = h.get_friendly_paths()
 
-    assert len(edges) == 5
     assert paths == [
         ['literal["banana"]', "column[fruit.b_like_a.name]", "function[CONCAT()]", "column[fruit.b_like_a.gen]"],
         ['literal["fruit"]', "column[fruit.b_like_a.kind]", "function[CONCAT()]", "column[fruit.b_like_a.gen]"],
@@ -78,6 +77,8 @@ def test__table_like_table_generated(holder):
         ],
         arr=nodes,
     )
+    assert len(nodes) == 6
+    assert len(edges) == 5
 
 
 def test__table_with_default_columns(holder):
@@ -99,6 +100,8 @@ def test__table_with_default_columns(holder):
         ["literal[10]", "column[fruit.size]"],
         ["literal[42]", "column[fruit.age]"],
     ]
+    assert len(nodes) == 7
+    assert len(edges) == 4
 
 
 # TODO: LIKE + INHERITS with same columns
@@ -130,7 +133,6 @@ def test__table_inherits_with_select(holder):
     edges = h.get_edges()
     paths = h.get_friendly_paths()
 
-    assert len(nodes) == 10
     assert paths == [
         ['literal["apple"]', "column[fruit.b.type]", "column[fruit.b_only.type]"],
         ["column[fruit.b.kind]", "column[fruit.all.name]"],
@@ -139,6 +141,8 @@ def test__table_inherits_with_select(holder):
         ["column[fruit.x.label]", "column[fruit.x_y.value]"],
         ["column[fruit.y.label]", "column[fruit.x_y.value]"],
     ]
+    assert len(nodes) == 10
+    assert len(edges) == 7
 
 
 def test__table_inherits_with_merge(holder):
@@ -182,7 +186,6 @@ def test__table_inherits_with_merge(holder):
     edges = h.get_edges()
     paths = h.get_friendly_paths()
 
-    assert len(nodes) == 8
     assert paths == [
         ["column[a.type]", "column[b.type]"],
         ["column[a.type]", "column[fruit.x.type]"],
@@ -190,6 +193,8 @@ def test__table_inherits_with_merge(holder):
         ["column[a.kind]", "column[b.kind]"],
         ["column[b.color]", "column[c.color]"],
     ]
+    assert len(nodes) == 8
+    assert len(edges) == 8
 
 
 # Not supported by sqlglot: 'Falling back to Command'
@@ -223,6 +228,7 @@ def test__table_of_type(holder):
     """
     h = holder()
     h.generate(queries, dialect=DIALECT)
+    assert len(h.get_queries()) == 0
 
 
 # TODO: UPDATE and SELECT from different inherited tables in the same query
@@ -236,8 +242,12 @@ def test__simple_sequence(holder):
     """
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
     queries = h.get_queries_created()
     paths = h.get_friendly_paths()
 
     assert paths == [["sequence[serial]", "column[fruit.raw.age]"]]
     assert [SequenceQuery, InsertQuery] == list(map(type, queries))
+    assert len(nodes) == 2
+    assert len(edges) == 1

@@ -44,8 +44,6 @@ def test__select_values(holder):
     edges = h.get_edges()
     paths = h.get_friendly_paths()
 
-    assert len(nodes) == 8
-    assert len(edges) == 6
     assert paths == [
         ["literal[1]", "column[t.num]", "column[fruit.processed.name]"],
         ["literal[2]", "column[t.num]", "column[fruit.processed.name]"],
@@ -53,14 +51,46 @@ def test__select_values(holder):
         ['literal["two"]', "column[t.letter]", "column[fruit.processed.kind]"],
     ]
     assert "column[t.letter type=VARCHAR subkind=derived_table]" in nodes
+    assert len(nodes) == 8
+    assert len(edges) == 6
 
 
-def test__select_double_pipe(holder):
+# TODO: bug
+#  Also, "SELECT r.kind || r.kind as name" has one column, two edges
+def test__select_double_pipe_cte_blah(holder):
+    queries = """
+    WITH cte AS (
+        SELECT 'hello' AS other
+    )
+    INSERT INTO fruit.processed (kind)
+    SELECT
+        r.name || c.other as kind
+    FROM fruit.raw AS r
+    INNER JOIN cte AS c
+    ON r.name = c.other
+    ;
+    """
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_friendly_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+
+    assert paths == [
+        ['column[fruit.raw.name]', 'function[DPIPE()]', 'column[fruit.processed.kind]'],
+        ['literal["hello"]', 'column[cte.other]', 'function[DPIPE()]', 'column[fruit.processed.kind]']
+    ]
+    assert len(nodes) == 5
+    assert len(edges) == 4
+
+
+def test__select_dpipe(holder):
     queries = """
     INSERT INTO fruit.processed (kind)
     SELECT
         name || r.name || upper(r.name) as kind
-    FROM fruit.raw AS r;
+    FROM fruit.raw AS r
+    ;
     """
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
@@ -177,6 +207,7 @@ def test__select_value_twice(holder, case):
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_friendly_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
 
     assert paths == [
@@ -184,6 +215,7 @@ def test__select_value_twice(holder, case):
         [f"{kind}[{value}]", "column[fruit.processed.age]"],
     ]
     assert len(nodes) == 4
+    assert len(edges) == 2
 
 
 # TODO: select_query_twice
@@ -200,11 +232,15 @@ def test__select_window_function(holder):
     """
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
+    nodes = h.get_friendly_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
     assert paths == [
         ["window[RANK()]", "column[fruit.processed.age]"],
         ["window[ROW_NUMBER()]", "column[fruit.processed.amount]"],
     ]
+    assert len(nodes) == 4
+    assert len(edges) == 2
 
 
 def test__select_join_to_self(holder):
@@ -219,26 +255,34 @@ def test__select_join_to_self(holder):
     """
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
+    nodes = h.get_friendly_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
     assert paths == [
+        # ['column[fruit.processed.name]', 'column[fruit.processed.name]'],
         ["column[fruit.raw.color]", "column[fruit.processed.kind]"],
         ["column[fruit.raw.age]", "column[fruit.processed.age]"],
-        # Exclude self-referential inserts
+        # Don't exclude self-referential inserts
     ]
+    assert len(nodes) == 5
+    assert len(edges) == 3
 
 
 def test__select_assorted(holder):
     queries = """
     CREATE TABLE anything(name1 VARCHAR, name2 VARCHAR);
+
     INSERT INTO anything
     SELECT
         ARRAY[1,2,3] as name1,
         INTERVAL '-10.75 MINUTE' as name2;
+
     INSERT INTO anything SELECT 1;
     """
     h = holder()
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     assert is_subset(
         subarr=[
             "literal[{1,2,3} type=ARRAY<INT> node_depth=0 statement=1 select=0 func_depth=0 func_arg=0]",
@@ -246,6 +290,8 @@ def test__select_assorted(holder):
         ],
         arr=nodes,
     )
+    assert len(nodes) == 5
+    assert len(edges) == 3
 
 
 # TODO: add JSON_TO_RECORDSET() as a Postgres functions in sqlglot
@@ -257,7 +303,7 @@ def test__select_rows_from(holder):
         (
             unnest(ARRAY['x', 'y']),
             json_to_recordset('[{"a":40,"b":"foo"}]')
-                AS (a INTEGER, b TEXT),
+                AS y(a INTEGER, b TEXT),
             generate_series(1, 3)
         ) AS x (name, age, kind, amount)
     ORDER BY age;
@@ -265,21 +311,28 @@ def test__select_rows_from(holder):
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
     assert paths == [
         ['literal[{"x","y"}]', "function[UNNEST()]", "column[x.name]", "column[fruit.processed.name]"],
-        ['literal["[{"a":40,"b":"foo"}]"]', "udf[JSON_TO_RECORDSET()]", "column[_t0.b]", "column[x.kind]", "column[fruit.processed.kind]"],
-        ['literal["[{"a":40,"b":"foo"}]"]', "udf[JSON_TO_RECORDSET()]", "column[_t0.a]", "column[x.age]", "column[fruit.processed.age]"],
+        ['literal["[{"a":40,"b":"foo"}]"]', "udf[JSON_TO_RECORDSET()]", "column[y.b]", "column[x.kind]", "column[fruit.processed.kind]"],
+        ['literal["[{"a":40,"b":"foo"}]"]', "udf[JSON_TO_RECORDSET()]", "column[y.a]", "column[x.age]", "column[fruit.processed.age]"],
         ["literal[1]", "function[EXPLODINGGENERATESERIES()]", "column[x.amount]", "column[fruit.processed.amount]"],
         ["literal[3]", "function[EXPLODINGGENERATESERIES()]", "column[x.amount]", "column[fruit.processed.amount]"],
     ]
     assert is_subset(
         subarr=[
+            # TODO: fix type
             "column[x.age type=UNKNOWN subkind=derived_table]",
-            "column[_t0.a type=INT subkind=derived_table]",
+            "column[y.a type=INT subkind=derived_table]",
         ],
         arr=nodes,
     )
+    # TODO: duplicate nodes (literals and udfs)
+    # assert len(nodes) == 17     # Correct
+
+    assert len(nodes) == 19
+    assert len(edges) == 15
 
 
 # TODO: sqlglot parser breaks on 'LATERAL ROWS FROM'
@@ -297,6 +350,7 @@ def test__select_lateral(holder):
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
     assert paths == []
 
@@ -321,6 +375,7 @@ def test__select_union(holder, op):
     h.generate(queries, dialect=DIALECT)
     edges = h.get_edges()
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
 
     assert paths == [

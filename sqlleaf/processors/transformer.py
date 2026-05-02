@@ -9,7 +9,7 @@ from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 from sqlleaf import exception, mappings, util
 from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query
 
-logger = logging.getLogger("sqleaf")
+logger = logging.getLogger("sqlleaf")
 
 
 def transform_query(query: Query, object_mapping: mappings.ObjectMapping):

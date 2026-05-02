@@ -6,7 +6,7 @@ from sqlglot import exp
 
 from sqlleaf import util, mappings
 
-logger = logging.getLogger("sqleaf")
+logger = logging.getLogger("sqlleaf")
 
 
 class Query:

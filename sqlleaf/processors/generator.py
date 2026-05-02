@@ -5,8 +5,9 @@ from dataclasses import replace
 
 import networkx as nx
 from sqlglot import exp
+from sqlglot.optimizer import Scope
 
-from sqlleaf import util
+from sqlleaf import util, exception, sqlglot_lineage
 
 from sqlleaf.objects.query_types import Query, UpdateQuery, CopyQuery, ProcedureQuery
 from sqlleaf.objects.context import ProcessorContext, NodeContext
@@ -29,7 +30,7 @@ from sqlleaf.objects.node_types import (
     FileNode,
 )
 
-logger = logging.getLogger("sqleaf")
+logger = logging.getLogger("sqlleaf")
 
 
 class LineageGenerator:
@@ -66,6 +67,7 @@ class LineageGenerator:
             exp.Interval: self.process_interval,
             exp.ColumnDef: self.process_column_def,
             exp.Values: self.process_values,
+            exp.Pivot: self.process_pivot,
             skip: self.skip,
         }
 
@@ -94,6 +96,45 @@ class LineageGenerator:
                 return processor
         return None
 
+    def walk_query_and_build_graph(self, child_node_attrs: ColumnNode, scope: Scope, processor_ctx: ProcessorContext, ctx: NodeContext, node_depth: int):
+        """
+        Walk over each query (and its subqueries) to collect the expressions for each column.
+        """
+        processor_ctx = replace(processor_ctx, scope=scope, child_node_attrs=child_node_attrs)
+        query = processor_ctx.query
+
+        for node in sqlglot_lineage.walk_query_scope(
+            column=child_node_attrs.expr,
+            scope=scope,
+        ):
+            logger.debug("----")
+            # Node depth distinguishes identical query elements across CTEs
+
+            if isinstance(query, CopyQuery) and query.is_target_a_stage:
+                # Set the column to be a StageNode (if applicable) since we now have the lineage from using the dummy column
+                processor_ctx = replace(processor_ctx, expr=query.target.this)
+                child_node_attrs = StageNode(processor_ctx=processor_ctx, ctx=ctx)
+
+            logger.debug(f"Processing node expr: {node.expression}, Id: {id(node)}")
+            logger.debug(f"Child node: {child_node_attrs.full_name}")
+
+            total_depth = node_depth + node.current_depth
+            child_ctx = replace(ctx, node_depth=total_depth)
+            processor_ctx = replace(
+                processor_ctx,
+                expr=node.expression,
+                scope=node.scope,
+                child_node_attrs=child_node_attrs,
+            )
+
+            nodes = self.walk_tree_and_build_graph(processor_ctx, child_ctx)
+            if nodes:
+                logger.debug(f"Produced nodes: {[n.full_name for n in nodes]}")
+
+                for n in nodes:
+                    if isinstance(n, ColumnNode) and n.has_child_scope:
+                        self.walk_query_and_build_graph(n, n.source_scope, processor_ctx, ctx, node_depth=total_depth + 1)
+
     def walk_tree_and_build_graph(
         self,
         processor_ctx: ProcessorContext,
@@ -102,19 +143,28 @@ class LineageGenerator:
         """
         Collect the leaves of an expression so that we can get the full set of data sources and function arguments
         for a particular column.
+
+        For example, given the query:
+            INSERT INTO x (name)
+            SELECT UPPER(CONCAT('p', 'q')) AS name
+        We construct the graph by moving 'upwards' from the target (child) to source (parent):
+        - Start with child 'x.name'. Its parent is 'UPPER', so we create a FunctionNode.
+        - Next, the parent of UPPER is CONCAT, which is also x.name's grandparent. This too becomes a FunctionNode.
+        - Finally, the parents of CONCAT are 'p' and 'q'. These become LiteralNodes.
         """
-        nodes_created = []
         expr = processor_ctx.expr
-        child_node_attrs = processor_ctx.child_node_attrs
 
         processor_func = self.get_processor(expr)
         if not processor_func:
             raise ValueError(f"Unknown expression type: {type(expr)}")
 
+        nodes_created = []
+        child_node_attrs = processor_ctx.child_node_attrs
         logger.debug(f"Generating node '{expr.__class__.__name__}' with generator '{processor_func.__name__}'")
-        parent_node_attrs, children = processor_func(processor_ctx=processor_ctx, ctx=ctx)
+        parent_node_attrs, grandparent_exprs = processor_func(processor_ctx=processor_ctx, ctx=ctx)
 
         if parent_node_attrs:
+            node_exists = processor_ctx.graph.has_node(parent_node_attrs.full_name)
             """
             Considering Postgres inheritance operates 'behind the scenes' outside of the query's syntax), we are
             justified in implementing this behaviour in our own way: by mapping each inherited column to the query's columns.
@@ -131,16 +181,18 @@ class LineageGenerator:
                         processor_ctx.query,
                         ctx,
                     )
-            nodes_created.append(parent_node_attrs)
+            if not node_exists:
+                nodes_created.append(parent_node_attrs)
             if parent_node_attrs.kind in ["function", "udf"]:
                 ctx = replace(ctx, function_depth=ctx.function_depth + 1)
         else:
             # Re-use the parent
             parent_node_attrs = child_node_attrs
 
-        for child_expr in children:
-            child_processor_ctx = replace(processor_ctx, expr=child_expr, child_node_attrs=parent_node_attrs)
-            nodes = self.walk_tree_and_build_graph(child_processor_ctx, ctx)
+        # Recursively process any grandparent expressions
+        for grandparent_expr in grandparent_exprs:
+            grandparent_processor_ctx = replace(processor_ctx, expr=grandparent_expr, child_node_attrs=parent_node_attrs)
+            nodes = self.walk_tree_and_build_graph(grandparent_processor_ctx, ctx)
             nodes_created.extend(nodes)
             ctx = replace(ctx, function_arg_index=ctx.function_arg_index + 1)
 
@@ -149,15 +201,16 @@ class LineageGenerator:
     def find_inherited_columns_for_parent(self, column_node: ColumnNode, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.List[ColumnNode]:
         """
         Find the inherited columns for a particular column, but only for the form 'SELECT FROM ONLY <table>'
+        TODO fix comments etc
         """
-        inherited_columns = []
-        if not isinstance(column_node, ColumnNode) or column_node.table_type == "cte":  # (processor_ctx.node and processor_ctx.node.is_parent_a_cte):
-            return inherited_columns
+        if not isinstance(column_node, ColumnNode) or column_node.table_type == "cte":
+            return []
 
         # Find the column's exp.Table in the expression, and check if it has 'ONLY' set
         if not column_node.expr.parent_select:
-            return inherited_columns
+            return []
 
+        inherited_columns = []
         for table in column_node.expr.parent_select.find_all(exp.Table):
             if table.catalog == column_node.catalog and table.db == column_node.schema and table.name == column_node.table:
                 parent_table = table
@@ -201,7 +254,7 @@ class LineageGenerator:
         for inh_table in table_query.inherited_by:
             col_def = [c for c in inh_table.get_column_defs() if c.name == column_node.column][0]
             col = util.column_def_to_column(column_def=col_def, parent_table=inh_table.child_table)
-            col_ctx = replace(processor_ctx, expr=col)
+            col_ctx = replace(processor_ctx, expr=col, scope=None)   # Remove the node so that the column isn't renamed
             inh_node_attrs, _ = self.process_column(col_ctx, ctx)
             inherited_column_nodes.append(inh_node_attrs)
 
@@ -383,10 +436,12 @@ class LineageGenerator:
 
     def process_column(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         expr: exp.Column = processor_ctx.expr
-
-        if processor_ctx.node and processor_ctx.node.pivot and expr.table == processor_ctx.node.pivot.alias:
-            # On a path toward a pivot. Skip until we reach it.
-            return None, []
+        scope = processor_ctx.scope
+        if scope:
+            pivots = scope.pivots
+            pivot: exp.Pivot = pivots[0] if len(pivots) == 1 and not pivots[0].unpivot else None
+            if pivot and pivot.alias_or_name == expr.table:
+                return None, [pivot]
 
         if is_node_a_placeholder(expr=expr, query=processor_ctx.query):
             # The actual placeholder is processed elsewhere
@@ -400,11 +455,50 @@ class LineageGenerator:
             processor_ctx=processor_ctx,
             ctx=ctx,
         )
+
+        # Rename the column's table/schema/catalog to be fully qualified
+        if processor_ctx.scope:
+            scope = processor_ctx.scope
+            source_table = dict(scope.references)[expr.table]
+
+            assert isinstance(source_table, (exp.Table, exp.Values, exp.Subquery))
+
+            if not isinstance(source_table, exp.Subquery):
+                node_attrs.rename_table(source_table, processor_ctx.query.dialect)
+
+        if isinstance(node_attrs.source_scope, exp.Table):
+            # Traverse into the table (esp. needed by "ROWS FROM")
+            return node_attrs, [node_attrs.source_scope]
+
+        # TODO: PIVOT is Redshift-specific! Move to dialect
+
         return node_attrs, []
 
     def process_table(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         logger.debug(f"Skipping exp.Table: {str(processor_ctx.expr)}")
         return None, []
+
+    def process_pivot(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        """
+        SELECT * FROM (SELECT  ...) PIVOT ( ... )
+        """
+        # TODO: process agg funcs
+        expr: exp.Pivot = processor_ctx.expr
+
+        pivot, pivot_column_mapping = get_pivot(processor_ctx.scope)
+
+        downstream_columns = []
+        c = processor_ctx.scope.columns[ctx.select_index]
+
+        column_name = c.name
+        if any(column_name == pivot_column.name for pivot_column in pivot.args["columns"]):
+            downstream_columns.extend(pivot_column_mapping[column_name])
+        else:
+            # The column is not in the pivot, so it must be an implicit column of the
+            # pivoted source -- adapt column to be from the implicit pivoted source.
+            downstream_columns.append(exp.column(c.this, table=pivot.parent.alias_or_name))
+
+        return None, downstream_columns
 
     def process_json(self, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         expr: exp.JSONExtract = processor_ctx.expr
@@ -430,12 +524,12 @@ class LineageGenerator:
         SELECT FROM (VALUES ())
         """
         expr: exp.Values = processor_ctx.expr
-        node = processor_ctx.node
+        column: exp.Column = processor_ctx.child_node_attrs.expr
 
         # Select the correct values from the list according to the column's position in the alias
         if isinstance(expr.parent, exp.From):
             table_alias = expr.args["alias"]
-            col_idx = [c.name for c in table_alias.columns].index(node.column.name)
+            col_idx = [c.name for c in table_alias.columns].index(column.name)
             value_exprs = [tup_expr.expressions[col_idx] for tup_expr in expr.expressions]
             return None, value_exprs
 
@@ -447,8 +541,8 @@ class LineageGenerator:
 
     def add_nodes_with_edge_to_graph(
         self,
-        parent_node_attrs,
-        child_node_attrs,
+        parent_node_attrs: NodeAttributes,
+        child_node_attrs: NodeAttributes,
         graph: nx.MultiDiGraph,
         query: Query,
         ctx: NodeContext,
@@ -524,11 +618,12 @@ class PostgresLineageGenerator(LineageGenerator):
 
         if isinstance(expr.parent, exp.TableAlias):
             # An alias to a table function inside 'ROWS FROM'
-            table_alias = expr.parent.alias
+            table_alias = expr.parent.alias_or_name
             if not table_alias:
-                # The table alias isn't found in any attribute. Get it from the SQL string.
-                # e.g. "_t0" from "_t0(x, y)"
-                table_alias = expr.parent.sql().split("(")[0]
+                # The table alias isn't found, return an error. e.g. the "a" in "a(x, y)"
+                (before, token, after) = expr.parent.sql().partition("(")
+                table_alias = f"{token}{after}"
+                raise exception.SqlLeafException(f"The table alias '{table_alias}' must have a name.")
 
             node_attrs = ColumnNode(
                 catalog="",
@@ -596,3 +691,31 @@ def is_node_a_placeholder(expr: exp.Column, query: Query) -> bool:
             logger.debug(f"Skipping Column {expr.name} as it is a Placeholder")
             return True
     return False
+
+
+def get_pivot(scope: Scope) -> t.Tuple[exp.Pivot, dict]:
+    """
+    Get information related to PIVOT statements.
+    """
+    pivot_column_mapping = {}
+    pivots = scope.pivots
+    pivot: exp.Pivot = pivots[0] if len(pivots) == 1 and not pivots[0].unpivot else None
+    if pivot:
+        # For each aggregation function, the pivot creates a new column for each field in category
+        # combined with the aggfunc. So the columns parsed have this order: cat_a_value_sum, cat_a,
+        # b_value_sum, b. Because of this step wise manner the aggfunc 'sum(value) as value_sum'
+        # belongs to the column indices 0, 2, and the aggfunc 'max(price)' without an alias belongs
+        # to the column indices 1, 3. Here, only the columns used in the aggregations are of interest
+        # in the lineage, so lookup the pivot column name by index and map that with the columns used
+        # in the aggregation.
+        #
+        # Example: PIVOT (SUM(value) AS value_sum, MAX(price)) FOR category IN ('a' AS cat_a, 'b')
+        pivot_columns = pivot.args["columns"]
+        pivot_aggs_count = len(pivot.expressions)
+
+        for i, agg in enumerate(pivot.expressions):
+            agg_cols = list(agg.find_all(exp.Column))
+            for col_index in range(i, len(pivot_columns), pivot_aggs_count):
+                pivot_column_mapping[pivot_columns[col_index].name] = agg_cols
+
+    return pivot, pivot_column_mapping

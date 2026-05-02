@@ -3,14 +3,14 @@ import json
 import typing as t
 import networkx as nx
 
-from sqlleaf import mappings, util, lineage
+from sqlleaf import mappings, util, lineage, path, types
 
 from sqlleaf.objects.query_types import Query
 from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, new_graph
 from sqlleaf.path import LineagePath
 from sqlleaf.processors.collector import collect_queries
 
-logger = logging.getLogger("sqleaf")
+logger = logging.getLogger("sqlleaf")
 
 
 class Lineage:
@@ -35,13 +35,13 @@ class Lineage:
 
         for parent_query in parent_queries:
             graph = lineage.get_lineage_for_query(parent_query, self.object_mapping)
-            lineage.update_column_data_types(self.graph)
+            types.update_column_data_types(self.graph)
             self.merge_graph(graph)
 
             # Associate the query with the graph even if it has no lineage
             self.graph.graph["attrs"].add_query(parent_query)
 
-        self.paths = lineage.calculate_paths(graph=self.graph)
+        self.paths = path.calculate_paths(graph=self.graph)
 
     def merge_graph(self, subgraph: nx.MultiDiGraph):
         """
@@ -68,7 +68,9 @@ class Lineage:
 
     def get_edges(self) -> t.List[EdgeAttributes]:
         edges = [data["attrs"] for par, chi, data in self.graph.edges(data=True)]
-        edges = sorted(edges, key=lambda e: (e.select_idx, e.path_idx))
+        edges = sorted(edges, key=lambda e: (e.parent.full_name, e.child.full_name))
+        for edge in edges:
+            logger.debug(f"Edge: {edge.parent.friendly_name} -> {edge.child.friendly_name}")
         return edges
 
     def get_nodes(self) -> t.List[NodeAttributes]:
@@ -148,7 +150,7 @@ class Lineage:
             └── 4
         """
         g = self.graph.reverse()  # We print from the leaves to the roots
-        root_columns = lineage.get_root_nodes(g)
+        root_columns = util.get_root_nodes(g)
         seen = set()
         symbol = "└──"
 
@@ -193,8 +195,8 @@ class Lineage:
         Example output:
           column[fruit.raw.apple] -> function[UPPER()] - column[fruit.processed.apple]
         """
-        for path in self.get_paths():
-            nodes = path.node_hops()
+        for _path in self.get_paths():
+            nodes = _path.node_hops()
 
             for i, node in enumerate(nodes):
                 print(node.friendly_name, end="")

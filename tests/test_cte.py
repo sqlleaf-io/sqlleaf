@@ -29,13 +29,39 @@ def test__cte_simple(holder):
     """
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
-    nodes = h.get_friendly_node_names()
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
 
     assert paths == [
         ['literal["hello"]', "column[cte_names.name]", "column[fruit.processed.name]"],
         ["column[fruit.raw.age]", "function[LOWER()]", "column[cte_names.age]", "column[fruit.processed.age]"],
     ]
+    assert len(nodes) == 7
+    assert len(edges) == 5
+
+
+# TODO: similar, but multiple layers of CTEs
+def test__cte_duplicate_columns(holder):
+    queries = """
+    WITH cte_names AS (
+        SELECT 1 as number
+    )
+    INSERT INTO fruit.processed (age)
+    SELECT c.number + c.number AS age
+    FROM cte_names c;
+    """
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+
+    assert paths == [   # Wrong: should be two paths that are identical
+        ['literal[1]', 'column[cte_names.number]', 'function[ADD()]', 'column[fruit.processed.age]']
+    ]
+    assert len(nodes) == 4
+    assert len(edges) == 4
 
 
 def test__cte_join_same_names(holder):
@@ -56,13 +82,16 @@ def test__cte_join_same_names(holder):
     """
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
-    nodes = h.get_friendly_node_names()
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()   # TODO: add to all tests below
     paths = h.get_friendly_paths()
 
     assert paths == [
         ["column[fruit.raw.kind]", "function[DPIPE()]", "function[LOWER()]", "column[cte_names.kind]", "column[fruit.processed.kind]"],
         ["column[fruit.old.kind]", "function[DPIPE()]", "function[LOWER()]", "column[cte_names.kind]", "column[fruit.processed.kind]"],
     ]
+    assert len(nodes) == 6
+    assert len(edges) == 5
 
 
 def test__cte_same_functions_different_levels(holder):
@@ -84,8 +113,8 @@ def test__cte_same_functions_different_levels(holder):
     """
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
-    nodes = h.get_friendly_node_names()
-
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
@@ -95,6 +124,8 @@ def test__cte_same_functions_different_levels(holder):
         ['literal["a"]', "column[cte_names.a_name]", "function[LOWER()]", "column[fruit.processed.name2]"],
         ['literal["a"]', "function[LOWER()]", "column[cte_names.a_name1]", "function[LOWER()]", "function[LOWER()]", "column[fruit.processed.name3]"],
     ]
+    assert len(nodes) == 15
+    assert len(edges) == 11
 
 
 def test__cte_two_identical(holder):
@@ -112,12 +143,14 @@ def test__cte_two_identical(holder):
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
     assert paths == [['literal["a"]', "column[cte1.name]", "column[fruit.processed.name]"]]
     assert [InsertQuery] == list(map(type, queries))
-
+    assert len(nodes) == 3
+    assert len(edges) == 2
 
 def test__cte_two_same_name_different_query(holder):
     queries = """
@@ -134,6 +167,7 @@ def test__cte_two_same_name_different_query(holder):
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
@@ -149,6 +183,8 @@ def test__cte_two_same_name_different_query(holder):
         arr=nodes,
     )
     assert [InsertQuery, InsertQuery] == list(map(type, queries))
+    assert len(nodes) == 6
+    assert len(edges) == 4
 
 
 def test__cte_chained(holder):
@@ -165,9 +201,12 @@ def test__cte_chained(holder):
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
 
     assert paths == [["column[fruit.raw.name]", "column[cte_one.name]", "column[cte_two.name]", "column[fruit.processed.name]"]]
+    assert len(nodes) == 4
+    assert len(edges) == 3
 
 
 def test__cte_nested(holder):
@@ -184,9 +223,12 @@ def test__cte_nested(holder):
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
 
     assert paths == [["column[fruit.raw.name]", "column[inner_cte.name]", "column[outer_cte.name]", "column[fruit.processed.name]"]]
+    assert len(nodes) == 4
+    assert len(edges) == 3
 
 
 def test__cte_update_returning_with_old_and_new_aliases(holder):
@@ -203,6 +245,7 @@ def test__cte_update_returning_with_old_and_new_aliases(holder):
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
@@ -210,9 +253,10 @@ def test__cte_update_returning_with_old_and_new_aliases(holder):
         ["column[fruit.raw.age]", "column[first_cte.age]", "column[fruit.processed.age]"],
         ['literal["pear"]', "column[fruit.raw.name]"],
     ]
-    assert len(nodes) == 5
     assert [UpdateQuery] == list(map(type, queries))
     assert [UpdateQuery] == list(map(type, queries[0].child_queries))
+    assert len(nodes) == 5
+    assert len(edges) == 3
 
 
 def test__cte_fails_for_returning_unaliased_function(holder):
@@ -270,6 +314,7 @@ def test__cte_update_with_two_updates_returning(holder):
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
@@ -278,9 +323,10 @@ def test__cte_update_with_two_updates_returning(holder):
         ['literal["pear"]', "column[fruit.raw.name]"],
         ['literal["tomato"]', "column[fruit.raw.name]"],
     ]
-    assert len(nodes) == 6
     assert [UpdateQuery] == list(map(type, queries))
     assert [UpdateQuery, UpdateQuery] == list(map(type, queries[0].child_queries))
+    assert len(nodes) == 6
+    assert len(edges) == 4
 
 
 def test__cte_merge(holder):
@@ -300,14 +346,19 @@ def test__cte_merge(holder):
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
-    assert paths == [["column[fruit.raw.name]", "column[fruit.processed.name]"], ["column[fruit.raw.kind]", "column[fruit.processed.label]"]]
-    assert len(nodes) == 4
+    assert paths == [
+        ["column[fruit.raw.name]", "column[fruit.processed.name]"],
+        ["column[fruit.raw.kind]", "column[fruit.processed.label]"]
+    ]
     assert [SelectQuery] == list(map(type, queries))
     assert [MergeQuery] == list(map(type, queries[0].child_queries))
     assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries[0].child_queries))
+    assert len(nodes) == 4
+    assert len(edges) == 2
 
 
 # TODO: add function merge_action() as system function (not UDF)
@@ -334,6 +385,7 @@ def test__cte_merge_returning(holder):
     h = holder(with_tables=False)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
@@ -348,6 +400,8 @@ def test__cte_merge_returning(holder):
         queries[3].statement_transformed.sql(dialect=DIALECT)
         == "WITH cte AS (SELECT MERGE_ACTION() AS action, t.name AS name, t.kind AS kind, s.name2 AS name2, s.kind2 AS kind2 FROM fruit AS t JOIN drink AS s ON s.name2 = t.name) INSERT INTO fruit_drink (action, name, kind, name2, kind2) SELECT cte.action AS action, cte.name AS name, cte.kind AS kind, cte.name2 AS name2, cte.kind2 AS kind2 FROM cte AS cte"
     )
+    assert len(nodes) == 15
+    assert len(edges) == 12
 
 
 def test__cte_merge_with_update_and_insert(holder):
@@ -379,6 +433,7 @@ def test__cte_merge_with_update_and_insert(holder):
     assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries))
 
 
+# TODO: bug. This should return fruit.raw.kind's default value
 def test__cte_insert_returning(holder):
     queries = """
     WITH insert_cte AS (
@@ -392,6 +447,7 @@ def test__cte_insert_returning(holder):
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
@@ -399,9 +455,10 @@ def test__cte_insert_returning(holder):
         ["column[fruit.raw.kind]", "column[insert_cte.kind]", "column[fruit.processed.kind]"],
         ['literal["orange"]', "column[fruit.raw.name]", "column[insert_cte.name]", "column[fruit.processed.name]"],
     ]
-    assert len(nodes) == 7
     assert [InsertQuery] == list(map(type, queries))
     assert [InsertQuery] == list(map(type, queries[0].child_queries))
+    assert len(nodes) == 7
+    assert len(edges) == 5
 
 
 def test__cte_insert_conflict_returning(holder):
@@ -420,6 +477,7 @@ def test__cte_insert_conflict_returning(holder):
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
@@ -430,6 +488,7 @@ def test__cte_insert_conflict_returning(holder):
         ['literal["pear"]', "function[LOWER()]", "column[fruit.raw.name]", "column[insert_cte.name]", "column[fruit.processed.name]"],
     ]
     assert len(nodes) == 11
+    assert len(edges) == 8
 
 
 def test__cte_insert(holder):
@@ -448,15 +507,21 @@ def test__cte_insert(holder):
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
     queries = h.get_queries_created()
 
-    assert paths == [['literal["orange"]', "column[fruit.raw.name]"], ['literal["banana"]', "column[fruit.raw.name]"]]
-    assert len(nodes) == 3
+    assert paths == [
+        ['literal["orange"]', "column[fruit.raw.name]"],
+        ['literal["banana"]', "column[fruit.raw.name]"]
+    ]
     assert [SelectQuery] == list(map(type, queries))
     assert [InsertQuery, UpdateQuery] == list(map(type, queries[0].child_queries))
+    assert len(nodes) == 3
+    assert len(edges) == 2
 
 
+# TODO: requires new algorithm
 def test__cte_recursive_view(holder):
     queries = """
     WITH RECURSIVE numbers AS (

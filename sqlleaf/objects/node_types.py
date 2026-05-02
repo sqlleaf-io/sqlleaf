@@ -4,13 +4,15 @@ import typing as t
 
 import networkx as nx
 from sqlglot import exp
+from sqlglot.optimizer.scope import ScopeType, Scope
 
-from sqlleaf import util
+from sqlleaf import util, exception
 from sqlleaf.objects.context import NodeContext, ProcessorContext
 from sqlleaf.objects.query_types import Query
 
-logger = logging.getLogger("sqleaf")
+logger = logging.getLogger("sqlleaf")
 
+TableOrScopeType = exp.Table | Scope
 
 def new_graph() -> nx.MultiDiGraph:
     """
@@ -131,32 +133,96 @@ class ColumnNode(NodeAttributes):
             expr=expr,
             ctx=ctx,
         )
-        table_type = self._table_type(catalog, schema, table, processor_ctx)
-        if table_type == "cte":
-            self.member = processor_ctx.node.recursive_cte_member_kind
-
+        self.source_scope: TableOrScopeType = None
+        self.has_child_scope: bool = False    # Whether the scope has further nodes to resolve/connect to
+        table_type = self.set_table_properties(catalog, schema, table, processor_ctx)
         self.table_type = table_type
 
-    def get_column_constraint_expression(self) -> exp.ColumnConstraintKind:
-        """
-        Get the DEFAULT or GENERATED expression for this column, if it exists.
-        There is only one, but this
-        """
-        types = (exp.DefaultColumnConstraint, exp.ComputedColumnConstraint)
-        constraints = [c.kind for c in self.expr.constraints if isinstance(c.kind, types)]
-        return constraints[0] if constraints else None
+        # TODO: change to 'parent_kind', 'parent_subkind'
 
-    def _table_type(self, catalog, schema, table, processor_ctx) -> str:
+        # TODO: new algorithm
+        # if table_type == "cte":
+        #     self.member = processor_ctx.node.recursive_cte_member_kind
+
+
+    def rename_table(self, source: exp.Table | exp.Values, dialect: str):
+        """
+        Change the column's source table to be its fully qualified name, not its alias,
+        so that the ColumnNode is provided complete information.
+        """
+        column: exp.Column = self.expr
+        _c = column.copy()
+
+        if isinstance(source, exp.Table):
+            if source.catalog:
+                column.set("catalog", exp.to_identifier(source.catalog))
+            if source.db:
+                column.set("db", exp.to_identifier(source.db))
+            if source.name:
+                if dialect == "snowflake":
+                    if source.this.args.get("quoted", False):  # exp.Identifier
+                        column.set("table", exp.to_identifier(source.name))
+                else:
+                    column.set("table", exp.to_identifier(source.name))
+            if _c != column:
+                logger.debug(f"Renamed node {column.sql()} to {column.sql()}")
+
+            self.expr = column
+            self.catalog = column.catalog
+            self.schema = column.db
+            self.table = column.table
+
+    def set_table_properties(self, catalog, schema, table, processor_ctx: ProcessorContext) -> str:
         """
         Figure out the table's type (view/table) by inspecting the original query in the mapping.
         """
-        if processor_ctx.node:
-            if processor_ctx.node.is_parent_a_cte:
-                return "cte"
-            if processor_ctx.node.is_parent_a_derived_table:
+        scope = processor_ctx.scope
+        if scope:
+            source = scope.sources.get(table)
+            if not source:
+                # Nested 'rows_from' queries have their aliases in 'references'
+                self.source_scope = dict(scope.references)[table]
                 return "derived_table"
 
-        tokens = [catalog, schema, table]
+            self.source_scope = source
+
+            if isinstance(source, exp.Table):
+                if "rows_from" in source.args:
+                    return "derived_table"
+
+            elif isinstance(source, Scope):
+                self.has_child_scope = True
+
+                if isinstance(source.expression, exp.Values):
+                    return "derived_table"
+                elif source.scope_type == ScopeType.CTE:
+                    selected_table, _ = scope.selected_sources.get(table, (None, None))
+                    if not selected_table:
+                        message = f"Table '{table}' is referenced but there is no FROM containing it."
+                        raise exception.SqlLeafException(message=message)
+
+                    logger.debug("Set node to be a CTE.")
+
+                    # Check if the parent is a recursive CTE
+                    for cte in source.parent.ctes:
+                        if cte.alias_or_name == selected_table.name:
+                            with_: exp.With = cte.parent
+                            if with_.recursive:
+                                # TODO: requires new algorithm
+                                is_parent_a_recursive_cte = with_.recursive
+                                logger.debug("Set node to be a recursive CTE.")
+                            break
+
+                    return "cte"
+                elif source.scope_type == ScopeType.DERIVED_TABLE:
+                    # PIVOT. TODO: should this be its own object? pivot[]
+                    return "pivot"
+
+            tokens = [str(s) for s in source.parts]
+
+        else:
+            tokens = [catalog, schema, table]
+
         name = ".".join([tok for tok in tokens if tok])
         tab = exp.to_table(name, dialect=processor_ctx.query.dialect)
         query = processor_ctx.object_mapping.get_table_or_stage(table=tab, raise_on_missing=False)
@@ -166,7 +232,17 @@ class ColumnNode(NodeAttributes):
 
         if query.kind == "ctas":
             return "table"
+
         return query.kind
+
+    def get_column_constraint_expression(self) -> exp.ColumnConstraintKind:
+        """
+        Get the DEFAULT or GENERATED expression for this column, if it exists.
+        There is only one, but this
+        """
+        types = (exp.DefaultColumnConstraint, exp.ComputedColumnConstraint)
+        constraints = [c.kind for c in self.expr.constraints if isinstance(c.kind, types)]
+        return constraints[0] if constraints else None
 
     def get_name(self):
         tokens = [self.catalog, self.schema, self.table, self.column]
@@ -293,7 +369,7 @@ class VariableNode(NodeAttributes):
             kind="variable",
             data_type=processor_ctx.data_type,
             expr=processor_ctx.expr,
-            column=processor_ctx.node.name,
+            column='todo',
             ctx=ctx,
         )
 

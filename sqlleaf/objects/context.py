@@ -5,6 +5,7 @@ from dataclasses import dataclass, InitVar
 
 import networkx as nx
 from sqlglot import exp
+from sqlglot.optimizer import Scope
 
 from sqlleaf import util, mappings, sqlglot_lineage
 
@@ -12,7 +13,9 @@ if t.TYPE_CHECKING:
     from sqlleaf.objects.query_types import Query
     from sqlleaf.objects.node_types import NodeAttributes
 
-logger = logging.getLogger("sqleaf")
+logger = logging.getLogger("sqlleaf")
+
+TableOrScopeType = exp.Table | Scope
 
 
 @dataclass(frozen=True)
@@ -21,8 +24,8 @@ class ProcessorContext:
     object_mapping: mappings.ObjectMapping
     query: Query
     expr: exp.Expression
+    scope: TableOrScopeType
     data_type: exp.DataType = None
-    node: sqlglot_lineage.Node = None
     child_node_attrs: NodeAttributes = None
     # Override the data_type if needed
     new_data_type: InitVar[exp.DataType] = None

@@ -209,3 +209,7 @@ def get_function_args(expr: exp.Func):
     function_args = flatten(function_args)
     function_args = [arg for arg in function_args if arg and isinstance(arg, exp.Expression)]
     return function_args
+
+
+def get_root_nodes(graph: nx.MultiDiGraph) -> t.List[str]:
+    return [n for n in graph.nodes if graph.in_degree(n) == 0 and graph.out_degree(n) > 0]

@@ -30,11 +30,21 @@ def test__select_pivot(holder):
     h = holder()
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
     assert paths == [
-        ["column[source.age]", "column[target.john_average]"],
-        ["column[source.age]", "column[target.john_total]"],
-        ["column[source.age]", "column[target.mary_average]"],
-        ["column[source.age]", "column[target.mary_total]"],
+        ['column[source.age]', 'column[_0.age]', 'column[target.john_average]'],
+        ['column[source.age]', 'column[_0.age]', 'column[target.john_total]'],
+        ['column[source.age]', 'column[_0.age]', 'column[target.mary_average]'],
+        ['column[source.age]', 'column[_0.age]', 'column[target.mary_total]']
     ]
+    assert nodes == [
+        'column[_0.age type=INT subkind=pivot]',
+        'column[source.age type=INT subkind=table]',
+        'column[target.john_average type=DECIMAL(10, 2) subkind=table]',
+        'column[target.john_total type=INT subkind=table]',
+        'column[target.mary_average type=DECIMAL(10, 2) subkind=table]',
+        'column[target.mary_total type=INT subkind=table]'
+    ]
+    assert len(edges) == 5
     # TODO: the agg functions used inside the pivot are currently not extracted.

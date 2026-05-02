@@ -28,7 +28,7 @@ from sqlleaf.objects.query_types import (
 )
 from sqlleaf.processors.transformer import clean_stored_procedure_text
 
-logger = logging.getLogger("sqleaf")
+logger = logging.getLogger("sqlleaf")
 
 DMLQueryType = InsertQuery | UpdateQuery | MergeQuery | SelectQuery
 DMLExprType = exp.Insert | exp.Update | exp.Merge | exp.Select
