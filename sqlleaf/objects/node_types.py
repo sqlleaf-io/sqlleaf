@@ -2,7 +2,6 @@ from __future__ import annotations
 import logging
 import typing as t
 
-import networkx as nx
 from sqlglot import exp
 from sqlglot.optimizer.scope import ScopeType, Scope
 
@@ -14,11 +13,22 @@ logger = logging.getLogger("sqlleaf")
 
 TableOrScopeType = exp.Table | Scope
 
-def new_graph() -> nx.MultiDiGraph:
-    """
-    A graph has attributes along with its node and edges.
-    """
-    return nx.MultiDiGraph(attrs=GraphAttributes())
+from enum import StrEnum, auto
+
+class TableType(StrEnum):
+    TABLE = auto()
+    VIEW = auto()
+    CTE = auto()
+    DERIVED_TABLE = auto()
+    PIVOT = auto()
+    STAGE = auto()
+
+
+class TableSubtype(StrEnum):
+    RECURSIVE = auto()
+    TEMPORARY = auto()
+    EXTERNAL = auto()
+    MATERIALIZED = auto()
 
 
 class NodeAttributes:
@@ -40,7 +50,6 @@ class NodeAttributes:
         self.catalog = catalog
         self.schema = schema
         self.table = table
-        self.table_type = ""
         self.member = ""
         self.ctx = ctx
 
@@ -68,7 +77,6 @@ class NodeAttributes:
             self.table,
             self.column,
             self.data_type,
-            self.table_type,
             util.type_name(self.expr),
         ]
         name = "node:" + util.short_sha256_hash(":".join(fields))
@@ -84,7 +92,6 @@ class NodeAttributes:
             "column": self.column,
             "data_type": self.data_type,
             "kind": self.kind,
-            "table_type": self.table_type,
         }
 
 
@@ -133,10 +140,12 @@ class ColumnNode(NodeAttributes):
             expr=expr,
             ctx=ctx,
         )
+        self.parent_kind: str = ""
+        self.parent_subkind: str = ""
         self.source_scope: TableOrScopeType = None
         self.has_child_scope: bool = False    # Whether the query's source is inside an inner scope that still need to be resolved
-        table_type = self.set_table_properties(catalog, schema, table, processor_ctx)
-        self.table_type = table_type
+
+        self.set_table_properties(catalog, schema, table, processor_ctx)
 
         # TODO: change to 'parent_kind', 'parent_subkind'
 
@@ -172,7 +181,7 @@ class ColumnNode(NodeAttributes):
             self.schema = column.db
             self.table = column.table
 
-    def set_table_properties(self, catalog, schema, table, processor_ctx: ProcessorContext) -> str:
+    def set_table_properties(self, catalog, schema, table, processor_ctx: ProcessorContext):
         """
         Figure out the table's type (view/table) by inspecting the original query in the mapping.
         """
@@ -182,19 +191,22 @@ class ColumnNode(NodeAttributes):
             if not source:
                 # Nested 'rows_from' queries have their aliases in 'references'
                 self.source_scope = dict(scope.references)[table]
-                return "derived_table"
+                self.parent_kind = TableType.DERIVED_TABLE
+                return
 
-            self.source_scope = source
+            self.source_scope: TableOrScopeType = source
 
             if isinstance(source, exp.Table):
                 if "rows_from" in source.args:
-                    return "derived_table"
+                    self.parent_kind = TableType.DERIVED_TABLE
+                    return
 
             elif isinstance(source, Scope):
                 self.has_child_scope = True
 
                 if isinstance(source.expression, exp.Values):
-                    return "derived_table"
+                    self.parent_kind = TableType.DERIVED_TABLE
+                    return
                 elif source.scope_type == ScopeType.CTE:
                     selected_table, _ = scope.selected_sources.get(table, (None, None))
                     if not selected_table:
@@ -202,6 +214,7 @@ class ColumnNode(NodeAttributes):
                         raise exception.SqlLeafException(message=message)
 
                     logger.debug("Set node to be a CTE.")
+                    self.parent_kind = TableType.CTE
 
                     # Check if the parent is a recursive CTE
                     for cte in source.parent.ctes:
@@ -209,17 +222,17 @@ class ColumnNode(NodeAttributes):
                             with_: exp.With = cte.parent
                             if with_.recursive:
                                 # TODO: requires new algorithm
-                                is_parent_a_recursive_cte = with_.recursive
                                 logger.debug("Set node to be a recursive CTE.")
+                                self.parent_subkind = TableSubtype.RECURSIVE
                             break
+                    return
 
-                    return "cte"
                 elif source.scope_type == ScopeType.DERIVED_TABLE:
                     # PIVOT. TODO: should this be its own object? pivot[]
-                    return "pivot"
+                    self.parent_kind = TableType.PIVOT
+                    return
 
             tokens = [str(s) for s in source.parts]
-
         else:
             tokens = [catalog, schema, table]
 
@@ -227,13 +240,10 @@ class ColumnNode(NodeAttributes):
         tab = exp.to_table(name, dialect=processor_ctx.query.dialect)
         query = processor_ctx.object_mapping.get_table_or_stage(table=tab, raise_on_missing=False)
 
-        if not query:
-            return "table"
-
-        if query.kind == "ctas":
-            return "table"
-
-        return query.kind
+        if not query or query.kind == "ctas":
+            self.parent_kind = TableType.TABLE
+        else:
+            self.parent_kind = TableType(query.kind)
 
     def get_column_constraint_expression(self) -> exp.ColumnConstraintKind:
         """
@@ -253,16 +263,22 @@ class ColumnNode(NodeAttributes):
 
     @property
     def full_name(self):
-        if "cte" in self.table_type:
-            # A CTE name can be reused across statements
-            if self.member:
-                # Recursive CTE has the field 'member'
-                return self.wrap(
-                    f"{self.get_name()} type={self.data_type} subkind={self.table_type} member={self.member} statement={self.ctx.statement_index}"
-                )
-            return self.wrap(f"{self.get_name()} type={self.data_type} subkind={self.table_type} statement={self.ctx.statement_index}")
-        else:
-            return self.wrap(f"{self.get_name()} type={self.data_type} subkind={self.table_type}")
+        parts = [
+            self.get_name(),
+            f"type={self.data_type}",
+            f"kind={self.parent_kind}",
+        ]
+
+        if self.parent_subkind:
+            parts.append(f"subkind={self.parent_subkind}")
+
+        if self.parent_kind == TableType.CTE and self.parent_subkind == TableSubtype.RECURSIVE:
+            parts.append(f"member={self.member}")
+
+        if self.parent_kind == TableType.CTE:
+            parts.append(f"statement={self.ctx.statement_index}")
+
+        return self.wrap(" ".join(parts))
 
     @property
     def friendly_name(self):

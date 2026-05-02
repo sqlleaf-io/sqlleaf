@@ -50,7 +50,7 @@ def test__select_values(holder):
         ['literal["one"]', "column[t.letter]", "column[fruit.processed.kind]"],
         ['literal["two"]', "column[t.letter]", "column[fruit.processed.kind]"],
     ]
-    assert "column[t.letter type=VARCHAR subkind=derived_table]" in nodes
+    assert "column[t.letter type=VARCHAR kind=derived_table]" in nodes
     assert len(nodes) == 8
     assert len(edges) == 6
 
@@ -165,7 +165,7 @@ def test__select_hidden_system_columns(holder):
         ["column[fruit.raw.xmax]", "column[fruit.processed.amount]"],
         ["column[fruit.raw.xmax]", "column[fruit.processed.number]"],
     ]
-    assert "column[fruit.new.xmax type=OID subkind=table]" in nodes
+    assert "column[fruit.new.xmax type=OID kind=table]" in nodes
     assert len(nodes) == 9
     assert len(edges) == 5
 
@@ -323,8 +323,8 @@ def test__select_rows_from(holder):
     assert is_subset(
         subarr=[
             # TODO: fix type
-            "column[x.age type=UNKNOWN subkind=derived_table]",
-            "column[y.a type=INT subkind=derived_table]",
+            "column[x.age type=UNKNOWN kind=derived_table]",
+            "column[y.a type=INT kind=derived_table]",
         ],
         arr=nodes,
     )

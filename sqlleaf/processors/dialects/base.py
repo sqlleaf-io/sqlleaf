@@ -49,7 +49,7 @@ class BaseGenerator:
         """Instantiates a class from the registry by name."""
         target_class = cls._dialects.get(class_name)
         if not target_class:
-            raise exception.SqlLeafException("Unknown dialect: '%s'" % class_name)
+            raise exception.SqlLeafException(message=f"Unknown dialect: {class_name}")
         return target_class()
 
     @process.register

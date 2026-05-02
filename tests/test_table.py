@@ -71,9 +71,9 @@ def test__table_like_table_generated(holder):
     ]
     assert is_subset(
         subarr=[
-            "column[fruit.b_like_a.gen type=TEXT subkind=table]",
-            "column[fruit.b_like_a.kind type=TEXT subkind=table]",
-            "column[fruit.b_like_a.name type=VARCHAR subkind=table]",
+            "column[fruit.b_like_a.gen type=TEXT kind=table]",
+            "column[fruit.b_like_a.kind type=TEXT kind=table]",
+            "column[fruit.b_like_a.name type=VARCHAR kind=table]",
         ],
         arr=nodes,
     )

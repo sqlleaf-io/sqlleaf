@@ -15,7 +15,7 @@ if t.TYPE_CHECKING:
 
 from sqlleaf import util, exception, mappings
 from sqlleaf.objects.context import ProcessorContext, NodeContext
-from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, StageNode, ColumnNode, new_graph
+from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, StageNode, ColumnNode, TableType
 from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery, ProcedureQuery
 
 logger = logging.getLogger("sqlleaf")
@@ -276,7 +276,7 @@ def find_inherited_columns_for_parent(column_node: ColumnNode, generator: BaseGe
     Find the inherited columns for a particular column, but only for the form 'SELECT FROM ONLY <table>'
     TODO fix comments etc
     """
-    if not isinstance(column_node, ColumnNode) or column_node.table_type == "cte":
+    if not isinstance(column_node, ColumnNode) or column_node.parent_kind == TableType.CTE:
         return []
 
     # Find the column's exp.Table in the expression, and check if it has 'ONLY' set
@@ -301,7 +301,7 @@ def find_inherited_columns_for_child(column_node: ColumnNode, generator: BaseGen
     Find the inherited columns for a particular column, but only for the form 'MERGE|UPDATE ONLY <table>'
     """
     inherited_columns = []
-    if not isinstance(column_node, ColumnNode) or column_node.table_type == "cte":
+    if not isinstance(column_node, ColumnNode) or column_node.parent_kind == TableType.CTE:
         return inherited_columns
 
     # Only return inherited columns for UPDATE

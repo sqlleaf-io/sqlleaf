@@ -6,7 +6,7 @@ import networkx as nx
 from sqlleaf import mappings, util, path, types
 
 from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery, ProcedureQuery
-from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, new_graph
+from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, GraphAttributes
 from sqlleaf.path import LineagePath
 from sqlleaf.processors import collector, transformer, generator
 
@@ -217,3 +217,10 @@ class Lineage:
                     print(" -> ", end="")
                 else:
                     print("\n")
+
+
+def new_graph() -> nx.MultiDiGraph:
+    """
+    A graph has attributes along with its node and edges.
+    """
+    return nx.MultiDiGraph(attrs=GraphAttributes())

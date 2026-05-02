@@ -41,7 +41,6 @@ def test__cte_simple(holder):
     assert len(edges) == 5
 
 
-# TODO: similar, but multiple layers of CTEs
 def test__cte_duplicate_columns(holder):
     queries = """
     WITH cte_names AS (
@@ -83,7 +82,7 @@ def test__cte_join_same_names(holder):
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_full_node_names()
-    edges = h.get_edges()   # TODO: add to all tests below
+    edges = h.get_edges()
     paths = h.get_friendly_paths()
 
     assert paths == [
@@ -177,8 +176,8 @@ def test__cte_two_same_name_different_query(holder):
     ]
     assert is_subset(
         subarr=[
-            "column[cte1.name type=INT subkind=cte statement=0]",
-            "column[cte1.name type=INT subkind=cte statement=1]",
+            "column[cte1.name type=INT kind=cte statement=0]",
+            "column[cte1.name type=INT kind=cte statement=1]",
         ],
         arr=nodes,
     )
@@ -207,6 +206,32 @@ def test__cte_chained(holder):
     assert paths == [["column[fruit.raw.name]", "column[cte_one.name]", "column[cte_two.name]", "column[fruit.processed.name]"]]
     assert len(nodes) == 4
     assert len(edges) == 3
+
+
+def test__cte_chained_many_to_one(holder):
+    queries = """
+    WITH single AS (
+        SELECT '1' as name, '2' as kind
+    ),
+    multiple AS (
+        SELECT name || kind AS name, name AS label FROM single
+    )
+    INSERT INTO fruit.processed (name, label)
+    SELECT name, label FROM multiple;
+    """
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+
+    assert paths == [
+        ['literal["1"]', 'column[single.name]', 'column[multiple.label]', 'column[fruit.processed.label]'],
+        ['literal["1"]', 'column[single.name]', 'function[DPIPE()]', 'column[multiple.name]', 'column[fruit.processed.name]'],
+        ['literal["2"]', 'column[single.kind]', 'function[DPIPE()]', 'column[multiple.name]', 'column[fruit.processed.name]']
+    ]
+    assert len(nodes) == 9
+    assert len(edges) == 8
 
 
 def test__cte_nested(holder):
@@ -542,20 +567,20 @@ def test__cte_recursive_view(holder):
     assert paths == [
         [
             "literal[1 type=INT node_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
-            "column[numbers.n type=INT subkind=cte member=anchor statement=0]",
-            "column[fruit.processed.age type=INT subkind=table]",
+            "column[numbers.n type=INT kind=cte member=anchor statement=0]",
+            "column[fruit.processed.age type=INT kind=table]",
         ],
         [
             "literal[1 type=INT node_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
-            "column[numbers.n type=INT subkind=cte member=anchor statement=0]",
+            "column[numbers.n type=INT kind=cte member=anchor statement=0]",
             "function[ADD() type=INT node_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
-            "column[numbers.n type=INT subkind=cte member=recursive statement=0]",
-            "column[fruit.processed.age type=INT subkind=table]",
+            "column[numbers.n type=INT kind=cte member=recursive statement=0]",
+            "column[fruit.processed.age type=INT kind=table]",
         ],
         [
             "literal[1 type=INT node_depth=1 statement=0 select=0 func_depth=1 func_arg=1]",
             "function[ADD() type=INT node_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
-            "column[numbers.n type=INT subkind=cte member=recursive statement=0]",
-            "column[fruit.processed.age type=INT subkind=table]",
+            "column[numbers.n type=INT kind=cte member=recursive statement=0]",
+            "column[fruit.processed.age type=INT kind=table]",
         ],
     ]
