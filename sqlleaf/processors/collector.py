@@ -94,7 +94,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
 
         if stmt.key == "create":
             if stmt.kind == "TABLE":
-                if isinstance(stmt.expression, exp.Select):
+                if isinstance(stmt.expression, (exp.Select, exp.Values)):
                     kind = "ctas"
                 else:
                     kind = "table"
@@ -252,15 +252,17 @@ def _set_column_defs(query: TableQuery, object_mapping: mappings.ObjectMapping):
             default.this.type = col_def.kind
 
     query.column_defs = all_columns
-    query.system_column_defs = _system_columns()
+    query.system_column_defs = _system_columns(dialect=query.dialect)
 
 
-def _system_columns() -> t.List[exp.ColumnDef]:
+def _system_columns(dialect: str) -> t.List[exp.ColumnDef]:
     """
-    Create a set of ColumnDefs representing system columns.
+    Create a set of ColumnDefs representing system columns for a given dialect.
     """
-    data_type = exp.DataType.build("OID", dialect="postgres")
-    col_defs = [exp.ColumnDef(this=exp.to_identifier(name), kind=data_type) for name in PSEUDOCOLUMNS]
+    col_defs = []
+    if dialect == "postgres":
+        data_type = exp.DataType.build("OID", dialect="postgres")
+        col_defs = [exp.ColumnDef(this=exp.to_identifier(name), kind=data_type) for name in PSEUDOCOLUMNS]
 
     return col_defs
 
@@ -440,16 +442,27 @@ def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping:
     Convert a series of `CREATE VIEW/TABLE AS ...` SQL DDL statements into sqlglot's MappingSchema
     to extract the table and column details.
     """
-    # Infer schemas, qualify columns, etc
+    # Expand any stars into column names so that they can be tracked in the mapping
     stmt = qualify(
         statement,
         schema=object_mapping,
-        infer_schema=True,
+        expand_stars=True,
+        expand_alias_refs=False,
+        qualify_columns=True,
+        infer_schema=False,
         dialect=dialect,
         isolate_tables=False,
         validate_qualify_columns=False,
         quote_identifiers=False,
     )
+
+    # Rename the aliases automatically added by sqlglot
+    if not isinstance(stmt.expression, exp.Values):
+        named_columns = stmt.args["this"].expressions
+        for i, ins in enumerate(named_columns):
+            # Overwrite the aliases because sqlglot may have added incorrect ones
+            stmt.selects[i] = stmt.selects[i].as_(ins)
+
     # Add types from the mapping if available. Views often have unknown column types.
     stmt = annotate_types(stmt, dialect=dialect, schema=object_mapping)
 
@@ -463,7 +476,7 @@ def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping:
     elif stmt.kind == "TABLE":
         # CREATE TABLE AS SELECT ...
         query = CTASQuery(statement=stmt, dialect=dialect, columns=col_defs, statement_index=statement_index)
-        query.system_column_defs = _system_columns()
+        query.system_column_defs = _system_columns(dialect=dialect)
 
     object_mapping.add_query(
         kind="table",

@@ -63,7 +63,6 @@ def generate_column_lineage_for_query(
 
             return graph
 
-    # Copy since lineage() transforms columns for generate() to work (see c.set()). TODO: Move all transforms into transform()
     statement_lineage = statement.copy()
     scope = build_scope(statement_lineage)
     if not scope:

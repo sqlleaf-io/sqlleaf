@@ -61,7 +61,7 @@ class ObjectMapping(MappingSchema):
 
         if kind == "table" and column_mapping is not None:
             # Track the table's columns
-            self.add_columns_for_table(
+            self._add_columns_for_table(
                 table=table,
                 column_mapping=column_mapping,
                 dialect=dialect,
@@ -69,7 +69,7 @@ class ObjectMapping(MappingSchema):
                 match_depth=match_depth,
             )
 
-    def add_columns_for_table(
+    def _add_columns_for_table(
         self,
         table: exp.Table,
         column_mapping: t.Optional[ColumnMapping] = None,

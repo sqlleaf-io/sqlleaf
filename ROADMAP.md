@@ -27,11 +27,12 @@ The following types of queries and nodes need to be created.
 
 CREATE TABLE
   - [x] AS
-    - [ ] Named columns
-      - [ ] WITH [NO] DATA
+    - [x] Named columns
+    - [x] WITH [NO] DATA
     - [ ] Empty table via WHERE
     - [ ] VALUES
     - [ ] EXECUTE
+    - [x] WITH
   - [x] LIKE
     - [x] INCLUDING
     - [x] EXCLUDING
@@ -40,6 +41,7 @@ CREATE TABLE
   - [ ] FOREIGN
     - not supported by sqlglot
     - Include 'tableoid' system column
+  - [ ] TEMPORARY
   - [x] Generated columns
   - [ ] Identity columns
     - [ ] Sequence node

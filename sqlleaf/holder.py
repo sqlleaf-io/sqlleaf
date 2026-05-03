@@ -4,7 +4,6 @@ import typing as t
 import networkx as nx
 
 from sqlleaf import mappings, util, path, types
-
 from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery, ProcedureQuery
 from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, GraphAttributes
 from sqlleaf.path import LineagePath
@@ -30,8 +29,7 @@ class Lineage:
         """
         Generate lineage for one or more SQL statements.
         """
-        if not self.object_mapping:
-            self.object_mapping = mappings.ObjectMapping(dialect=dialect)
+        self.init_mapping(dialect=dialect)
 
         parent_queries = collector.collect_queries(sql, dialect, self.object_mapping)
 
@@ -41,7 +39,7 @@ class Lineage:
 
             for query in queries:
                 # Transform every query, but only produce lineage for certain ones
-                if isinstance(query, QUERIES_WITH_LINEAGE):
+                if query_has_lineage(query):
                     transformer.transform_query(query, self.object_mapping)
                     generator.generate_column_lineage_for_query(query, graph, self.object_mapping)
                 query.set_to_original()
@@ -218,9 +216,25 @@ class Lineage:
                 else:
                     print("\n")
 
+    def init_mapping(self, dialect: str):
+        if not self.object_mapping:
+            self.object_mapping = mappings.ObjectMapping(dialect=dialect)
+            return
+
 
 def new_graph() -> nx.MultiDiGraph:
     """
     A graph has attributes along with its node and edges.
     """
     return nx.MultiDiGraph(attrs=GraphAttributes())
+
+
+def query_has_lineage(query: Query) -> bool:
+    """
+    Check if a query has lineage within its expressions.
+    """
+    if not isinstance(query, QUERIES_WITH_LINEAGE):
+        return False
+    if isinstance(query, CTASQuery) and not query.with_data:
+        return False
+    return True

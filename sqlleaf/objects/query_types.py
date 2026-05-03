@@ -182,6 +182,11 @@ class CTASQuery(Query):
         self.system_column_defs: t.List[exp.ColumnDef] = []
         self.inherited_by: t.List[TableQuery] = []
 
+        self.with_data: bool = True
+        if props := statement.args["properties"]:
+            if with_data := props.find(exp.WithDataProperty):
+                self.with_data: bool = not with_data.args["no"]
+
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs + self.system_column_defs if include_system else self.column_defs
 
