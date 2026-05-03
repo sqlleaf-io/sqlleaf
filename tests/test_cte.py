@@ -41,6 +41,34 @@ def test__cte_simple(holder):
     assert len(edges) == 5
 
 
+def test__cte_named_columns(holder):
+    queries = """
+    WITH cte_names(col2, col1) AS (
+        SELECT
+            lower(age) as age,
+            'hello' as name
+        FROM fruit.raw r
+    )
+    INSERT INTO fruit.processed (name, age)
+    SELECT
+        col1,
+        col2
+    FROM cte_names;
+    """
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+
+    assert paths == [
+        ['literal["hello"]', "column[cte_names.col1]", "column[fruit.processed.name]"],
+        ["column[fruit.raw.age]", "function[LOWER()]", "column[cte_names.col2]", "column[fruit.processed.age]"],
+    ]
+    assert len(nodes) == 7
+    assert len(edges) == 5
+
+
 def test__cte_duplicate_columns(holder):
     queries = """
     WITH cte_names AS (
