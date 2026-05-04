@@ -76,6 +76,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     If B depends on A, A must be created before B.
     """
     queries = {}
+    unknown = {}
     unsupported = []
     processors = get_query_processors()
     counts = {kind: 0 for kind in processors.keys()}
@@ -109,14 +110,9 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         else:
             kind = stmt.key.lower()
 
-        skip_kinds = ["transaction", "commit", "rollback", "endstatement", "alias", "semicolon"]
-        if kind in skip_kinds:
-            logger.debug(f"Skipping statement kind: {kind}")
-            unsupported.append((index, stmt))
-            continue
-
         if kind not in processors:
-            raise exception.SqlLeafException(message=f"Unsupported query kind: '{kind}'. Are you missing a processor for this kind?")
+            unknown[kind] = unknown[kind] + 1 if kind in unknown else 1
+            continue
 
         # Convert the statement to uppercase if the dialect supports it
         stmt = normalize_identifiers(stmt, dialect=dialect, store_original_column_identifiers=True)
@@ -126,7 +122,9 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
             queries[_id] = query
             counts[kind] += 1
 
-    logger.debug("Found statements: %s", dict(counts.items()))
+    found = {k:v for k,v in counts.items() if v > 0}
+    logger.debug("Found statements: %s", dict(found.items()))
+    logger.warning("Unknown statements: %s", dict(unknown.items()))
     logger.warning("Unsupported statements: %s", len(unsupported))
     return list(queries.values())
 
