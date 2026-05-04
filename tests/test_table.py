@@ -10,6 +10,22 @@ from sqlleaf.objects.query_types import InsertQuery, SequenceQuery
 DIALECT = "postgres"
 
 
+def test__table_types(holder):
+    queries = """
+    CREATE TEMPORARY TABLE fruit.new (age INT);
+
+    INSERT INTO fruit.new (age) VALUES (1);
+    """
+    h = holder()
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+    queries = h.get_queries_created()
+
+    assert "column[fruit.new.age type=INT kind=table subkind=temporary]" in nodes
+
+
 def test__table_like_table(holder):
     queries = """
     CREATE TABLE fruit.a (

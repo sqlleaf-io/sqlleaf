@@ -187,6 +187,8 @@ class CTASQuery(Query):
             if with_data := props.find(exp.WithDataProperty):
                 self.with_data: bool = not with_data.args["no"]
 
+        self.property: str = util.set_properties(statement)
+
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs + self.system_column_defs if include_system else self.column_defs
 
@@ -216,6 +218,8 @@ class ViewQuery(Query):
         self.column_defs: t.List[exp.ColumnDef] = columns
         self.inherited_by: t.List[TableQuery] = []
 
+        self.property: str = util.set_properties(statement)
+
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs
 
@@ -240,6 +244,8 @@ class TableQuery(Query):
         self.system_column_defs: t.List[exp.ColumnDef] = []
         self.inherits: t.List[TableQuery] = []
         self.inherited_by: t.List[TableQuery] = []
+
+        self.property: str = util.set_properties(statement)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs + self.system_column_defs if include_system else self.column_defs
@@ -395,6 +401,8 @@ class StageQuery(Query):
         stage_name = str(self.child_table.this)
         self.child_table.this.set("this", "@" + stage_name)
         self.child_table.this.set("quoted", False)
+
+        self.property = util.set_properties(statement)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs

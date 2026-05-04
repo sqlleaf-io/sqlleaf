@@ -147,8 +147,6 @@ class ColumnNode(NodeAttributes):
 
         self.set_table_properties(catalog, schema, table, processor_ctx)
 
-        # TODO: change to 'parent_kind', 'parent_subkind'
-
         # TODO: new algorithm
         # if table_type == "cte":
         #     self.member = processor_ctx.node.recursive_cte_member_kind
@@ -244,6 +242,8 @@ class ColumnNode(NodeAttributes):
             self.parent_kind = TableType.TABLE
         else:
             self.parent_kind = TableType(query.kind)
+            if query.property:
+                self.parent_subkind = TableSubtype(query.property)
 
     def get_column_constraint_expression(self) -> exp.ColumnConstraintKind:
         """

@@ -213,3 +213,13 @@ def get_function_args(expr: exp.Func):
 
 def get_root_nodes(graph: nx.MultiDiGraph) -> t.List[str]:
     return [n for n in graph.nodes if graph.in_degree(n) == 0 and graph.out_degree(n) > 0]
+
+
+def set_properties(statement: exp.Create) -> str:
+    """
+    Get a table/view's properties (e.g. TEMPORARY, EXTERNAL, RECURSIVE)
+    """
+    property = ""
+    if props := statement.args["properties"]:
+        property = str(props.find((exp.TemporaryProperty,)) or "").lower()
+    return property

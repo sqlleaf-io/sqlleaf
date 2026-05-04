@@ -10,7 +10,7 @@ from tests.new_fixtures import holder, DIALECT
 DIALECT = "postgres"
 
 
-view_types = ["", "MATERIALIZED"]
+view_types = [" ", "MATERIALIZED"]
 
 
 @pytest.mark.parametrize("case", view_types)
