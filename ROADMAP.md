@@ -32,6 +32,7 @@ CREATE TABLE
     - [ ] Empty table via WHERE
     - [ ] VALUES
     - [ ] EXECUTE
+    - [ ] SELECT FROM (VALUES())
     - [x] WITH
   - [x] LIKE
     - [x] INCLUDING
@@ -95,6 +96,8 @@ SELECT
 MERGE
 - [x] Regular
 - [x] RETURNING + merge_action()
+- [ ] USING (SELECT)
+- [ ] THEN INSERT (A,B) SELECT A,B
 
 UPDATE
 - [x] Regular
@@ -118,6 +121,7 @@ INSERT
 
 TABLE
 - [ ] Rewrite to SELECT * FROM
+  - [ ] ONLY
 
 CREATE FUNCTION (language SQL)
   - [ ] CALLED ON NULL INPUT
