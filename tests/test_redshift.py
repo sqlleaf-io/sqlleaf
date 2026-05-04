@@ -48,3 +48,21 @@ def test__select_pivot(holder):
     ]
     assert len(edges) == 5
     # TODO: the agg functions used inside the pivot are currently not extracted.
+
+
+def test__unload(holder):
+    queries = """
+    UNLOAD ('SELECT * FROM fruit.raw')
+    TO 's3://object-path/name-prefix'
+    IAM_ROLE 'arn:aws:iam::0123456789012:role/MyRedshiftRole';
+    """
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+    queries = h.get_queries_created()
+
+    assert len(nodes) == 0
+    assert len(queries) == 0
+    # TODO: the agg functions used inside the pivot are currently not extracted.
