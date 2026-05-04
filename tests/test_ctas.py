@@ -68,3 +68,32 @@ def test__ctas_cte(holder):
     ]
     assert len(nodes) == 6
     assert len(edges) == 4
+
+
+def test__ctas_values(holder):
+    queries = """
+    CREATE TABLE some_table(id, name) AS
+    VALUES (1, 'Alice'), (2, 'Bob');
+    """
+    h = holder()
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    queries = h.get_queries_created()
+    paths = h.get_friendly_paths()
+
+    assert paths == [
+        ['literal[1]', 'column[some_table.id]'],
+        ['literal[2]', 'column[some_table.id]'],
+        ['literal["Alice"]', 'column[some_table.name]'],
+        ['literal["Bob"]', 'column[some_table.name]']
+    ]
+    assert len(nodes) == 6
+    assert len(edges) == 4
+
+
+# TODO: support no column names
+"""
+CREATE TABLE my_new_table AS
+VALUES (1, 'Alice'), (2, 'Bob');
+"""

@@ -7,7 +7,7 @@ from sqlglot.optimizer import optimize, qualify, RULES
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query
+from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query, CTASQuery
 
 logger = logging.getLogger("sqlleaf")
 
@@ -21,7 +21,7 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
 
     if isinstance(query, InsertQuery):
         statement = _convert_defaults_to_values(statement, object_mapping, query.child_table)
-        statement = _convert_insert_values_to_select(statement, object_mapping, query.child_table)
+        statement = _convert_values_to_select(statement, object_mapping, query.child_table)
         statement = _add_information_from_merge(statement, query)
         statement = _process_inner_ctes(statement, query, object_mapping)
 
@@ -36,6 +36,9 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
 
     elif isinstance(query, CopyQuery):
         statement = _convert_copy_to_insert(statement, query, object_mapping)
+
+    elif isinstance(query, CTASQuery):
+        statement = _convert_values_to_select(statement, object_mapping, query.child_table)
 
     statement = _validate_basic(statement)
 
@@ -89,33 +92,51 @@ def _process_inner_ctes(
     return statement
 
 
-def _convert_insert_values_to_select(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
+def _convert_values_to_select(statement: exp.Insert | exp.Create, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
     """
-    Transform an
-        INSERT INTO x (name) VALUES (...)
-    into an
-        INSERT INTO x (name) SELECT ...
-    so that the lineage functions can process it.
+    Transform the query:
+        INSERT INTO x (name) VALUES (a), (b)
+    into:
+        INSERT INTO x (name) SELECT a UNION ALL SELECT b
+    so that the lineage functions can process it using build_scope().
     """
-    if isinstance(statement.expression, exp.Values):
-        values = statement.expression.expressions[0].expressions
-        columns = [e.name for e in statement.this.expressions]
+    if not isinstance(statement.expression, exp.Values):
+        return statement
 
-        if not columns:
-            cols = object_mapping.find_columns_for_table(child_table)
-            columns = list(cols)[: len(values)]
+    values_lists: t.List[exp.Tuple] = statement.expression.expressions
+    columns = [e.name for e in statement.this.expressions]
 
-        selects = [exp.alias_(val, str(col)) for col, val in zip(columns, values)]
-        new_select = exp.select(*selects)
+    if not columns:
+        # Get the names from the mapping
+        cols = object_mapping.find_columns_for_table(child_table)
+        columns = list(cols)[: len(values_lists[0].expressions)]
+
+    selects = []
+    for val_list in values_lists:
+        values = val_list.expressions
+        cols = [exp.alias_(val, str(col)) for col, val in zip(columns, values)]
+        selects.append(cols)
+
+    if len(selects) > 1:
+        new_selects = [exp.select(*select) for select in selects]
+        new_statement = exp.union(*new_selects, distinct=False)
+    else:
+        new_statement = exp.select(*selects[0])
+
+    if isinstance(statement, exp.Insert):
         insert_expr = exp.insert(
-            expression=new_select,
+            expression=new_statement,
             columns=statement.this.expressions,
             into=child_table,
             returning=statement.args["returning"],
         )
         insert_expr.set("conflict", statement.args["conflict"])
         statement.replace(insert_expr)
-        return insert_expr
+        statement = insert_expr
+    else:
+        statement.expression.pop()
+        statement.set('expression', new_statement)
+
     return statement
 
 
@@ -125,11 +146,9 @@ def _convert_defaults_to_values(statement: exp.Insert, object_mapping: mappings.
         INSERT INTO x DEFAULT VALUES
     into:
         INSERT INTO x VALUES (DEFAULT, DEFAULT)
-
-    And then transform the query:
-        INSERT INTO x VALUES (DEFAULT, DEFAULT)
-    into its default values (as defined in its table):
+    and then:
         INSERT INTO x VALUES (NULL, 42)
+    according to the table's default column values.
     """
     is_default_values = statement.args.get("default", False)
     values = statement.expression
@@ -255,7 +274,7 @@ def _convert_on_conflict_to_update(statement: exp.Update, object_mapping: mappin
     if not isinstance(statement, exp.OnConflict) or statement.args["action"].name == "DO NOTHING":
         return statement
 
-    parent_insert_expr = _convert_insert_values_to_select(statement.parent, object_mapping, query.child_table)
+    parent_insert_expr = _convert_values_to_select(statement.parent, object_mapping, query.child_table)
     statement = parent_insert_expr.args["conflict"]
 
     update_expr = exp.update(table=query.child_table)
@@ -440,7 +459,7 @@ def _validate_basic(statement: exp.Insert) -> exp.Insert:
     for expr in statement.walk():
         if isinstance(expr, exp.Values) and isinstance(expr.parent, exp.From):
             if not expr.args["alias"] or not len(expr.args["alias"].columns):
-                message = "Expression 'SELECT FROM (VALUES)' requires an alias with column names."
+                message = "Expression 'SELECT FROM (VALUES)' currently requires an alias with column names."
                 raise exception.SqlLeafException(message=message)
 
     return statement

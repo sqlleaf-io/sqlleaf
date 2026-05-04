@@ -466,7 +466,12 @@ def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping:
     # Add types from the mapping if available. Views often have unknown column types.
     stmt = annotate_types(stmt, dialect=dialect, schema=object_mapping)
 
-    col_defs = [exp.ColumnDef(this=exp.to_identifier(s.alias), kind=s.type) for s in stmt.selects]
+    if isinstance(stmt.expression, exp.Values):
+        columns = [stmt.name for stmt in stmt.this.expressions]
+        types = [val.type for val in stmt.expression.expressions[0].expressions]
+        col_defs = [exp.ColumnDef(this=col_name, kind=col_type) for col_name, col_type in zip(columns, types)]
+    else:
+        col_defs = [exp.ColumnDef(this=exp.to_identifier(s.alias), kind=s.type) for s in stmt.selects]
     query = None
 
     if stmt.kind == "VIEW":
@@ -474,7 +479,7 @@ def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping:
         query = ViewQuery(statement=stmt, dialect=dialect, columns=col_defs, statement_index=statement_index)
 
     elif stmt.kind == "TABLE":
-        # CREATE TABLE AS SELECT ...
+        # CREATE TABLE AS ...
         query = CTASQuery(statement=stmt, dialect=dialect, columns=col_defs, statement_index=statement_index)
         query.system_column_defs = _system_columns(dialect=dialect)
 

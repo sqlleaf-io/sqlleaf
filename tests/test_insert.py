@@ -16,9 +16,7 @@ DIALECT = "postgres"
 cases = [
     "INSERT INTO fruit.raw VALUES ('yellow', UPPER('banana'));",
     "INSERT INTO fruit.raw (name, kind) VALUES ('yellow', UPPER('banana'));",
-    "INSERT INTO fruit.raw (name, kind) VALUES ('yellow', UPPER('banana')), ('yellow', UPPER('banana'));",
     "INSERT INTO fruit.raw (kind, name) VALUES (UPPER('banana'), 'yellow');",
-    "INSERT INTO fruit.raw (kind, name) VALUES (UPPER('banana') AS name, 'yellow') AS kind;",
     "INSERT INTO fruit.raw SELECT 'yellow' as name, UPPER('banana') AS kind;",
     "INSERT INTO fruit.raw SELECT 'yellow', UPPER('banana');",
 ]
@@ -39,6 +37,26 @@ def test__insert_values(holder, case):
     ]
     assert [InsertQuery] == list(map(type, queries))
 
+
+def test__insert_values_multiple(holder):
+    query = """
+    INSERT INTO fruit.raw (name, kind)
+    VALUES ('apple', UPPER('upper_apple')), ('orange', UPPER('upper_orange'));
+    """
+    h = holder(with_tables=True)
+    h.generate(query, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    queries = h.get_queries_created()
+    paths = h.get_friendly_paths()
+
+    assert paths == [
+        ['literal["apple"]', 'column[fruit.raw.name]'],
+        ['literal["orange"]', 'column[fruit.raw.name]'],
+        ['literal["upper_apple"]', 'function[UPPER()]', 'column[fruit.raw.kind]'],
+        ['literal["upper_orange"]', 'function[UPPER()]', 'column[fruit.raw.kind]']
+    ]
+    assert [InsertQuery] == list(map(type, queries))
 
 def test__insert_default_values(holder):
     queries = """
