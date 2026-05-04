@@ -348,6 +348,20 @@ def test__cte_fails_for_returning_ambiguous_aliases(holder):
     assert e.value.message == "Column reference 'first_cte.name' is ambiguous (2 possible options)"
 
 
+def test__cte_fails_select_without_write(holder):
+    with pytest.raises(SqlLeafException) as e:
+        queries = """
+        WITH cte1 AS (
+            SELECT '1' AS name
+        )
+        SELECT name FROM cte1
+        """
+        h = holder(with_tables=True)
+        h.generate(queries, dialect=DIALECT)
+
+    assert e.value.message == "Skipping statement: A SELECT query must have a data-modifying statement, such as an INSERT, to contain lineage."
+
+
 def test__cte_update_with_two_updates_returning(holder):
     queries = """
     WITH first_cte AS (

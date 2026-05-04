@@ -404,7 +404,8 @@ def _process_unnamed(statement: exp.Expression, dialect: str, object_mapping: ma
         if statement.find((exp.Insert, exp.Update, exp.Merge)):
             query = SelectQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
         else:
-            logger.warning("Skipping statement: A SELECT query must have a data-modifying statement, such as an INSERT, to contain lineage.")
+            message = "Skipping statement: A SELECT query must have a data-modifying statement, such as an INSERT, to contain lineage."
+            raise exception.SqlLeafException(message=message)
     elif isinstance(statement, exp.Merge):
         query = MergeQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
         _collect_merge_children(query, object_mapping)
