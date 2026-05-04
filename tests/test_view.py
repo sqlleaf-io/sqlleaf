@@ -54,7 +54,26 @@ def test__view_with_cte(holder):
     SELECT * FROM inner1;
     """
     h = holder()
-    h.generate(queries, dialect="postgres")
+    h.generate(queries, dialect=DIALECT)
     paths = h.get_friendly_paths()
 
     assert paths == [['literal["a"]', "column[inner1.name]", "column[v.name]"]]
+
+
+def test__view_named_columns(holder):
+    queries = """
+    CREATE VIEW v(col1, col2) AS
+    SELECT name, kind FROM fruit.raw;
+    """
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+
+    assert paths == [
+        ['column[fruit.raw.name]', 'column[v.col1]'],
+        ['column[fruit.raw.kind]', 'column[v.col2]']
+    ]
+    assert len(nodes) == 4
+    assert len(edges) == 2

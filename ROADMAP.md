@@ -53,7 +53,7 @@ CREATE TABLE
 
 CREATE VIEW
   - [x] Regular
-    - [ ] Named columns
+    - [x] Named columns
   - [x] MATERIALIZED
   - [ ] TEMPORARY
   - [ ] RECURSIVE
