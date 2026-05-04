@@ -114,13 +114,13 @@ def generate_column_lineage_for_query(
         Collect the functions for each Node, and then extract the Node's Expression into a common object type
         that contains only the essential information we need.
         """
-        walk_query_and_build_graph(generator, child_node, scope, processor_ctx, ctx, node_depth=0)
+        walk_query_and_build_graph(generator, child_node, scope, processor_ctx, ctx, query_depth=0)
         select_idx += 1
 
     return graph
 
 
-def walk_query_and_build_graph(generator: BaseGenerator, child_node_attrs: ColumnNode, scope: Scope, processor_ctx: ProcessorContext, ctx: NodeContext, node_depth: int):
+def walk_query_and_build_graph(generator: BaseGenerator, child_node_attrs: ColumnNode, scope: Scope, processor_ctx: ProcessorContext, ctx: NodeContext, query_depth: int):
     """
     Walk over each query (and its subqueries) to collect the expressions for each column.
     """
@@ -142,8 +142,8 @@ def walk_query_and_build_graph(generator: BaseGenerator, child_node_attrs: Colum
         logger.debug(f"Processing node expr: {node.expression}, Id: {id(node)}")
         logger.debug(f"Child node: {child_node_attrs.full_name}")
 
-        total_depth = node_depth + node.current_depth
-        child_ctx = replace(ctx, node_depth=total_depth)
+        total_depth = query_depth + node.current_depth
+        child_ctx = replace(ctx, query_depth=total_depth)
         processor_ctx = replace(
             processor_ctx,
             expr=node.expression,
@@ -157,7 +157,7 @@ def walk_query_and_build_graph(generator: BaseGenerator, child_node_attrs: Colum
 
             for n in nodes:
                 if isinstance(n, ColumnNode) and n.has_child_scope:
-                    walk_query_and_build_graph(generator, n, n.source_scope, processor_ctx, ctx, node_depth=total_depth + 1)
+                    walk_query_and_build_graph(generator, n, n.source_scope, processor_ctx, ctx, query_depth=total_depth + 1)
 
 
 def walk_query_scope(column: exp.Column, scope: Scope, current_depth: int = 0):

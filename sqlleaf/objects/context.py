@@ -76,4 +76,4 @@ class NodeContext:
     function_arg_index: int = 0
 
     # The depth of a subquery, e.g. WITH cte AS ( SELECT 'a' ) SELECT 'a' -> The first a=1, second a=0
-    node_depth: int = 0
+    query_depth: int = 0

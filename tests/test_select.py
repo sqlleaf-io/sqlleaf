@@ -285,8 +285,8 @@ def test__select_assorted(holder):
     edges = h.get_edges()
     assert is_subset(
         subarr=[
-            "literal[{1,2,3} type=ARRAY<INT> node_depth=0 statement=1 select=0 func_depth=0 func_arg=0]",
-            'interval["-10.75 MINUTE" type=INTERVAL node_depth=0 statement=1 select=1 func_depth=0 func_arg=0]',
+            "literal[{1,2,3} type=ARRAY<INT> query_depth=0 statement=1 select=0 func_depth=0 func_arg=0]",
+            'interval["-10.75 MINUTE" type=INTERVAL query_depth=0 statement=1 select=1 func_depth=0 func_arg=0]',
         ],
         arr=nodes,
     )

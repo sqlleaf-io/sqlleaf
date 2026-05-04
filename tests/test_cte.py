@@ -608,20 +608,20 @@ def test__cte_recursive_view(holder):
 
     assert paths == [
         [
-            "literal[1 type=INT node_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
+            "literal[1 type=INT query_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
             "column[numbers.n type=INT kind=cte member=anchor statement=0]",
             "column[fruit.processed.age type=INT kind=table]",
         ],
         [
-            "literal[1 type=INT node_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
+            "literal[1 type=INT query_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
             "column[numbers.n type=INT kind=cte member=anchor statement=0]",
-            "function[ADD() type=INT node_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
+            "function[ADD() type=INT query_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
             "column[numbers.n type=INT kind=cte member=recursive statement=0]",
             "column[fruit.processed.age type=INT kind=table]",
         ],
         [
-            "literal[1 type=INT node_depth=1 statement=0 select=0 func_depth=1 func_arg=1]",
-            "function[ADD() type=INT node_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
+            "literal[1 type=INT query_depth=1 statement=0 select=0 func_depth=1 func_arg=1]",
+            "function[ADD() type=INT query_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
             "column[numbers.n type=INT kind=cte member=recursive statement=0]",
             "column[fruit.processed.age type=INT kind=table]",
         ],
