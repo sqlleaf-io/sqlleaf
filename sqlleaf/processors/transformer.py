@@ -42,13 +42,10 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
     elif isinstance(query, CTASQuery):
         statement = _convert_values_to_select(statement, object_mapping, query.child_table)
 
-    statement = _validate_basic(statement)
+    statement = _validate_values(statement)
 
     # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
     statement = _apply_optimizations(statement, query, object_mapping, query.child_table)
-
-    # Transform CASE statements to remove false positive lineage; see docs
-    statement = statement.transform(_case_statement_transformer)
 
     logger.debug(f"Transformed {str(type(statement))}: {statement.sql(dialect=query.dialect)}")
     query.statement_transformed = statement
@@ -76,7 +73,6 @@ def _add_aliases_to_pseudocolumns(statement: exp.Insert):
 
     This requires that the tables and columns have run through qualify()
     """
-    print()
     for pseudo in statement.find_all(exp.Pseudocolumn):
         if pseudo.table:
             continue
@@ -273,7 +269,7 @@ def _convert_update_to_insert(statement: exp.Update, dialect: str) -> exp.Insert
     return insert_statement
 
 
-def _convert_on_conflict_to_update(statement: exp.Update, object_mapping: mappings.ObjectMapping, query: UpdateQuery) -> exp.Update:
+def _convert_on_conflict_to_update(statement: exp.OnConflict | exp.Update, object_mapping: mappings.ObjectMapping, query: UpdateQuery) -> exp.Update:
     """
     Convert the 'DO UPDATE' in:
         INSERT INTO <table> as t
@@ -359,7 +355,7 @@ def _add_information_from_merge(statement: exp.Insert | exp.Update, query: Inser
     new_ctes = [
         {
             "alias": cte.alias_or_name,
-            "as_": cte.this.sql(),
+            "as_": cte.this,
         }
         for cte in ctes
     ]
@@ -448,7 +444,6 @@ def _convert_copy_to_insert(statement: exp.Copy, query: CopyQuery, object_mappin
         child_table_query.column_defs = col_defs
 
     # We don't worry about `self.is_source_a_stage` here as that is handled in the process_column() later
-    statement.replace(expr_insert)
     return expr_insert
 
 
@@ -465,7 +460,7 @@ RULES_OVERRIDE = [
 ]
 
 
-def _validate_basic(statement: exp.Insert) -> exp.Insert:
+def _validate_values(statement: exp.Insert) -> exp.Insert:
     """
     Perform some basic validation of the query. This needs a better place, long-term.
     """
@@ -511,8 +506,10 @@ def _apply_optimizations(
 
     # Selectively apply sqlglot's optimization rules.
     stmt = optimize(expression=stmt, dialect=query.dialect, schema=object_mapping, rules=RULES_OVERRIDE)
-    stmt = merge_derived_tables(stmt)  # Skip merge_ctes()
 
+    # We don't want to merge the CTEs as they provide useful info to the user
+    # so we skip merge_ctes() and call the function below directly instead
+    stmt = merge_derived_tables(stmt)
     return stmt
 
 
@@ -582,7 +579,7 @@ def _add_column_names_to_insert(statement: exp.Insert, object_mapping: mappings.
         INSERT INTO my.apple (a,b) SELECT name as a, age as b FROM my.pear
     """
     if not isinstance(statement, exp.Insert) or not statement.selects:
-        return None
+        return
 
     selects = statement.selects
     table_query = object_mapping.get_table_or_stage(child_table)
@@ -634,33 +631,6 @@ def _add_column_names_to_insert(statement: exp.Insert, object_mapping: mappings.
     for i, ins in enumerate(insert_columns):
         # Overwrite the aliases because sqlglot may have added incorrect ones
         statement.selects[i] = statement.selects[i].as_(ins)
-
-
-def _case_statement_transformer(expr: exp.Expression):
-    """
-    Transform the 'WHEN' part of every CASE statement so be 1=1 so that the lineage
-    does not include the original columns in this clause.
-
-    By default, sqlglot will include columns used in 'WHEN' to the lineage, but they're false positives.
-    e.g.
-        SELECT CASE WHEN age > 30 THEN 'y' ELSE 'n' END AS approved
-    should produce lineage for 'y' and 'n', but not 'age'.
-
-    But if we change it to
-        SELECT CASE WHEN 1=1 THEN 'y' ELSE 'n' END AS approved
-    then sqlglot will exclude it correctly.
-
-    This is admittedly quite hacky, but it's the cleanest approach considering the limitations of sqlglot's Scope() and
-    lineage() functions.
-    """
-    if isinstance(expr, exp.Case):
-        case = exp.case()
-        for _if in expr.args["ifs"]:
-            case = case.when("'dummy'='value'", then=_if.args["true"])
-            if "default" in expr.args:
-                case = case.else_(expr.args["default"])
-        return case
-    return expr
 
 
 def clean_stored_procedure_text(text: str) -> str:
