@@ -125,6 +125,10 @@ def test__table_with_default_columns(holder):
 
 def test__table_inherits_with_select(holder):
     queries = """
+    CREATE TABLE fruit.a (type VARCHAR, kind VARCHAR);
+    CREATE TABLE fruit.a_only () INHERITS (fruit.a);
+    CREATE TABLE fruit.output (type VARCHAR, kind VARCHAR);
+
     CREATE TABLE fruit.b (type VARCHAR, kind VARCHAR);
     CREATE TABLE fruit.b_only (type VARCHAR);
     CREATE TABLE fruit.x (label VARCHAR) INHERITS (fruit.b);
@@ -135,6 +139,9 @@ def test__table_inherits_with_select(holder):
     INSERT INTO fruit.b (type) SELECT 'apple' AS type;
     -- Ensure only parent is selected
     INSERT INTO fruit.b_only (type) SELECT type FROM ONLY fruit.b;
+
+    -- Ensure only parent is selected
+    INSERT INTO fruit.output TABLE ONLY fruit.a;
 
     -- Ensure parent includes children
     INSERT INTO fruit.all (name) SELECT kind from fruit.b;
@@ -151,14 +158,16 @@ def test__table_inherits_with_select(holder):
 
     assert paths == [
         ['literal["apple"]', "column[fruit.b.type]", "column[fruit.b_only.type]"],
+        ["column[fruit.a.type]", "column[fruit.output.type]"],
+        ["column[fruit.a.kind]", "column[fruit.output.kind]"],
         ["column[fruit.b.kind]", "column[fruit.all.name]"],
         ["column[fruit.x.kind]", "column[fruit.all.name]"],
         ["column[fruit.y.kind]", "column[fruit.all.name]"],
         ["column[fruit.x.label]", "column[fruit.x_y.value]"],
         ["column[fruit.y.label]", "column[fruit.x_y.value]"],
     ]
-    assert len(nodes) == 10
-    assert len(edges) == 7
+    assert len(nodes) == 14
+    assert len(edges) == 9
 
 
 def test__table_inherits_with_merge(holder):

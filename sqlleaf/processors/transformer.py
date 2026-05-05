@@ -19,6 +19,8 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
     logger.debug(f"Transforming - Query: {query.__class__.__name__}, Statement: {query.statement.__class__.__name__}")
     statement = util.copy_expression(query.statement)
 
+    statement = _convert_table_to_select(statement)
+
     if isinstance(query, InsertQuery):
         statement = _convert_defaults_to_values(statement, object_mapping, query.child_table)
         statement = _convert_values_to_select(statement, object_mapping, query.child_table)
@@ -51,6 +53,17 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
     logger.debug(f"Transformed {str(type(statement))}: {statement.sql(dialect=query.dialect)}")
     query.statement_transformed = statement
     query.set_statement(statement)
+
+
+def _convert_table_to_select(statement: exp.Expression) -> exp.Expression:
+    """
+    Convert the statement "TABLE x" to "SELECT * FROM x"
+    """
+    source = statement.args.get("source", None)
+    if source:
+        table = source.pop()
+        statement.set("expression", exp.select("*").from_(table))
+    return statement
 
 
 def _add_aliases_to_pseudocolumns(statement: exp.Insert):

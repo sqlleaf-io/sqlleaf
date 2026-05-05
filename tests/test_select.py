@@ -3,6 +3,8 @@ import sys
 
 import pytest
 
+from sqlleaf.objects.query_types import TableQuery, InsertQuery
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import sqlglot
@@ -385,3 +387,29 @@ def test__select_union(holder, op):
     ]
     assert len(nodes) == 4
     assert len(edges) == 3
+
+
+def test__select_table(holder):
+    queries = """
+    CREATE TABLE t1(name1 VARCHAR, name2 VARCHAR);
+    CREATE TABLE t2(name1 VARCHAR, name2 VARCHAR, name3 VARCHAR);
+
+    INSERT INTO t2 TABLE t1;
+    CREATE VIEW t3 AS TABLE t2;     -- Not supported
+    CREATE TABLE t4 AS TABLE t2;    -- Not supported
+    """
+    h = holder()
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+    queries = h.get_queries_created()
+
+    assert paths == [
+        ['column[t1.name1]', 'column[t2.name1]'],
+        ['column[t1.name2]', 'column[t2.name2]']
+    ]
+    assert len(nodes) == 4
+    assert len(edges) == 2
+    assert len(queries) == 3
+    assert [TableQuery, TableQuery, InsertQuery] == list(map(type, queries))

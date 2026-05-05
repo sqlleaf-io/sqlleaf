@@ -120,8 +120,8 @@ INSERT
   - [x] CTEs with INSERT, UPDATE, etc, as above with SELECT
 
 TABLE
-- [ ] Rewrite to SELECT * FROM
-  - [ ] ONLY
+- [x] Rewrite to SELECT * FROM
+- [x] ONLY
 
 CREATE FUNCTION (language SQL)
   - [ ] CALLED ON NULL INPUT

@@ -84,6 +84,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
 
     for index, stmt in enumerate(parsed):
         if isinstance(stmt, exp.Command):
+            logger.warning(f"Unsupported statement: {stmt.sql(dialect=dialect)}")
             unsupported.append((index, stmt))
             continue
 
@@ -465,7 +466,12 @@ def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping:
     # Add types from the mapping if available. Views often have unknown column types.
     stmt = annotate_types(stmt, dialect=dialect, schema=object_mapping)
 
-    if isinstance(stmt.expression, exp.Values):
+    # Look up the columns for 'y' in 'INSERT INTO x TABLE y'
+    source = stmt.args.get("source", None)
+    if source:
+        table: TableQuery = object_mapping.find_query(kind="table", table=source)
+        col_defs = table.get_column_defs(include_system=False)
+    elif isinstance(stmt.expression, exp.Values):
         columns = [stmt.name for stmt in stmt.this.expressions]
         types = [val.type for val in stmt.expression.expressions[0].expressions]
         col_defs = [exp.ColumnDef(this=col_name, kind=col_type) for col_name, col_type in zip(columns, types)]
