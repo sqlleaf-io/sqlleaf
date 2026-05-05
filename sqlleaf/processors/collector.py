@@ -171,7 +171,7 @@ def _collect_insert_children(query: InsertQuery):
     """
     on_conflict = query.statement.args["conflict"]
 
-    if not isinstance(on_conflict, exp.OnConflict):
+    if not isinstance(on_conflict, exp.OnConflict) or on_conflict.args["action"].name == "DO NOTHING":
         return
 
     update_query = UpdateQuery(expr=on_conflict, dialect=query.dialect, statement_index=0)

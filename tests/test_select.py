@@ -119,10 +119,12 @@ def test__select_dpipe(holder):
 def test__select_case(holder):
     queries = """
     INSERT INTO fruit.processed (age, number)
-    SELECT 
+    SELECT
         CASE WHEN name = 'John' THEN 1 ELSE 2 END AS age,
-        CASE WHEN name = 'John' THEN 1 END AS number
-    FROM fruit.raw
+        CASE WHEN name = 'John' THEN
+            CASE WHEN age > 10 THEN 5 END
+        ELSE 6 END AS number
+    FROM fruit.raw;
     """
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
@@ -131,13 +133,14 @@ def test__select_case(holder):
     paths = h.get_friendly_paths()
 
     assert paths == [
-        ["literal[2]", "column[fruit.processed.age]"],
-        ["literal[1]", "column[fruit.processed.age]"],
-        ["null[NULL]", "column[fruit.processed.number]"],
-        ["literal[1]", "column[fruit.processed.number]"],
+        ['literal[2]', 'column[fruit.processed.age]'],
+        ['literal[1]', 'column[fruit.processed.age]'],
+        ['literal[6]', 'column[fruit.processed.number]'],
+        ['null[NULL]', 'column[fruit.processed.number]'],
+        ['literal[5]', 'column[fruit.processed.number]']
     ]
-    assert len(nodes) == 6
-    assert len(edges) == 4
+    assert len(nodes) == 7
+    assert len(edges) == 5
 
 
 def test__select_hidden_system_columns(holder):

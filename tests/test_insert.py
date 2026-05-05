@@ -143,6 +143,25 @@ def test__insert_on_conflict_with_values(holder):
     assert len(edges) == 5
 
 
+def test__insert_on_conflict_do_nothing(holder):
+    queries = """
+    INSERT INTO fruit.processed (name)
+    SELECT 'john' AS name
+    ON CONFLICT (name)
+    DO NOTHING;
+    """
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    queries = h.get_queries_created()
+    paths = h.get_friendly_paths()
+
+    assert paths == [['literal["john"]', 'column[fruit.processed.name]']]
+    assert len(nodes) == 2
+    assert len(edges) == 1
+
+
 # Not supported by sqlglot: exception - unexpected token 'OVERRIDING'
 def test__insert_overriding(holder):
     with pytest.raises(sqlglot.errors.ParseError) as e:

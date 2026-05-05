@@ -280,7 +280,7 @@ def _convert_on_conflict_to_update(statement: exp.OnConflict | exp.Update, objec
         SET name = name
     so that the expression has the correct columns/values.
     """
-    if not isinstance(statement, exp.OnConflict) or statement.args["action"].name == "DO NOTHING":
+    if not isinstance(statement, exp.OnConflict):
         return statement
 
     parent_insert_expr = _convert_values_to_select(statement.parent, object_mapping, query.child_table)

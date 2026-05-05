@@ -110,7 +110,7 @@ DELETE
 INSERT
   - [x] DEFAULT VALUES
   - [x] RETURNING
-  - [x] ON CONFLICT DO UPDATE
+  - [x] ON CONFLICT DO [UPDATE|NOTHING]
   - [x] VALUES
     - [x] (DEFAULT, DEFAULT)
     - [x] Multi-row
@@ -166,6 +166,9 @@ DO
 
 
 ### Redshift
+CREATE SCHEMA
+  - [ ] EXTERNAL
+
 CREATE TABLE
   - [ ] EXTERNAL
     - [ ] Regular
