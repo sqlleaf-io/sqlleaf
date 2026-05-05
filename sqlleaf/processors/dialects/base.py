@@ -36,8 +36,8 @@ class BaseGenerator:
     dialect = ""
 
     @singledispatchmethod
-    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        raise exception.SqlLeafException(message=f"Unhandled expression type: {type(expr)}")
+    def process(self, cls: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        raise exception.SqlLeafException(message=f"Unhandled expression type: {type(cls)}")
 
     def __init_subclass__(cls, **kwargs):
         """Automatically registers subclasses when they are defined."""
@@ -86,10 +86,6 @@ class BaseGenerator:
         SELECT ROW_NUMBER() OVER (ORDER BY name DESC) AS amount
         """
         window_expr: exp.Window = processor_ctx.expr
-
-        if window_expr.this.key in ["rownumber", "rank"]:
-            processor_ctx = replace(processor_ctx, new_data_type=exp.DataType.build("INT"))
-
         node_attrs = WindowNode(processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
@@ -122,54 +118,35 @@ class BaseGenerator:
         SELECT col1::timestamp AS col1_time
         """
         processor_ctx_to = replace(processor_ctx, new_data_type=processor_ctx.expr.to)
-        return self.process_function(None, processor_ctx_to, ctx)
+        return self.process(processor_ctx.expr.to, processor_ctx_to, ctx)
 
     @process.register
     def process_neg(self, cls: exp.Neg, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT -10
         """
-        expr: exp.Literal = processor_ctx.expr
+        expr: exp.Neg = processor_ctx.expr
         node_attrs = LiteralNode(name="-" + expr.name, processor_ctx=processor_ctx, ctx=ctx)
         return node_attrs, []
 
     @process.register
     def process_anonymous(self, cls: exp.Anonymous, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
-        Either user-defined functions or sequence functions.
+        User-defined functions.
 
-        SELECT my.func() or SELECT nextval('my_sequence')
+        SELECT my.func()
         """
         expr: exp.Anonymous = processor_ctx.expr
 
         if isinstance(expr.parent, (exp.Dot,)):
-            # Postgres UDFs don't support catalogs
             schema = str(expr.parent.left.name)
             function = str(expr.parent.right.name)
             full_name = f"{schema}.{function}"
         else:
-            # e.g. The PG sequence function nextval('serial') is anonymous
+            # A function without a schema
             schema = ""
             function = expr.name
             full_name = function
-
-        # Process a sequence
-        # TODO: add per-dialect processors
-        if not schema and function in [
-            "nextval",
-            "currval",
-            "setval",
-        ]:  # and dialect == 'postgres'
-            # 'lastval()' is not yet supported since it requires state
-            seq_name_expr: exp.Literal = expr.args["expressions"][0]
-
-            # Ensure the sequence exists
-            seq_table = exp.table_(table=seq_name_expr.name, db=schema)
-            if not processor_ctx.object_mapping.find_query(kind="sequence", table=seq_table):
-                logger.warning(f"Sequence '{full_name}' not found.")
-
-            node_attrs = SequenceNode(name=seq_name_expr.name, processor_ctx=processor_ctx, ctx=ctx)
-            return node_attrs, []
 
         # Process a UDF
         node_args = list(expr.flatten())
@@ -178,10 +155,9 @@ class BaseGenerator:
         table_expr = exp.table_(table=function, db=schema)
         udf_obj = processor_ctx.object_mapping.find_query(kind="udf", table=table_expr)
 
-        # if the udf has a return_expr, insert it in here
-        # if it's a literal, set the parent of 'this' as the return expr. Discard the args in lineage, but record in object
         if udf_obj:
             if isinstance(udf_obj.return_expr, exp.Literal):
+                # TODO: this may be incorrect - analyse UDFs properly
                 node_args = [udf_obj.return_expr]
 
         return node_attrs, node_args
@@ -194,7 +170,7 @@ class BaseGenerator:
         expr: exp.WithinGroup = processor_ctx.expr
         processor_ctx = replace(processor_ctx, expr=expr.this)
 
-        parent, children = self.process_function(None, processor_ctx, ctx)
+        parent, children = self.process(expr.this, processor_ctx, ctx)
         children = list(expr.expression.find_all(exp.Column))  # expr.expression is type(exp.Order)
         return parent, children
 
@@ -227,7 +203,7 @@ class BaseGenerator:
             # Process this as a UDF
             logger.debug("Found exp.Dot inside exp.Binary")
             processor_ctx = replace(processor_ctx, expr=expr.right)
-            return self.process_anonymous(None, processor_ctx, ctx)
+            return self.process(expr.right, processor_ctx, ctx)
 
         node_attrs = FunctionNode(processor_ctx, ctx)
         args = [expr.left, expr.right]
@@ -245,12 +221,6 @@ class BaseGenerator:
     @process.register
     def process_column(self, cls: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         expr: exp.Column = processor_ctx.expr
-        scope = processor_ctx.scope
-        if scope:
-            pivots = scope.pivots
-            pivot: exp.Pivot = pivots[0] if len(pivots) == 1 and not pivots[0].unpivot else None
-            if pivot and pivot.alias_or_name == expr.table:
-                return None, [pivot]
 
         if is_node_a_placeholder(expr=expr, query=processor_ctx.query):
             # The actual placeholder is processed elsewhere
@@ -270,7 +240,8 @@ class BaseGenerator:
             scope = processor_ctx.scope
             source_table = dict(scope.references)[expr.table]
 
-            assert isinstance(source_table, (exp.Table, exp.Values, exp.Subquery))
+            if not isinstance(source_table, (exp.Table, exp.Values, exp.Subquery)):
+                raise exception.SqlLeafException(message=f"Unexpected source type: {type(source_table)}")
 
             if not isinstance(source_table, exp.Subquery):
                 node_attrs.rename_table(source_table, processor_ctx.query.dialect)
@@ -279,14 +250,7 @@ class BaseGenerator:
             # Traverse into the table (esp. needed by "ROWS FROM")
             return node_attrs, [node_attrs.source_scope]
 
-        # TODO: PIVOT is Redshift-specific! Move to dialect
-
         return node_attrs, []
-
-    @process.register
-    def process_table(self, cls: exp.Table, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        logger.debug(f"Skipping exp.Table: {str(processor_ctx.expr)}")
-        return None, []
 
     @process.register(exp.JSONExtract)
     @process.register(exp.JSONBExtract)

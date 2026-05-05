@@ -23,8 +23,8 @@ class SnowflakeBaseGenerator(BaseGenerator):
     dialect = "snowflake"
 
     @singledispatchmethod
-    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        return super().process(expr, processor_ctx, ctx)
+    def process(self, cls: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        return super().process(cls, processor_ctx, ctx)
 
     @process.register
     def process_put(self, cls: exp.Put, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:

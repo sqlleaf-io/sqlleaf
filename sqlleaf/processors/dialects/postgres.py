@@ -11,7 +11,7 @@ from sqlleaf import exception
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import (
     NodeAttributes,
-    ColumnNode,
+    ColumnNode, SequenceNode,
 )
 from sqlleaf.processors.dialects import BaseGenerator
 
@@ -21,8 +21,8 @@ class PostgresBaseGenerator(BaseGenerator):
     dialect = "postgres"
 
     @singledispatchmethod
-    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        return super().process(expr, processor_ctx, ctx)
+    def process(self, cls: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        return super().process(cls, processor_ctx, ctx)
 
     @process.register
     def process_table(self, cls: exp.Table, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
@@ -45,7 +45,46 @@ class PostgresBaseGenerator(BaseGenerator):
             # A table function inside a 'ROWS FROM'
             return None, [expr.this]
 
-        return super().process_table(None, processor_ctx, ctx)
+        return super().process(cls, processor_ctx, ctx)
+
+    @process.register
+    def process_anonymous(self, cls: exp.Anonymous, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        """
+        Either user-defined functions or sequence functions.
+
+        SELECT my.func() or SELECT nextval('my_sequence')
+        """
+        expr: exp.Anonymous = processor_ctx.expr
+
+        if isinstance(expr.parent, (exp.Dot,)):
+            # Postgres UDFs don't support catalogs
+            schema = str(expr.parent.left.name)
+            function = str(expr.parent.right.name)
+            full_name = f"{schema}.{function}"
+        else:
+            # e.g. The PG sequence function nextval('serial') is anonymous
+            schema = ""
+            function = expr.name
+            full_name = function
+
+        # Process a sequence
+        if not schema and function in [
+            "nextval",
+            "currval",
+            "setval",
+        ]:
+            # 'lastval()' is not supported since it requires tracking state
+            seq_name_expr: exp.Literal = expr.args["expressions"][0]
+
+            # Ensure the sequence exists
+            seq_table = exp.table_(table=seq_name_expr.name, db=schema)
+            if not processor_ctx.object_mapping.find_query(kind="sequence", table=seq_table):
+                logger.warning(f"Sequence '{full_name}' not found.")
+
+            node_attrs = SequenceNode(name=seq_name_expr.name, processor_ctx=processor_ctx, ctx=ctx)
+            return node_attrs, []
+
+        return super().process(cls, processor_ctx, ctx)
 
     @process.register
     def process_column_def(self, cls: exp.ColumnDef, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:

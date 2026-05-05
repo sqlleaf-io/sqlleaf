@@ -19,8 +19,8 @@ class RedshiftBaseGenerator(BaseGenerator):
     dialect = "redshift"
 
     @singledispatchmethod
-    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        return super().process(expr, processor_ctx, ctx)
+    def process(self, cls: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        return super().process(cls, processor_ctx, ctx)
 
     @process.register
     def process_pivot(self, cls: exp.Pivot, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
@@ -30,7 +30,7 @@ class RedshiftBaseGenerator(BaseGenerator):
         # TODO: process agg funcs
         expr: exp.Pivot = processor_ctx.expr
 
-        pivot, pivot_column_mapping = get_pivot(processor_ctx.scope)
+        pivot, pivot_column_mapping = _get_pivot(processor_ctx.scope)
 
         downstream_columns = []
         c = processor_ctx.scope.columns[ctx.select_index]
@@ -45,7 +45,20 @@ class RedshiftBaseGenerator(BaseGenerator):
 
         return None, downstream_columns
 
-def get_pivot(scope: Scope) -> t.Tuple[exp.Pivot, dict]:
+    @process.register
+    def process_column(self, cls: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        expr: exp.Column = processor_ctx.expr
+
+        scope = processor_ctx.scope
+        if scope:
+            pivots = scope.pivots
+            pivot: exp.Pivot = pivots[0] if len(pivots) == 1 and not pivots[0].unpivot else None
+            if pivot and pivot.alias_or_name == expr.table:
+                return None, [pivot]
+
+        return super().process(expr, processor_ctx, ctx)
+
+def _get_pivot(scope: Scope) -> t.Tuple[exp.Pivot, dict]:
     """
     Get information related to PIVOT statements.
     """
