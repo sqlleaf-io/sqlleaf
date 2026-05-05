@@ -8,15 +8,14 @@ import networkx as nx
 from sqlglot import exp
 from sqlglot.optimizer import build_scope, Scope, find_all_in_scope
 
-from sqlleaf.processors.dialects import BaseGenerator
-
 if t.TYPE_CHECKING:
     pass
 
 from sqlleaf import util, exception, mappings
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, StageNode, ColumnNode, TableType
-from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery, ProcedureQuery
+from sqlleaf.objects.query_types import Query, UpdateQuery, CopyQuery, PutQuery
+from sqlleaf.processors.dialects import BaseGenerator
 
 logger = logging.getLogger("sqlleaf")
 
@@ -46,22 +45,13 @@ def generate_column_lineage_for_query(
         expr=statement,
         scope=None,
     )
-
     generator = BaseGenerator.from_dialect(query.dialect)
-    if isinstance(query, PutQuery):
-        # Short-circuit this function; it's not an insert
-        file_node, [stage_node] = generator.process_put(None, processor_ctx, ctx)
-        add_nodes_with_edge_to_graph(file_node, stage_node, graph, query, ctx)
+
+    if check_for_put(generator, processor_ctx, ctx):
         return graph
 
-    # Check if a trigger overrides the query's behaviour
-    if trigger := object_mapping.find_query(kind="trigger", table=child_table):
-        if trigger.timing == "INSTEAD OF":
-            logger.debug("Skipping lineage for all columns of table '%s' since trigger '%s' overrides it." % (exp.table_name(child_table), t.name))
-            # TODO: Use the trigger's function as the lineage
-            # func = trigger.execute
-
-            return graph
+    if check_for_trigger(child_table, object_mapping):
+        return graph
 
     statement_lineage = statement.copy()
     scope = build_scope(statement_lineage)
@@ -71,24 +61,32 @@ def generate_column_lineage_for_query(
     # Ensure the child table exists with the expected columns
     child_table_query = object_mapping.get_table_or_stage(query.child_table)
     child_columns = child_table_query.get_column_defs()
-    selected_column_names = query.get_selected_column_names()
 
+    generate_column_lineage_for_columns(child_columns, child_table, generator, scope, processor_ctx, ctx)
+    return graph
+
+
+def generate_column_lineage_for_columns(
+    columns: t.List[exp.ColumnDef],
+    table: exp.Table,
+    generator: BaseGenerator,
+    scope: Scope,
+    processor_ctx: ProcessorContext,
+    ctx: NodeContext,
+):
+    """
+    Generate the lineage for a set of columns from a given table.
+    """
     select_idx = 0
-    for col_def in child_columns:
-        ctx = NodeContext(select_index=select_idx, statement_index=query.get_statement_index())
-        processor_ctx = ProcessorContext(
-            graph=graph,
-            object_mapping=object_mapping,
-            query=query,
-            expr=col_def,
-            scope=None,
-        )
+    for col_def in columns:
+        processor_ctx = replace(processor_ctx, expr=col_def)
+        ctx = replace(ctx, select_index=select_idx)
         col_name = col_def.name
 
         child_node = ColumnNode(
-            catalog=child_table.catalog,
-            schema=child_table.db,
-            table=child_table.name,
+            catalog=table.catalog,
+            schema=table.db,
+            table=table.name,
             column=col_name,
             processor_ctx=processor_ctx,
             ctx=ctx,
@@ -100,54 +98,47 @@ def generate_column_lineage_for_query(
             constraint_ctx = replace(processor_ctx, expr=constraint_expr.this, new_data_type=col_def.kind, child_node_attrs=child_node)
             walk_expressions_and_build_graph(generator=generator, processor_ctx=constraint_ctx, ctx=ctx)
 
-        if col_name not in selected_column_names:
+        if col_name not in processor_ctx.query.get_selected_column_names():
             continue
 
         logger.info(
             "Calculating lineage. Column: %s, Table: %s, Index: %s",
             col_name,
-            child_table.name,
+            table.name,
             select_idx,
         )
-
-        """
-        Collect the functions for each Node, and then extract the Node's Expression into a common object type
-        that contains only the essential information we need.
-        """
         walk_query_and_build_graph(generator, child_node, scope, processor_ctx, ctx, query_depth=0)
         select_idx += 1
 
-    return graph
 
-
-def walk_query_and_build_graph(generator: BaseGenerator, child_node_attrs: ColumnNode, scope: Scope, processor_ctx: ProcessorContext, ctx: NodeContext, query_depth: int):
+def walk_query_and_build_graph(
+    generator: BaseGenerator, child_node_attrs: ColumnNode, scope: Scope, processor_ctx: ProcessorContext, ctx: NodeContext, query_depth: int
+) -> None:
     """
     Walk over each query (and its subqueries) to collect the expressions for each column.
     """
     processor_ctx = replace(processor_ctx, scope=scope, child_node_attrs=child_node_attrs)
     query = processor_ctx.query
 
-    for node in walk_query_scope(
+    for scope_traversal in walk_query_scope(
         column=child_node_attrs.expr,
         scope=scope,
     ):
         logger.debug("----")
-        # Node depth distinguishes identical query elements across CTEs
-
         if isinstance(query, CopyQuery) and query.is_target_a_stage:
             # Set the column to be a StageNode (if applicable) since we now have the lineage from using the dummy column
             processor_ctx = replace(processor_ctx, expr=query.target.this)
             child_node_attrs = StageNode(processor_ctx=processor_ctx, ctx=ctx)
 
-        logger.debug(f"Processing node expr: {node.expression}, Id: {id(node)}")
+        logger.debug(f"Processing node expr: {scope_traversal.expression}, Id: {id(scope_traversal)}")
         logger.debug(f"Child node: {child_node_attrs.full_name}")
 
-        total_depth = query_depth + node.current_depth
+        total_depth = query_depth + scope_traversal.current_depth
         child_ctx = replace(ctx, query_depth=total_depth)
         processor_ctx = replace(
             processor_ctx,
-            expr=node.expression,
-            scope=node.scope,
+            expr=scope_traversal.expression,
+            scope=scope_traversal.scope,
             child_node_attrs=child_node_attrs,
         )
 
@@ -160,7 +151,7 @@ def walk_query_and_build_graph(generator: BaseGenerator, child_node_attrs: Colum
                     walk_query_and_build_graph(generator, n, n.source_scope, processor_ctx, ctx, query_depth=total_depth + 1)
 
 
-def walk_query_scope(column: exp.Column, scope: Scope, current_depth: int = 0):
+def walk_query_scope(column: exp.Column, scope: Scope, current_depth: int = 0) -> t.Generator[ScopeTraversal]:
     if isinstance(scope.expression, exp.Subquery):
         for source in scope.subquery_scopes:
             logger.debug("Yielding from first subquery scope")
@@ -183,13 +174,13 @@ def walk_query_scope(column: exp.Column, scope: Scope, current_depth: int = 0):
     else:
         # Create the node for this step in the lineage chain, and attach it to the previous one.
         select = get_select(column, scope)
-        node = Node(
+        st = ScopeTraversal(
             expression=select,
             scope=scope,
             current_depth=current_depth,
         )
-        yield node
-        logger.debug("[1] Created Node '%s', Expr: %s, Id: %s", column, select.sql(), id(node))
+        yield st
+        logger.debug("[1] Created Node '%s', Expr: %s, Id: %s", column, select.sql(), id(st))
 
         subquery_scopes = {id(subquery_scope.expression): subquery_scope for subquery_scope in scope.subquery_scopes}
 
@@ -240,8 +231,12 @@ def walk_expressions_and_build_graph(
         Considering Postgres inheritance operates 'behind the scenes' outside of the query's syntax), we are
         justified in implementing this behaviour in our own way: by mapping each inherited column to the query's columns.
         """
-        inherited_columns_of_parent = find_inherited_columns_for_parent(column_node=parent_node_attrs, generator=generator, processor_ctx=processor_ctx, ctx=ctx)
-        inherited_columns_of_child = find_inherited_columns_for_child(column_node=child_node_attrs, generator=generator, processor_ctx=processor_ctx, ctx=ctx)
+        inherited_columns_of_parent = find_inherited_columns_for_parent(
+            column_node=parent_node_attrs, generator=generator, processor_ctx=processor_ctx, ctx=ctx
+        )
+        inherited_columns_of_child = find_inherited_columns_for_child(
+            column_node=child_node_attrs, generator=generator, processor_ctx=processor_ctx, ctx=ctx
+        )
 
         for parent_node in [parent_node_attrs] + inherited_columns_of_parent:
             for child_node in [child_node_attrs] + inherited_columns_of_child:
@@ -270,7 +265,9 @@ def walk_expressions_and_build_graph(
     return nodes_created
 
 
-def find_inherited_columns_for_parent(column_node: ColumnNode, generator: BaseGenerator, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.List[ColumnNode]:
+def find_inherited_columns_for_parent(
+    column_node: NodeAttributes, generator: BaseGenerator, processor_ctx: ProcessorContext, ctx: NodeContext
+) -> t.List[ColumnNode]:
     """
     Find the inherited columns for a particular column, but only for the form 'SELECT FROM ONLY <table>'
     TODO fix comments etc
@@ -295,7 +292,9 @@ def find_inherited_columns_for_parent(column_node: ColumnNode, generator: BaseGe
     return inherited_columns
 
 
-def find_inherited_columns_for_child(column_node: ColumnNode, generator: BaseGenerator, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.List[ColumnNode]:
+def find_inherited_columns_for_child(
+    column_node: NodeAttributes, generator: BaseGenerator, processor_ctx: ProcessorContext, ctx: NodeContext
+) -> t.List[ColumnNode]:
     """
     Find the inherited columns for a particular column, but only for the form 'MERGE|UPDATE ONLY <table>'
     """
@@ -311,7 +310,9 @@ def find_inherited_columns_for_child(column_node: ColumnNode, generator: BaseGen
     return inherited_columns
 
 
-def find_inherited_columns(column_node: ColumnNode, generator: BaseGenerator, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.List[ColumnNode]:
+def find_inherited_columns(
+    column_node: ColumnNode, generator: BaseGenerator, processor_ctx: ProcessorContext, ctx: NodeContext
+) -> t.List[ColumnNode]:
     """
     Find all inherited columns from a table that are similar to some column.
 
@@ -361,6 +362,8 @@ def add_nodes_with_edge_to_graph(
         )
         graph.add_edge(p_full_name, c_full_name, attrs=edge_attrs)
         logger.debug(f"Added edge between {p_full_name} [{id(p_attrs)}] -> {c_full_name} [{id(c_attrs)}]")
+    else:
+        logger.debug(f"Skipping edge creation as both nodes already exist.")
 
 
 def add_node_if_not_exists(node_attrs: NodeAttributes, graph: nx.MultiDiGraph) -> NodeAttributes:
@@ -405,11 +408,13 @@ def get_select(column: exp.Column | int, scope: Scope):
 
 TableOrScopeType = exp.Table | Scope
 
+
 @dataclass(frozen=True)
-class Node:
+class ScopeTraversal:
     expression: exp.Expression
     current_depth: int
     scope: TableOrScopeType = None
+
 
 def get_column_index(column: exp.Column | int, scope: Scope):
     index = (
@@ -421,11 +426,11 @@ def get_column_index(column: exp.Column | int, scope: Scope):
         )
     )
     if index == -1:
-        raise ValueError(f"Could not find {column.name} in {scope.expression}")
+        raise exception.SqlLeafException(message=f"Could not find {column.name} in {scope.expression}")
     return index
 
 
-def set_cte_properties(path: t.List[Node]) -> None:
+def set_cte_properties(path: t.List[ScopeTraversal]) -> None:
     """
     Check for properties related to recursive CTEs.
 
@@ -433,7 +438,7 @@ def set_cte_properties(path: t.List[Node]) -> None:
     Otherwise, we set it to be the anchor, as its children are the anchor part
     of the expression.
     """
-    root_node: Node = path[0]
+    root_node: ScopeTraversal = path[0]
     if root_node.is_parent_a_recursive_cte:
         for n in path[1:]:
             if is_node_inside_a_recursive_cte(n):
@@ -452,4 +457,32 @@ def is_node_inside_a_recursive_cte(expr: exp.Expression) -> bool:
     if parent_cte := expr.find_ancestor(exp.CTE):
         if parent_cte.parent.recursive:
             return True
+    return False
+
+
+def check_for_trigger(table: exp.Table, object_mapping: mappings.ObjectMapping) -> bool:
+    """
+    Check if a trigger overrides the query's behaviour.
+    """
+    if trigger := object_mapping.find_query(kind="trigger", table=table):
+        if trigger.timing == "INSTEAD OF":
+            logger.debug("Skipping lineage for all columns of table '%s' since trigger '%s' overrides it." % (exp.table_name(child_table), t.name))
+            # TODO: Use the trigger's function as the lineage
+            # func = trigger.execute
+            return True
+    return False
+
+
+def check_for_put(generator, processor_ctx, ctx) -> bool:
+    """
+    Check if this is a PUT query.
+    """
+    query = processor_ctx.query
+    graph = processor_ctx.graph
+
+    if query.dialect == "snowflake" and isinstance(query, PutQuery):
+        # Short-circuit this function; it's not an insert
+        file_node, [stage_node] = generator.process_put(None, processor_ctx, ctx)
+        add_nodes_with_edge_to_graph(file_node, stage_node, graph, query, ctx)
+        return True
     return False

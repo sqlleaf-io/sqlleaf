@@ -46,11 +46,10 @@ class Lineage:
 
             graph.graph["attrs"].add_query(parent_query)
 
-            types.update_column_data_types(self.graph)
-
             # Associate the query with the graph even if it has no lineage
             self.merge_graph(graph)
             self.graph.graph["attrs"].add_query(parent_query)
+            types.update_column_data_types(self.graph)
 
         self.paths = path.calculate_paths(graph=self.graph)
 
