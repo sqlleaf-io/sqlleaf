@@ -10,7 +10,7 @@ from tests.new_fixtures import holder
 DIALECT = "postgres"
 
 
-view_types = [" ", "MATERIALIZED"]
+view_types = ["", "TEMPORARY", "MATERIALIZED"]
 
 
 @pytest.mark.parametrize("case", view_types)
@@ -19,6 +19,10 @@ def test__view_simple(holder, case):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [["literal[-1]", "column[one.number]"]]
+    subkind = f" subkind={case.lower()}" if case else ""
+    assert f'column[one.number type=INT kind=view{subkind}]' in h.nodes_full
+    assert len(h.nodes) == 2
+    assert len(h.edges) == 1
 
 
 def test__views_and_ctas_with_every_hierarchy(holder):

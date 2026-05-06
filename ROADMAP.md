@@ -55,7 +55,7 @@ CREATE VIEW
   - [x] Regular
     - [x] Named columns
   - [x] MATERIALIZED
-  - [ ] TEMPORARY
+  - [x] TEMPORARY
   - [ ] RECURSIVE
 
 CREATE SEQUENCE

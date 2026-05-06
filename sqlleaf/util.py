@@ -171,7 +171,8 @@ def set_properties(statement: exp.Create) -> str:
     """
     Get a table/view's properties (e.g. TEMPORARY, EXTERNAL, RECURSIVE)
     """
+    properties = (exp.TemporaryProperty, exp.ExternalProperty, exp.MaterializedProperty)
     property = ""
     if props := statement.args["properties"]:
-        property = str(props.find((exp.TemporaryProperty,)) or "").lower()
+        property = str(props.find(properties) or "").lower()
     return property
