@@ -84,7 +84,7 @@ def test__cte_duplicate_columns(holder):
     edges = h.get_edges()
     paths = h.get_friendly_paths()
 
-    assert paths == [   # Wrong: should be two paths that are identical
+    assert paths == 2 * [
         ['literal[1]', 'column[cte_names.number]', 'function[ADD()]', 'column[fruit.processed.age]']
     ]
     assert len(nodes) == 4

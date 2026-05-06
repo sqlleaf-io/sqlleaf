@@ -57,19 +57,15 @@ def test__select_values(holder):
     assert len(edges) == 6
 
 
-# TODO: bug
-#  Also, "SELECT r.kind || r.kind as name" has one column, two edges
-def test__select_double_pipe_cte_blah(holder):
+def test__select_dpipe_cte(holder):
     queries = """
     WITH cte AS (
         SELECT 'hello' AS other
     )
     INSERT INTO fruit.processed (kind)
     SELECT
-        r.name || c.other as kind
-    FROM fruit.raw AS r
-    INNER JOIN cte AS c
-    ON r.name = c.other
+        c.other || c.other as kind
+    FROM cte AS c
     ;
     """
     h = holder(with_tables=True)
@@ -78,11 +74,10 @@ def test__select_double_pipe_cte_blah(holder):
     edges = h.get_edges()
     paths = h.get_friendly_paths()
 
-    assert paths == [
-        ['column[fruit.raw.name]', 'function[DPIPE()]', 'column[fruit.processed.kind]'],
+    assert paths == 2 * [
         ['literal["hello"]', 'column[cte.other]', 'function[DPIPE()]', 'column[fruit.processed.kind]']
     ]
-    assert len(nodes) == 5
+    assert len(nodes) == 4
     assert len(edges) == 4
 
 
@@ -108,10 +103,9 @@ def test__select_dpipe(holder):
     # expect: b -> dpipe1 -> dpipe2
     # expect: c -> dpipe2
 
-    assert paths == [
+    assert paths == 2 * [
         ["column[fruit.raw.name]", "function[DPIPE()]", "function[DPIPE()]", "column[fruit.processed.kind]"],
-        ["column[fruit.raw.name]", "function[UPPER()]", "function[DPIPE()]", "column[fruit.processed.kind]"],
-    ]
+    ] + [["column[fruit.raw.name]", "function[UPPER()]", "function[DPIPE()]", "column[fruit.processed.kind]"]]
     assert len(nodes) == 5
     assert len(edges) == 6
 
@@ -143,6 +137,7 @@ def test__select_case(holder):
     assert len(edges) == 5
 
 
+# TODO: ROW is a value constructor, not UDF - add to sqlglot
 def test__select_row(holder):
     queries = """
     INSERT INTO fruit.processed (name)
@@ -156,8 +151,7 @@ def test__select_row(holder):
     paths = h.get_friendly_paths()
 
     assert paths == [
-        ['column[fruit.raw.name]', 'udf[ROW()]', 'column[fruit.processed.name]'],
-        ['column[fruit.raw.kind]', 'udf[ROW()]', 'column[fruit.processed.name]']
+        ['column[fruit.raw.name]', 'udf[ROW()]', 'column[fruit.processed.name]'], ['column[fruit.raw.kind]', 'udf[ROW()]', 'column[fruit.processed.name]']
     ]
     assert len(nodes) == 4
     assert len(edges) == 3

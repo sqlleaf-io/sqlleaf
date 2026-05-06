@@ -22,11 +22,13 @@ def test__merge_simple_update_and_insert(holder):
     h = holder(with_tables=True)
     h.generate(queries, dialect=DIALECT)
     nodes = h.get_friendly_node_names()
-
     queries = h.get_queries_created()
     paths = h.get_friendly_paths()
 
-    assert paths == [["column[fruit.raw.name]", "column[fruit.processed.name]"], ["column[fruit.raw.kind]", "column[fruit.processed.label]"]]
+    assert paths == [
+        ["column[fruit.raw.name]", "column[fruit.processed.name]"],
+        ["column[fruit.raw.kind]", "column[fruit.processed.label]"]
+    ]
     assert len(nodes) == 4
     assert len(queries) == 1
     assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries))

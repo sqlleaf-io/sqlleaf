@@ -212,11 +212,14 @@ def test__table_inherits_with_merge(holder):
     paths = h.get_friendly_paths()
 
     assert paths == [
-        ["column[a.type]", "column[b.type]"],
-        ["column[a.type]", "column[fruit.x.type]"],
-        ["column[a.type]", "column[fruit.y.type]"],
-        ["column[a.kind]", "column[b.kind]"],
-        ["column[b.color]", "column[c.color]"],
+        ['column[a.type]', 'column[b.type]'],
+        ['column[a.type]', 'column[b.type]'],
+        ['column[a.type]', 'column[fruit.x.type]'],
+        ['column[a.type]', 'column[fruit.y.type]'],
+        ['column[a.kind]', 'column[b.kind]'],
+        ['column[a.kind]', 'column[b.kind]'],
+        ['column[b.color]', 'column[c.color]'],
+        ['column[b.color]', 'column[c.color]']
     ]
     assert len(nodes) == 8
     assert len(edges) == 8
