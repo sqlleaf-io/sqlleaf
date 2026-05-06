@@ -11,7 +11,7 @@ DIALECT = "postgres"
 
 
 def test__procedure_simple(holder):
-    queries = """
+    sql = """
     CREATE OR REPLACE PROCEDURE fruit.process(v_kind VARCHAR, v_amount INT)
     LANGUAGE plpgsql
     SECURITY DEFINER
@@ -37,17 +37,14 @@ def test__procedure_simple(holder):
         END;
     $$;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ["column[fruit.raw.kind]", "function[UPPER()]", "column[cte.knd]", "function[LOWER()]", "column[fruit.processed.kind]"],
         ["variable[v_amount]", "column[fruit.processed.amount]"],
         ["literal[1]", "column[fruit.processed.number]"],
     ]
-    assert len(queries) == 1 and isinstance(queries[0], ProcedureQuery)
+    assert len(h.queries) == 1 and isinstance(h.queries[0], ProcedureQuery)
 
 
 # TODO: test an SP with a merge. This creates a 3-level query hierarchy

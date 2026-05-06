@@ -11,45 +11,37 @@ DIALECT = "postgres"
 
 
 def test__update_with_subquery(holder):
-    queries = """
+    sql = """
     UPDATE fruit.processed
     SET amount = (
         SELECT COUNT(kind)
         FROM fruit.raw
     ), age = 5;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_friendly_node_names()
-    queries = h.get_queries_created()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ["literal[5]", "column[fruit.processed.age]"],
         ["column[fruit.raw.kind]", "function[COUNT()]", "column[fruit.processed.amount]"],
     ]
-    assert [UpdateQuery] == list(map(type, queries))
+    assert [UpdateQuery] == list(map(type, h.queries))
 
 
 def test__update_with_join(holder):
-    queries = """
+    sql = """
     UPDATE fruit.processed p
     SET age = r.age
     FROM fruit.raw r
     WHERE p.name = r.name;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_friendly_node_names()
-    queries = h.get_queries_created()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [["column[fruit.raw.age]", "column[fruit.processed.age]"]]
-    assert [UpdateQuery] == list(map(type, queries))
+    assert h.paths == [["column[fruit.raw.age]", "column[fruit.processed.age]"]]
+    assert [UpdateQuery] == list(map(type, h.queries))
 
 
 def test__update_with_multiple_joins(holder):
-    queries = """
+    sql = """
     CREATE TABLE fruit.old (name VARCHAR);
 
     UPDATE fruit.processed p
@@ -59,11 +51,7 @@ def test__update_with_multiple_joins(holder):
     ON r.name = o.name
     WHERE p.name = r.name;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_friendly_node_names()
-    queries = h.get_queries_created()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [["column[fruit.raw.age]", "column[fruit.processed.age]"]]
-    assert [TableQuery, UpdateQuery] == list(map(type, queries))
+    assert h.paths == [["column[fruit.raw.age]", "column[fruit.processed.age]"]]
+    assert [TableQuery, UpdateQuery] == list(map(type, h.queries))

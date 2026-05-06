@@ -11,23 +11,18 @@ DIALECT = "postgres"
 
 
 def test__table_types(holder):
-    queries = """
+    sql = """
     CREATE TEMPORARY TABLE fruit.new (age INT);
 
     INSERT INTO fruit.new (age) VALUES (1);
     """
-    h = holder()
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT)
 
-    assert "column[fruit.new.age type=INT kind=table subkind=temporary]" in nodes
+    assert "column[fruit.new.age type=INT kind=table subkind=temporary]" in h.nodes_full
 
 
 def test__table_like_table(holder):
-    queries = """
+    sql = """
     CREATE TABLE fruit.a (
         name VARCHAR,
         age INT DEFAULT 42,
@@ -39,33 +34,28 @@ def test__table_like_table(holder):
 
     INSERT INTO fruit.b_like_a (name, age, id) SELECT name, age, id FROM fruit.a;
     """
-    h = holder()
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_friendly_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT)
 
-    assert paths == [
+    assert h.paths == [
         ["column[fruit.a.name]", "column[fruit.b_like_a.name]"],
         ["literal[42]", "column[fruit.b_like_a.age]"],
         ["column[fruit.a.age]", "column[fruit.b_like_a.age]"],
         ["column[fruit.a.id]", "column[fruit.b_like_a.id]"],
     ]
     # Test the LIKE declaration position
-    cols = queries[1].column_defs
+    cols = h.queries[1].column_defs
     assert (cols[0].name, cols[-1].name) == ("label", "color")
-    cols = queries[2].column_defs
+    cols = h.queries[2].column_defs
     assert (cols[0].name, cols[-1].name) == ("name", "color")
-    assert len(nodes) == 7
-    assert len(edges) == 4
+    assert len(h.nodes) == 7
+    assert len(h.edges) == 4
 
 
 # TODO: LIKE with column default overrides
 
 
 def test__table_like_table_generated(holder):
-    queries = """
+    sql = """
     CREATE TABLE fruit.a (
         name VARCHAR,
         kind TEXT,
@@ -75,13 +65,9 @@ def test__table_like_table_generated(holder):
 
     INSERT INTO fruit.b_like_a (name, kind) SELECT 'banana' as name, 'fruit' as kind;
     """
-    h = holder()
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT)
 
-    assert paths == [
+    assert h.paths == [
         ['literal["banana"]', "column[fruit.b_like_a.name]", "function[CONCAT()]", "column[fruit.b_like_a.gen]"],
         ['literal["fruit"]', "column[fruit.b_like_a.kind]", "function[CONCAT()]", "column[fruit.b_like_a.gen]"],
     ]
@@ -91,40 +77,36 @@ def test__table_like_table_generated(holder):
             "column[fruit.b_like_a.kind type=TEXT kind=table]",
             "column[fruit.b_like_a.name type=VARCHAR kind=table]",
         ],
-        arr=nodes,
+        arr=h.nodes_full,
     )
-    assert len(nodes) == 6
-    assert len(edges) == 5
+    assert len(h.nodes) == 6
+    assert len(h.edges) == 5
 
 
 def test__table_with_default_columns(holder):
-    queries = """
+    sql = """
     CREATE TABLE fruit (name varchar, size int default 1, age int default 42);
 
     INSERT INTO fruit
     SELECT 'apple' as name, 10 as size;
     """
-    h = holder()
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_friendly_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT)
 
-    assert paths == [
+    assert h.paths == [
         ['literal["apple"]', "column[fruit.name]"],
         ["literal[1]", "column[fruit.size]"],
         ["literal[10]", "column[fruit.size]"],
         ["literal[42]", "column[fruit.age]"],
     ]
-    assert len(nodes) == 7
-    assert len(edges) == 4
+    assert len(h.nodes) == 7
+    assert len(h.edges) == 4
 
 
 # TODO: LIKE + INHERITS with same columns
 
 
 def test__table_inherits_with_select(holder):
-    queries = """
+    sql = """
     CREATE TABLE fruit.a (type VARCHAR, kind VARCHAR);
     CREATE TABLE fruit.a_only () INHERITS (fruit.a);
     CREATE TABLE fruit.output (type VARCHAR, kind VARCHAR);
@@ -150,13 +132,9 @@ def test__table_inherits_with_select(holder):
     INSERT INTO fruit.x_y (value) SELECT label FROM fruit.x;
     INSERT INTO fruit.x_y (value) SELECT label FROM fruit.y;
     """
-    h = holder()
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT)
 
-    assert paths == [
+    assert h.paths == [
         ['literal["apple"]', "column[fruit.b.type]", "column[fruit.b_only.type]"],
         ["column[fruit.a.type]", "column[fruit.output.type]"],
         ["column[fruit.a.kind]", "column[fruit.output.kind]"],
@@ -166,12 +144,12 @@ def test__table_inherits_with_select(holder):
         ["column[fruit.x.label]", "column[fruit.x_y.value]"],
         ["column[fruit.y.label]", "column[fruit.x_y.value]"],
     ]
-    assert len(nodes) == 14
-    assert len(edges) == 9
+    assert len(h.nodes) == 14
+    assert len(h.edges) == 9
 
 
 def test__table_inherits_with_merge(holder):
-    queries = """
+    sql = """
     CREATE TABLE a (type VARCHAR, kind VARCHAR);
     CREATE TABLE b (type VARCHAR, kind VARCHAR, color VARCHAR);
     CREATE TABLE c (color VARCHAR);
@@ -205,13 +183,9 @@ def test__table_inherits_with_merge(holder):
     WHEN NOT MATCHED THEN
         INSERT (color) VALUES (s.color);
     """
-    h = holder()
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT)
 
-    assert paths == [
+    assert h.paths == [
         ['column[a.type]', 'column[b.type]'],
         ['column[a.type]', 'column[b.type]'],
         ['column[a.type]', 'column[fruit.x.type]'],
@@ -221,13 +195,13 @@ def test__table_inherits_with_merge(holder):
         ['column[b.color]', 'column[c.color]'],
         ['column[b.color]', 'column[c.color]']
     ]
-    assert len(nodes) == 8
-    assert len(edges) == 8
+    assert len(h.nodes) == 8
+    assert len(h.edges) == 8
 
 
 # Not supported by sqlglot: 'Falling back to Command'
 def test__table_foreign(holder):
-    queries = """
+    sql = """
     CREATE FOREIGN TABLE foreign_users (
         id integer NOT NULL,
         username text,
@@ -236,14 +210,13 @@ def test__table_foreign(holder):
     SERVER remote_server_name
     OPTIONS (schema_name 'public', table_name 'users');
     """
-    h = holder()
-    h.generate(queries, dialect=DIALECT)
-    assert len(h.get_queries()) == 0
+    h = holder(sql=sql, dialect=DIALECT)
+    assert len(h.queries) == 0
 
 
 # Not supported by sqlglot (both): 'Falling back to Command'
 def test__table_of_type(holder):
-    queries = """
+    sql = """
     CREATE TYPE person_type AS (
         first_name text,
         last_name text,
@@ -254,9 +227,8 @@ def test__table_of_type(holder):
         PRIMARY KEY (first_name, last_name)
     );
     """
-    h = holder()
-    h.generate(queries, dialect=DIALECT)
-    assert len(h.get_queries()) == 0
+    h = holder(sql=sql, dialect=DIALECT)
+    assert len(h.queries) == 0
 
 
 # TODO: UPDATE and SELECT from different inherited tables in the same query
@@ -264,18 +236,13 @@ def test__table_of_type(holder):
 
 
 def test__simple_sequence(holder):
-    queries = """
+    sql = """
     CREATE SEQUENCE serial START 101;
     INSERT INTO fruit.raw (age) SELECT nextval('serial') as age;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    queries = h.get_queries_created()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [["sequence[serial]", "column[fruit.raw.age]"]]
-    assert [SequenceQuery, InsertQuery] == list(map(type, queries))
-    assert len(nodes) == 2
-    assert len(edges) == 1
+    assert h.paths == [["sequence[serial]", "column[fruit.raw.age]"]]
+    assert [SequenceQuery, InsertQuery] == list(map(type, h.queries))
+    assert len(h.nodes) == 2
+    assert len(h.edges) == 1

@@ -34,6 +34,5 @@ tests = [
 
 @pytest.mark.parametrize("query", tests)
 def test_expression(query, holder):
-    h = holder(with_tables=True)
-    q = "INSERT INTO fruit.processed " + query + " AS name;"
-    h.generate(q, dialect=DIALECT)
+    sql = "INSERT INTO fruit.processed " + query + " AS name;"
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)

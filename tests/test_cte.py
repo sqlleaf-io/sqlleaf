@@ -14,7 +14,7 @@ DIALECT = "postgres"
 
 
 def test__cte_simple(holder):
-    queries = """
+    sql = """
     WITH cte_names AS (
         SELECT
             lower(age) as age,
@@ -27,22 +27,18 @@ def test__cte_simple(holder):
         age
     FROM cte_names;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ['literal["hello"]', "column[cte_names.name]", "column[fruit.processed.name]"],
         ["column[fruit.raw.age]", "function[LOWER()]", "column[cte_names.age]", "column[fruit.processed.age]"],
     ]
-    assert len(nodes) == 7
-    assert len(edges) == 5
+    assert len(h.nodes) == 7
+    assert len(h.edges) == 5
 
 
 def test__cte_named_columns(holder):
-    queries = """
+    sql = """
     WITH cte_names(col2, col1) AS (
         SELECT
             lower(age) as age,
@@ -55,22 +51,18 @@ def test__cte_named_columns(holder):
         col2
     FROM cte_names;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ['literal["hello"]', "column[cte_names.col1]", "column[fruit.processed.name]"],
         ["column[fruit.raw.age]", "function[LOWER()]", "column[cte_names.col2]", "column[fruit.processed.age]"],
     ]
-    assert len(nodes) == 7
-    assert len(edges) == 5
+    assert len(h.nodes) == 7
+    assert len(h.edges) == 5
 
 
 def test__cte_duplicate_columns(holder):
-    queries = """
+    sql = """
     WITH cte_names AS (
         SELECT 1 as number
     )
@@ -78,21 +70,17 @@ def test__cte_duplicate_columns(holder):
     SELECT c.number + c.number AS age
     FROM cte_names c;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == 2 * [
+    assert h.paths == 2 * [
         ['literal[1]', 'column[cte_names.number]', 'function[ADD()]', 'column[fruit.processed.age]']
     ]
-    assert len(nodes) == 4
-    assert len(edges) == 4
+    assert len(h.nodes) == 4
+    assert len(h.edges) == 4
 
 
 def test__cte_join_same_names(holder):
-    queries = """
+    sql = """
     CREATE TABLE fruit.old (kind VARCHAR);
 
     WITH cte_names AS (
@@ -107,22 +95,18 @@ def test__cte_join_same_names(holder):
         kind
     FROM cte_names;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ["column[fruit.raw.kind]", "function[DPIPE()]", "function[LOWER()]", "column[cte_names.kind]", "column[fruit.processed.kind]"],
         ["column[fruit.old.kind]", "function[DPIPE()]", "function[LOWER()]", "column[cte_names.kind]", "column[fruit.processed.kind]"],
     ]
-    assert len(nodes) == 6
-    assert len(edges) == 5
+    assert len(h.nodes) == 6
+    assert len(h.edges) == 5
 
 
 def test__cte_same_functions_different_levels(holder):
-    queries = """
+    sql = """
     WITH cte_names AS (
         SELECT 
             'hello' as not_used,
@@ -138,25 +122,20 @@ def test__cte_same_functions_different_levels(holder):
         LOWER(LOWER(cte_names.a_name1)) as name3
     FROM cte_names;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ['literal["a"]', "column[fruit.processed.name]"],
         ['literal["a"]', "function[LOWER()]", "column[fruit.processed.name1]"],
         ['literal["a"]', "column[cte_names.a_name]", "function[LOWER()]", "column[fruit.processed.name2]"],
         ['literal["a"]', "function[LOWER()]", "column[cte_names.a_name1]", "function[LOWER()]", "function[LOWER()]", "column[fruit.processed.name3]"],
     ]
-    assert len(nodes) == 15
-    assert len(edges) == 11
+    assert len(h.nodes) == 15
+    assert len(h.edges) == 11
 
 
 def test__cte_two_identical(holder):
-    queries = """
+    sql = """
     WITH cte1 AS (SELECT 'a' as name)
     INSERT INTO fruit.processed
     SELECT c.name as name
@@ -167,20 +146,15 @@ def test__cte_two_identical(holder):
     SELECT c.name as name
     FROM cte1 c;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [['literal["a"]', "column[cte1.name]", "column[fruit.processed.name]"]]
-    assert [InsertQuery] == list(map(type, queries))
-    assert len(nodes) == 3
-    assert len(edges) == 2
+    assert h.paths == [['literal["a"]', "column[cte1.name]", "column[fruit.processed.name]"]]
+    assert [InsertQuery] == list(map(type, h.queries))
+    assert len(h.nodes) == 3
+    assert len(h.edges) == 2
 
 def test__cte_two_same_name_different_query(holder):
-    queries = """
+    sql = """
     WITH cte1 AS (SELECT 1 as name)
     INSERT INTO fruit.processed
     SELECT c.name as name
@@ -191,14 +165,9 @@ def test__cte_two_same_name_different_query(holder):
     SELECT c.name as name
     FROM cte1 c;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ["literal[1]", "column[cte1.name]", "column[fruit.processed.name]"],
         ["literal[2]", "column[cte1.name]", "column[fruit.raw.name]"],
     ]
@@ -207,15 +176,15 @@ def test__cte_two_same_name_different_query(holder):
             "column[cte1.name type=INT kind=cte statement=0]",
             "column[cte1.name type=INT kind=cte statement=1]",
         ],
-        arr=nodes,
+        arr=h.nodes_full,
     )
-    assert [InsertQuery, InsertQuery] == list(map(type, queries))
-    assert len(nodes) == 6
-    assert len(edges) == 4
+    assert [InsertQuery, InsertQuery] == list(map(type, h.queries))
+    assert len(h.nodes) == 6
+    assert len(h.edges) == 4
 
 
 def test__cte_chained(holder):
-    queries = """
+    sql = """
     WITH cte_one AS (
         SELECT name FROM fruit.raw
     ),
@@ -225,19 +194,15 @@ def test__cte_chained(holder):
     INSERT INTO fruit.processed
     SELECT * FROM cte_two;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [["column[fruit.raw.name]", "column[cte_one.name]", "column[cte_two.name]", "column[fruit.processed.name]"]]
-    assert len(nodes) == 4
-    assert len(edges) == 3
+    assert h.paths == [["column[fruit.raw.name]", "column[cte_one.name]", "column[cte_two.name]", "column[fruit.processed.name]"]]
+    assert len(h.nodes) == 4
+    assert len(h.edges) == 3
 
 
 def test__cte_chained_many_to_one(holder):
-    queries = """
+    sql = """
     WITH single AS (
         SELECT '1' as name, '2' as kind
     ),
@@ -247,23 +212,19 @@ def test__cte_chained_many_to_one(holder):
     INSERT INTO fruit.processed (name, label)
     SELECT name, label FROM multiple;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ['literal["1"]', 'column[single.name]', 'column[multiple.label]', 'column[fruit.processed.label]'],
         ['literal["1"]', 'column[single.name]', 'function[DPIPE()]', 'column[multiple.name]', 'column[fruit.processed.name]'],
         ['literal["2"]', 'column[single.kind]', 'function[DPIPE()]', 'column[multiple.name]', 'column[fruit.processed.name]']
     ]
-    assert len(nodes) == 9
-    assert len(edges) == 8
+    assert len(h.nodes) == 9
+    assert len(h.edges) == 8
 
 
 def test__cte_nested(holder):
-    queries = """
+    sql = """
     WITH outer_cte AS (
         WITH inner_cte AS (
             SELECT name FROM fruit.raw
@@ -273,19 +234,15 @@ def test__cte_nested(holder):
     INSERT INTO fruit.processed
     SELECT * FROM outer_cte;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [["column[fruit.raw.name]", "column[inner_cte.name]", "column[outer_cte.name]", "column[fruit.processed.name]"]]
-    assert len(nodes) == 4
-    assert len(edges) == 3
+    assert h.paths == [["column[fruit.raw.name]", "column[inner_cte.name]", "column[outer_cte.name]", "column[fruit.processed.name]"]]
+    assert len(h.nodes) == 4
+    assert len(h.edges) == 3
 
 
 def test__cte_update_returning_with_old_and_new_aliases(holder):
-    queries = """
+    sql = """
     WITH first_cte AS (
         UPDATE fruit.raw
         SET name = 'pear'
@@ -295,26 +252,21 @@ def test__cte_update_returning_with_old_and_new_aliases(holder):
     SET age = first_cte.age
     FROM first_cte;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ["column[fruit.raw.age]", "column[first_cte.age]", "column[fruit.processed.age]"],
         ['literal["pear"]', "column[fruit.raw.name]"],
     ]
-    assert [UpdateQuery] == list(map(type, queries))
-    assert [UpdateQuery] == list(map(type, queries[0].child_queries))
-    assert len(nodes) == 5
-    assert len(edges) == 3
+    assert [UpdateQuery] == list(map(type, h.queries))
+    assert [UpdateQuery] == list(map(type, h.queries[0].child_queries))
+    assert len(h.nodes) == 5
+    assert len(h.edges) == 3
 
 
 def test__cte_fails_for_returning_unaliased_function(holder):
     with pytest.raises(SqlLeafException) as e:
-        queries = """
+        sql = """
         WITH first_cte AS (
             UPDATE fruit.raw
             SET name = 'pear'
@@ -324,15 +276,14 @@ def test__cte_fails_for_returning_unaliased_function(holder):
         SELECT name
         FROM first_cte;
         """
-        h = holder(with_tables=True)
-        h.generate(queries, dialect=DIALECT)
+        h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert e.value.message == "Non-column expression (UPPER(name)) must have an alias inside RETURNING to prevent ambiguity."
 
 
 def test__cte_fails_for_returning_ambiguous_aliases(holder):
     with pytest.raises(SqlLeafException) as e:
-        queries = """
+        sql = """
         WITH first_cte AS (
             UPDATE fruit.raw
             SET name = 'pear'
@@ -342,28 +293,26 @@ def test__cte_fails_for_returning_ambiguous_aliases(holder):
         SELECT name
         FROM first_cte;
         """
-        h = holder(with_tables=True)
-        h.generate(queries, dialect=DIALECT)
+        h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert e.value.message == "Column reference 'first_cte.name' is ambiguous (2 possible options)"
 
 
 def test__cte_fails_select_without_write(holder):
     with pytest.raises(SqlLeafException) as e:
-        queries = """
+        sql = """
         WITH cte1 AS (
             SELECT '1' AS name
         )
         SELECT name FROM cte1
         """
-        h = holder(with_tables=True)
-        h.generate(queries, dialect=DIALECT)
+        h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert e.value.message == "Skipping statement: A SELECT query must have a data-modifying statement, such as an INSERT, to contain lineage."
 
 
 def test__cte_update_with_two_updates_returning(holder):
-    queries = """
+    sql = """
     WITH first_cte AS (
         UPDATE fruit.raw
         SET name = 'pear'
@@ -378,26 +327,21 @@ def test__cte_update_with_two_updates_returning(holder):
     SET age = first_cte.age
     FROM first_cte;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ["column[fruit.raw.age]", "column[first_cte.age]", "column[fruit.processed.age]"],
         ['literal["pear"]', "column[fruit.raw.name]"],
         ['literal["tomato"]', "column[fruit.raw.name]"],
     ]
-    assert [UpdateQuery] == list(map(type, queries))
-    assert [UpdateQuery, UpdateQuery] == list(map(type, queries[0].child_queries))
-    assert len(nodes) == 6
-    assert len(edges) == 4
+    assert [UpdateQuery] == list(map(type, h.queries))
+    assert [UpdateQuery, UpdateQuery] == list(map(type, h.queries[0].child_queries))
+    assert len(h.nodes) == 6
+    assert len(h.edges) == 4
 
 
 def test__cte_merge(holder):
-    queries = """
+    sql = """
     WITH cte AS (
         MERGE INTO fruit.processed AS t
         USING fruit.raw AS s
@@ -410,27 +354,22 @@ def test__cte_merge(holder):
     )
     SELECT 1;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ["column[fruit.raw.name]", "column[fruit.processed.name]"],
         ["column[fruit.raw.kind]", "column[fruit.processed.label]"]
     ]
-    assert [SelectQuery] == list(map(type, queries))
-    assert [MergeQuery] == list(map(type, queries[0].child_queries))
-    assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries[0].child_queries))
-    assert len(nodes) == 4
-    assert len(edges) == 2
+    assert [SelectQuery] == list(map(type, h.queries))
+    assert [MergeQuery] == list(map(type, h.queries[0].child_queries))
+    assert [UpdateQuery, InsertQuery] == list(map(type, h.queries[0].child_queries[0].child_queries))
+    assert len(h.nodes) == 4
+    assert len(h.edges) == 2
 
 
 # TODO: add function merge_action() as system function (not UDF)
 def test__cte_merge_returning(holder):
-    queries = """
+    sql = """
     CREATE TABLE fruit (name VARCHAR, kind VARCHAR);
     CREATE TABLE drink (name2 VARCHAR, kind2 VARCHAR);
     CREATE TABLE fruit_drink (action VARCHAR, name VARCHAR, kind VARCHAR, name2 VARCHAR, kind2 VARCHAR);
@@ -449,14 +388,9 @@ def test__cte_merge_returning(holder):
     SELECT *
     FROM cte;
     """
-    h = holder(with_tables=False)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=False)
 
-    assert paths == [
+    assert h.paths == [
         ["udf[MERGE_ACTION()]", "column[cte.action]", "column[fruit_drink.action]"],
         ["column[drink.name2]", "column[cte.name2]", "column[fruit_drink.name2]"],
         ["column[drink.name2]", "column[fruit.name]", "column[cte.name]", "column[fruit_drink.name]"],
@@ -464,15 +398,15 @@ def test__cte_merge_returning(holder):
         ["column[drink.kind2]", "column[fruit.kind]", "column[cte.kind]", "column[fruit_drink.kind]"],
     ]
     assert (
-        queries[3].statement_transformed.sql(dialect=DIALECT)
+        h.queries[3].statement_transformed.sql(dialect=DIALECT)
         == "WITH cte AS (SELECT MERGE_ACTION() AS action, t.name AS name, t.kind AS kind, s.name2 AS name2, s.kind2 AS kind2 FROM fruit AS t JOIN drink AS s ON s.name2 = t.name) INSERT INTO fruit_drink (action, name, kind, name2, kind2) SELECT cte.action AS action, cte.name AS name, cte.kind AS kind, cte.name2 AS name2, cte.kind2 AS kind2 FROM cte AS cte"
     )
-    assert len(nodes) == 15
-    assert len(edges) == 12
+    assert len(h.nodes) == 15
+    assert len(h.edges) == 12
 
 
 def test__cte_merge_with_update_and_insert(holder):
-    queries = """
+    sql = """
     WITH merge_cte AS (
         SELECT kind, name
         FROM fruit.raw
@@ -485,24 +419,20 @@ def test__cte_merge_with_update_and_insert(holder):
     WHEN NOT MATCHED THEN
         INSERT (label) VALUES (s.kind);
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_friendly_node_names()
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ["column[fruit.raw.name]", "column[merge_cte.name]", "column[fruit.processed.name]"],
         ["column[fruit.raw.kind]", "column[merge_cte.kind]", "column[fruit.processed.label]"],
     ]
-    assert len(nodes) == 6
-    assert len(queries) == 1
-    assert [UpdateQuery, InsertQuery] == list(map(type, queries[0].child_queries))
+    assert len(h.nodes) == 6
+    assert len(h.queries) == 1
+    assert [UpdateQuery, InsertQuery] == list(map(type, h.queries[0].child_queries))
 
 
 # TODO: bug. This should return fruit.raw.kind's default value
 def test__cte_insert_returning(holder):
-    queries = """
+    sql = """
     WITH insert_cte AS (
         INSERT INTO fruit.raw as r (name)
         SELECT 'orange' as name
@@ -511,25 +441,20 @@ def test__cte_insert_returning(holder):
     INSERT INTO fruit.processed (name, kind)
     SELECT name, kind FROM insert_cte;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ["column[fruit.raw.kind]", "column[insert_cte.kind]", "column[fruit.processed.kind]"],
         ['literal["orange"]', "column[fruit.raw.name]", "column[insert_cte.name]", "column[fruit.processed.name]"],
     ]
-    assert [InsertQuery] == list(map(type, queries))
-    assert [InsertQuery] == list(map(type, queries[0].child_queries))
-    assert len(nodes) == 7
-    assert len(edges) == 5
+    assert [InsertQuery] == list(map(type, h.queries))
+    assert [InsertQuery] == list(map(type, h.queries[0].child_queries))
+    assert len(h.nodes) == 7
+    assert len(h.edges) == 5
 
 
 def test__cte_insert_conflict_returning(holder):
-    queries = """
+    sql = """
     WITH insert_cte AS (
         INSERT INTO fruit.raw (name)
         VALUES ('pear')
@@ -541,25 +466,20 @@ def test__cte_insert_conflict_returning(holder):
     INSERT INTO fruit.processed (name, kind, label)
     SELECT name, kind, 'pear' as label FROM insert_cte;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ['literal["pear"]', "column[insert_cte.kind]", "column[fruit.processed.kind]"],
         ['literal["pear"]', "column[fruit.processed.label]"],
         ['literal["pear"]', "column[fruit.raw.name]", "column[insert_cte.name]", "column[fruit.processed.name]"],
         ['literal["pear"]', "function[LOWER()]", "column[fruit.raw.name]", "column[insert_cte.name]", "column[fruit.processed.name]"],
     ]
-    assert len(nodes) == 11
-    assert len(edges) == 8
+    assert len(h.nodes) == 11
+    assert len(h.edges) == 8
 
 
 def test__cte_insert(holder):
-    queries = """
+    sql = """
     WITH insert_cte AS (
         INSERT INTO fruit.raw (name)
         SELECT 'orange' as name
@@ -571,26 +491,21 @@ def test__cte_insert(holder):
     )
     SELECT 1;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ['literal["orange"]', "column[fruit.raw.name]"],
         ['literal["banana"]', "column[fruit.raw.name]"]
     ]
-    assert [SelectQuery] == list(map(type, queries))
-    assert [InsertQuery, UpdateQuery] == list(map(type, queries[0].child_queries))
-    assert len(nodes) == 3
-    assert len(edges) == 2
+    assert [SelectQuery] == list(map(type, h.queries))
+    assert [InsertQuery, UpdateQuery] == list(map(type, h.queries[0].child_queries))
+    assert len(h.nodes) == 3
+    assert len(h.edges) == 2
 
 
 # TODO: requires new algorithm
 def test__cte_recursive_view(holder):
-    queries = """
+    sql = """
     WITH RECURSIVE numbers AS (
         SELECT 1 AS n
         UNION ALL
@@ -601,12 +516,10 @@ def test__cte_recursive_view(holder):
     INSERT INTO fruit.processed (age)
     SELECT n AS age FROM numbers;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect="postgres")
-    nodes = h.get_full_node_names()
-    paths = h.get_full_paths()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+    h.generate(sql=sql, dialect="postgres")
 
-    assert paths == [
+    assert h.paths == [
         [
             "literal[1 type=INT query_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
             "column[numbers.n type=INT kind=cte member=anchor statement=0]",

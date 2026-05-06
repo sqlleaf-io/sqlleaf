@@ -9,26 +9,22 @@ DIALECT = "postgres"
 
 
 def test__json_one_selector(holder):
-    queries = """
+    sql = """
     INSERT INTO fruit.processed
     SELECT jsonblob -> 'fruits' AS name
     FROM fruit.raw;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_friendly_node_names()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert nodes == ["jsonpath[.fruits]", "column[fruit.processed.name]", "column[fruit.raw.jsonblob]"]
+    assert h.nodes == ["jsonpath[.fruits]", "column[fruit.processed.name]", "column[fruit.raw.jsonblob]"]
 
 
 def test__json_two_selectors(holder):
-    queries = """
+    sql = """
     INSERT INTO fruit.processed
     SELECT jsonblob ->> 'fruits' -> 'apple' AS name
     FROM fruit.raw;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_friendly_node_names()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert nodes == ["jsonpath[.fruits.apple]", "column[fruit.processed.name]", "column[fruit.raw.jsonblob]"]
+    assert h.nodes == ["jsonpath[.fruits.apple]", "column[fruit.processed.name]", "column[fruit.raw.jsonblob]"]

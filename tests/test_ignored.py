@@ -10,7 +10,7 @@ DIALECT = "postgres"
 
 
 def test__ignore_transaction_statements(holder):
-    queries = """
+    sql = """
     BEGIN;
     COMMIT;
     ROLLBACK;
@@ -20,10 +20,7 @@ def test__ignore_transaction_statements(holder):
     ROLLBACK TO 'hello';
     --SAVEPOINT 'hello';    -- Not recognised by sqlglot
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_friendly_node_names()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert len(nodes) == 0
-    assert len(queries) == 0
+    assert len(h.nodes) == 0
+    assert len(h.queries) == 0

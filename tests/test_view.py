@@ -5,7 +5,7 @@ import pytest
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from tests.new_fixtures import holder, DIALECT
+from tests.new_fixtures import holder
 
 DIALECT = "postgres"
 
@@ -15,16 +15,14 @@ view_types = [" ", "MATERIALIZED"]
 
 @pytest.mark.parametrize("case", view_types)
 def test__view_simple(holder, case):
-    queries = f"""CREATE {case} VIEW one AS SELECT -1 as number;"""
-    h = holder()
-    h.generate(queries, dialect=DIALECT)
-    paths = h.get_friendly_paths()
+    sql = f"""CREATE {case} VIEW one AS SELECT -1 as number;"""
+    h = holder(sql=sql, dialect=DIALECT)
 
-    assert paths == [["literal[-1]", "column[one.number]"]]
+    assert h.paths == [["literal[-1]", "column[one.number]"]]
 
 
 def test__views_and_ctas_with_every_hierarchy(holder):
-    queries = """
+    sql = """
     CREATE TABLE b.a (ba int);
     CREATE TABLE a.b (ab int);
     CREATE TABLE ctas AS SELECT ab as one FROM a.b;
@@ -32,48 +30,38 @@ def test__views_and_ctas_with_every_hierarchy(holder):
     CREATE VIEW tab.vie AS SELECT ABS(one) AS two FROM vie.tab;
     CREATE VIEW sch.tab.vie AS SELECT two AS three FROM tab.vie
     """
-    h = holder()
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT)
 
-    assert paths == [
+    assert h.paths == [
         ["column[a.b.ab]", "column[ctas.one]", "column[vie.tab.one]", "function[ABS()]", "column[tab.vie.two]", "column[sch.tab.vie.three]"]
     ]
-    assert len(nodes) == 6
-    assert len(edges) == 5
+    assert len(h.nodes) == 6
+    assert len(h.edges) == 5
 
 
 def test__view_with_cte(holder):
-    queries = """
+    sql = """
     CREATE VIEW v AS
     WITH inner1 AS (
         SELECT 'a' as name
     )
     SELECT * FROM inner1;
     """
-    h = holder()
-    h.generate(queries, dialect=DIALECT)
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT)
 
-    assert paths == [['literal["a"]', "column[inner1.name]", "column[v.name]"]]
+    assert h.paths == [['literal["a"]', "column[inner1.name]", "column[v.name]"]]
 
 
 def test__view_named_columns(holder):
-    queries = """
+    sql = """
     CREATE VIEW v(col1, col2) AS
     SELECT name, kind FROM fruit.raw;
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert paths == [
+    assert h.paths == [
         ['column[fruit.raw.name]', 'column[v.col1]'],
         ['column[fruit.raw.kind]', 'column[v.col2]']
     ]
-    assert len(nodes) == 4
-    assert len(edges) == 2
+    assert len(h.nodes) == 4
+    assert len(h.edges) == 2

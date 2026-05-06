@@ -12,7 +12,7 @@ DIALECT = "redshift"
 
 
 def test__select_pivot(holder):
-    queries = """
+    sql = """
     CREATE TABLE source(name1 VARCHAR, name2 VARCHAR, age INT);
     CREATE TABLE target(john_total INT, mary_total INT, john_average DECIMAL(10,2), mary_average DECIMAL(10,2));
 
@@ -27,18 +27,14 @@ def test__select_pivot(holder):
       FOR name1 IN ('john', 'mary')
     );
     """
-    h = holder()
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
-    assert paths == [
+    h = holder(sql=sql, dialect=DIALECT)
+    assert h.paths == [
         ['column[source.age]', 'column[_0.age]', 'column[target.john_average]'],
         ['column[source.age]', 'column[_0.age]', 'column[target.john_total]'],
         ['column[source.age]', 'column[_0.age]', 'column[target.mary_average]'],
         ['column[source.age]', 'column[_0.age]', 'column[target.mary_total]']
     ]
-    assert nodes == [
+    assert h.nodes_full == [
         'column[_0.age type=INT kind=pivot]',
         'column[source.age type=INT kind=table]',
         'column[target.john_average type=DECIMAL(10, 2) kind=table]',
@@ -46,23 +42,18 @@ def test__select_pivot(holder):
         'column[target.mary_average type=DECIMAL(10, 2) kind=table]',
         'column[target.mary_total type=INT kind=table]'
     ]
-    assert len(edges) == 5
+    assert len(h.edges) == 5
     # TODO: the agg functions used inside the pivot are currently not extracted.
 
 
 def test__unload(holder):
-    queries = """
+    sql = """
     UNLOAD ('SELECT * FROM fruit.raw')
     TO 's3://object-path/name-prefix'
     IAM_ROLE 'arn:aws:iam::0123456789012:role/MyRedshiftRole';
     """
-    h = holder(with_tables=True)
-    h.generate(queries, dialect=DIALECT)
-    nodes = h.get_full_node_names()
-    edges = h.get_edges()
-    paths = h.get_friendly_paths()
-    queries = h.get_queries_created()
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert len(nodes) == 0
-    assert len(queries) == 0
+    assert len(h.nodes) == 0
+    assert len(h.queries) == 0
     # TODO: the agg functions used inside the pivot are currently not extracted.

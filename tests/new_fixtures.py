@@ -1,17 +1,14 @@
 import sys
 import os
-import typing as t
 import pytest
 
-from sqlleaf.objects.query_types import TableQuery, Query
+from sqlleaf.objects.query_types import TableQuery
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import logging
 
-
 logging.basicConfig(level=logging.NOTSET)
-
 logger = logging.getLogger("sqlleaf")
 logger.setLevel(logging.DEBUG)
 
@@ -19,44 +16,62 @@ import sqlleaf
 
 from sqlglot import exp
 
-DIALECT = "postgres"
 
+class LineageHolderDummy:
+    def __init__(self):
+        self.lineage = sqlleaf.Lineage()
 
-class LineageDummy(sqlleaf.Lineage):
-    def get_full_node_names(self):
-        return [n.full_name for n in self.get_nodes()]
+    def generate(self, sql: str, dialect: str):
+        self.lineage.generate(sql=sql, dialect=dialect)
 
-    def get_friendly_node_names(self):
-        return [n.friendly_name for n in self.get_nodes()]
+        self._all_nodes = self.lineage.get_nodes()
+        self._all_edges = self.lineage.get_edges()
+        self._all_paths = list(self.lineage.get_paths())
+        self._all_queries = self.lineage.get_queries()
 
-    def get_friendly_paths(self):
-        paths = []
-        for path in self.get_paths():
-            paths.append([hop.friendly_name for hop in path.node_hops()])
-        return paths
+    @property
+    def nodes(self):
+        return [n.friendly_name for n in self._all_nodes]
 
-    def get_full_paths(self):
-        paths = []
-        for path in self.get_paths():
-            paths.append([hop.full_name for hop in path.node_hops()])
-        return paths
+    @property
+    def nodes_full(self):
+        return [n.full_name for n in self._all_nodes]
 
-    def get_queries_created(self) -> t.List[Query]:
-        all_queries = self.get_queries()
+    @property
+    def edges(self):
+        return self._all_edges
+
+    @property
+    def queries(self):
         new_queries = []
-        for query in all_queries:
+        for query in self._all_queries:
             # Remove the COMMON_TABLES queries
             if not (isinstance(query, TableQuery) and exp.table_name(query.child_table).lower() in ["fruit.raw", "fruit.processed"]):
                 new_queries.append(query)
         return new_queries
 
+    @property
+    def paths(self):
+        paths = []
+        for path in self._all_paths:
+            paths.append([hop.friendly_name for hop in path.node_hops()])
+        return paths
+
+    @property
+    def paths_full(self):
+        paths = []
+        for path in self._all_paths:
+            paths.append([hop.full_name for hop in path.node_hops()])
+        return paths
+
 
 @pytest.fixture(scope="function")
 def holder():
-    def _create_holder(with_tables: bool = False, dialect: str = ""):
-        h = LineageDummy()
+    def _create_holder(sql: str, dialect: str, with_tables: bool = False):
+        h = LineageHolderDummy()
         if with_tables:
-            h.generate(COMMON_TABLES, dialect=dialect or DIALECT)
+            h.generate(sql=COMMON_TABLES, dialect=dialect)
+        h.generate(sql=sql, dialect=dialect)
         return h
 
     return _create_holder
