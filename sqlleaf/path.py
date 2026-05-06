@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 import typing as t
+
 import networkx as nx
 
 from sqlleaf import util
@@ -45,7 +46,7 @@ class LineagePath:
         }
 
 
-def calculate_paths(graph: nx.MultiDiGraph) -> t.Dict[str, LineagePath]:
+def find_all_paths(graph: nx.MultiDiGraph) -> t.Generator[LineagePath]:
     """
     Find all the unique paths in the graph and give each path a unique ID according to the set of edges it contains.
 
@@ -66,6 +67,4 @@ def calculate_paths(graph: nx.MultiDiGraph) -> t.Dict[str, LineagePath]:
 
             logger.debug("Found edge path: %s --- %s", [e.id for e in path], [(e.parent.friendly_name, e.child.friendly_name) for e in path])
             lineage_path = LineagePath(root=root, hops=path)
-            all_lineage_paths[lineage_path.path_id] = lineage_path
-
-    return all_lineage_paths
+            yield lineage_path

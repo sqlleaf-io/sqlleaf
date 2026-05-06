@@ -22,7 +22,7 @@ class Lineage:
     def __init__(self):
         self.graph = new_graph()  # The graph that contains all lineage
         self.subgraphs: t.List[nx.MultiDiGraph] = []  # The subgraphs that make up the main graph
-        self.paths: t.Dict[str, LineagePath] = {}  # The paths throughout the graph
+        self.paths: t.Dict[str, t.List[LineagePath]] = {}  # The paths throughout the graph
         self.object_mapping = None
 
     def generate(self, sql: str, dialect: str):
@@ -50,8 +50,6 @@ class Lineage:
             self.merge_graph(graph)
             self.graph.graph["attrs"].add_query(parent_query)
             types.update_column_data_types(self.graph)
-
-        self.paths = path.calculate_paths(graph=self.graph)
 
     def merge_graph(self, subgraph: nx.MultiDiGraph):
         """
@@ -101,7 +99,7 @@ class Lineage:
         """
         return []
 
-    def get_paths(self) -> t.List[LineagePath]:
+    def get_paths(self) -> t.Generator[LineagePath]:
         """
         paths: [
             {
@@ -114,7 +112,8 @@ class Lineage:
             }
         ]
         """
-        return list(self.paths.values())
+        for p in path.find_all_paths(graph=self.graph):
+            yield p
 
     def print_json(self):
         nodes = self.get_nodes()
