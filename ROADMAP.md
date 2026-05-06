@@ -80,6 +80,7 @@ SELECT
     - [x] WITH (UPDATE)
     - [x] WITH (MERGE)
     - [ ] WITH (VALUES)
+    - [x] WITH MATERIALIZED
   - [ ] LATERAL
     - sqlglot optimize() creates weird output
   - [ ] ROWS FROM

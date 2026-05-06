@@ -517,7 +517,6 @@ def test__cte_recursive_view(holder):
     SELECT n AS age FROM numbers;
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
-    h.generate(sql=sql, dialect="postgres")
 
     assert h.paths == [
         [
@@ -539,3 +538,19 @@ def test__cte_recursive_view(holder):
             "column[fruit.processed.age type=INT kind=table]",
         ],
     ]
+
+
+def test__cte_materialized(holder):
+    sql = """
+    WITH cte AS MATERIALIZED (
+        SELECT 1 AS n
+    )
+    INSERT INTO fruit.processed (age)
+    SELECT n AS age FROM cte;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [['literal[1]', 'column[cte.n]', 'column[fruit.processed.age]']]
+    assert "column[cte.n type=INT kind=cte subkind=materialized statement=0]" in h.nodes_full
+    assert len(h.nodes) == 3
+    assert len(h.edges) == 2

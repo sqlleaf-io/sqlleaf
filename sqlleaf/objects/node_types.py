@@ -214,14 +214,17 @@ class ColumnNode(NodeAttributes):
                     logger.debug("Set node to be a CTE.")
                     self.parent_kind = TableType.CTE
 
-                    # Check if the parent is a recursive CTE
+                    # Check if the CTE is a subtype
                     for cte in source.parent.ctes:
                         if cte.alias_or_name == selected_table.name:
-                            with_: exp.With = cte.parent
-                            if with_.recursive:
-                                # TODO: requires new algorithm
-                                logger.debug("Set node to be a recursive CTE.")
-                                self.parent_subkind = TableSubtype.RECURSIVE
+                            if cte.args["materialized"]:
+                                self.parent_subkind = TableSubtype.MATERIALIZED
+                            else:
+                                with_: exp.With = cte.parent
+                                if with_.recursive:
+                                    # TODO: requires new algorithm
+                                    logger.debug("Set node to be a recursive CTE.")
+                                    self.parent_subkind = TableSubtype.RECURSIVE
                             break
                     return
 
