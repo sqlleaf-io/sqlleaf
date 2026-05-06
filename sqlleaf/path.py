@@ -57,7 +57,6 @@ def find_all_paths(graph: nx.MultiDiGraph) -> t.Generator[LineagePath]:
     with two sources of INSERTs) but it may still be valid in certain cases (such as re-using a table in different stored procedures)
     so we permit it.
     """
-    all_lineage_paths = {}
     root_columns = util.get_root_nodes(graph)
 
     for i, root in enumerate(root_columns):

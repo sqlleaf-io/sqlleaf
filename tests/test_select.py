@@ -282,10 +282,9 @@ def test__select_join_to_self(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
     assert h.paths == [
-        # ['column[fruit.processed.name]', 'column[fruit.processed.name]'],
+        ['column[fruit.processed.name]', 'column[fruit.processed.name]'],
         ["column[fruit.raw.color]", "column[fruit.processed.kind]"],
         ["column[fruit.raw.age]", "column[fruit.processed.age]"],
-        # Don't exclude self-referential inserts
     ]
     assert len(h.nodes) == 5
     assert len(h.edges) == 3

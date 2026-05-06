@@ -267,7 +267,7 @@ class BaseGenerator:
     @process.register(exp.ColumnDef)
     @process.register(exp.Table)
     def skip(self, cls, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        logger.debug(f"Skipping expression: {str(processor_ctx.expr)}")
+        logger.debug(f"Skipping expression: {type(processor_ctx.expr)} {str(processor_ctx.expr)}")
         return None, []
 
     @process.register

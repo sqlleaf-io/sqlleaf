@@ -55,7 +55,7 @@ def long_sha256_hash(text: str):
     return hashlib.md5(text.encode()).hexdigest()
 
 
-def find_edge_paths(g: nx.MultiDiGraph, start: str, path: t.List = None, seen: t.Set = None):
+def find_edge_paths(g: nx.MultiDiGraph, node: str, path: t.List = None, seen: t.Set = None):
     """
     Find all the complete paths in a graph by traversing the descendants of a node until we find
     a node without any descendants.
@@ -86,44 +86,55 @@ def find_edge_paths(g: nx.MultiDiGraph, start: str, path: t.List = None, seen: t
     if path is None:
         path = []
     if seen is None:
-        seen = {start}
+        seen = {node}
 
     # Get direct descendants
-    desc = nx.descendants_at_distance(g, start, 1)
+    desc = nx.descendants_at_distance(g, node, 1)
     if not desc:
-        yield path
+        if not path:
+            # Must be a selfloop
+            yield from _get_edges_and_find_edge_paths(g, node, node, path, seen)
+        else:
+            yield path
     else:
-        desc = sorted(desc)  # nx.desc() is non-deterministic
+        desc = sorted(desc)  # nx.desc() above is non-deterministic
         for n in desc:
             if n in seen:
-                # TODO: this might be a bug. It's valid to re-visit a node if it's further down in the chain.
-                #  e.g. A -> B -> C -> A
-                #  This code appears to return A -> B -> C upon reaching C -> A, leaving out edges
                 yield path
             else:
-                edges = g.get_edge_data(start, n)
-                for idx, data in edges.items():
-                    hop = data["attrs"]
-                    # hop = (start, n, data)
-                    yield from find_edge_paths(g, n, path + [hop], seen.union([n]))
+                yield from _get_edges_and_find_edge_paths(g, node, n, path, seen)
+                # edges = g.get_edge_data(node, n)
+                # for idx, data in edges.items():
+                #     hop = data["attrs"]
+                #     yield from find_edge_paths(g, n, path + [hop], seen.union([n]))
 
 
-def find_edges_downward(g: nx.MultiDiGraph, start: str, seen: t.Set = None, depth: int = 0):
+def _get_edges_and_find_edge_paths(g: nx.MultiDiGraph, node_src: str, node_dst: str, path: t.List = None, seen: t.Set = None):
+    """
+    Get the list of edges between two nodes, and find the paths for each of them.
+    """
+    edges = g.get_edge_data(node_src, node_dst)
+    for idx, data in edges.items():
+        hop = data["attrs"]
+        yield from find_edge_paths(g, node_dst, path + [hop], seen.union([node_dst]))
+
+
+def find_edges_downward(g: nx.MultiDiGraph, node: str, seen: t.Set = None, depth: int = 0):
     """
     Traverse the graph, returning any unseen edges.
 
     Similar to find_edge_paths(), except we return an unseen edge found at each hop, rather than the entire path leading us there.
     """
     if seen is None:
-        seen = {start}
+        seen = {node}
 
     # Get direct descendants
-    desc = nx.descendants_at_distance(g, start, 1)
+    desc = nx.descendants_at_distance(g, node, 1)
 
     for n in desc:
         if n not in seen:
             # TODO: this could be a bug similar to the above comment in function
-            edges = g.get_edge_data(start, n)
+            edges = g.get_edge_data(node, n)
             for idx, data in edges.items():
                 hop = data["attrs"]
                 # Depth-first search?
@@ -212,7 +223,9 @@ def get_function_args(expr: exp.Func):
 
 
 def get_root_nodes(graph: nx.MultiDiGraph) -> t.List[str]:
-    return [n for n in graph.nodes if graph.in_degree(n) == 0 and graph.out_degree(n) > 0]
+    selfloops = list(nx.nodes_with_selfloops(graph))
+    roots = [n for n in graph.nodes if (graph.in_degree(n) == 0 and graph.out_degree(n) > 0) or n in selfloops]
+    return roots
 
 
 def set_properties(statement: exp.Create) -> str:
