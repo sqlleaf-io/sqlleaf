@@ -21,6 +21,13 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
 
     statement = _convert_table_to_select(statement)
 
+    # Remove any filters
+    for filter_expr in statement.find_all(exp.Filter):
+        filter_expr.replace(filter_expr.this)
+
+    for where_expr in statement.find_all(exp.Where):
+        where_expr.pop()
+
     if isinstance(query, InsertQuery):
         statement = _convert_defaults_to_values(statement, object_mapping, query.child_table)
         statement = _convert_values_to_select(statement, object_mapping, query.child_table)

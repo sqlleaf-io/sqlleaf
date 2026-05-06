@@ -143,6 +143,79 @@ def test__select_case(holder):
     assert len(edges) == 5
 
 
+def test__select_row(holder):
+    queries = """
+    INSERT INTO fruit.processed (name)
+    SELECT ROW(r.name, r.kind) AS name
+    FROM fruit.raw AS r;
+    """
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_friendly_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+
+    assert paths == [
+        ['column[fruit.raw.name]', 'udf[ROW()]', 'column[fruit.processed.name]'],
+        ['column[fruit.raw.kind]', 'udf[ROW()]', 'column[fruit.processed.name]']
+    ]
+    assert len(nodes) == 4
+    assert len(edges) == 3
+
+
+def test__select_cast(holder):
+    queries = """
+    INSERT INTO fruit.processed (age)
+    SELECT name::int AS age
+    FROM fruit.raw;
+    """
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+
+    assert paths == [['column[fruit.raw.name]', 'function[CAST()]', 'column[fruit.processed.age]']]
+    assert nodes == [
+        'function[CAST() type=INT query_depth=0 statement=0 select=0 func_depth=0 func_arg=0]',
+        'column[fruit.processed.age type=INT kind=table]',
+        'column[fruit.raw.name type=VARCHAR kind=table]',
+    ]
+    assert len(edges) == 2
+
+
+def test__select_filter_and_where(holder):
+    queries = """
+    INSERT INTO fruit.processed (age, amount)
+    SELECT
+        SUM(age) FILTER (WHERE name = 'John') AS age,
+        COUNT(*) FILTER (WHERE CURRENT_USER = 'john') AS amount
+    FROM fruit.raw;
+
+    INSERT INTO fruit.processed (age)
+    SELECT 1 AS age
+    WHERE CURRENT_USER = 'john';
+    """
+    h = holder(with_tables=True)
+    h.generate(queries, dialect=DIALECT)
+    nodes = h.get_full_node_names()
+    edges = h.get_edges()
+    paths = h.get_friendly_paths()
+    queries = h.get_queries_created()
+
+    assert paths == [
+        ['column[fruit.raw.age]', 'function[SUM()]', 'column[fruit.processed.age]'],
+        ['star[*]', 'function[COUNT()]', 'column[fruit.processed.amount]'],
+        ['literal[1]', 'column[fruit.processed.age]']
+    ]
+    assert len(nodes) == 7
+    assert len(edges) == 5
+    # Ensure the FILTER is dropped
+    assert queries[0].statement_transformed.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (age, amount) SELECT SUM(raw.age) AS age, COUNT(*) AS amount FROM fruit.raw AS raw"
+    # Ensure the WHERE is dropped
+    assert queries[1].statement_transformed.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (age) SELECT 1 AS age"
+
+
 def test__select_hidden_system_columns(holder):
     queries = """
     CREATE TABLE fruit.new AS SELECT 'hello' AS name;

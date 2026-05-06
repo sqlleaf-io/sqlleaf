@@ -113,14 +113,6 @@ class BaseGenerator:
         return node_attrs, []
 
     @process.register
-    def process_cast(self, cls: exp.Cast, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        """
-        SELECT col1::timestamp AS col1_time
-        """
-        processor_ctx_to = replace(processor_ctx, new_data_type=processor_ctx.expr.to)
-        return self.process(processor_ctx.expr.to, processor_ctx_to, ctx)
-
-    @process.register
     def process_neg(self, cls: exp.Neg, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT -10
