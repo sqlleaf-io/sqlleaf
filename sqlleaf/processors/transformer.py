@@ -7,7 +7,7 @@ from sqlglot.optimizer import optimize, qualify, RULES
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query, CTASQuery
+from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query, CTASQuery, TableQuery
 
 logger = logging.getLogger("sqlleaf")
 
@@ -48,6 +48,9 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
 
     elif isinstance(query, CTASQuery):
         statement = _convert_values_to_select(statement, object_mapping, query.child_table)
+
+    elif isinstance(query, TableQuery):
+        pass
 
     statement = _validate_values(statement)
 

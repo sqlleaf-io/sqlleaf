@@ -4,14 +4,14 @@ import typing as t
 import networkx as nx
 
 from sqlleaf import mappings, util, path, types
-from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery, ProcedureQuery
+from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery, ProcedureQuery, TableQuery
 from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, GraphAttributes
 from sqlleaf.path import LineagePath
 from sqlleaf.processors import collector, transformer, generator
 
 logger = logging.getLogger("sqlleaf")
 
-QUERIES_WITH_LINEAGE = (InsertQuery, UpdateQuery, ViewQuery, CTASQuery, PutQuery, CopyQuery)
+QUERIES_WITH_LINEAGE = (InsertQuery, UpdateQuery, ViewQuery, CTASQuery, PutQuery, CopyQuery, TableQuery)
 
 
 class Lineage:
@@ -234,5 +234,7 @@ def query_has_lineage(query: Query) -> bool:
     if not isinstance(query, QUERIES_WITH_LINEAGE):
         return False
     if isinstance(query, CTASQuery) and not query.with_data:
+        return False
+    if isinstance(query, TableQuery) and query.property != "external":
         return False
     return True

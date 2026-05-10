@@ -9,13 +9,13 @@ from sqlglot.optimizer import Scope
 
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import (
-    NodeAttributes,
+    NodeAttributes, ColumnNode,
 )
 from sqlleaf.processors.dialects import BaseGenerator
 
 logger = logging.getLogger("sqlleaf")
 
-class RedshiftBaseGenerator(BaseGenerator):
+class RedshiftGenerator(BaseGenerator):
     dialect = "redshift"
 
     @singledispatchmethod
@@ -57,6 +57,33 @@ class RedshiftBaseGenerator(BaseGenerator):
                 return None, [pivot]
 
         return super().process(expr, processor_ctx, ctx)
+
+    @process.register
+    def process_location(self, cls: exp.LocationProperty, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        """
+        CREATE EXTERNAL TABLE ... LOCATION
+        """
+        expr: exp.LocationProperty = processor_ctx.expr
+        location = expr.this
+        child_node = processor_ctx.child_node_attrs
+        query = processor_ctx.query
+        table = query.child_table
+
+        # Create: column[name kind=file subkind=text type=INT path=s3://my-bucket/a/b/c]
+        column_node = ColumnNode(
+            catalog=table.catalog,
+            schema="",
+            table="",
+            column=child_node.column,
+            processor_ctx=processor_ctx,
+            ctx=ctx,
+            skip_table_properties=True,
+        )
+        format = query.statement_transformed.args["properties"].find(exp.FileFormatProperty).this
+        column_node.set_file_properties(format=format, path=location.name)
+
+        return column_node, []
+
 
 def _get_pivot(scope: Scope) -> t.Tuple[exp.Pivot, dict]:
     """

@@ -69,7 +69,6 @@ def test__insert_default_values(holder):
 
     assert h.paths == [
         ["null[NULL]", "column[fruit.b.color]"],
-        # TODO: re-think this - default insert gives 2 edges
         ["literal[-1]", "column[fruit.b.age]"],
         ["literal[-1]", "column[fruit.b.age]"],
         ["null[NULL]", "column[fruit.a.name]"],
@@ -77,8 +76,9 @@ def test__insert_default_values(holder):
         ["literal[99]", "column[fruit.a.size]"],
         ["literal[99]", "column[fruit.a.size]"],
     ]
-    assert len(h.nodes) == 10
     assert h.queries[2].statement_transformed.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
+    assert len(h.nodes) == 12
+    assert len(h.edges) == 7
 
 
 def test__insert_on_conflict_with_table(holder):

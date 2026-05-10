@@ -17,7 +17,7 @@ from sqlleaf.processors.dialects import BaseGenerator
 
 logger = logging.getLogger("sqlleaf")
 
-class PostgresBaseGenerator(BaseGenerator):
+class PostgresGenerator(BaseGenerator):
     dialect = "postgres"
 
     @singledispatchmethod

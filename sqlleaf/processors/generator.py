@@ -14,8 +14,8 @@ if t.TYPE_CHECKING:
 from sqlleaf import util, exception, mappings
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, StageNode, ColumnNode, TableType
-from sqlleaf.objects.query_types import Query, UpdateQuery, CopyQuery, PutQuery
-from sqlleaf.processors.dialects import BaseGenerator
+from sqlleaf.objects.query_types import Query, UpdateQuery, CopyQuery, PutQuery, TableQuery
+from sqlleaf.processors.dialects import BaseGenerator, SnowflakeGenerator
 
 logger = logging.getLogger("sqlleaf")
 
@@ -53,62 +53,88 @@ def generate_column_lineage_for_query(
     if check_for_trigger(child_table, object_mapping):
         return graph
 
-    statement_lineage = statement.copy()
-    scope = build_scope(statement_lineage)
-    if not scope:
-        raise exception.SqlGlotException("Cannot build scope. Expression must be a SELECT")
+    if check_for_external_table(generator, processor_ctx, ctx):
+        return graph
 
-    # Ensure the child table exists with the expected columns
-    child_table_query = object_mapping.get_table_or_stage(query.child_table)
-    child_columns = child_table_query.get_column_defs()
-
-    generate_column_lineage_for_columns(child_columns, child_table, generator, scope, processor_ctx, ctx)
+    generate_column_lineage_for_columns(child_table, generator, processor_ctx, ctx)
     return graph
 
 
 def generate_column_lineage_for_columns(
-    columns: t.List[exp.ColumnDef],
     table: exp.Table,
     generator: BaseGenerator,
-    scope: Scope,
     processor_ctx: ProcessorContext,
     ctx: NodeContext,
 ):
     """
     Generate the lineage for a set of columns from a given table.
     """
+    scope = get_scope(statement=processor_ctx.query.statement)
+
+    # Process the selected columns
+    for selected_node, default_node in _get_column_nodes_for_table(processor_ctx, ctx):
+        child_node = selected_node or default_node
+        logger.info(
+            "Calculating lineage. Column: %s, Table: %s, Index: %s",
+            child_node.column,
+            table.name,
+            child_node.ctx.select_index
+        )
+
+        # Process any default expressions for columns
+        # TODO: make this a CLI flag for whether to include these exprs in lineage
+        if default_node:
+            constraint_expr = default_node.get_column_constraint_expression()
+            constraint_ctx = replace(processor_ctx, expr=constraint_expr.this, new_data_type=child_node.data_type, child_node_attrs=child_node)
+            walk_expressions_and_build_graph(generator=generator, processor_ctx=constraint_ctx, ctx=ctx)
+        if selected_node:
+            walk_query_and_build_graph(generator, child_node, scope, processor_ctx, child_node.ctx, query_depth=0)
+
+
+def _get_column_nodes_for_table(processor_ctx: ProcessorContext, ctx: NodeContext) -> (
+    t.Generator[ColumnNode, ColumnNode]
+):
+    """
+    Iterate over every column that was either selected in a query or has a default expression.
+    """
+    object_mapping = processor_ctx.object_mapping
+    query = processor_ctx.query
+    table = query.child_table
+
+    # Ensure the child table exists with the expected columns
+    child_table_query = object_mapping.get_table_or_stage(table)
+    child_columns = child_table_query.get_column_defs()
+
     select_idx = 0
-    for col_def in columns:
+
+    for col_def in child_columns:
+        selected_node = default_node = None
         processor_ctx = replace(processor_ctx, expr=col_def)
         ctx = replace(ctx, select_index=select_idx)
-        col_name = col_def.name
 
         child_node = ColumnNode(
             catalog=table.catalog,
             schema=table.db,
             table=table.name,
-            column=col_name,
+            column=col_def.name,
             processor_ctx=processor_ctx,
             ctx=ctx,
         )
 
+        if isinstance(query, TableQuery) or child_node.column in query.get_selected_column_names():
+            # A 'CREATE TABLE' has no SELECT, so include all columns
+            selected_node = child_node
+
         if constraint_expr := child_node.get_column_constraint_expression():
-            # Process the column's default expression
-            # TODO: make this a CLI flag for whether to include these exprs in lineage
-            constraint_ctx = replace(processor_ctx, expr=constraint_expr.this, new_data_type=col_def.kind, child_node_attrs=child_node)
-            walk_expressions_and_build_graph(generator=generator, processor_ctx=constraint_ctx, ctx=ctx)
+            # constraint_ctx = replace(processor_ctx, expr=constraint_expr.this, new_data_type=child_node.data_type, child_node_attrs=child_node)
+            default_node = child_node
+            # TODO: unset all index positions, set 'default=true' as position
 
-        if col_name not in processor_ctx.query.get_selected_column_names():
-            continue
+        if selected_node or default_node:
+            yield selected_node, default_node
 
-        logger.info(
-            "Calculating lineage. Column: %s, Table: %s, Index: %s",
-            col_name,
-            table.name,
-            select_idx,
-        )
-        walk_query_and_build_graph(generator, child_node, scope, processor_ctx, ctx, query_depth=0)
-        select_idx += 1
+        if selected_node:
+            select_idx += 1
 
 
 def walk_query_and_build_graph(
@@ -386,6 +412,17 @@ def add_node_if_not_exists(node_attrs: NodeAttributes, graph: nx.MultiDiGraph) -
     return node_attrs
 
 
+def get_scope(statement: exp.Expression) -> Scope:
+    """
+    Build the scope for a statement.
+    """
+    statement_lineage = statement.copy()
+    scope = build_scope(statement_lineage)
+    if not scope:
+        raise exception.SqlGlotException("Cannot build scope. Expression must be a SELECT")
+    return scope
+
+
 def get_select(column: exp.Column | int, scope: Scope):
     if isinstance(column, int):
         # The index of the query in "SELECT 1 UNION SELECT 2"
@@ -473,16 +510,34 @@ def check_for_trigger(table: exp.Table, object_mapping: mappings.ObjectMapping) 
     return False
 
 
-def check_for_put(generator, processor_ctx, ctx) -> bool:
+def check_for_put(generator: SnowflakeGenerator, processor_ctx: ProcessorContext, ctx: NodeContext) -> bool:
     """
     Check if this is a PUT query.
     """
     query = processor_ctx.query
     graph = processor_ctx.graph
+    expr: exp.Put = processor_ctx.expr
 
     if query.dialect == "snowflake" and isinstance(query, PutQuery):
         # Short-circuit this function; it's not an insert
-        file_node, [stage_node] = generator.process_put(None, processor_ctx, ctx)
+        file_node, [stage_node] = generator.process(expr, processor_ctx, ctx)
         add_nodes_with_edge_to_graph(file_node, stage_node, graph, query, ctx)
+        return True
+    return False
+
+
+def check_for_external_table(generator: SnowflakeGenerator, processor_ctx: ProcessorContext, ctx: NodeContext) -> bool:
+    """
+    Check if this is a CREATE EXTERNAL TABLE query.
+    """
+    query = processor_ctx.query
+
+    if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external": #isinstance(query.statement, exp.Create):
+        location_expr = query.statement.args["properties"].find(exp.LocationProperty)
+
+        for child_node, _ in _get_column_nodes_for_table(processor_ctx, ctx):
+            processor_ctx = replace(processor_ctx, expr=location_expr, child_node_attrs=child_node)
+            ctx = replace(ctx, select_index=child_node.ctx.select_index)
+            walk_expressions_and_build_graph(generator=generator, processor_ctx=processor_ctx, ctx=ctx)
         return True
     return False

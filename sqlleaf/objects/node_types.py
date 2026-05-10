@@ -22,6 +22,7 @@ class TableType(StrEnum):
     DERIVED_TABLE = auto()
     PIVOT = auto()
     STAGE = auto()
+    FILE = auto()
 
 
 class TableSubtype(StrEnum):
@@ -127,6 +128,7 @@ class ColumnNode(NodeAttributes):
         column: str,
         processor_ctx: ProcessorContext,
         ctx: NodeContext,
+        skip_table_properties: bool = False,
     ):
         expr: exp.ColumnDef = processor_ctx.expr
 
@@ -145,7 +147,8 @@ class ColumnNode(NodeAttributes):
         self.source_scope: TableOrScopeType = None
         self.has_child_scope: bool = False    # Whether the query's source is inside an inner scope that still need to be resolved
 
-        self.set_table_properties(catalog, schema, table, processor_ctx)
+        if not skip_table_properties:
+            self.set_table_properties(catalog, schema, table, processor_ctx)
 
         # TODO: new algorithm
         # if table_type == "cte":
@@ -179,7 +182,15 @@ class ColumnNode(NodeAttributes):
             self.schema = column.db
             self.table = column.table
 
-    def set_table_properties(self, catalog, schema, table, processor_ctx: ProcessorContext):
+    def set_file_properties(self, format: str, path: str):
+        """
+        column[name kind=file format=text type=INT path=s3://my-bucket/a/b/c]
+        """
+        self.parent_kind = TableType.FILE
+        self.path = path
+        self.format = format
+
+    def set_table_properties(self, catalog: str, schema: str, table: str, processor_ctx: ProcessorContext):
         """
         Figure out the table's type (view/table) by inspecting the original query in the mapping.
         """
@@ -237,6 +248,7 @@ class ColumnNode(NodeAttributes):
         else:
             tokens = [catalog, schema, table]
 
+        # Get the table type from the mapping
         name = ".".join([tok for tok in tokens if tok])
         tab = exp.to_table(name, dialect=processor_ctx.query.dialect)
         query = processor_ctx.object_mapping.get_table_or_stage(table=tab, raise_on_missing=False)
@@ -281,10 +293,15 @@ class ColumnNode(NodeAttributes):
         if self.parent_kind == TableType.CTE:
             parts.append(f"statement={self.ctx.statement_index}")
 
+        if self.parent_kind == TableType.FILE:
+            parts.append(f"format={self.format} path={self.path}")
+
         return self.wrap(" ".join(parts))
 
     @property
     def friendly_name(self):
+        if self.parent_kind == TableType.FILE:
+            return self.wrap(f"{self.get_name()} {self.path}")
         return self.wrap(self.get_name())
 
 

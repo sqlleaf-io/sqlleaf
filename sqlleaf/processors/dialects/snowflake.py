@@ -19,7 +19,7 @@ from sqlleaf.processors.dialects import BaseGenerator
 
 logger = logging.getLogger("sqlleaf")
 
-class SnowflakeBaseGenerator(BaseGenerator):
+class SnowflakeGenerator(BaseGenerator):
     dialect = "snowflake"
 
     @singledispatchmethod
@@ -41,6 +41,7 @@ class SnowflakeBaseGenerator(BaseGenerator):
         file_node = FileNode(processor_ctx=file_ctx, ctx=ctx)
         stage_node = StageNode(processor_ctx=stage_ctx, ctx=ctx)
 
+        # TODO: return proper expr type for stage_node
         return file_node, [stage_node]
 
     @process.register

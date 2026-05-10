@@ -57,3 +57,26 @@ def test__unload(holder):
     assert len(h.nodes) == 0
     assert len(h.queries) == 0
     # TODO: the agg functions used inside the pivot are currently not extracted.
+
+
+def test__table_external(holder):
+    sql = """
+    CREATE EXTERNAL TABLE fruit.ext (
+        name VARCHAR,
+        age INT
+    )
+    ROW FORMAT DELIMITED
+    FIELDS TERMINATED BY '\t'
+    STORED AS TEXTFILE
+    LOCATION 's3://my-bucket/new/fruit/';
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['column[name s3://my-bucket/new/fruit/]', 'column[fruit.ext.name]'],
+        ['column[age s3://my-bucket/new/fruit/]', 'column[fruit.ext.age]']
+    ]
+    assert "column[name type=UNKNOWN kind=file format=TEXTFILE path=s3://my-bucket/new/fruit/]" in h.nodes_full
+    assert "column[fruit.ext.age type=INT kind=table subkind=external]" in h.nodes_full
+    assert len(h.nodes) == 4
+    assert len(h.edges) == 2
