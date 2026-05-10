@@ -239,16 +239,17 @@ def _convert_update_to_insert(statement: exp.Update, dialect: str) -> exp.Insert
 
     # Special translation for the `from` clause.
     extra_args: dict = {}
-    original_from = statement.args.get("from")
-    if original_from and isinstance(original_from.this, exp.Table):
+    from_table = statement.args.get("from_")
+    if from_table and isinstance(from_table, exp.Table):
+        from_table = from_table.this
         # Move joins, laterals, and pivots from the Update->From->Table->field
         # to the top-level Select->field.
 
         for k in _UPDATE_FROM_TABLE_ARGS_TO_MOVE:
-            if k in original_from.this.args:
+            if k in from_table.args:
                 # Mutate the from table clause in-place.
-                extra_args[k] = original_from.this.args.get(k)
-                original_from.this.set(k, None)
+                extra_args[k] = from_table.args.get(k)
+                from_table.set(k, None)
 
     # We need to add the CTEs to the insert, not as part of the select.
     # Otherwise the query will be ordered incorrectly (i.e. INSERT .. WITH () .. SELECT)
@@ -264,11 +265,16 @@ def _convert_update_to_insert(statement: exp.Update, dialect: str) -> exp.Insert
         }
     )
 
+    into_table = util.get_table(statement)
+    if not from_table:
+        # If the table is a self-reference
+        select_statement = select_statement.from_(into_table)
+
     # Convert the statement into an insert
     insert_statement = exp.insert(
         expression=select_statement,
         columns=alias_names,
-        into=util.get_table(statement),
+        into=into_table,
         returning=statement.args.get("returning", None),
         dialect=dialect,
     )

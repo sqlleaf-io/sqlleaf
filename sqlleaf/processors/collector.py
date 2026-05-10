@@ -125,8 +125,10 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
 
     found = {k:v for k,v in counts.items() if v > 0}
     logger.debug("Found statements: %s", dict(found.items()))
-    logger.warning("Unknown statements: %s", dict(unknown.items()))
-    logger.warning("Unsupported statements: %s", len(unsupported))
+    if unknown:
+        logger.warning("Unknown statements: %s", dict(unknown.items()))
+    if unsupported:
+        logger.warning("Unsupported statements: %s", len(unsupported))
     return list(queries.values())
 
 

@@ -231,10 +231,14 @@ def query_has_lineage(query: Query) -> bool:
     """
     Check if a query has lineage within its expressions.
     """
+    has_lineage = True
     if not isinstance(query, QUERIES_WITH_LINEAGE):
-        return False
-    if isinstance(query, CTASQuery) and not query.with_data:
-        return False
-    if isinstance(query, TableQuery) and query.property != "external":
-        return False
-    return True
+        has_lineage = False
+    elif isinstance(query, CTASQuery) and not query.with_data:
+        has_lineage = False
+    elif isinstance(query, TableQuery) and query.property != "external":
+        has_lineage = False
+
+    if not has_lineage:
+        logger.debug(f"Query type '{query.__class__.__name__}' does NOT have lineage. Skipping.")
+    return has_lineage

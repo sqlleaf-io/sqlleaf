@@ -10,6 +10,23 @@ from sqlleaf.objects.query_types import UpdateQuery, TableQuery
 DIALECT = "postgres"
 
 
+def test__update_simple(holder):
+    sql = """
+    UPDATE fruit.processed p
+    SET name = 'john', age = r.age
+    FROM fruit.raw r;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ['literal["john"]', 'column[fruit.processed.name]'],
+        ['column[fruit.raw.age]', 'column[fruit.processed.age]']
+    ]
+    assert [UpdateQuery] == list(map(type, h.queries))
+    assert len(h.nodes) == 4
+    assert len(h.edges) == 2
+
+
 def test__update_with_subquery(holder):
     sql = """
     UPDATE fruit.processed
@@ -55,3 +72,5 @@ def test__update_with_multiple_joins(holder):
 
     assert h.paths == [["column[fruit.raw.age]", "column[fruit.processed.age]"]]
     assert [TableQuery, UpdateQuery] == list(map(type, h.queries))
+
+
