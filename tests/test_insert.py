@@ -33,7 +33,6 @@ def test__insert_values(holder, case):
     assert [InsertQuery] == list(map(type, h.queries))
 
 
-# TODO: bug - only one UPPER is created
 def test__insert_values_multiple(holder):
     sql = """
     INSERT INTO fruit.raw (name, kind)
@@ -48,8 +47,8 @@ def test__insert_values_multiple(holder):
         ['literal["upper_orange"]', 'function[UPPER()]', 'column[fruit.raw.kind]']
     ]
     assert [InsertQuery] == list(map(type, h.queries))
-    assert len(h.nodes) == 1    # TODO
-    assert len(h.edges) == 1    # TODO
+    assert len(h.nodes) == 8
+    assert len(h.edges) == 6
 
 def test__insert_default_values(holder):
     sql = """

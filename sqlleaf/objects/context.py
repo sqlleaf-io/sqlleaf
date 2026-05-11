@@ -77,3 +77,6 @@ class NodeContext:
 
     # The depth of a subquery, e.g. WITH cte AS ( SELECT 'a' ) SELECT 'a' -> The first a=1, second a=0
     query_depth: int = 0
+
+    # The width of a subquery, e.g. SELECT 4 + (SELECT 5) + (SELECT 6 + (SELECT 7)) -> depth(4)=0, depth(5)=1, depth(6)=1, depth(7)=2
+    query_width: int = 0

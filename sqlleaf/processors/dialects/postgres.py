@@ -26,6 +26,11 @@ class PostgresGenerator(BaseGenerator):
 
     @process.register
     def process_table(self, cls: exp.Table, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        """
+        Process a table or a table function.
+        This is a bit awkward as we have the sequence: Table -> ColumnDef -> Table
+        for table functions.
+        """
         expr: exp.Table = processor_ctx.expr
         if "rows_from" in expr.args:
             downstream_exprs = []
@@ -35,14 +40,16 @@ class PostgresGenerator(BaseGenerator):
                 cols = list(table_function.find_all(exp.ColumnDef))
                 downstream_exprs.extend(cols if cols else [table_function])
 
-            child_column_name = processor_ctx.child_node_attrs.expr.name
             # Get the expression associated with the column name
+            child_column_name = processor_ctx.child_node_attrs.expr.name
             for i, col in enumerate(expr.alias_column_names):
                 if col == child_column_name:
+                    # Returns ColumnDef | Function
                     return None, [downstream_exprs[i]]
 
         elif expr.arg_key == "rows_from":
             # A table function inside a 'ROWS FROM'
+            # TODO: reset the index. This should be part of a scope traversal first.
             return None, [expr.this]
 
         return super().process(cls, processor_ctx, ctx)

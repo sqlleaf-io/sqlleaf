@@ -77,7 +77,6 @@ def find_all_paths(graph: nx.MultiDiGraph) -> t.Generator[LineagePath]:
         logger.debug(f"Found root columns in graph: {root_columns}")
         for i, root in enumerate(root_columns):
             for path in find_edges_from_root(graph, root):
-                logger.debug(f"Yielded {path}")
                 if not path:
                     continue
 

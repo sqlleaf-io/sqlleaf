@@ -145,7 +145,7 @@ def test__select_cast(holder):
 
     assert h.paths == [['column[fruit.raw.name]', 'function[CAST()]', 'column[fruit.processed.age]']]
     assert h.nodes_full == [
-        'function[CAST() type=INT query_depth=0 statement=0 select=0 func_depth=0 func_arg=0]',
+        'function[CAST() type=INT query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]',
         'column[fruit.processed.age type=INT kind=table]',
         'column[fruit.raw.name type=VARCHAR kind=table]',
     ]
@@ -249,10 +249,6 @@ def test__select_value_twice(holder, case):
     assert len(h.edges) == 2
 
 
-# TODO: select_query_twice
-# TODO: select_query_twice, but slightly different second
-
-
 def test__select_window_function(holder):
     sql = """
     INSERT INTO fruit.processed (amount, age)
@@ -302,13 +298,8 @@ def test__select_assorted(holder):
     INSERT INTO anything SELECT 1;
     """
     h = holder(sql=sql, dialect=DIALECT)
-    assert is_subset(
-        subarr=[
-            "literal[{1,2,3} type=ARRAY<INT> query_depth=0 statement=1 select=0 func_depth=0 func_arg=0]",
-            'interval["-10.75 MINUTE" type=INTERVAL query_depth=0 statement=1 select=1 func_depth=0 func_arg=0]',
-        ],
-        arr=h.nodes_full,
-    )
+    assert "literal[{1,2,3} type=ARRAY<INT> query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]" in h.nodes_full
+    assert 'interval["-10.75 MINUTE" type=INTERVAL query_depth=0 query_width=0 statement=1 select=1 func_depth=0 func_arg=0]' in h.nodes_full
     assert len(h.nodes) == 5
     assert len(h.edges) == 3
 

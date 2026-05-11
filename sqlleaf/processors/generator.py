@@ -6,7 +6,7 @@ from dataclasses import replace, dataclass
 
 import networkx as nx
 from sqlglot import exp
-from sqlglot.optimizer import build_scope, Scope, find_all_in_scope
+from sqlglot.optimizer import Scope, build_scope, find_all_in_scope, traverse_scope
 
 if t.TYPE_CHECKING:
     pass
@@ -70,6 +70,7 @@ def generate_column_lineage_for_columns(
     Generate the lineage for a set of columns from a given table.
     """
     scope = get_scope(statement=processor_ctx.query.statement)
+    scope_positions = calculate_scope_positions(scope)
 
     # Process the selected columns
     for selected_node, default_node in _get_column_nodes_for_table(processor_ctx, ctx):
@@ -88,7 +89,7 @@ def generate_column_lineage_for_columns(
             constraint_ctx = replace(processor_ctx, expr=constraint_expr.this, new_data_type=child_node.data_type, child_node_attrs=child_node)
             walk_expressions_and_build_graph(generator=generator, processor_ctx=constraint_ctx, ctx=ctx)
         if selected_node:
-            walk_query_and_build_graph(generator, child_node, scope, processor_ctx, child_node.ctx, query_depth=0)
+            walk_query_and_build_graph(generator, child_node, scope, scope_positions, processor_ctx, child_node.ctx)
 
 
 def _get_column_nodes_for_table(processor_ctx: ProcessorContext, ctx: NodeContext) -> (
@@ -125,8 +126,7 @@ def _get_column_nodes_for_table(processor_ctx: ProcessorContext, ctx: NodeContex
             # A 'CREATE TABLE' has no SELECT, so include all columns
             selected_node = child_node
 
-        if constraint_expr := child_node.get_column_constraint_expression():
-            # constraint_ctx = replace(processor_ctx, expr=constraint_expr.this, new_data_type=child_node.data_type, child_node_attrs=child_node)
+        if child_node.get_column_constraint_expression():
             default_node = child_node
             # TODO: unset all index positions, set 'default=true' as position
 
@@ -138,10 +138,11 @@ def _get_column_nodes_for_table(processor_ctx: ProcessorContext, ctx: NodeContex
 
 
 def walk_query_and_build_graph(
-    generator: BaseGenerator, child_node_attrs: ColumnNode, scope: Scope, processor_ctx: ProcessorContext, ctx: NodeContext, query_depth: int
+    generator: BaseGenerator, child_node_attrs: ColumnNode, scope: Scope, scope_positions, processor_ctx: ProcessorContext, ctx: NodeContext
 ) -> None:
     """
     Walk over each query (and its subqueries) to collect the expressions for each column.
+    For any expression subtrees found, invoke an 'expression walker' to process them.
     """
     processor_ctx = replace(processor_ctx, scope=scope, child_node_attrs=child_node_attrs)
     query = processor_ctx.query
@@ -159,8 +160,8 @@ def walk_query_and_build_graph(
         logger.debug(f"Processing node expr: {scope_traversal.expression}, Id: {id(scope_traversal)}")
         logger.debug(f"Child node: {child_node_attrs.full_name}")
 
-        total_depth = query_depth + scope_traversal.current_depth
-        child_ctx = replace(ctx, query_depth=total_depth)
+        height, width = scope_positions[id(scope_traversal.scope.expression)]
+        child_ctx = replace(ctx, query_depth=height, query_width=width)
         processor_ctx = replace(
             processor_ctx,
             expr=scope_traversal.expression,
@@ -174,36 +175,37 @@ def walk_query_and_build_graph(
 
             for n in nodes:
                 if isinstance(n, ColumnNode) and n.has_child_scope:
-                    walk_query_and_build_graph(generator, n, n.source_scope, processor_ctx, ctx, query_depth=total_depth + 1)
+                    walk_query_and_build_graph(generator, n, n.source_scope, scope_positions, processor_ctx, ctx)
 
 
-def walk_query_scope(column: exp.Column, scope: Scope, current_depth: int = 0) -> t.Generator[ScopeTraversal]:
+def walk_query_scope(column: exp.Column, scope: Scope) -> t.Generator[ScopeTraversal]:
+    """
+    Walk over each query scope (i.e. a SELECT statement) and return the expression linked to the column.
+    """
+    # Subqueries, unions, etc are the first layers
     if isinstance(scope.expression, exp.Subquery):
         for source in scope.subquery_scopes:
             logger.debug("Yielding from first subquery scope")
             yield from walk_query_scope(
                 column=column,
                 scope=source,
-                current_depth=current_depth + 1,
             )
     elif isinstance(scope.expression, exp.SetOperation):
         # UNION, EXCEPT, etc
-        index = get_column_index(column, scope)
+        index = get_column_index(column, scope.expression)
 
         for s in scope.union_scopes:
             logger.debug("Yielding from union scope")
             yield from walk_query_scope(
                 column=index,
                 scope=s,
-                current_depth=current_depth + 1,
             )
     else:
         # Create the node for this step in the lineage chain, and attach it to the previous one.
-        select = get_select(column, scope)
+        select = get_expression_for_column(column, scope.expression)
         st = ScopeTraversal(
             expression=select,
             scope=scope,
-            current_depth=current_depth,
         )
         yield st
         logger.debug("[1] Created Node '%s', Expr: %s, Id: %s", column, select.sql(), id(st))
@@ -222,7 +224,6 @@ def walk_query_scope(column: exp.Column, scope: Scope, current_depth: int = 0) -
                 yield from walk_query_scope(
                     column=exp.column(name),
                     scope=subquery_scope,
-                    current_depth=current_depth + 1,
                 )
 
 
@@ -423,23 +424,30 @@ def get_scope(statement: exp.Expression) -> Scope:
     return scope
 
 
-def get_select(column: exp.Column | int, scope: Scope):
+def get_expression_for_column(column: exp.Column | int, expr: exp.Expression) -> exp.Expression:
+    """
+    Get the expression that matches the given column name.
+    e.g. given "SELECT 1 AS a, 2 AS b", column 'b' maps to expression 2.
+    """
     if isinstance(column, int):
         # The index of the query in "SELECT 1 UNION SELECT 2"
-        select = scope.expression.selects[column]
+        select = expr.selects[column]
     else:
-        if isinstance(scope.expression, exp.Values):
+        if isinstance(expr, exp.Values):
             # SELECT FROM (VALUES ())
-            selects = [scope.expression]
+            selects = [expr]
         else:
-            selects = [select for select in scope.expression.selects if select.alias_or_name == column.name]
+            # Common path
+            selects = [select for select in expr.selects if select.alias_or_name == column.name]
+
         if len(selects) > 1:
             message = f"Column reference '{column}' is ambiguous ({len(selects)} possible options)"
             raise exception.SqlLeafException(message)
+
         if selects:
             select = selects[0]
         else:
-            select = scope.expression
+            select = expr
     return select
 
 
@@ -449,22 +457,59 @@ TableOrScopeType = exp.Table | Scope
 @dataclass(frozen=True)
 class ScopeTraversal:
     expression: exp.Expression
-    current_depth: int
     scope: TableOrScopeType = None
 
 
-def get_column_index(column: exp.Column | int, scope: Scope):
+def get_column_index(column: exp.Column | int, expr: exp.Expression):
     index = (
         column
         if isinstance(column, int)
         else next(
-            (i for i, sel in enumerate(scope.expression.selects) if sel.alias_or_name == column.name),
+            (i for i, sel in enumerate(expr.selects) if sel.alias_or_name == column.name),
             -1,  # mypy will not allow a None here, but a negative index should never be returned
         )
     )
     if index == -1:
-        raise exception.SqlLeafException(message=f"Could not find {column.name} in {scope.expression}")
+        raise exception.SqlLeafException(message=f"Could not find {column.name} in {expr}")
     return index
+
+
+def calculate_scope_positions(scope: Scope) -> t.Dict[int, t.Dict[int, int]]:
+    """
+    Determine the height and width of every scope (SELECT statement) in the query's expression tree.
+    This iterates over every expression in the tree via Depth-First Search, looking for scopes.
+    """
+    root_expr = scope.expression.root()
+    scopes = {id(scope.expression): scope for scope in list(traverse_scope(root_expr))}
+
+    # For each height, map to the current width
+    heights_to_widths = {}
+    expr_ids_to_positions = {}
+    stack = [(root_expr, 1)]
+
+    while stack:
+        node, h = stack.pop()
+        node_id = id(node)
+
+        if node_id in scopes:
+            logger.debug(f"Found scope expr ({node.__class__.__name__}): {node.sql()}")
+
+            if not expr_ids_to_positions:   # Root node
+                expr_ids_to_positions[node_id] = (0, 0)
+                heights_to_widths[0] = 0
+            else:
+                # Track the width across varying heights
+                w = heights_to_widths.get(h, 0)
+                expr_ids_to_positions[node_id] = (h, w)
+                heights_to_widths[h] = w + 1
+                logger.debug(f"Set height={h} width={w}")
+                h = h + 1
+            scopes.pop(node_id)
+
+        for v in node.iter_expressions(reverse=True):
+            stack.append((v, h))
+
+    return expr_ids_to_positions
 
 
 def set_cte_properties(path: t.List[ScopeTraversal]) -> None:

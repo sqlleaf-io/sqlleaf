@@ -110,7 +110,7 @@ class LiteralNode(NodeAttributes):
     def full_name(self):
         name = self.column.replace("'", '"')
         return self.wrap(
-            f"{name} type={self.data_type} query_depth={self.ctx.query_depth} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{name} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
@@ -319,7 +319,7 @@ class FunctionNode(NodeAttributes):
     def full_name(self):
         name = f"{self.column}()".upper()
         return self.wrap(
-            f"{name} type={self.data_type} query_depth={self.ctx.query_depth} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{name} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
@@ -352,7 +352,7 @@ class UserDefinedFunctionNode(NodeAttributes):
     @property
     def full_name(self):
         return self.wrap(
-            f"{self.get_name()} type={self.data_type} query_depth={self.ctx.query_depth} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{self.get_name()} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
@@ -449,7 +449,7 @@ class NullNode(NodeAttributes):
     @property
     def full_name(self):
         return self.wrap(
-            f"{self.column} type={self.data_type} query_depth={self.ctx.query_depth} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{self.column} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
@@ -533,7 +533,7 @@ class IntervalNode(NodeAttributes):
     @property
     def full_name(self):
         return self.wrap(
-            f"{self.column} type={self.data_type} query_depth={self.ctx.query_depth} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{self.column} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
 
