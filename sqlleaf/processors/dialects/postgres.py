@@ -21,17 +21,16 @@ class PostgresGenerator(BaseGenerator):
     dialect = "postgres"
 
     @singledispatchmethod
-    def process(self, cls: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        return super().process(cls, processor_ctx, ctx)
+    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        return super().process(expr, processor_ctx, ctx)
 
     @process.register
-    def process_table(self, cls: exp.Table, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    def process_table(self, expr: exp.Table, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         Process a table or a table function.
         This is a bit awkward as we have the sequence: Table -> ColumnDef -> Table
         for table functions.
         """
-        expr: exp.Table = processor_ctx.expr
         if "rows_from" in expr.args:
             downstream_exprs = []
             for table_function in expr.args["rows_from"]:
@@ -52,17 +51,15 @@ class PostgresGenerator(BaseGenerator):
             # TODO: reset the index. This should be part of a scope traversal first.
             return None, [expr.this]
 
-        return super().process(cls, processor_ctx, ctx)
+        return super().process(expr, processor_ctx, ctx)
 
     @process.register
-    def process_anonymous(self, cls: exp.Anonymous, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    def process_anonymous(self, expr: exp.Anonymous, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         Either user-defined functions or sequence functions.
 
         SELECT my.func() or SELECT nextval('my_sequence')
         """
-        expr: exp.Anonymous = processor_ctx.expr
-
         if isinstance(expr.parent, (exp.Dot,)):
             # Postgres UDFs don't support catalogs
             schema = str(expr.parent.left.name)
@@ -91,11 +88,10 @@ class PostgresGenerator(BaseGenerator):
             node_attrs = SequenceNode(name=seq_name_expr.name, processor_ctx=processor_ctx, ctx=ctx)
             return node_attrs, []
 
-        return super().process(cls, processor_ctx, ctx)
+        return super().process(expr, processor_ctx, ctx)
 
     @process.register
-    def process_column_def(self, cls: exp.ColumnDef, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        expr: exp.ColumnDef = processor_ctx.expr
+    def process_column_def(self, expr: exp.ColumnDef, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         processor_ctx = replace(processor_ctx, new_data_type=expr.kind)
 
         if isinstance(expr.parent, exp.TableAlias):

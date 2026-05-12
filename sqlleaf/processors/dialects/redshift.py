@@ -19,17 +19,15 @@ class RedshiftGenerator(BaseGenerator):
     dialect = "redshift"
 
     @singledispatchmethod
-    def process(self, cls: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        return super().process(cls, processor_ctx, ctx)
+    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        return super().process(expr, processor_ctx, ctx)
 
     @process.register
-    def process_pivot(self, cls: exp.Pivot, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    def process_pivot(self, expr: exp.Pivot, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         SELECT * FROM (SELECT  ...) PIVOT ( ... )
         """
         # TODO: process agg funcs
-        expr: exp.Pivot = processor_ctx.expr
-
         pivot, pivot_column_mapping = _get_pivot(processor_ctx.scope)
 
         downstream_columns = []
@@ -46,9 +44,7 @@ class RedshiftGenerator(BaseGenerator):
         return None, downstream_columns
 
     @process.register
-    def process_column(self, cls: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        expr: exp.Column = processor_ctx.expr
-
+    def process_column(self, expr: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         scope = processor_ctx.scope
         if scope:
             pivots = scope.pivots
@@ -59,11 +55,10 @@ class RedshiftGenerator(BaseGenerator):
         return super().process(expr, processor_ctx, ctx)
 
     @process.register
-    def process_location(self, cls: exp.LocationProperty, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    def process_location(self, expr: exp.LocationProperty, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
         """
         CREATE EXTERNAL TABLE ... LOCATION
         """
-        expr: exp.LocationProperty = processor_ctx.expr
         location = expr.this
         child_node = processor_ctx.child_node_attrs
         query = processor_ctx.query

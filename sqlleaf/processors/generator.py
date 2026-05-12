@@ -357,7 +357,7 @@ def find_inherited_columns(
         col_def = [c for c in inh_table.get_column_defs() if c.name == column_node.column][0]
         col = util.column_def_to_column(column_def=col_def, parent_table=inh_table.child_table)
         col_ctx = replace(processor_ctx, expr=col, scope=None)  # Remove the node so that the column isn't renamed
-        inh_node_attrs, _ = generator.process_column(None, col_ctx, ctx)
+        inh_node_attrs, _ = generator.process_column(col, col_ctx, ctx)
         inherited_column_nodes.append(inh_node_attrs)
 
     return inherited_column_nodes
