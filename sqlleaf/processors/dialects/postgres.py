@@ -21,11 +21,11 @@ class PostgresGenerator(BaseGenerator):
     dialect = "postgres"
 
     @singledispatchmethod
-    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        return super().process(expr, processor_ctx, ctx)
+    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+        yield from super().process(expr, processor_ctx, ctx)
 
     @process.register
-    def process_table(self, expr: exp.Table, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    def process_table(self, expr: exp.Table, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
         """
         Process a table or a table function.
         This is a bit awkward as we have the sequence: Table -> ColumnDef -> Table
@@ -44,17 +44,22 @@ class PostgresGenerator(BaseGenerator):
             for i, col in enumerate(expr.alias_column_names):
                 if col == child_column_name:
                     # Returns ColumnDef | Function
-                    return None, [downstream_exprs[i]]
+                    parent = processor_ctx.child_node_attrs
+                    grandparents = [downstream_exprs[i]]
+                    yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
+                    break
 
         elif expr.arg_key == "rows_from":
             # A table function inside a 'ROWS FROM'
             # TODO: reset the index. This should be part of a scope traversal first.
-            return None, [expr.this]
-
-        return super().process(expr, processor_ctx, ctx)
+            parent = processor_ctx.child_node_attrs
+            grandparents = [expr.this]
+            yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
+        else:
+            yield from super().process(expr, processor_ctx, ctx)
 
     @process.register
-    def process_anonymous(self, expr: exp.Anonymous, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    def process_anonymous(self, expr: exp.Anonymous, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
         """
         Either user-defined functions or sequence functions.
 
@@ -85,13 +90,13 @@ class PostgresGenerator(BaseGenerator):
             if not processor_ctx.object_mapping.find_query(kind="sequence", table=seq_table):
                 logger.warning(f"Sequence '{full_name}' not found.")
 
-            node_attrs = SequenceNode(name=seq_name_expr.name, processor_ctx=processor_ctx, ctx=ctx)
-            return node_attrs, []
-
-        return super().process(expr, processor_ctx, ctx)
+            parent = SequenceNode(name=seq_name_expr.name, processor_ctx=processor_ctx, ctx=ctx)
+            yield parent, processor_ctx.child_node_attrs
+        else:
+            yield from super().process(expr, processor_ctx, ctx)
 
     @process.register
-    def process_column_def(self, expr: exp.ColumnDef, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    def process_column_def(self, expr: exp.ColumnDef, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
         processor_ctx = replace(processor_ctx, new_data_type=expr.kind)
 
         if isinstance(expr.parent, exp.TableAlias):
@@ -103,7 +108,7 @@ class PostgresGenerator(BaseGenerator):
                 table_alias = f"{token}{after}"
                 raise exception.SqlLeafException(f"The table alias '{table_alias}' must have a name.")
 
-            node_attrs = ColumnNode(
+            parent = ColumnNode(
                 catalog="",
                 schema="",
                 table=table_alias,
@@ -112,6 +117,7 @@ class PostgresGenerator(BaseGenerator):
                 ctx=ctx,
             )
             table_function: exp.Table = expr.parent.parent
-            return node_attrs, [table_function]
+            yield parent, processor_ctx.child_node_attrs
 
-        return None, []
+            grandparents = [table_function]
+            yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)

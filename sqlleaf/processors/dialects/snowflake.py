@@ -23,11 +23,11 @@ class SnowflakeGenerator(BaseGenerator):
     dialect = "snowflake"
 
     @singledispatchmethod
-    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
-        return super().process(expr, processor_ctx, ctx)
+    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+        yield from super().process(expr, processor_ctx, ctx)
 
     @process.register
-    def process_put(self, expr: exp.Put, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    def process_put(self, expr: exp.Put, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
         """
         PUT 'file:///tmp/data/mydata.csv' @my_int_stage;
         - Creates two nodes: FileNode and StageNode
@@ -45,16 +45,15 @@ class SnowflakeGenerator(BaseGenerator):
         return file_node, [stage_node]
 
     @process.register
-    def process_column(self, expr: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    def process_column(self, expr: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
         """
         If the source is actually a Stage, don't try to create a Column.
         """
         query = processor_ctx.query
-        if isinstance(query, CopyQuery):
-            if query.is_source_a_stage:
-                stage_name: exp.Var = query.source.this
-                stage_ctx = replace(processor_ctx, expr=stage_name)
-                parent_node_attrs = StageNode(processor_ctx=stage_ctx, ctx=ctx)
-                return parent_node_attrs, []
-
-        return super().process_column(expr, processor_ctx, ctx)
+        if isinstance(query, CopyQuery) and query.is_source_a_stage:
+            stage_name: exp.Var = query.source.this
+            stage_ctx = replace(processor_ctx, expr=stage_name)
+            parent = StageNode(processor_ctx=stage_ctx, ctx=ctx)
+            yield parent, processor_ctx.child_node_attrs
+        else:
+            yield from super().process_column(expr, processor_ctx, ctx)

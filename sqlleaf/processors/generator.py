@@ -244,51 +244,33 @@ def walk_expressions_and_build_graph(
     - Next, the parent of UPPER is CONCAT, which is also x.name's grandparent. This too becomes a FunctionNode.
     - Finally, the parents of CONCAT are 'p' and 'q'. These become LiteralNodes.
     """
-    expr = processor_ctx.expr
-
     nodes_created = []
-    child_node_attrs = processor_ctx.child_node_attrs
-    # TODO: upgrade Python to easily access the called function
-    # logger.debug(f"Generating node '{expr.__class__.__name__}' with generator '{processor_func.__name__}'")
-    parent_node_attrs, grandparent_exprs = generator.process(expr, processor_ctx, ctx)
 
-    if parent_node_attrs:
-        node_exists = processor_ctx.graph.has_node(parent_node_attrs.full_name)
-        """
-        Considering Postgres inheritance operates 'behind the scenes' outside of the query's syntax), we are
-        justified in implementing this behaviour in our own way: by mapping each inherited column to the query's columns.
-        """
-        inherited_columns_of_parent = find_inherited_columns_for_parent(
-            column_node=parent_node_attrs, generator=generator, processor_ctx=processor_ctx, ctx=ctx
-        )
-        inherited_columns_of_child = find_inherited_columns_for_child(
-            column_node=child_node_attrs, generator=generator, processor_ctx=processor_ctx, ctx=ctx
-        )
+    for parent_node_attrs, child_node_attrs in generator.process(processor_ctx.expr, processor_ctx, ctx):
+        if parent_node_attrs:
+            node_exists = processor_ctx.graph.has_node(parent_node_attrs.full_name)
+            if not node_exists:
+                nodes_created.append(parent_node_attrs)
+            """
+            Considering Postgres inheritance operates 'behind the scenes' outside of the query's syntax), we are
+            justified in implementing this behaviour in our own way: by mapping each inherited column to the query's columns.
+            """
+            inherited_columns_of_parent = find_inherited_columns_for_parent(
+                column_node=parent_node_attrs, generator=generator, processor_ctx=processor_ctx, ctx=ctx
+            )
+            inherited_columns_of_child = find_inherited_columns_for_child(
+                column_node=child_node_attrs, generator=generator, processor_ctx=processor_ctx, ctx=ctx
+            )
 
-        for parent_node in [parent_node_attrs] + inherited_columns_of_parent:
-            for child_node in [child_node_attrs] + inherited_columns_of_child:
-                add_nodes_with_edge_to_graph(
-                    parent_node,
-                    child_node,
-                    processor_ctx.graph,
-                    processor_ctx.query,
-                    ctx,
-                )
-        if not node_exists:
-            nodes_created.append(parent_node_attrs)
-        if parent_node_attrs.kind in ["function", "udf"]:
-            ctx = replace(ctx, function_depth=ctx.function_depth + 1)
-    else:
-        # Re-use the parent
-        parent_node_attrs = child_node_attrs
-
-    # Recursively process any grandparent expressions
-    for grandparent_expr in grandparent_exprs:
-        grandparent_processor_ctx = replace(processor_ctx, expr=grandparent_expr, child_node_attrs=parent_node_attrs)
-        nodes = walk_expressions_and_build_graph(generator, grandparent_processor_ctx, ctx)
-        nodes_created.extend(nodes)
-        ctx = replace(ctx, function_arg_index=ctx.function_arg_index + 1)
-
+            for parent_node in [parent_node_attrs] + inherited_columns_of_parent:
+                for child_node in [child_node_attrs] + inherited_columns_of_child:
+                    add_nodes_with_edge_to_graph(
+                        parent_node,
+                        child_node,
+                        processor_ctx.graph,
+                        processor_ctx.query,
+                        ctx,
+                    )
     return nodes_created
 
 
@@ -357,8 +339,8 @@ def find_inherited_columns(
         col_def = [c for c in inh_table.get_column_defs() if c.name == column_node.column][0]
         col = util.column_def_to_column(column_def=col_def, parent_table=inh_table.child_table)
         col_ctx = replace(processor_ctx, expr=col, scope=None)  # Remove the node so that the column isn't renamed
-        inh_node_attrs, _ = generator.process_column(col, col_ctx, ctx)
-        inherited_column_nodes.append(inh_node_attrs)
+        for inh_node_attrs, _ in generator.process_column(col, col_ctx, ctx):
+            inherited_column_nodes.append(inh_node_attrs)
 
     return inherited_column_nodes
 

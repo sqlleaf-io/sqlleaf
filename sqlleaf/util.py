@@ -109,7 +109,10 @@ def unwrap_expression(expr: exp.Expression) -> exp.Expression:
     """
     ex = expr
     while isinstance(ex, (exp.Alias, exp.Paren)):
-        ex = ex.unalias().unnest()
+        ex = ex.unalias()
+        if isinstance(ex, (exp.Subquery)):
+           break
+        ex = ex.unnest()
     return ex
 
 
