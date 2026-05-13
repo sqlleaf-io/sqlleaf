@@ -43,18 +43,15 @@ class PostgresGenerator(BaseGenerator):
             child_column_name = processor_ctx.child_node_attrs.expr.name
             for i, col in enumerate(expr.alias_column_names):
                 if col == child_column_name:
-                    # Returns ColumnDef | Function
-                    parent = processor_ctx.child_node_attrs
-                    grandparents = [downstream_exprs[i]]
-                    yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
-                    break
+                    # Returns ColumnDef | Function | Table
+                    down_expr = downstream_exprs[i]
+                    if isinstance(down_expr, exp.Table) and down_expr.arg_key == "rows_from":
+                        # A table function inside a 'ROWS FROM'
+                        down_expr = down_expr.this
 
-        elif expr.arg_key == "rows_from":
-            # A table function inside a 'ROWS FROM'
-            # TODO: reset the index. This should be part of a scope traversal first.
-            parent = processor_ctx.child_node_attrs
-            grandparents = [expr.this]
-            yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
+                    processor_ctx = replace(processor_ctx, expr=down_expr)
+                    yield from self.process(down_expr, processor_ctx, ctx)
+                    break
         else:
             yield from super().process(expr, processor_ctx, ctx)
 
@@ -103,7 +100,7 @@ class PostgresGenerator(BaseGenerator):
             # An alias to a table function inside 'ROWS FROM'
             table_alias = expr.parent.alias_or_name
             if not table_alias:
-                # The table alias isn't found, return an error. e.g. the "a" in "a(x, y)"
+                # The table alias isn't found - e.g. the "a" in "a(x, y)"
                 (before, token, after) = expr.parent.sql().partition("(")
                 table_alias = f"{token}{after}"
                 raise exception.SqlLeafException(f"The table alias '{table_alias}' must have a name.")
@@ -116,8 +113,9 @@ class PostgresGenerator(BaseGenerator):
                 processor_ctx=processor_ctx,
                 ctx=ctx,
             )
-            table_function: exp.Table = expr.parent.parent
             yield parent, processor_ctx.child_node_attrs
 
-            grandparents = [table_function]
-            yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
+            # Process the table function
+            # TODO: why is this needed? It's 2 levels up
+            table_function: exp.Table = expr.parent.parent
+            yield from self.do_grandparents([table_function.this], parent, processor_ctx, ctx)

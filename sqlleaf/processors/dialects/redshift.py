@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import typing as t
+from dataclasses import replace
 from functools import singledispatchmethod
 
 from hgext.children import children
@@ -42,18 +43,16 @@ class RedshiftGenerator(BaseGenerator):
             # pivoted source -- adapt column to be from the implicit pivoted source.
             downstream_columns.append(exp.column(c.this, table=pivot.parent.alias_or_name))
 
-        parent = processor_ctx.child_node_attrs
-        grandparents = downstream_columns
-        yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
-        # return None, downstream_columns
+        for col_expr in downstream_columns:
+            processor_ctx = replace(processor_ctx, expr=col_expr)
+            yield from self.process_column(col_expr, processor_ctx, ctx)
 
     @process.register
     def process_column(self, expr: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
         pivot = _get_pivot_expr(processor_ctx.scope)
         if pivot and pivot.alias_or_name == expr.table:
-            parent = processor_ctx.child_node_attrs
-            grandparents = [pivot]
-            yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
+            processor_ctx = replace(processor_ctx, expr=pivot)
+            yield from self.process_pivot(pivot, processor_ctx, ctx)
         else:
             yield from super().process(expr, processor_ctx, ctx)
 

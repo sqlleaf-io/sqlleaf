@@ -547,9 +547,9 @@ def check_for_put(generator: SnowflakeGenerator, processor_ctx: ProcessorContext
 
     if query.dialect == "snowflake" and isinstance(query, PutQuery):
         # Short-circuit this function; it's not an insert
-        file_node, [stage_node] = generator.process(expr, processor_ctx, ctx)
-        add_nodes_with_edge_to_graph(file_node, stage_node, graph, query, ctx)
-        return True
+        for file_node, stage_node in generator.process(expr, processor_ctx, ctx):
+            add_nodes_with_edge_to_graph(file_node, stage_node, graph, query, ctx)
+            return True
     return False
 
 

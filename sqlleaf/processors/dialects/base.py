@@ -244,9 +244,9 @@ class BaseGenerator:
 
             if isinstance(parent.source_scope, exp.Table):
                 # Traverse into the table (esp. needed by "ROWS FROM")
-                parent = parent
-                grandparents = [parent.source_scope]
-                yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
+                ex = parent.source_scope
+                processor_ctx = replace(processor_ctx, expr=ex, child_node_attrs=parent)
+                yield from self.process(ex, processor_ctx, ctx)
 
     @process.register(exp.JSONExtract)
     @process.register(exp.JSONBExtract)
@@ -260,9 +260,8 @@ class BaseGenerator:
 
         yield parent, processor_ctx.child_node_attrs
 
-        parent = parent
-        grandparents = [source]
-        yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
+        processor_ctx = replace(processor_ctx, expr=source, child_node_attrs=parent)
+        yield from self.process(source, processor_ctx, ctx)
 
 
     @process.register

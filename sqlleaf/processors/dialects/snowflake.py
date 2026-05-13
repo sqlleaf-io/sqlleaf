@@ -41,8 +41,7 @@ class SnowflakeGenerator(BaseGenerator):
         file_node = FileNode(processor_ctx=file_ctx, ctx=ctx)
         stage_node = StageNode(processor_ctx=stage_ctx, ctx=ctx)
 
-        # TODO: return proper expr type for stage_node
-        return file_node, [stage_node]
+        yield file_node, stage_node
 
     @process.register
     def process_column(self, expr: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
