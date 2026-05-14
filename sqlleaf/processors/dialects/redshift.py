@@ -3,12 +3,11 @@ from __future__ import annotations
 import logging
 import typing as t
 from dataclasses import replace
-from functools import singledispatchmethod
 
-from hgext.children import children
 from sqlglot import exp
 from sqlglot.optimizer import Scope
 
+from sqlleaf import util
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import (
     NodeAttributes, ColumnNode,
@@ -20,9 +19,9 @@ logger = logging.getLogger("sqlleaf")
 class RedshiftGenerator(BaseGenerator):
     dialect = "redshift"
 
-    @singledispatchmethod
+    @util.singledispatchmethodlogger
     def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
-        return super().process(expr, processor_ctx, ctx)
+        yield from super().process(expr, processor_ctx, ctx)
 
     @process.register
     def process_pivot(self, expr: exp.Pivot, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:

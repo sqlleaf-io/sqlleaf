@@ -1,6 +1,7 @@
 import logging
 import typing as t
 import hashlib
+from functools import singledispatchmethod
 
 from sqlglot import exp
 import networkx as nx
@@ -231,3 +232,29 @@ def set_properties(statement: exp.Create) -> str:
     if props := statement.args["properties"]:
         property = str(props.find(properties) or "").lower()
     return property
+
+
+class SingleDispatchMethodLogger(singledispatchmethod):
+    """
+    Override the functools.singledispatchmethod class to print the methods that get called.
+    Used for debugging purposes.
+    """
+    def __get__(self, instance: t.Any, owner: t.Any = None) -> t.Any:
+        if instance is None:
+            return self
+
+        # Intercept execution and print the types
+        def wrapper(*args: t.Any, **kwargs: t.Any) -> t.Any:
+            target_type = type(args[0])
+            actual_func = self.dispatcher.dispatch(target_type)
+
+            logger.debug(f"Dispatching to: '{actual_func.__name__}' for expr: {type(args[0])}")
+
+            result = actual_func(instance, *args, **kwargs)
+            return result
+
+        wrapper.register = self.register
+        return wrapper
+
+
+singledispatchmethodlogger = SingleDispatchMethodLogger

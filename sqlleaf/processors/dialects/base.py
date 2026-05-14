@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import typing as t
 from dataclasses import replace
-from functools import singledispatchmethod
 
 from sqlglot import exp
 
@@ -33,8 +32,8 @@ class BaseGenerator:
     _dialects = {}
     dialect = ""
 
-    @singledispatchmethod
-    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    @util.singledispatchmethodlogger
+    def process(self, expr: exp.Expression):
         raise exception.SqlLeafException(message=f"Unhandled expression type: {type(expr)}")
 
     def __init_subclass__(cls, **kwargs):

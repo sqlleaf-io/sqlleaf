@@ -3,11 +3,10 @@ from __future__ import annotations
 import logging
 import typing as t
 from dataclasses import replace
-from functools import singledispatchmethod
 
 from sqlglot import exp
 
-from sqlleaf import exception
+from sqlleaf import util, exception
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import (
     NodeAttributes,
@@ -20,7 +19,7 @@ logger = logging.getLogger("sqlleaf")
 class PostgresGenerator(BaseGenerator):
     dialect = "postgres"
 
-    @singledispatchmethod
+    @util.singledispatchmethodlogger
     def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
         yield from super().process(expr, processor_ctx, ctx)
 
