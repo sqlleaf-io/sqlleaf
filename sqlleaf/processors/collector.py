@@ -240,6 +240,9 @@ def _set_column_defs(query: TableQuery, object_mapping: mappings.ObjectMapping):
         elif isinstance(expression, exp.LikeProperty):
             like_columns = _collect_like_columns(expression, object_mapping, query.child_table)
             all_columns.extend(like_columns)
+        elif isinstance(expression, exp.Identifier):
+            # CREATE TABLE (a INT, b);
+            raise exception.SqlLeafException(message=f"Column '{expression.name}' must define a data type.")
         else:
             raise exception.SqlLeafException(message=f"Unsupported column expression: {type(expression)}")
 

@@ -24,6 +24,30 @@ SELECT fruit FROM unnest(ARRAY['apple', 'banana']);                         -- V
 """
 
 
+
+literal_ones = [
+    "(1)",
+    "((1))",
+    "(((1)))",
+]
+@pytest.mark.parametrize("substr", literal_ones)
+def test__select_parens(holder, substr):
+    sql = f"""
+    CREATE TABLE person (age INT);
+
+    INSERT INTO person (age)
+    SELECT ({substr})
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.nodes_full == [
+        'literal[1 type=INT query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]',
+        'column[person.age type=INT kind=table]'
+    ]
+    assert h.paths == [['literal[1]', 'column[person.age]']]
+    assert len(h.edges) == 1
+
+
 @pytest.mark.skip(reason="todo")
 def test__select_with_ordinality(holder):
     sql = """

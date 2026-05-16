@@ -25,6 +25,7 @@ class ProcessorContext:
     query: Query
     expr: exp.Expression
     scope: TableOrScopeType
+    scope_positions: t.Dict[int, t.Dict[int, int]] = None
     data_type: exp.DataType = None
     child_node_attrs: NodeAttributes = None
     # Override the data_type if needed

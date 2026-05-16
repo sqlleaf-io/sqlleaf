@@ -111,7 +111,7 @@ def test__cycle_one_loop_two_columns(holder):
         assert len(h.nodes) == 2
         assert len(h.edges) == 2
 
-    assert e.value.message == "Found 1 errors with cycles in graph. Remove these."
+    assert e.value.args[0] == "Found 1 errors with cycles in graph. Remove these."
 
 
 # test: A -> B, B -> C, C -> A
@@ -135,7 +135,7 @@ def test__cycle_one_loop_three_columns(holder):
         assert len(h.nodes) == 3
         assert len(h.edges) == 3
 
-    assert e.value.message == "Found 1 errors with cycles in graph. Remove these."
+    assert e.value.args[0] == "Found 1 errors with cycles in graph. Remove these."
 
 
 # test: A -> B, B -> A, A -> C, C -> A
@@ -166,7 +166,7 @@ def test__cycle_two_loops(holder):
         assert len(h.nodes) == 3
         assert len(h.edges) == 4
 
-    assert e.value.message == "Found 2 errors with cycles in graph. Remove these."
+    assert e.value.args[0] == "Found 2 errors with cycles in graph. Remove these."
 
 
 # test: A -> B, B -> A, B -> C, C -> B
@@ -197,7 +197,7 @@ def test__cycle_two_loops_modified(holder):
         assert len(h.nodes) == 3
         assert len(h.edges) == 4
 
-    assert e.value.message == "Found 2 errors with cycles in graph. Remove these."
+    assert e.value.args[0] == "Found 2 errors with cycles in graph. Remove these."
 
 
 ## Two disjoint cycles
@@ -228,7 +228,7 @@ def test__cycle_two_loops_disjoint(holder):
         assert len(h.nodes) == 4
         assert len(h.edges) == 4
 
-    assert e.value.message == "Found 2 errors with cycles in graph. Remove these."
+    assert e.value.args[0] == "Found 2 errors with cycles in graph. Remove these."
 
 
 ## No entry, One exit

@@ -1,6 +1,10 @@
 import os
 import sys
 
+import pytest
+
+from sqlleaf.exception import SqlLeafException
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
@@ -197,6 +201,16 @@ def test__table_inherits_with_merge(holder):
     ]
     assert len(h.nodes) == 8
     assert len(h.edges) == 8
+
+
+def test__table_fails_missing_column_type(holder):
+    with pytest.raises(SqlLeafException) as e:
+        sql = """
+        CREATE TABLE fail (a INT, b);
+        """
+        h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert e.value.args[0] == "Column 'b' must define a data type."
 
 
 # Not supported by sqlglot: 'Falling back to Command'

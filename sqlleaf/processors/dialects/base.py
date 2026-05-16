@@ -51,16 +51,17 @@ class BaseGenerator:
 
     def do_grandparents(self, grandparents: t.List[exp.Expression], parent: NodeAttributes, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
         """
-        Process a list of grandparents (parents of nodes in a graph).
-        For example, given UPPER('A') the literal 'A' is the parent of UPPER().
+        Process a list of expressions of a parent expression.
+
+        This is usually called after a parent->child edge being added to the graph
+        with additional expressions to now process, i.e. [grandparents]->parent->child
         """
         if parent.kind in ["function", "udf"]:
             ctx = replace(ctx, function_depth=ctx.function_depth + 1)
-
         for grand_expr in grandparents:
             processor_ctx = replace(processor_ctx, expr=grand_expr, child_node_attrs=parent)
-            ctx = replace(ctx, function_arg_index=ctx.function_arg_index + 1)
             yield from self.process(grand_expr, processor_ctx=processor_ctx, ctx=ctx)
+            ctx = replace(ctx, function_arg_index=ctx.function_arg_index + 1)
 
     @process.register
     def process_function(self, expr: exp.Func, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
@@ -293,6 +294,26 @@ class BaseGenerator:
             parent = processor_ctx.child_node_attrs
             yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
 
+    @process.register
+    def process_subquery(self, expr: exp.Subquery, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+        """
+        SELECT 1 + (SELECT 2)
+
+        Given the above,
+        1 is part of SELECT 1 ...
+        2 is part of (SELECT 2 ...)
+        (SELECT 2 ...) is part of SELECT 1 ...
+        """
+        if len(expr.selects) > 1 or isinstance(expr.this, exp.Union):
+            raise exception.SqlLeafException("A subquery must return only one column")
+
+        # Update the scope to be the subquery itself, as it is a subscope
+        subquery_scope = [s for s in processor_ctx.scope.subquery_scopes if s.expression == expr.this][0]
+
+        height, width = processor_ctx.scope_positions[id(expr.this)]
+        child_ctx = replace(ctx, query_depth=height, query_width=width)
+        p_ctx = replace(processor_ctx, expr=expr.selects[0], scope=subquery_scope)
+        return self.process(p_ctx.expr, processor_ctx=p_ctx, ctx=child_ctx)
 
 def is_node_a_placeholder(expr: exp.Column, query: Query) -> bool:
     """

@@ -57,7 +57,13 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
     # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
     statement = _apply_optimizations(statement, query, object_mapping, query.child_table)
 
-    logger.debug(f"Transformed {str(type(statement))}: {statement.sql(dialect=query.dialect)}")
+    old = query.statement.sql(dialect=query.dialect)
+    new = statement.sql(dialect=query.dialect)
+    if old == new:
+        logger.debug("Transformations applied, but query is unchanged.")
+    else:
+        logger.debug(f"Transformed {type(statement).__name__}: {new}")
+
     query.statement_transformed = statement
     query.set_statement(statement)
 
@@ -472,6 +478,7 @@ RULES_OVERRIDE = [
         "merge_subqueries",  # Preserve CTEs
         "qualify",  # We qualify when we need to
         "quote_identifiers",  # Preserve identifiers
+        "eliminate_subqueries", # Preserve subqueries
     ]
 ]
 

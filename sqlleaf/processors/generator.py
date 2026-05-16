@@ -166,6 +166,7 @@ def walk_query_and_build_graph(
             processor_ctx,
             expr=scope_traversal.expression,
             scope=scope_traversal.scope,
+            scope_positions=scope_positions,
             child_node_attrs=child_node_attrs,
         )
 
@@ -209,22 +210,6 @@ def walk_query_scope(column: exp.Column, scope: Scope) -> t.Generator[ScopeTrave
         )
         yield st
         logger.debug("[1] Created Node '%s', Expr: %s, Id: %s", column, select.sql(), id(st))
-
-        subquery_scopes = {id(subquery_scope.expression): subquery_scope for subquery_scope in scope.subquery_scopes}
-
-        for subquery in find_all_in_scope(select, exp.UNWRAPPED_QUERIES):
-            # e.g. SELECT ARRAY(SELECT 1), UPDATE x SET y = (SELECT 1)
-            subquery_scope = subquery_scopes.get(id(subquery))
-            if not subquery_scope:
-                logger.warning("Unknown subquery scope: %s", subquery.sql())
-                continue
-
-            for name in subquery.named_selects:
-                logger.debug("Yielding from second subquery scope")
-                yield from walk_query_scope(
-                    column=exp.column(name),
-                    scope=subquery_scope,
-                )
 
 
 def walk_expressions_and_build_graph(

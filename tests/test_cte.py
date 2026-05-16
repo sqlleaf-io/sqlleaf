@@ -278,7 +278,7 @@ def test__cte_fails_for_returning_unaliased_function(holder):
         """
         h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert e.value.message == "Non-column expression (UPPER(name)) must have an alias inside RETURNING to prevent ambiguity."
+    assert e.value.args[0] == "Non-column expression (UPPER(name)) must have an alias inside RETURNING to prevent ambiguity."
 
 
 def test__cte_fails_for_returning_ambiguous_aliases(holder):
@@ -295,7 +295,7 @@ def test__cte_fails_for_returning_ambiguous_aliases(holder):
         """
         h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert e.value.message == "Column reference 'first_cte.name' is ambiguous (2 possible options)"
+    assert e.value.args[0] == "Column reference 'first_cte.name' is ambiguous (2 possible options)"
 
 
 def test__cte_fails_select_without_write(holder):
@@ -308,7 +308,7 @@ def test__cte_fails_select_without_write(holder):
         """
         h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert e.value.message == "Skipping statement: A SELECT query must have a data-modifying statement, such as an INSERT, to contain lineage."
+    assert e.value.args[0] == "Skipping statement: A SELECT query must have a data-modifying statement, such as an INSERT, to contain lineage."
 
 
 def test__cte_update_with_two_updates_returning(holder):

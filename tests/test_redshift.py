@@ -11,6 +11,8 @@ from tests.new_fixtures import (
 DIALECT = "redshift"
 
 
+# TODO: SELECT (SELECT PIVOT)
+
 def test__select_pivot(holder):
     sql = """
     CREATE TABLE source(name1 VARCHAR, name2 VARCHAR, age INT);
