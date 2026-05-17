@@ -9,10 +9,9 @@ from sqlglot import exp
 from sqlleaf import util, exception
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import (
-    NodeAttributes,
     ColumnNode, SequenceNode,
 )
-from sqlleaf.processors.dialects import BaseGenerator
+from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
 
 logger = logging.getLogger("sqlleaf")
 
@@ -20,11 +19,11 @@ class PostgresGenerator(BaseGenerator):
     dialect = "postgres"
 
     @util.singledispatchmethodlogger
-    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         yield from super().process(expr, processor_ctx, ctx)
 
     @process.register
-    def process_table(self, expr: exp.Table, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_table(self, expr: exp.Table, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         Process a table or a table function.
         This is a bit awkward as we have the sequence: Table -> ColumnDef -> Table
@@ -55,7 +54,7 @@ class PostgresGenerator(BaseGenerator):
             yield from super().process(expr, processor_ctx, ctx)
 
     @process.register
-    def process_anonymous(self, expr: exp.Anonymous, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_anonymous(self, expr: exp.Anonymous, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         Either user-defined functions or sequence functions.
 
@@ -87,12 +86,12 @@ class PostgresGenerator(BaseGenerator):
                 logger.warning(f"Sequence '{full_name}' not found.")
 
             parent = SequenceNode(name=seq_name_expr.name, processor_ctx=processor_ctx, ctx=ctx)
-            yield parent, processor_ctx.child_node_attrs
+            yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
         else:
             yield from super().process(expr, processor_ctx, ctx)
 
     @process.register
-    def process_column_def(self, expr: exp.ColumnDef, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_column_def(self, expr: exp.ColumnDef, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         processor_ctx = replace(processor_ctx, new_data_type=expr.kind)
 
         if isinstance(expr.parent, exp.TableAlias):
@@ -112,7 +111,7 @@ class PostgresGenerator(BaseGenerator):
                 processor_ctx=processor_ctx,
                 ctx=ctx,
             )
-            yield parent, processor_ctx.child_node_attrs
+            yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
 
             # Process the table function
             # TODO: why is this needed? It's 2 levels up

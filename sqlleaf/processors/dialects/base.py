@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import typing as t
-from dataclasses import replace
+from dataclasses import replace, dataclass
 
 from sqlglot import exp
 
@@ -27,13 +27,19 @@ from sqlleaf.objects.query_types import Query, ProcedureQuery
 logger = logging.getLogger("sqlleaf")
 
 
+@dataclass(frozen=True)
+class EdgeToCreate:
+    parent: NodeAttributes
+    child: NodeAttributes
+
+
 class BaseGenerator:
     # A registry to store subclasses
     _dialects = {}
     dialect = ""
 
     @util.singledispatchmethodlogger
-    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         raise exception.SqlLeafException(message=f"Unhandled expression type: {type(expr)}")
 
     def __init_subclass__(cls, **kwargs):
@@ -49,7 +55,7 @@ class BaseGenerator:
             raise exception.SqlLeafException(message=f"Unknown dialect: {class_name}")
         return target_class()
 
-    def do_grandparents(self, grandparents: t.List[exp.Expression], parent: NodeAttributes, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def do_grandparents(self, grandparents: t.List[exp.Expression], parent: NodeAttributes, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         Process a list of expressions of a parent expression.
 
@@ -65,15 +71,15 @@ class BaseGenerator:
             ctx = replace(ctx, function_arg_index=ctx.function_arg_index + 1)
 
     @process.register
-    def process_function(self, expr: exp.Func, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_function(self, expr: exp.Func, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         parent = FunctionNode(processor_ctx, ctx)
-        yield parent, processor_ctx.child_node_attrs
+        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
 
         grandparents = util.get_function_args(expr=expr)
         yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
 
     @process.register
-    def process_placeholder(self, expr: exp.Placeholder, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_placeholder(self, expr: exp.Placeholder, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         CREATE PROCEDURE proc(v_amount INT) AS
         SELECT v_amount     <-- placeholder
@@ -81,58 +87,58 @@ class BaseGenerator:
         expr: exp.ColumnDef = expr.this
         processor_ctx = replace(processor_ctx, new_data_type=expr.kind)
         parent = VariableNode(processor_ctx, ctx)
-        yield parent, processor_ctx.child_node_attrs
+        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
 
     @process.register
-    def process_array(self, expr: exp.Array, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_array(self, expr: exp.Array, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT ARRAY[1,2,3]
         """
         values = [str(e) for e in expr.expressions]
         values = "{" + ",".join(values) + "}"
         parent = LiteralNode(name=values, processor_ctx=processor_ctx, ctx=ctx)
-        yield parent, processor_ctx.child_node_attrs
+        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
 
     @process.register
-    def process_window(self, expr: exp.Window, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_window(self, expr: exp.Window, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT ROW_NUMBER() OVER (ORDER BY name DESC) AS amount
         """
         parent = WindowNode(processor_ctx=processor_ctx, ctx=ctx)
-        yield parent, processor_ctx.child_node_attrs
+        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
 
     @process.register(exp.Literal)
     @process.register(exp.Boolean)
-    def process_literal(self, expr: exp.Literal, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_literal(self, expr: exp.Literal, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         select 'hello' as greeting
         """
         parent = LiteralNode(name=expr.sql(), processor_ctx=processor_ctx, ctx=ctx)
-        yield parent, processor_ctx.child_node_attrs
+        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
 
     @process.register
-    def process_star(self, expr: exp.Star, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_star(self, expr: exp.Star, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         select count(*) as cnt
         """
         parent = StarNode(processor_ctx, ctx)
-        yield parent, processor_ctx.child_node_attrs
+        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
 
     @process.register
-    def process_null(self, expr: exp.Null, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_null(self, expr: exp.Null, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         parent = NullNode(processor_ctx, ctx)
-        yield parent, processor_ctx.child_node_attrs
+        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
 
     @process.register
-    def process_neg(self, expr: exp.Neg, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_neg(self, expr: exp.Neg, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT -10
         """
         parent = LiteralNode(name="-" + expr.name, processor_ctx=processor_ctx, ctx=ctx)
-        yield parent, processor_ctx.child_node_attrs
+        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
 
     @process.register
-    def process_anonymous(self, expr: exp.Anonymous, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_anonymous(self, expr: exp.Anonymous, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         User-defined functions.
 
@@ -158,13 +164,13 @@ class BaseGenerator:
                 # TODO: this may be incorrect - analyse UDFs properly
                 node_args = [udf_obj.return_expr]
 
-        yield parent, processor_ctx.child_node_attrs
+        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
 
         grandparents = node_args
         yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
 
     @process.register
-    def process_within_group(self, expr: exp.WithinGroup, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_within_group(self, expr: exp.WithinGroup, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT MODE() WITHIN GROUP (ORDER BY name DESC) AS name
         """
@@ -172,14 +178,14 @@ class BaseGenerator:
         yield from self.process(expr.this, processor_ctx, ctx)
 
     @process.register
-    def process_select(self, expr: exp.Select, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_select(self, expr: exp.Select, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT (SELECT 1) AS name
         """
-        yield None, None
+        yield EdgeToCreate(None, None)
 
     @process.register
-    def process_case(self, expr: exp.Case, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_case(self, expr: exp.Case, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT CASE WHEN count(*) > 1 THEN 1 ELSE 0 END AS my_var
         """
@@ -192,7 +198,7 @@ class BaseGenerator:
         yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
 
     @process.register
-    def process_binary(self, expr: exp.Binary, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_binary(self, expr: exp.Binary, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT 1 + 2 AS age
         """
@@ -203,21 +209,21 @@ class BaseGenerator:
             yield from self.process(expr.right, processor_ctx, ctx)
         else:
             parent = FunctionNode(processor_ctx, ctx)
-            yield parent, processor_ctx.child_node_attrs
+            yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
 
             grandparents = [expr.left, expr.right]
             yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
 
     @process.register
-    def process_var(self, expr: exp.Var, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_var(self, expr: exp.Var, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         A variable in a stored procedure or UDF, or the keyword 'DEFAULT'
         """
         parent = VarNode(processor_ctx=processor_ctx, ctx=ctx)
-        yield parent, processor_ctx.child_node_attrs
+        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
 
     @process.register
-    def process_column(self, expr: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_column(self, expr: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         if not is_node_a_placeholder(expr=expr, query=processor_ctx.query):
             # The actual placeholder is processed elsewhere
 
@@ -241,7 +247,7 @@ class BaseGenerator:
                 if not isinstance(source_table, exp.Subquery):
                     parent.rename_table(source_table, processor_ctx.query.dialect)
 
-            yield parent, processor_ctx.child_node_attrs
+            yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
 
             if isinstance(parent.source_scope, exp.Table):
                 # Traverse into the table (esp. needed by "ROWS FROM")
@@ -251,7 +257,7 @@ class BaseGenerator:
 
     @process.register(exp.JSONExtract)
     @process.register(exp.JSONBExtract)
-    def process_json(self, expr: exp.JSONExtract, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_json(self, expr: exp.JSONExtract, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         parent = JsonPathNode(processor_ctx=processor_ctx, ctx=ctx)
 
         # Get the bottom expression to extract the JSON paths
@@ -259,27 +265,27 @@ class BaseGenerator:
         while isinstance(source, (exp.JSONExtract, exp.JSONExtractScalar)):
             source = source.this
 
-        yield parent, processor_ctx.child_node_attrs
+        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
 
         processor_ctx = replace(processor_ctx, expr=source, child_node_attrs=parent)
         yield from self.process(source, processor_ctx, ctx)
 
 
     @process.register
-    def process_interval(self, expr: exp.Interval, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_interval(self, expr: exp.Interval, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         parent = IntervalNode(processor_ctx=processor_ctx, ctx=ctx)
-        yield parent, processor_ctx.child_node_attrs
+        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
 
     @process.register(exp.DataType)
     @process.register(exp.Identifier)
     @process.register(exp.ColumnDef)
     @process.register(exp.Table)
-    def skip(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def skip(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         logger.debug(f"Skipping expression: {type(expr)} {str(expr)}")
-        yield None, None
+        yield EdgeToCreate(None, None)
 
     @process.register
-    def process_values(self, expr: exp.Values, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_values(self, expr: exp.Values, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT FROM (VALUES ())
         """
@@ -296,7 +302,7 @@ class BaseGenerator:
             yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
 
     @process.register
-    def process_subquery(self, expr: exp.Subquery, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Tuple[NodeAttributes, t.List[exp.Expression]]:
+    def process_subquery(self, expr: exp.Subquery, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT 1 + (SELECT 2)
 

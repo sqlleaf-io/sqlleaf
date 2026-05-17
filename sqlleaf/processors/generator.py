@@ -15,7 +15,7 @@ from sqlleaf import util, exception, mappings
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, StageNode, ColumnNode, TableType
 from sqlleaf.objects.query_types import Query, UpdateQuery, CopyQuery, PutQuery, TableQuery
-from sqlleaf.processors.dialects import BaseGenerator, SnowflakeGenerator
+from sqlleaf.processors.dialects.base import BaseGenerator
 
 logger = logging.getLogger("sqlleaf")
 
@@ -231,7 +231,8 @@ def walk_expressions_and_build_graph(
     """
     nodes_created = []
 
-    for parent_node_attrs, child_node_attrs in generator.process(processor_ctx.expr, processor_ctx, ctx):
+    for edge in generator.process(processor_ctx.expr, processor_ctx, ctx):
+        parent_node_attrs, child_node_attrs = edge.parent, edge.child
         if parent_node_attrs:
             node_exists = processor_ctx.graph.has_node(parent_node_attrs.full_name)
             if not node_exists:
@@ -324,7 +325,8 @@ def find_inherited_columns(
         col_def = [c for c in inh_table.get_column_defs() if c.name == column_node.column][0]
         col = util.column_def_to_column(column_def=col_def, parent_table=inh_table.child_table)
         col_ctx = replace(processor_ctx, expr=col, scope=None)  # Remove the node so that the column isn't renamed
-        for inh_node_attrs, _ in generator.process_column(col, col_ctx, ctx):
+        for edge in generator.process_column(col, col_ctx, ctx):
+            inh_node_attrs = edge.parent
             inherited_column_nodes.append(inh_node_attrs)
 
     return inherited_column_nodes
@@ -532,7 +534,8 @@ def check_for_put(generator: SnowflakeGenerator, processor_ctx: ProcessorContext
 
     if query.dialect == "snowflake" and isinstance(query, PutQuery):
         # Short-circuit this function; it's not an insert
-        for file_node, stage_node in generator.process(expr, processor_ctx, ctx):
+        for edge in generator.process(expr, processor_ctx, ctx):
+            file_node, stage_node = edge.parent, edge.child
             add_nodes_with_edge_to_graph(file_node, stage_node, graph, query, ctx)
             return True
     return False

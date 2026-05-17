@@ -10,9 +10,9 @@ from sqlglot.optimizer import Scope
 from sqlleaf import util, exception
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import (
-    NodeAttributes, ColumnNode, PivotNode, UnpivotNode,
+    ColumnNode, PivotNode, UnpivotNode,
 )
-from sqlleaf.processors.dialects import BaseGenerator
+from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
 
 logger = logging.getLogger("sqlleaf")
 
@@ -20,11 +20,11 @@ class RedshiftGenerator(BaseGenerator):
     dialect = "redshift"
 
     @util.singledispatchmethodlogger
-    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         yield from super().process(expr, processor_ctx, ctx)
 
     @process.register
-    def process_unpivot(self, expr: exp.Pivot, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_unpivot(self, expr: exp.Pivot, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT * FROM ... UNPIVOT ( ... )
         """
@@ -55,13 +55,13 @@ class RedshiftGenerator(BaseGenerator):
             )
             source = pivot_value.name if arg == "this" else ""  # Only columns are sources for now
             unpivot_node.set(source=source, target=selected_column.name)
-            yield unpivot_node, processor_ctx.child_node_attrs
+            yield EdgeToCreate(unpivot_node, processor_ctx.child_node_attrs)
 
             yield from self.do_grandparents([pivot_value], unpivot_node, processor_ctx, ctx)
 
 
     @process.register
-    def process_pivot(self, expr: exp.Pivot, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_pivot(self, expr: exp.Pivot, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT * FROM (SELECT  ...) PIVOT ( ... )
         """
@@ -78,14 +78,14 @@ class RedshiftGenerator(BaseGenerator):
             ctx=ctx,
         )
         pivot_node.set(source=pivot_expr.alias_or_name, target=selected_column.alias_or_name)
-        yield pivot_node, processor_ctx.child_node_attrs
+        yield EdgeToCreate(pivot_node, processor_ctx.child_node_attrs)
 
         grandparents = [pivot_expr]
         yield from self.do_grandparents(grandparents, pivot_node, processor_ctx, ctx)
 
 
     @process.register
-    def process_column(self, expr: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_column(self, expr: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         pivot = _get_pivot_expr(processor_ctx.scope)
         if (pivot and pivot.alias_or_name == expr.table and
             not isinstance(processor_ctx.child_node_attrs, UnpivotNode)  # Prevent infinite recursion
@@ -99,7 +99,7 @@ class RedshiftGenerator(BaseGenerator):
             yield from super().process(expr, processor_ctx, ctx)
 
     @process.register
-    def process_location(self, expr: exp.LocationProperty, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
+    def process_location(self, expr: exp.LocationProperty, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         CREATE EXTERNAL TABLE ... LOCATION
         """
@@ -121,7 +121,7 @@ class RedshiftGenerator(BaseGenerator):
         format = query.statement_transformed.args["properties"].find(exp.FileFormatProperty).this
         column_node.set_file_properties(format=format, path=location.name)
 
-        yield column_node, processor_ctx.child_node_attrs
+        yield EdgeToCreate(column_node, processor_ctx.child_node_attrs)
 
 
 def _get_pivot_expr(scope: Scope) -> exp.Pivot | None:
