@@ -313,7 +313,7 @@ def test__cte_select_inside_select(holder):
     assert len(h.edges) == 0
 
 
-def test__cte_update_with_two_updates_returning(holder):
+def test__cte_two_updates_inside_update(holder):
     sql = """
     WITH first_cte AS (
         UPDATE fruit.raw
@@ -404,7 +404,7 @@ def test__cte_delete_inside_delete(holder):
     assert len(h.edges) == 0
 
 
-def test__cte_merge(holder):
+def test__cte_merge_inside_select(holder):
     sql = """
     WITH cte AS (
         MERGE INTO fruit.processed AS t
@@ -432,7 +432,7 @@ def test__cte_merge(holder):
 
 
 # TODO: add function merge_action() as system function (not UDF)
-def test__cte_merge_returning(holder):
+def test__cte_merge_inside_insert(holder):
     sql = """
     CREATE TABLE fruit (name VARCHAR, kind VARCHAR);
     CREATE TABLE drink (name2 VARCHAR, kind2 VARCHAR);
@@ -494,8 +494,7 @@ def test__cte_merge_with_update_and_insert(holder):
     assert [UpdateQuery, InsertQuery] == list(map(type, h.queries[0].child_queries))
 
 
-# TODO: bug. This should return fruit.raw.kind's default value
-def test__cte_insert_returning(holder):
+def test__cte_insert_inside_insert(holder):
     sql = """
     WITH insert_cte AS (
         INSERT INTO fruit.raw as r (name)
@@ -517,7 +516,7 @@ def test__cte_insert_returning(holder):
     assert len(h.edges) == 5
 
 
-def test__cte_insert_conflict_returning(holder):
+def test__cte_insert_inside_insert_conflict_returning(holder):
     sql = """
     WITH insert_cte AS (
         INSERT INTO fruit.raw (name)
@@ -542,7 +541,7 @@ def test__cte_insert_conflict_returning(holder):
     assert len(h.edges) == 8
 
 
-def test__cte_insert(holder):
+def test__cte_insert_and_update_inside_select(holder):
     sql = """
     WITH insert_cte AS (
         INSERT INTO fruit.raw (name)
