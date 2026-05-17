@@ -10,7 +10,7 @@ from sqlglot.optimizer import Scope
 from sqlleaf import util
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import (
-    NodeAttributes, ColumnNode,
+    NodeAttributes, ColumnNode, PivotNode,
 )
 from sqlleaf.processors.dialects import BaseGenerator
 
@@ -28,23 +28,24 @@ class RedshiftGenerator(BaseGenerator):
         """
         SELECT * FROM (SELECT  ...) PIVOT ( ... )
         """
-        # TODO: process agg funcs
+        # Find the associated expression for the column, and process it
+        pivoted_column = processor_ctx.scope.columns[ctx.select_index]
         pivot, pivot_column_mapping = _get_pivot(processor_ctx.scope)
 
-        downstream_columns = []
-        c = processor_ctx.scope.columns[ctx.select_index]
+        # The associated column and expression
+        column_and_expr = pivot_column_mapping[pivoted_column.name]
+        pivot_expr = column_and_expr["expression"]
 
-        column_name = c.name
-        if any(column_name == pivot_column.name for pivot_column in pivot.args["columns"]):
-            downstream_columns.extend(pivot_column_mapping[column_name])
-        else:
-            # The column is not in the pivot, so it must be an implicit column of the
-            # pivoted source -- adapt column to be from the implicit pivoted source.
-            downstream_columns.append(exp.column(c.this, table=pivot.parent.alias_or_name))
+        pivot_node = PivotNode(
+            processor_ctx=processor_ctx,
+            ctx=ctx,
+        )
+        pivot_node.set(source=pivot_expr.alias_or_name, target=pivoted_column.alias_or_name)
+        yield pivot_node, processor_ctx.child_node_attrs
 
-        for col_expr in downstream_columns:
-            processor_ctx = replace(processor_ctx, expr=col_expr)
-            yield from self.process_column(col_expr, processor_ctx, ctx)
+        grandparents = [pivot_expr]
+        yield from self.do_grandparents(grandparents, pivot_node, processor_ctx, ctx)
+
 
     @process.register
     def process_column(self, expr: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
@@ -109,6 +110,9 @@ def _get_pivot(scope: Scope) -> t.Tuple[exp.Pivot, dict]:
         for i, agg in enumerate(pivot.expressions):
             agg_cols = list(agg.find_all(exp.Column))
             for col_index in range(i, len(pivot_columns), pivot_aggs_count):
-                pivot_column_mapping[pivot_columns[col_index].name] = agg_cols
+                pivot_column_mapping[pivot_columns[col_index].name] = {
+                    'column': agg_cols,
+                    'expression': agg
+                }
 
     return pivot, pivot_column_mapping

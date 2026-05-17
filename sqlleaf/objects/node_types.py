@@ -20,7 +20,6 @@ class TableType(StrEnum):
     VIEW = auto()
     CTE = auto()
     DERIVED_TABLE = auto()
-    PIVOT = auto()
     STAGE = auto()
     FILE = auto()
 
@@ -240,8 +239,8 @@ class ColumnNode(NodeAttributes):
                     return
 
                 elif source.scope_type == ScopeType.DERIVED_TABLE:
-                    # PIVOT. TODO: should this be its own object? pivot[]
-                    self.parent_kind = TableType.PIVOT
+                    # PIVOT
+                    self.parent_kind = TableType.DERIVED_TABLE
                     return
 
             tokens = [str(s) for s in source.parts]
@@ -535,6 +534,28 @@ class IntervalNode(NodeAttributes):
         return self.wrap(
             f"{self.column} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
+
+
+class PivotNode(NodeAttributes):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+        expr: exp.Column = processor_ctx.expr
+        super().__init__(
+            kind="pivot",
+            data_type=processor_ctx.data_type,
+            expr=processor_ctx.expr,
+            column=expr.name,
+            ctx=ctx,
+        )
+        self.source: str = ""
+        self.target: str = ""
+
+    def set(self, source: str, target: str):
+        self.source = source
+        self.target = target
+
+    @property
+    def full_name(self):
+        return self.wrap(f"source={self.source} target={self.target} statement={self.ctx.statement_index}")
 
 
 class EdgeAttributes:

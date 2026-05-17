@@ -33,7 +33,7 @@ class BaseGenerator:
     dialect = ""
 
     @util.singledispatchmethodlogger
-    def process(self, expr: exp.Expression):
+    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[t.Tuple[NodeAttributes, NodeAttributes]]:
         raise exception.SqlLeafException(message=f"Unhandled expression type: {type(expr)}")
 
     def __init_subclass__(cls, **kwargs):
@@ -58,9 +58,10 @@ class BaseGenerator:
         """
         if parent.kind in ["function", "udf"]:
             ctx = replace(ctx, function_depth=ctx.function_depth + 1)
+
         for grand_expr in grandparents:
             processor_ctx = replace(processor_ctx, expr=grand_expr, child_node_attrs=parent)
-            yield from self.process(grand_expr, processor_ctx=processor_ctx, ctx=ctx)
+            yield from self.process(processor_ctx.expr, processor_ctx=processor_ctx, ctx=ctx)
             ctx = replace(ctx, function_arg_index=ctx.function_arg_index + 1)
 
     @process.register

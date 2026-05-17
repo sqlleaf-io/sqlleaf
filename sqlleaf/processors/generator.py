@@ -372,7 +372,7 @@ def add_node_if_not_exists(node_attrs: NodeAttributes, graph: nx.MultiDiGraph) -
     node_name = node_attrs.full_name
 
     if graph.has_node(node_name):
-        logger.debug(f"Re-using Node: {node_attrs.__class__}, Name: {node_attrs.full_name}")
+        logger.debug(f"Re-using Node: {node_attrs.__class__.__name__}, Name: {node_attrs.full_name}")
         return graph.nodes[node_name]["attrs"]
 
     graph.add_node(node_name, attrs=node_attrs)

@@ -176,13 +176,14 @@ CREATE TABLE
     - [ ] CTAS
 
 SELECT
-  - [ ] PIVOT
+  - [x] PIVOT
   - [ ] UNPIVOT
 
 INSERT
   - [ ] Multi-row
 
 - [ ] UNLOAD
+  - not supported by sqlglot
 
 
 ### Snowflake

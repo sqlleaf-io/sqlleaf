@@ -11,41 +11,77 @@ from tests.new_fixtures import (
 DIALECT = "redshift"
 
 
-# TODO: SELECT (SELECT PIVOT)
-
-def test__select_pivot(holder):
+def test__select_pivot_no_alias(holder):
     sql = """
-    CREATE TABLE source(name1 VARCHAR, name2 VARCHAR, age INT);
-    CREATE TABLE target(john_total INT, mary_total INT, john_average DECIMAL(10,2), mary_average DECIMAL(10,2));
+    CREATE TABLE source(name VARCHAR, amount INT);
+    CREATE TABLE target(john_total INT);
 
     INSERT INTO target
     SELECT * FROM (
-      SELECT name1, age
+      SELECT name, amount
       FROM source
     )
     PIVOT (
-      SUM(age) as total,
-      AVG(age) as average
-      FOR name1 IN ('john', 'mary')
+      SUM(amount)
+      FOR name IN ('john')
     );
     """
     h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [['column[source.amount]', 'column[_0.amount]', 'function[SUM()]', 'pivot[]', 'column[target.john_total]']]
+    assert h.nodes_full == [
+        'pivot[source= target=john statement=2]',
+        'function[SUM() type=BIGINT query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]',
+        'column[_0.amount type=INT kind=derived_table]',
+        'column[source.amount type=INT kind=table]',
+        'column[target.john_total type=INT kind=table]'
+    ]
+    assert len(h.edges) == 4
+
+
+def test__select_pivot_alias(holder):
+    sql = """
+    CREATE TABLE source(name VARCHAR, age INT, amount INT);
+    CREATE TABLE target(john_total INT, john_average DECIMAL(10,2), mary_total INT, mary_average DECIMAL(10,2));
+
+    INSERT INTO target
+    SELECT * FROM (
+      SELECT name, age, amount
+      FROM source
+    )
+    PIVOT (
+      SUM(amount) as total,
+      AVG(age) as average
+      FOR name IN ('john', 'mary')
+    );
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
     assert h.paths == [
-        ['column[source.age]', 'column[_0.age]', 'column[target.john_average]'],
-        ['column[source.age]', 'column[_0.age]', 'column[target.john_total]'],
-        ['column[source.age]', 'column[_0.age]', 'column[target.mary_average]'],
-        ['column[source.age]', 'column[_0.age]', 'column[target.mary_total]']
+        ['column[source.amount]', 'column[_0.amount]', 'function[SUM()]', 'pivot[]', 'column[target.john_total]'],
+        ['column[source.amount]', 'column[_0.amount]', 'function[SUM()]', 'pivot[]', 'column[target.mary_total]'],
+        ['column[source.age]', 'column[_0.age]', 'function[AVG()]', 'pivot[]', 'column[target.john_average]'],
+        ['column[source.age]', 'column[_0.age]', 'function[AVG()]', 'pivot[]', 'column[target.mary_average]']
     ]
     assert h.nodes_full == [
-        'column[_0.age type=INT kind=pivot]',
+        'pivot[source=total target=john_total statement=2]',
+        'pivot[source=average target=john_average statement=2]',
+        'pivot[source=total target=mary_total statement=2]',
+        'pivot[source=average target=mary_average statement=2]',
+        'function[AVG() type=DOUBLE query_depth=0 query_width=0 statement=2 select=1 func_depth=0 func_arg=0]',
+        'function[AVG() type=DOUBLE query_depth=0 query_width=0 statement=2 select=3 func_depth=0 func_arg=0]',
+        'function[SUM() type=BIGINT query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]',
+        'function[SUM() type=BIGINT query_depth=0 query_width=0 statement=2 select=2 func_depth=0 func_arg=0]',
+        'column[_0.age type=INT kind=derived_table]',
+        'column[_0.amount type=INT kind=derived_table]',
         'column[source.age type=INT kind=table]',
+        'column[source.amount type=INT kind=table]',
         'column[target.john_average type=DECIMAL(10, 2) kind=table]',
         'column[target.john_total type=INT kind=table]',
         'column[target.mary_average type=DECIMAL(10, 2) kind=table]',
         'column[target.mary_total type=INT kind=table]'
     ]
-    assert len(h.edges) == 5
-    # TODO: the agg functions used inside the pivot are currently not extracted.
+    assert len(h.edges) == 14
 
 
 def test__unload(holder):
@@ -58,7 +94,6 @@ def test__unload(holder):
 
     assert len(h.nodes) == 0
     assert len(h.queries) == 0
-    # TODO: the agg functions used inside the pivot are currently not extracted.
 
 
 def test__table_external(holder):
