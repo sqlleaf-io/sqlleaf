@@ -53,7 +53,7 @@ def test__cycle_selfloop_via_one_function(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [['column[letter.a]', 'function[UPPER()]', 'column[letter.a]']]
+    assert h.paths == [['column[letter.a]', 'function[UPPER]', 'column[letter.a]']]
     assert len(h.nodes) == 2
     assert len(h.edges) == 2
 
@@ -67,7 +67,7 @@ def test__cycle_selfloop_via_three_functions(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [['column[letter.a]', 'function[UPPER()]', 'function[LOWER()]', 'function[MD5()]', 'column[letter.a]']]
+    assert h.paths == [['column[letter.a]', 'function[UPPER]', 'function[LOWER]', 'function[MD5]', 'column[letter.a]']]
     assert len(h.nodes) == 4
     assert len(h.edges) == 4
 
@@ -86,8 +86,8 @@ def test__cycle_two_selfloops_via_different_functions(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ['column[letter.a]', 'function[LOWER()]', 'column[letter.a]'],
-        ['column[letter.a]', 'function[UPPER()]', 'column[letter.a]']
+        ['column[letter.a]', 'function[LOWER]', 'column[letter.a]'],
+        ['column[letter.a]', 'function[UPPER]', 'column[letter.a]']
     ]
     assert len(h.nodes) == 3
     assert len(h.edges) == 4

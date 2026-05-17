@@ -40,7 +40,7 @@ def test__procedure_simple(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
-        ["column[fruit.raw.kind]", "function[UPPER()]", "column[cte.knd]", "function[LOWER()]", "column[fruit.processed.kind]"],
+        ["column[fruit.raw.kind]", "function[UPPER]", "column[cte.knd]", "function[LOWER]", "column[fruit.processed.kind]"],
         ["variable[v_amount]", "column[fruit.processed.amount]"],
         ["literal[1]", "column[fruit.processed.number]"],
     ]

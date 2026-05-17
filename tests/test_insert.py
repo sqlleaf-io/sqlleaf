@@ -28,7 +28,7 @@ def test__insert_values(holder, case):
 
     assert h.paths == [
         ['literal["yellow"]', "column[fruit.raw.name]"],
-        ['literal["banana"]', "function[UPPER()]", "column[fruit.raw.kind]"],
+        ['literal["banana"]', "function[UPPER]", "column[fruit.raw.kind]"],
     ]
     assert [InsertQuery] == list(map(type, h.queries))
 
@@ -43,8 +43,8 @@ def test__insert_values_multiple(holder):
     assert h.paths == [
         ['literal["apple"]', 'column[fruit.raw.name]'],
         ['literal["orange"]', 'column[fruit.raw.name]'],
-        ['literal["upper_apple"]', 'function[UPPER()]', 'column[fruit.raw.kind]'],
-        ['literal["upper_orange"]', 'function[UPPER()]', 'column[fruit.raw.kind]']
+        ['literal["upper_apple"]', 'function[UPPER]', 'column[fruit.raw.kind]'],
+        ['literal["upper_orange"]', 'function[UPPER]', 'column[fruit.raw.kind]']
     ]
     assert [InsertQuery] == list(map(type, h.queries))
     assert len(h.nodes) == 8
@@ -94,8 +94,8 @@ def test__insert_on_conflict_with_table(holder):
     assert h.paths == [
         ["column[fruit.raw.name]", "column[fruit.processed.name]"],
         ['literal["apple"]', "column[fruit.processed.kind]"],
-        ['literal["apple"]', "function[DPIPE()]", "column[fruit.processed.kind]"],
-        ["column[fruit.raw.kind]", "function[DPIPE()]", "column[fruit.processed.kind]"],
+        ['literal["apple"]', "function[DPIPE]", "column[fruit.processed.kind]"],
+        ["column[fruit.raw.kind]", "function[DPIPE]", "column[fruit.processed.kind]"],
     ]
     assert len(h.nodes) == 7
     assert len(h.edges) == 5
@@ -115,9 +115,9 @@ def test__insert_on_conflict_with_values(holder):
 
     assert h.paths == [
         ['literal["pear"]', "column[fruit.processed.name]"],
-        ["function[CURRENTTIMESTAMP()]", "column[fruit.processed.created_at]"],
-        ['literal["pear"]', "function[LOWER()]", "column[fruit.processed.name]"],
-        ["function[CURRENTTIMESTAMP()]", "column[fruit.processed.created_at]"],
+        ["function[CURRENT_TIMESTAMP]", "column[fruit.processed.created_at]"],
+        ['literal["pear"]', "function[LOWER]", "column[fruit.processed.name]"],
+        ["function[CURRENT_TIMESTAMP]", "column[fruit.processed.created_at]"],
     ]
     assert len(h.nodes) == 7
     assert len(h.edges) == 5

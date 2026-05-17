@@ -72,8 +72,8 @@ def test__table_like_table_generated(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ['literal["banana"]', "column[fruit.b_like_a.name]", "function[CONCAT()]", "column[fruit.b_like_a.gen]"],
-        ['literal["fruit"]', "column[fruit.b_like_a.kind]", "function[CONCAT()]", "column[fruit.b_like_a.gen]"],
+        ['literal["banana"]', "column[fruit.b_like_a.name]", "function[CONCAT]", "column[fruit.b_like_a.gen]"],
+        ['literal["fruit"]', "column[fruit.b_like_a.kind]", "function[CONCAT]", "column[fruit.b_like_a.gen]"],
     ]
     assert is_subset(
         subarr=[

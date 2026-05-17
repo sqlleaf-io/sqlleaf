@@ -89,7 +89,7 @@ def test__select_dpipe_cte(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == 2 * [
-        ['literal["hello"]', 'column[cte.other]', 'function[DPIPE()]', 'column[fruit.processed.kind]']
+        ['literal["hello"]', 'column[cte.other]', 'function[DPIPE]', 'column[fruit.processed.kind]']
     ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 4
@@ -114,8 +114,8 @@ def test__select_dpipe(holder):
     # expect: c -> dpipe2
 
     assert h.paths == 2 * [
-        ["column[fruit.raw.name]", "function[DPIPE()]", "function[DPIPE()]", "column[fruit.processed.kind]"],
-    ] + [["column[fruit.raw.name]", "function[UPPER()]", "function[DPIPE()]", "column[fruit.processed.kind]"]]
+        ["column[fruit.raw.name]", "function[DPIPE]", "function[DPIPE]", "column[fruit.processed.kind]"],
+    ] + [["column[fruit.raw.name]", "function[UPPER]", "function[DPIPE]", "column[fruit.processed.kind]"]]
     assert len(h.nodes) == 5
     assert len(h.edges) == 6
 
@@ -153,7 +153,7 @@ def test__select_row(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
-        ['column[fruit.raw.name]', 'udf[ROW()]', 'column[fruit.processed.name]'], ['column[fruit.raw.kind]', 'udf[ROW()]', 'column[fruit.processed.name]']
+        ['column[fruit.raw.name]', 'udf[ROW]', 'column[fruit.processed.name]'], ['column[fruit.raw.kind]', 'udf[ROW]', 'column[fruit.processed.name]']
     ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 3
@@ -167,9 +167,9 @@ def test__select_cast(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.paths == [['column[fruit.raw.name]', 'function[CAST()]', 'column[fruit.processed.age]']]
+    assert h.paths == [['column[fruit.raw.name]', 'function[CAST]', 'column[fruit.processed.age]']]
     assert h.nodes_full == [
-        'function[CAST() type=INT query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]',
+        'function[CAST type=INT query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]',
         'column[fruit.processed.age type=INT kind=table]',
         'column[fruit.raw.name type=VARCHAR kind=table]',
     ]
@@ -191,8 +191,8 @@ def test__select_filter_and_where(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
-        ['column[fruit.raw.age]', 'function[SUM()]', 'column[fruit.processed.age]'],
-        ['star[*]', 'function[COUNT()]', 'column[fruit.processed.amount]'],
+        ['column[fruit.raw.age]', 'function[SUM]', 'column[fruit.processed.age]'],
+        ['star[*]', 'function[COUNT]', 'column[fruit.processed.amount]'],
         ['literal[1]', 'column[fruit.processed.age]']
     ]
     assert len(h.nodes) == 7
@@ -266,8 +266,8 @@ def test__select_value_twice(holder, case):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
-        [f"{kind}[{value}]", "column[fruit.processed.name]"],
-        [f"{kind}[{value}]", "column[fruit.processed.age]"],
+        [f"{kind}[{value.removesuffix("()")}]", "column[fruit.processed.name]"],
+        [f"{kind}[{value.removesuffix("()")}]", "column[fruit.processed.age]"],
     ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
@@ -283,8 +283,8 @@ def test__select_window_function(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
     assert h.paths == [
-        ["window[RANK()]", "column[fruit.processed.age]"],
-        ["window[ROW_NUMBER()]", "column[fruit.processed.amount]"],
+        ["window[RANK]", "column[fruit.processed.age]"],
+        ["window[ROW_NUMBER]", "column[fruit.processed.amount]"],
     ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
@@ -344,11 +344,11 @@ def test__select_rows_from(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
     assert h.paths == [
-        ['literal[{"x","y"}]', "function[UNNEST()]", "column[x.name]", "column[fruit.processed.name]"],
-        ['literal["[{"a":40,"b":"foo"}]"]', "udf[JSON_TO_RECORDSET()]", "column[y.b]", "column[x.kind]", "column[fruit.processed.kind]"],
-        ['literal["[{"a":40,"b":"foo"}]"]', "udf[JSON_TO_RECORDSET()]", "column[y.a]", "column[x.age]", "column[fruit.processed.age]"],
-        ["literal[1]", "function[EXPLODINGGENERATESERIES()]", "column[x.amount]", "column[fruit.processed.amount]"],
-        ["literal[3]", "function[EXPLODINGGENERATESERIES()]", "column[x.amount]", "column[fruit.processed.amount]"],
+        ['literal[{"x","y"}]', "function[UNNEST]", "column[x.name]", "column[fruit.processed.name]"],
+        ['literal["[{"a":40,"b":"foo"}]"]', "udf[JSON_TO_RECORDSET]", "column[y.b]", "column[x.kind]", "column[fruit.processed.kind]"],
+        ['literal["[{"a":40,"b":"foo"}]"]', "udf[JSON_TO_RECORDSET]", "column[y.a]", "column[x.age]", "column[fruit.processed.age]"],
+        ["literal[1]", "function[GENERATE_SERIES]", "column[x.amount]", "column[fruit.processed.amount]"],
+        ["literal[3]", "function[GENERATE_SERIES]", "column[x.amount]", "column[fruit.processed.amount]"],
     ]
     assert is_subset(
         subarr=[

@@ -15,6 +15,28 @@ TableOrScopeType = exp.Table | Scope
 
 from enum import StrEnum, auto
 
+
+def _function_name(expr: exp.Expression, dialect: str) -> str:
+    """
+    Remove everything from the first '(' to the last ')' from a string.
+    """
+    try:
+        # Get the name without its parameters
+        name = expr.__class__().sql(dialect=dialect)
+    except TypeError as e:
+        name = expr.__class__().sql()
+
+    first_bracket = name.find('(')
+    if first_bracket == -1:
+        return name
+
+    last_bracket = name.rfind(')')
+    if last_bracket == -1:
+        return name
+
+    return name[:first_bracket] + name[last_bracket + 1:]
+
+
 class TableType(StrEnum):
     TABLE = auto()
     VIEW = auto()
@@ -306,41 +328,49 @@ class ColumnNode(NodeAttributes):
 
 class FunctionNode(NodeAttributes):
     def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+        expr: exp.Binary | exp.Func = processor_ctx.expr
+
+        if isinstance(expr, exp.Binary):
+            name = expr.key
+        else:
+            name = _function_name(expr, processor_ctx.query.dialect)
+
         super().__init__(
             kind="function",
             data_type=processor_ctx.data_type,
             expr=processor_ctx.expr,
-            column=processor_ctx.expr.key,
+            column=name,
             ctx=ctx,
         )
 
     @property
     def full_name(self):
-        name = f"{self.column}()".upper()
+        name = f"{self.column}".upper()
         return self.wrap(
             f"{name} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
     def friendly_name(self):
-        name = f"{self.column}()".upper()
+        name = f"{self.column}".upper()
         return self.wrap(name)
 
 
 class UserDefinedFunctionNode(NodeAttributes):
     def __init__(
         self,
-        name: str,
         schema: str,
         processor_ctx: ProcessorContext,
         ctx: NodeContext,
     ):
+        expr = processor_ctx.expr
+
         super().__init__(
             kind="udf",
             data_type=processor_ctx.data_type,
-            expr=processor_ctx.expr,
+            expr=expr,
             schema=schema,
-            column=name,
+            column=expr.this,
             ctx=ctx,
         )
 
@@ -356,7 +386,7 @@ class UserDefinedFunctionNode(NodeAttributes):
 
     @property
     def friendly_name(self):
-        return self.wrap(f"{self.get_name()}()".upper())
+        return self.wrap(f"{self.get_name()}".upper())
 
 
 class JsonPathNode(NodeAttributes):
@@ -469,11 +499,13 @@ class SequenceNode(NodeAttributes):
 
 class WindowNode(NodeAttributes):
     def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+        expr: exp.Window = processor_ctx.expr.this
+
         super().__init__(
             kind="window",
             data_type=processor_ctx.data_type,
             expr=processor_ctx.expr,
-            column=processor_ctx.expr.this.sql(),
+            column=_function_name(expr, processor_ctx.query.dialect),
             ctx=ctx,
         )
 

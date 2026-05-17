@@ -39,7 +39,7 @@ def test__update_with_subquery(holder):
 
     assert h.paths == [
         ["literal[5]", "column[fruit.processed.age]"],
-        ["column[fruit.raw.kind]", "function[COUNT()]", "column[fruit.processed.amount]"],
+        ["column[fruit.raw.kind]", "function[COUNT]", "column[fruit.processed.amount]"],
     ]
     assert [UpdateQuery] == list(map(type, h.queries))
 

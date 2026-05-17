@@ -148,7 +148,7 @@ class BaseGenerator:
 
         # Process a UDF
         node_args = list(expr.flatten())
-        parent = UserDefinedFunctionNode(name=function, schema=schema, processor_ctx=processor_ctx, ctx=ctx)
+        parent = UserDefinedFunctionNode(schema=schema, processor_ctx=processor_ctx, ctx=ctx)
 
         table_expr = exp.table_(table=function, db=schema)
         udf_obj = processor_ctx.object_mapping.find_query(kind="udf", table=table_expr)

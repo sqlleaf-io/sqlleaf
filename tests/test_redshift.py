@@ -28,10 +28,10 @@ def test__select_pivot_no_alias(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [['column[source.amount]', 'column[_0.amount]', 'function[SUM()]', 'pivot[]', 'column[target.john_total]']]
+    assert h.paths == [['column[source.amount]', 'column[_0.amount]', 'function[SUM]', 'pivot[]', 'column[target.john_total]']]
     assert h.nodes_full == [
         'pivot[source= target=john statement=2]',
-        'function[SUM() type=BIGINT query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]',
+        'function[SUM type=BIGINT query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]',
         'column[_0.amount type=INT kind=derived_table]',
         'column[source.amount type=INT kind=table]',
         'column[target.john_total type=INT kind=table]'
@@ -58,20 +58,20 @@ def test__select_pivot_alias(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ['column[source.amount]', 'column[_0.amount]', 'function[SUM()]', 'pivot[]', 'column[target.john_total]'],
-        ['column[source.amount]', 'column[_0.amount]', 'function[SUM()]', 'pivot[]', 'column[target.mary_total]'],
-        ['column[source.age]', 'column[_0.age]', 'function[AVG()]', 'pivot[]', 'column[target.john_average]'],
-        ['column[source.age]', 'column[_0.age]', 'function[AVG()]', 'pivot[]', 'column[target.mary_average]']
+        ['column[source.amount]', 'column[_0.amount]', 'function[SUM]', 'pivot[]', 'column[target.john_total]'],
+        ['column[source.amount]', 'column[_0.amount]', 'function[SUM]', 'pivot[]', 'column[target.mary_total]'],
+        ['column[source.age]', 'column[_0.age]', 'function[AVG]', 'pivot[]', 'column[target.john_average]'],
+        ['column[source.age]', 'column[_0.age]', 'function[AVG]', 'pivot[]', 'column[target.mary_average]']
     ]
     assert h.nodes_full == [
         'pivot[source=total target=john_total statement=2]',
         'pivot[source=average target=john_average statement=2]',
         'pivot[source=total target=mary_total statement=2]',
         'pivot[source=average target=mary_average statement=2]',
-        'function[AVG() type=DOUBLE query_depth=0 query_width=0 statement=2 select=1 func_depth=0 func_arg=0]',
-        'function[AVG() type=DOUBLE query_depth=0 query_width=0 statement=2 select=3 func_depth=0 func_arg=0]',
-        'function[SUM() type=BIGINT query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]',
-        'function[SUM() type=BIGINT query_depth=0 query_width=0 statement=2 select=2 func_depth=0 func_arg=0]',
+        'function[AVG type=DOUBLE query_depth=0 query_width=0 statement=2 select=1 func_depth=0 func_arg=0]',
+        'function[AVG type=DOUBLE query_depth=0 query_width=0 statement=2 select=3 func_depth=0 func_arg=0]',
+        'function[SUM type=BIGINT query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]',
+        'function[SUM type=BIGINT query_depth=0 query_width=0 statement=2 select=2 func_depth=0 func_arg=0]',
         'column[_0.age type=INT kind=derived_table]',
         'column[_0.amount type=INT kind=derived_table]',
         'column[source.age type=INT kind=table]',

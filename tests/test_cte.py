@@ -31,7 +31,7 @@ def test__cte_simple(holder):
 
     assert h.paths == [
         ['literal["hello"]', "column[cte_names.name]", "column[fruit.processed.name]"],
-        ["column[fruit.raw.age]", "function[LOWER()]", "column[cte_names.age]", "column[fruit.processed.age]"],
+        ["column[fruit.raw.age]", "function[LOWER]", "column[cte_names.age]", "column[fruit.processed.age]"],
     ]
     assert len(h.nodes) == 7
     assert len(h.edges) == 5
@@ -55,7 +55,7 @@ def test__cte_named_columns(holder):
 
     assert h.paths == [
         ['literal["hello"]', "column[cte_names.col1]", "column[fruit.processed.name]"],
-        ["column[fruit.raw.age]", "function[LOWER()]", "column[cte_names.col2]", "column[fruit.processed.age]"],
+        ["column[fruit.raw.age]", "function[LOWER]", "column[cte_names.col2]", "column[fruit.processed.age]"],
     ]
     assert len(h.nodes) == 7
     assert len(h.edges) == 5
@@ -73,7 +73,7 @@ def test__cte_duplicate_columns(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == 2 * [
-        ['literal[1]', 'column[cte_names.number]', 'function[ADD()]', 'column[fruit.processed.age]']
+        ['literal[1]', 'column[cte_names.number]', 'function[ADD]', 'column[fruit.processed.age]']
     ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 4
@@ -98,8 +98,8 @@ def test__cte_join_same_names(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
-        ["column[fruit.raw.kind]", "function[DPIPE()]", "function[LOWER()]", "column[cte_names.kind]", "column[fruit.processed.kind]"],
-        ["column[fruit.old.kind]", "function[DPIPE()]", "function[LOWER()]", "column[cte_names.kind]", "column[fruit.processed.kind]"],
+        ["column[fruit.raw.kind]", "function[DPIPE]", "function[LOWER]", "column[cte_names.kind]", "column[fruit.processed.kind]"],
+        ["column[fruit.old.kind]", "function[DPIPE]", "function[LOWER]", "column[cte_names.kind]", "column[fruit.processed.kind]"],
     ]
     assert len(h.nodes) == 6
     assert len(h.edges) == 5
@@ -126,9 +126,9 @@ def test__cte_same_functions_different_levels(holder):
 
     assert h.paths == [
         ['literal["a"]', "column[fruit.processed.name]"],
-        ['literal["a"]', "function[LOWER()]", "column[fruit.processed.name1]"],
-        ['literal["a"]', "column[cte_names.a_name]", "function[LOWER()]", "column[fruit.processed.name2]"],
-        ['literal["a"]', "function[LOWER()]", "column[cte_names.a_name1]", "function[LOWER()]", "function[LOWER()]", "column[fruit.processed.name3]"],
+        ['literal["a"]', "function[LOWER]", "column[fruit.processed.name1]"],
+        ['literal["a"]', "column[cte_names.a_name]", "function[LOWER]", "column[fruit.processed.name2]"],
+        ['literal["a"]', "function[LOWER]", "column[cte_names.a_name1]", "function[LOWER]", "function[LOWER]", "column[fruit.processed.name3]"],
     ]
     assert len(h.nodes) == 15
     assert len(h.edges) == 11
@@ -216,8 +216,8 @@ def test__cte_chained_many_to_one(holder):
 
     assert h.paths == [
         ['literal["1"]', 'column[single.name]', 'column[multiple.label]', 'column[fruit.processed.label]'],
-        ['literal["1"]', 'column[single.name]', 'function[DPIPE()]', 'column[multiple.name]', 'column[fruit.processed.name]'],
-        ['literal["2"]', 'column[single.kind]', 'function[DPIPE()]', 'column[multiple.name]', 'column[fruit.processed.name]']
+        ['literal["1"]', 'column[single.name]', 'function[DPIPE]', 'column[multiple.name]', 'column[fruit.processed.name]'],
+        ['literal["2"]', 'column[single.kind]', 'function[DPIPE]', 'column[multiple.name]', 'column[fruit.processed.name]']
     ]
     assert len(h.nodes) == 9
     assert len(h.edges) == 8
@@ -391,7 +391,7 @@ def test__cte_merge_returning(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=False)
 
     assert h.paths == [
-        ["udf[MERGE_ACTION()]", "column[cte.action]", "column[fruit_drink.action]"],
+        ["udf[MERGE_ACTION]", "column[cte.action]", "column[fruit_drink.action]"],
         ["column[drink.name2]", "column[cte.name2]", "column[fruit_drink.name2]"],
         ["column[drink.name2]", "column[fruit.name]", "column[cte.name]", "column[fruit_drink.name]"],
         ["column[drink.kind2]", "column[cte.kind2]", "column[fruit_drink.kind2]"],
@@ -472,7 +472,7 @@ def test__cte_insert_conflict_returning(holder):
         ['literal["pear"]', "column[insert_cte.kind]", "column[fruit.processed.kind]"],
         ['literal["pear"]', "column[fruit.processed.label]"],
         ['literal["pear"]', "column[fruit.raw.name]", "column[insert_cte.name]", "column[fruit.processed.name]"],
-        ['literal["pear"]', "function[LOWER()]", "column[fruit.raw.name]", "column[insert_cte.name]", "column[fruit.processed.name]"],
+        ['literal["pear"]', "function[LOWER]", "column[fruit.raw.name]", "column[insert_cte.name]", "column[fruit.processed.name]"],
     ]
     assert len(h.nodes) == 11
     assert len(h.edges) == 8
@@ -527,13 +527,13 @@ def test__cte_recursive_view(holder):
         [
             "literal[1 type=INT query_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
             "column[numbers.n type=INT kind=cte member=anchor statement=0]",
-            "function[ADD() type=INT query_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
+            "function[ADD type=INT query_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
             "column[numbers.n type=INT kind=cte member=recursive statement=0]",
             "column[fruit.processed.age type=INT kind=table]",
         ],
         [
             "literal[1 type=INT query_depth=1 statement=0 select=0 func_depth=1 func_arg=1]",
-            "function[ADD() type=INT query_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
+            "function[ADD type=INT query_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
             "column[numbers.n type=INT kind=cte member=recursive statement=0]",
             "column[fruit.processed.age type=INT kind=table]",
         ],

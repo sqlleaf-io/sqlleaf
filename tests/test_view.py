@@ -37,7 +37,7 @@ def test__views_and_ctas_with_every_hierarchy(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[a.b.ab]", "column[ctas.one]", "column[vie.tab.one]", "function[ABS()]", "column[tab.vie.two]", "column[sch.tab.vie.three]"]
+        ["column[a.b.ab]", "column[ctas.one]", "column[vie.tab.one]", "function[ABS]", "column[tab.vie.two]", "column[sch.tab.vie.three]"]
     ]
     assert len(h.nodes) == 6
     assert len(h.edges) == 5
