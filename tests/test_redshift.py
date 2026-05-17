@@ -117,3 +117,45 @@ def test__table_external(holder):
     assert "column[fruit.ext.age type=INT kind=table subkind=external]" in h.nodes_full
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
+
+
+def test__select_unpivot(holder):
+    sql = """
+    CREATE TABLE source(john_total INT);
+    CREATE TABLE target(name VARCHAR, amount INT);
+
+    INSERT INTO target
+    SELECT name, amount
+    FROM source
+    UNPIVOT (
+      amount FOR name IN (john_total AS 'john')
+    );
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal["john"]', 'unpivot[]', 'column[target.name]'],
+        ['column[source.john_total]', 'unpivot[]', 'column[target.amount]']
+    ]
+    assert h.nodes_full == [
+        'unpivot[source= target=name statement=2]',
+        'unpivot[source=john_total target=amount statement=2]',
+        'literal["john" type=VARCHAR query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]',
+        'column[source.john_total type=INT kind=table]',
+        'column[target.amount type=INT kind=table]',
+        'column[target.name type=VARCHAR kind=table]'
+    ]
+    assert len(h.edges) == 4
+
+# TODO: -- Multiple output columns
+#  UNPIVOT (
+#   (amount, quantity)
+#   FOR name IN (
+#     (john_total, john_count) AS 'john',
+#     (jane_total, jane_count) AS 'jane'
+#   )
+# );
+
+# TODO: -- Multiple UNPIVOTs
+#  UNPIVOT (amount FOR name IN (...))
+#  UNPIVOT (rating FOR category IN (...));

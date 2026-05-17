@@ -177,14 +177,16 @@ CREATE TABLE
 
 SELECT
   - [x] PIVOT
-  - [ ] UNPIVOT
+  - [o] UNPIVOT
 
 INSERT
   - [ ] Multi-row
 
-- [ ] UNLOAD
+UNLOAD
   - not supported by sqlglot
 
+Types:
+- SUPER
 
 ### Snowflake
 - CREATE STAGE

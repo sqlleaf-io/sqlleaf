@@ -568,11 +568,11 @@ class IntervalNode(NodeAttributes):
         )
 
 
-class PivotNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+class _PivotNode(NodeAttributes):
+    def __init__(self, kind: str, processor_ctx: ProcessorContext, ctx: NodeContext):
         expr: exp.Column = processor_ctx.expr
         super().__init__(
-            kind="pivot",
+            kind=kind,
             data_type=processor_ctx.data_type,
             expr=processor_ctx.expr,
             column=expr.name,
@@ -588,6 +588,16 @@ class PivotNode(NodeAttributes):
     @property
     def full_name(self):
         return self.wrap(f"source={self.source} target={self.target} statement={self.ctx.statement_index}")
+
+
+class PivotNode(_PivotNode):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+        super().__init__("pivot", processor_ctx, ctx)
+
+
+class UnpivotNode(_PivotNode):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+        super().__init__("unpivot", processor_ctx, ctx)
 
 
 class EdgeAttributes:
