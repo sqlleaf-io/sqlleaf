@@ -24,14 +24,15 @@ from sqlleaf.objects.query_types import (
     UpdateQuery,
     InsertQuery,
     MergeQuery,
+    DeleteQuery,
     Query,
 )
 from sqlleaf.processors.transformer import clean_stored_procedure_text
 
 logger = logging.getLogger("sqlleaf")
 
-DMLQueryType = InsertQuery | UpdateQuery | MergeQuery | SelectQuery
-DMLExprType = exp.Insert | exp.Update | exp.Merge | exp.Select
+DMLQueryType = InsertQuery | UpdateQuery | MergeQuery | DeleteQuery | SelectQuery
+DMLExprType = exp.Insert | exp.Update | exp.Merge | exp.Delete | exp.Select
 
 # sqlglot is missing pseudocolumns for Postgres
 PSEUDOCOLUMNS = ["ctid", "xmin", "xmax", "cmin", "cmax", "tableoid", "oid"]
@@ -57,6 +58,7 @@ def get_query_processors():
         "insert": _process_unnamed,
         "update": _process_unnamed,
         "merge": _process_unnamed,
+        "delete": _process_unnamed,
         "stage": _process_stage,
         "copy": _process_unnamed,
         "put": _process_unnamed,
@@ -156,9 +158,11 @@ def _collect_writable_cte_queries(parent_query: DMLQueryType, dialect: str, obje
             _collect_merge_children(query, object_mapping)
         elif isinstance(cte_expr, exp.Insert):
             query = InsertQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
-            _collect_insert_children(query)
+            _collect_insert_children(query, object_mapping)
         elif isinstance(cte_expr, exp.Update):
-            query = UpdateQuery(expr=cte_expr, dialect=dialect, statement_index=i)
+            query = UpdateQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
+        elif isinstance(cte_expr, exp.Delete):
+            query = DeleteQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
         else:
             logger.warning(f"Skipping unsupported query type in CTE: {type(cte_expr)}")
             continue
@@ -167,7 +171,7 @@ def _collect_writable_cte_queries(parent_query: DMLQueryType, dialect: str, obje
         parent_query.add_child_query(query)
 
 
-def _collect_insert_children(query: InsertQuery):
+def _collect_insert_children(query: InsertQuery, object_mapping: mappings.ObjectMapping):
     """
     Collect any additional queries inside an INSERT. For Postgres, this is 'INSERT .. ON CONFLICT DO UPDATE'.
     """
@@ -176,7 +180,7 @@ def _collect_insert_children(query: InsertQuery):
     if not isinstance(on_conflict, exp.OnConflict) or on_conflict.args["action"].name == "DO NOTHING":
         return
 
-    update_query = UpdateQuery(expr=on_conflict, dialect=query.dialect, statement_index=0)
+    update_query = UpdateQuery(expr=on_conflict, dialect=query.dialect, object_mapping=object_mapping, statement_index=0)
     update_query.child_table = query.child_table
     query.add_child_query(update_query)
 
@@ -217,7 +221,7 @@ def _collect_merge_children(parent_query: MergeQuery, object_mapping: mappings.O
         when_expr = util.copy_expression(when)
 
         if isinstance(when_expr, exp.Update):
-            update_query = UpdateQuery(expr=when_expr, dialect=parent_query.dialect, statement_index=i)
+            update_query = UpdateQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i)
             update_query.child_table = merge.child_table
             parent_query.add_child_query(update_query)
 
@@ -401,20 +405,23 @@ def _process_unnamed(statement: exp.Expression, dialect: str, object_mapping: ma
 
     if isinstance(statement, exp.Insert):
         query = InsertQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
-        _collect_insert_children(query)
+        _collect_insert_children(query, object_mapping)
     elif isinstance(statement, exp.Update):
-        query = UpdateQuery(expr=statement, dialect=dialect, statement_index=statement_index)
+        query = UpdateQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+    elif isinstance(statement, exp.Delete):
+        query = DeleteQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+        if not statement.find((exp.Insert, exp.Update, exp.Merge)):
+            logging.warning("Skipping statement: A DELETE query must have a data-modifying statement, such as an INSERT, to contain lineage.")
     elif isinstance(statement, exp.Select):
-        if statement.find((exp.Insert, exp.Update, exp.Merge)):
-            query = SelectQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
-        else:
-            message = "Skipping statement: A SELECT query must have a data-modifying statement, such as an INSERT, to contain lineage."
-            raise exception.SqlLeafException(message=message)
+        query = SelectQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+        if not statement.find((exp.Insert, exp.Update, exp.Merge, exp.Delete)):
+            logging.warning("Skipping statement: A SELECT query must have a data-modifying statement, such as an INSERT, to contain lineage.")
     elif isinstance(statement, exp.Merge):
         query = MergeQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
         _collect_merge_children(query, object_mapping)
 
-    _collect_writable_cte_queries(query, dialect, object_mapping)
+    if query:
+        _collect_writable_cte_queries(query, dialect, object_mapping)
 
     return query
 

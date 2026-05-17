@@ -7,7 +7,7 @@ from sqlglot.optimizer import optimize, qualify, RULES
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query, CTASQuery, TableQuery
+from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query, CTASQuery, TableQuery, DeleteQuery
 
 logger = logging.getLogger("sqlleaf")
 
@@ -41,6 +41,9 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
         statement = _process_inner_ctes(statement, query, object_mapping)
 
     elif isinstance(query, MergeQuery):
+        statement = _process_inner_ctes(statement, query, object_mapping)
+
+    elif isinstance(query, DeleteQuery):
         statement = _process_inner_ctes(statement, query, object_mapping)
 
     elif isinstance(query, CopyQuery):
@@ -98,8 +101,8 @@ def _add_aliases_to_pseudocolumns(statement: exp.Insert):
 
 
 def _process_inner_ctes(
-    statement: exp.Insert | exp.Merge | exp.Update, query: Query, object_mapping: mappings.ObjectMapping
-) -> exp.Insert | exp.Merge | exp.Update:
+    statement: exp.Insert | exp.Merge | exp.Update | exp.Delete, query: Query, object_mapping: mappings.ObjectMapping
+) -> exp.Insert | exp.Merge | exp.Update | exp.Delete:
     """
     Transform any inner CTE statements.
     """

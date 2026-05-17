@@ -5,7 +5,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import pytest
 
-from sqlleaf.objects.query_types import InsertQuery, UpdateQuery, SelectQuery, MergeQuery
+from sqlleaf.objects.query_types import InsertQuery, UpdateQuery, SelectQuery, MergeQuery, DeleteQuery
 from sqlleaf.exception import SqlLeafException
 
 from tests.new_fixtures import holder, is_subset
@@ -298,17 +298,19 @@ def test__cte_fails_for_returning_ambiguous_aliases(holder):
     assert e.value.args[0] == "Column reference 'first_cte.name' is ambiguous (2 possible options)"
 
 
-def test__cte_fails_select_without_write(holder):
-    with pytest.raises(SqlLeafException) as e:
-        sql = """
-        WITH cte1 AS (
-            SELECT '1' AS name
-        )
-        SELECT name FROM cte1
-        """
-        h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+def test__cte_select_inside_select(holder):
+    sql = """
+    WITH cte1 AS (
+        SELECT '1' AS name
+    )
+    SELECT name FROM cte1
+    """
+    h = holder(sql=sql, dialect=DIALECT)
 
-    assert e.value.args[0] == "Skipping statement: A SELECT query must have a data-modifying statement, such as an INSERT, to contain lineage."
+    assert h.paths == []
+    assert [SelectQuery] == list(map(type, h.queries))
+    assert len(h.nodes) == 0
+    assert len(h.edges) == 0
 
 
 def test__cte_update_with_two_updates_returning(holder):
@@ -338,6 +340,68 @@ def test__cte_update_with_two_updates_returning(holder):
     assert [UpdateQuery, UpdateQuery] == list(map(type, h.queries[0].child_queries))
     assert len(h.nodes) == 6
     assert len(h.edges) == 4
+
+
+def test__cte_delete_inside_insert(holder):
+    sql = """
+    WITH cte AS (
+        DELETE FROM fruit.raw
+        RETURNING *
+    )
+    INSERT INTO fruit.processed (name)
+    SELECT name
+    FROM cte;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.name]", "column[cte.name]", "column[fruit.processed.name]"],
+    ]
+    assert [InsertQuery] == list(map(type, h.queries))
+    assert [DeleteQuery] == list(map(type, h.queries[0].child_queries))
+    assert len(h.nodes) == 3
+    assert len(h.edges) == 2
+
+
+def test__cte_insert_inside_delete(holder):
+    sql = """
+    WITH cte AS (
+        INSERT INTO fruit.raw (name)
+        SELECT 'hello' AS name
+        RETURNING *
+    )
+    DELETE FROM fruit.processed p
+    USING cte AS c
+    WHERE p.name = c.name
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ['literal["hello"]', "column[fruit.raw.name]"],
+    ]
+    assert [DeleteQuery] == list(map(type, h.queries))
+    assert [InsertQuery] == list(map(type, h.queries[0].child_queries))
+    assert len(h.nodes) == 2
+    assert len(h.edges) == 1
+
+
+def test__cte_delete_inside_delete(holder):
+    sql = """
+    WITH cte AS (
+        DELETE FROM fruit.raw
+        RETURNING *
+    )
+    DELETE FROM fruit.processed p
+    USING cte AS c
+    WHERE p.name = c.name
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == []
+    assert [DeleteQuery] == list(map(type, h.queries))
+    assert [DeleteQuery] == list(map(type, h.queries[0].child_queries))
+    assert len(h.nodes) == 0
+    assert len(h.edges) == 0
 
 
 def test__cte_merge(holder):

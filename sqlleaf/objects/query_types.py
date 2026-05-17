@@ -102,6 +102,22 @@ class Query:
         return result
 
 
+class DeleteQuery(Query):
+    def __init__(self, expr: exp.Delete, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
+        super().__init__(
+            kind="delete",
+            statement=expr,
+            dialect=dialect,
+            statement_index=statement_index,
+            child_table=expr.this,
+        )
+
+    def get_ctes(self):
+        if "with_" in self.statement.args:
+            return self.statement.args["with_"].expressions
+        return []
+
+
 class MergeQuery(Query):
     def __init__(self, expr: exp.Merge, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
         super().__init__(
@@ -147,7 +163,7 @@ class InsertQuery(Query):
 
 
 class UpdateQuery(Query):
-    def __init__(self, expr: exp.Update, dialect: str, statement_index: int):
+    def __init__(self, expr: exp.Update, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
         table = util.get_table(expr)
         super().__init__(
             kind="update",
