@@ -134,7 +134,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     return list(queries.values())
 
 
-def _collect_writable_cte_queries(parent_query: DMLQueryType, dialect: str, object_mapping: mappings.ObjectMapping):
+def _collect_writable_cte_queries(parent_query: Query, dialect: str, object_mapping: mappings.ObjectMapping):
     """
     Transform any writable CTE statements into a form.
 
@@ -153,17 +153,8 @@ def _collect_writable_cte_queries(parent_query: DMLQueryType, dialect: str, obje
     for i, cte in enumerate(parent_query.get_ctes()):
         cte_expr = cte.this
 
-        if isinstance(cte_expr, exp.Merge):
-            query = MergeQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
-            _collect_merge_children(query, object_mapping)
-        elif isinstance(cte_expr, exp.Insert):
-            query = InsertQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
-            _collect_insert_children(query, object_mapping)
-        elif isinstance(cte_expr, exp.Update):
-            query = UpdateQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
-        elif isinstance(cte_expr, exp.Delete):
-            query = DeleteQuery(expr=cte_expr, dialect=dialect, object_mapping=object_mapping, statement_index=i)
-        else:
+        query = _process_unnamed(cte_expr, dialect, object_mapping, i)
+        if not query:
             logger.warning(f"Skipping unsupported query type in CTE: {type(cte_expr)}")
             continue
 
@@ -398,29 +389,40 @@ def _process_unnamed(statement: exp.Expression, dialect: str, object_mapping: ma
     """
     query = None
 
-    if isinstance(statement, exp.Copy):
-        return CopyQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
-    elif isinstance(statement, exp.Put):
-        return PutQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+
+
+    mapping = {
+        exp.Copy: CopyQuery,
+        exp.Put: PutQuery,
+        exp.Insert: InsertQuery,
+        exp.Update: UpdateQuery,
+        exp.Delete: DeleteQuery,
+        exp.Select: SelectQuery,
+        exp.Merge: MergeQuery,
+    }
+
+    query_class = mapping.get(type(statement))
+    if not query_class:
+        return None
+
+    query = query_class(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
 
     if isinstance(statement, exp.Insert):
-        query = InsertQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
         _collect_insert_children(query, object_mapping)
-    elif isinstance(statement, exp.Update):
-        query = UpdateQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
-    elif isinstance(statement, exp.Delete):
-        query = DeleteQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
-        if not statement.find((exp.Insert, exp.Update, exp.Merge)):
-            logging.warning("Skipping statement: A DELETE query must have a data-modifying statement, such as an INSERT, to contain lineage.")
-    elif isinstance(statement, exp.Select):
-        query = SelectQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
-        if not statement.find((exp.Insert, exp.Update, exp.Merge, exp.Delete)):
-            logging.warning("Skipping statement: A SELECT query must have a data-modifying statement, such as an INSERT, to contain lineage.")
     elif isinstance(statement, exp.Merge):
-        query = MergeQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
         _collect_merge_children(query, object_mapping)
+    elif isinstance(statement, exp.Delete):
+        if not statement.find((exp.Insert, exp.Update, exp.Merge)):
+            logging.warning(
+                "Skipping statement: A DELETE query must have a data-modifying statement, such as an INSERT, to contain lineage."
+            )
+    elif isinstance(statement, exp.Select):
+        if not statement.find((exp.Insert, exp.Update, exp.Merge, exp.Delete)):
+            logging.warning(
+                "Skipping statement: A SELECT query must have a data-modifying statement, such as an INSERT, to contain lineage."
+            )
 
-    if query:
+    if query and not isinstance(statement, (exp.Copy, exp.Put)):
         _collect_writable_cte_queries(query, dialect, object_mapping)
 
     return query
