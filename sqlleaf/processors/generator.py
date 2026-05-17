@@ -524,7 +524,7 @@ def check_for_trigger(table: exp.Table, object_mapping: mappings.ObjectMapping) 
     return False
 
 
-def check_for_put(generator: SnowflakeGenerator, processor_ctx: ProcessorContext, ctx: NodeContext) -> bool:
+def check_for_put(generator: BaseGenerator, processor_ctx: ProcessorContext, ctx: NodeContext) -> bool:
     """
     Check if this is a PUT query.
     """
@@ -541,7 +541,7 @@ def check_for_put(generator: SnowflakeGenerator, processor_ctx: ProcessorContext
     return False
 
 
-def check_for_external_table(generator: SnowflakeGenerator, processor_ctx: ProcessorContext, ctx: NodeContext) -> bool:
+def check_for_external_table(generator: BaseGenerator, processor_ctx: ProcessorContext, ctx: NodeContext) -> bool:
     """
     Check if this is a CREATE EXTERNAL TABLE query.
     """
