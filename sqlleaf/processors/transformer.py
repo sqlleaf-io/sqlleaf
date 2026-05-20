@@ -30,27 +30,27 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
 
     if isinstance(query, InsertQuery):
         statement = _convert_defaults_to_values(statement, object_mapping, query.child_table)
-        statement = _convert_values_to_select(statement, object_mapping, query.child_table)
+        statement = _convert_outer_values_to_select(statement.expression, statement, object_mapping, query.child_table)
         statement = _add_information_from_merge(statement, query)
-        statement = _process_inner_ctes(statement, query, object_mapping)
+        statement = _process_inner_ctes(statement, query, object_mapping, query.child_table)
 
     elif isinstance(query, UpdateQuery):
         statement = _convert_on_conflict_to_update(statement, object_mapping, query)
         statement = _add_information_from_merge(statement, query)
         statement = _convert_update_to_insert(statement, query.dialect)
-        statement = _process_inner_ctes(statement, query, object_mapping)
+        statement = _process_inner_ctes(statement, query, object_mapping, query.child_table)
 
     elif isinstance(query, MergeQuery):
-        statement = _process_inner_ctes(statement, query, object_mapping)
+        statement = _process_inner_ctes(statement, query, object_mapping, query.child_table)
 
     elif isinstance(query, DeleteQuery):
-        statement = _process_inner_ctes(statement, query, object_mapping)
+        statement = _process_inner_ctes(statement, query, object_mapping, query.child_table)
 
     elif isinstance(query, CopyQuery):
         statement = _convert_copy_to_insert(statement, query, object_mapping)
 
     elif isinstance(query, CTASQuery):
-        statement = _convert_values_to_select(statement, object_mapping, query.child_table)
+        statement = _convert_outer_values_to_select(statement.expression, statement, object_mapping, query.child_table)
 
     elif isinstance(query, TableQuery):
         pass
@@ -101,7 +101,7 @@ def _add_aliases_to_pseudocolumns(statement: exp.Insert):
 
 
 def _process_inner_ctes(
-    statement: exp.Insert | exp.Merge | exp.Update | exp.Delete, query: Query, object_mapping: mappings.ObjectMapping
+    statement: exp.Insert | exp.Merge | exp.Update | exp.Delete, query: Query, object_mapping: mappings.ObjectMapping, child_table: exp.Table
 ) -> exp.Insert | exp.Merge | exp.Update | exp.Delete:
     """
     Transform any inner CTE statements.
@@ -113,26 +113,48 @@ def _process_inner_ctes(
             inner_expr = _convert_update_to_insert(statement=cte_expr.this, dialect=query.dialect)
             cte_expr.this.replace(inner_expr)
 
+        elif cte_expr.this.is_star:
+            # VALUES() has already been transformed into SELECT * FROM (VALUES())
+            from_ = cte_expr.this.args["from_"].this
+
+            if isinstance(from_, exp.Values):
+                values_expr = _convert_cte_values_to_select(from_, cte_expr, object_mapping, child_table)
+                cte_expr.this.replace(values_expr)
+
         # Rename the columns and replace the INSERT with the SELECT
         _rename_returning_columns(expr=cte_expr, query=query, object_mapping=object_mapping, child_table=cte_expr.find(exp.Table))
-        # cte_expr.set("this", select_expr)
 
     return statement
 
 
-def _convert_values_to_select(statement: exp.Insert | exp.Create, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
+def _convert_cte_values_to_select(expression: exp.Values, statement: exp.CTE, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.CTE:
     """
     Transform the query:
-        INSERT INTO x (name) VALUES (a), (b)
+        WITH cte (age, name) AS (
+            VALUES (1, 'apple'), (2, 'banana')
+        )
     into:
-        INSERT INTO x (name) SELECT a UNION ALL SELECT b
+        WITH cte (age, name) AS (
+            SELECT 1, 'apple' UNION ALL SELECT 2, 'banana'
+        )
     so that the lineage functions can process it using build_scope().
     """
-    if not isinstance(statement.expression, exp.Values):
+    if not isinstance(expression, exp.Values):
         return statement
 
-    values_lists: t.List[exp.Tuple] = statement.expression.expressions
-    columns = [e.name for e in statement.this.expressions]
+    columns = statement.alias_column_names
+    if not columns:
+        # Try and get the columns from the top-level insert
+        columns = [e.name for e in statement.root().this.expressions]
+
+    return _values_to_select_union(columns, expression, statement, object_mapping, child_table)
+
+
+def _values_to_select_union(columns: t.List[str], expression: exp.Values, statement: exp.CTE | exp.Insert | exp.Create, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.CTE | exp.Insert | exp.Create:
+    """
+    Convert a VALUES(x, y) to a SELECT x UNION ALL SELECT y
+    """
+    values_lists: t.List[exp.Tuple] = expression.expressions
 
     if not columns:
         # Get the names from the mapping
@@ -161,11 +183,32 @@ def _convert_values_to_select(statement: exp.Insert | exp.Create, object_mapping
         insert_expr.set("conflict", statement.args["conflict"])
         statement.replace(insert_expr)
         statement = insert_expr
+    elif isinstance(statement, exp.Create):
+        expression.pop()
+        statement.set("expression", new_statement)
+    elif isinstance(statement, exp.CTE):
+        expression.pop()
+        statement.set("this", new_statement)
     else:
-        statement.expression.pop()
-        statement.set('expression', new_statement)
+        raise exception.SqlLeafException(message=f"Unknown statement type: {statement.__class__}")
 
     return statement
+
+
+def _convert_outer_values_to_select(expression: exp.Values, statement: exp.Insert | exp.Create, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
+    """
+    Transform the query:
+        INSERT INTO x (name) VALUES (a), (b)
+    into:
+        INSERT INTO x (name) SELECT a UNION ALL SELECT b
+    so that the lineage functions can process it using build_scope().
+    """
+    if not isinstance(expression, exp.Values):
+        return statement
+
+    columns = [e.name for e in statement.this.expressions]
+
+    return _values_to_select_union(columns, expression, statement, object_mapping, child_table)
 
 
 def _convert_defaults_to_values(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.Insert:
@@ -308,7 +351,7 @@ def _convert_on_conflict_to_update(statement: exp.OnConflict | exp.Update, objec
     if not isinstance(statement, exp.OnConflict):
         return statement
 
-    parent_insert_expr = _convert_values_to_select(statement.parent, object_mapping, query.child_table)
+    parent_insert_expr = _convert_outer_values_to_select(statement.parent.expression, statement.parent, object_mapping, query.child_table)
     statement = parent_insert_expr.args["conflict"]
 
     update_expr = exp.update(table=query.child_table)

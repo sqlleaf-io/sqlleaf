@@ -30,7 +30,7 @@ CREATE TABLE
     - [x] Named columns
     - [x] WITH [NO] DATA
     - [ ] Empty table via WHERE
-    - [ ] VALUES
+    - [x] VALUES
     - [ ] EXECUTE
     - [ ] SELECT FROM (VALUES())
     - [x] WITH
@@ -76,10 +76,10 @@ SELECT
   - [x] CTEs
     - [x] Regular
     - [x] RECURSIVE
-    - [o] WITH (INSERT)
+    - [x] WITH (INSERT)
     - [x] WITH (UPDATE)
     - [x] WITH (MERGE)
-    - [ ] WITH (VALUES)
+    - [x] WITH (VALUES)
     - [x] WITH MATERIALIZED
   - [ ] LATERAL
     - sqlglot optimize() creates weird output
