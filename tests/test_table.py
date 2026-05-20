@@ -245,7 +245,23 @@ def test__table_of_type(holder):
     assert len(h.queries) == 0
 
 
-# TODO: UPDATE and SELECT from different inherited tables in the same query
+def test__update_and_select_inherited(holder):
+    sql = """
+    CREATE TABLE fruit.parent (price NUMERIC);
+    CREATE TABLE fruit.apple () INHERITS (fruit.parent);
+    CREATE TABLE fruit.orange () INHERITS (fruit.parent);
+
+    UPDATE fruit.apple
+    SET price = s.price
+    FROM (SELECT price FROM fruit.orange) AS s;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[fruit.orange.price]", "column[fruit.apple.price]"]
+    ]
+    assert len(h.nodes) == 2
+    assert len(h.edges) == 1
 
 
 def test__cte_only(holder):
