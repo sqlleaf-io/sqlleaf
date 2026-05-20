@@ -21,7 +21,7 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
 
     statement = _convert_table_to_select(statement)
 
-    # Remove any filters
+    # Remove any FILTER or WHERE clauses
     for filter_expr in statement.find_all(exp.Filter):
         filter_expr.replace(filter_expr.this)
 

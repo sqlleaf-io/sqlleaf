@@ -4,6 +4,7 @@ import typing as t
 import sqlglot
 from sqlglot import exp
 from sqlglot.dialects import postgres
+from sqlglot.expressions import ColumnDef
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
@@ -456,6 +457,8 @@ def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping:
     Convert a series of `CREATE VIEW/TABLE AS ...` SQL DDL statements into sqlglot's MappingSchema
     to extract the table and column details.
     """
+    _unnest_values_inside_select(statement)
+
     # Expand any stars into column names so that they can be tracked in the mapping
     stmt = qualify(
         statement,
@@ -480,27 +483,17 @@ def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping:
     # Add types from the mapping if available. Views often have unknown column types.
     stmt = annotate_types(stmt, dialect=dialect, schema=object_mapping)
 
-    # Look up the columns for 'y' in 'INSERT INTO x TABLE y'
-    source = stmt.args.get("source", None)
-    if source:
-        table: TableQuery = object_mapping.find_query(kind="table", table=source)
-        col_defs = table.get_column_defs(include_system=False)
-    elif isinstance(stmt.expression, exp.Values):
-        columns = [stmt.name for stmt in stmt.this.expressions]
-        types = [val.type for val in stmt.expression.expressions[0].expressions]
-        col_defs = [exp.ColumnDef(this=col_name, kind=col_type) for col_name, col_type in zip(columns, types)]
-    else:
-        col_defs = [exp.ColumnDef(this=exp.to_identifier(s.alias), kind=s.type) for s in stmt.selects]
-    query = None
+    col_defs = _determine_column_defs(stmt, object_mapping)
 
     if stmt.kind == "VIEW":
         # CREATE VIEW ...
         query = ViewQuery(statement=stmt, dialect=dialect, columns=col_defs, statement_index=statement_index)
-
     elif stmt.kind == "TABLE":
         # CREATE TABLE AS ...
         query = CTASQuery(statement=stmt, dialect=dialect, columns=col_defs, statement_index=statement_index)
         query.system_column_defs = _system_columns(dialect=dialect)
+    else:
+        raise exception.SqlLeafException(message=f"Unhandled situation for query: {stmt.kind}")
 
     object_mapping.add_query(
         kind="table",
@@ -509,6 +502,40 @@ def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping:
         match_depth=False,
     )
     return query
+
+
+def _unnest_values_inside_select(statement: exp.Create):
+    """
+    Replace SELECT * FROM (VALUES ()) with VALUES ().
+    This prevents sqlglot from assigning its own aliases.
+    """
+    # TODO: this should be done in a transform, checked against self.statement_original
+    for values_expr in statement.find_all(exp.Values):
+        parent = values_expr.parent_select
+        while isinstance(parent, exp.Select) and parent.is_star and parent.parent_select:
+            parent = parent.parent_select
+
+        if parent:
+            values_expr.pop()
+            parent.parent.set("expression", values_expr)
+
+
+def _determine_column_defs(statement: exp.Create, object_mapping: mappings.ObjectMapping) -> t.List[ColumnDef]:
+    """
+    Look up the columns for 'y' in 'INSERT INTO x TABLE y'
+    """
+    source = statement.args.get("source", None)
+    if source:
+        table: TableQuery = object_mapping.find_query(kind="table", table=source)
+        col_defs = table.get_column_defs(include_system=False)
+    elif isinstance(statement.expression, exp.Values):
+        columns = [stmt.name for stmt in statement.this.expressions]
+        types = [val.type for val in statement.expression.expressions[0].expressions]
+        col_defs = [exp.ColumnDef(this=col_name, kind=col_type) for col_name, col_type in zip(columns, types)]
+    else:
+        col_defs = [exp.ColumnDef(this=exp.to_identifier(s.alias), kind=s.type) for s in statement.selects]
+
+    return col_defs
 
 
 def _process_functions(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query:

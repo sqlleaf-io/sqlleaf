@@ -1,6 +1,8 @@
 import os
 import sys
 
+import pytest
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from tests.new_fixtures import holder
@@ -56,10 +58,16 @@ def test__ctas_cte(holder):
     assert len(h.edges) == 4
 
 
-def test__ctas_values(holder):
-    sql = """
+values_exprs = [
+    "VALUES (1, 'Alice'), (2, 'Bob');",
+    "SELECT * FROM (VALUES (1, 'Alice'), (2, 'Bob'));",
+    "SELECT * FROM (SELECT * FROM (VALUES (1, 'Alice'), (2, 'Bob')));",
+]
+@pytest.mark.parametrize("expr", values_exprs)
+def test__ctas_values(holder, expr):
+    sql = f"""
     CREATE TABLE some_table(id, name) AS
-    VALUES (1, 'Alice'), (2, 'Bob');
+    {expr}
     """
     h = holder(sql=sql, dialect=DIALECT)
 

@@ -32,7 +32,7 @@ CREATE TABLE
     - [ ] Empty table via WHERE
     - [x] VALUES
     - [ ] EXECUTE
-    - [ ] SELECT FROM (VALUES())
+    - [x] SELECT FROM (VALUES())
     - [x] WITH
   - [x] LIKE
     - [x] INCLUDING
