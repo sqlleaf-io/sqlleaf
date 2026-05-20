@@ -246,7 +246,26 @@ def test__table_of_type(holder):
 
 
 # TODO: UPDATE and SELECT from different inherited tables in the same query
-# TODO: test ONLY inside a CTE to verify new table lookup logic
+
+
+def test__cte_only(holder):
+    sql = """
+    CREATE TABLE fruit.parent (name VARCHAR, kind VARCHAR);
+    CREATE TABLE fruit.child () INHERITS (fruit.parent);
+    CREATE TABLE fruit.output (name VARCHAR);
+
+    WITH cte AS (
+        SELECT name FROM ONLY fruit.parent
+    )
+    INSERT INTO fruit.output (name) SELECT name FROM cte;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[fruit.parent.name]", "column[cte.name]", "column[fruit.output.name]"]
+    ]
+    assert len(h.nodes) == 3
+    assert len(h.edges) == 2
 
 
 def test__simple_sequence(holder):
