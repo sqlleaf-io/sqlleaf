@@ -42,7 +42,7 @@ CREATE TABLE
   - [ ] FOREIGN
     - not supported by sqlglot
     - Include 'tableoid' system column
-  - [ ] TEMPORARY
+  - [x] TEMPORARY
   - [x] Generated columns
   - [ ] Identity columns
     - [ ] Sequence node
@@ -97,8 +97,7 @@ SELECT
 MERGE
 - [x] Regular
 - [x] RETURNING + merge_action()
-- [ ] USING (SELECT)
-- [ ] THEN INSERT (A,B) SELECT A,B
+- [x] USING (SELECT)
 
 UPDATE
 - [x] Regular

@@ -38,6 +38,24 @@ def test__merge_simple_update_and_insert(holder):
     )
 
 
-# TODO: test MERGE USING (SELECT ...)
+def test__merge_using_select(holder):
+    sql = """
+    MERGE INTO fruit.processed AS t
+    USING (SELECT kind, name FROM fruit.raw) AS s
+    ON t.kind = s.kind
+    WHEN MATCHED THEN
+        UPDATE SET name = s.name
+    WHEN NOT MATCHED THEN
+        INSERT (kind, label) VALUES (s.kind, s.name);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert sorted(h.paths) == sorted([
+        ["column[fruit.raw.name]", "column[fruit.processed.name]"],
+        ["column[fruit.raw.kind]", "column[fruit.processed.kind]"],
+        ["column[fruit.raw.name]", "column[fruit.processed.label]"],
+    ])
+
+
 # TODO: test two merge queries that have an identical inner query
 #  expect: the two inner queries are identical (and preserved), but they have different parents
