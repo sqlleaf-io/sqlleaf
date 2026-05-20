@@ -39,7 +39,7 @@ class BaseGenerator:
     dialect = ""
 
     @util.singledispatchmethodlogger
-    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process(self, expr: exp.Expr, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         raise exception.SqlLeafException(message=f"Unhandled expression type: {type(expr)}")
 
     def __init_subclass__(cls, **kwargs):
@@ -55,7 +55,7 @@ class BaseGenerator:
             raise exception.SqlLeafException(message=f"Unknown dialect: {class_name}")
         return target_class()
 
-    def do_grandparents(self, grandparents: t.List[exp.Expression], parent: NodeAttributes, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def do_grandparents(self, grandparents: t.List[exp.Expr], parent: NodeAttributes, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         Process a list of expressions of a parent expression.
 
@@ -280,7 +280,7 @@ class BaseGenerator:
     @process.register(exp.Identifier)
     @process.register(exp.ColumnDef)
     @process.register(exp.Table)
-    def skip(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def skip(self, expr: exp.Expr, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         logger.debug(f"Skipping expression: {type(expr)} {str(expr)}")
         yield EdgeToCreate(None, None)
 

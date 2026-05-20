@@ -104,7 +104,7 @@ def find_paths(g: nx.MultiDiGraph, start=0, path: t.List = None, seen: t.Set = N
                 yield from find_paths(g, n, path + [n], seen.union([n]))
 
 
-def unwrap_expression(expr: exp.Expression) -> exp.Expression:
+def unwrap_expression(expr: exp.Expr) -> exp.Expr:
     """
     Extract the expression from underneath an Alias or a Paren.
     """
@@ -117,7 +117,7 @@ def unwrap_expression(expr: exp.Expression) -> exp.Expression:
     return ex
 
 
-def copy_expression(expr: exp.Expression) -> exp.Expression:
+def copy_expression(expr: exp.Expr) -> exp.Expr:
     """
     Copy an expression.
 
@@ -154,14 +154,14 @@ def column_def_to_column(column_def: exp.ColumnDef, parent_table: exp.Table = No
     return col
 
 
-def get_table(expr: exp.Expression) -> exp.Table:
+def get_table(expr: exp.Expr) -> exp.Table:
     return expr.find(exp.Table)
 
 
 def get_function_args(expr: exp.Func):
     function_args = list(expr.args.values())
     function_args = flatten(function_args)
-    function_args = [arg for arg in function_args if arg and isinstance(arg, exp.Expression)]
+    function_args = [arg for arg in function_args if arg and isinstance(arg, exp.Expr)]
     return function_args
 
 

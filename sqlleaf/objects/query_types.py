@@ -14,7 +14,7 @@ class Query:
         self,
         kind: str,
         dialect: str,
-        statement: exp.Expression,
+        statement: exp.Expr,
         child_table: exp.Table,
         statement_index: int,
     ):
@@ -47,7 +47,7 @@ class Query:
         else:
             return str(self.statement_index)
 
-    def set_statement(self, statement: exp.Expression):
+    def set_statement(self, statement: exp.Expr):
         self.statement = statement
 
     @property

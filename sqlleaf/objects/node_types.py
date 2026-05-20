@@ -16,7 +16,7 @@ TableOrScopeType = exp.Table | Scope
 from enum import StrEnum, auto
 
 
-def _function_name(expr: exp.Expression, dialect: str) -> str:
+def _function_name(expr: exp.Expr, dialect: str) -> str:
     """
     Remove everything from the first '(' to the last ')' from a string.
     """
@@ -56,7 +56,7 @@ class TableSubtype(StrEnum):
 class NodeAttributes:
     def __init__(
         self,
-        expr: exp.Expression,
+        expr: exp.Expr,
         data_type: exp.DataType,
         ctx: NodeContext,
         column: str,

@@ -23,7 +23,7 @@ class ProcessorContext:
     graph: nx.MultiDiGraph
     object_mapping: mappings.ObjectMapping
     query: Query
-    expr: exp.Expression
+    expr: exp.Expr
     scope: TableOrScopeType
     scope_positions: t.Dict[int, t.Dict[int, int]] = None
     data_type: exp.DataType = None
@@ -41,11 +41,11 @@ class ProcessorContext:
         object.__setattr__(self, "data_type", expr_type)
         object.__setattr__(self, "expr", unwrapped_expr)
 
-    def get_expr_type(self, expr: exp.Expression) -> exp.DataType:
+    def get_expr_type(self, expr: exp.Expr) -> exp.DataType:
         """
         Determine the expression's data type. If it's missing, use an ancestor's data type.
         """
-        def is_missing_type(x: exp.Expression) -> bool:
+        def is_missing_type(x: exp.Expr) -> bool:
             return not (x.type or x.is_type(exp.DataType.Type.UNKNOWN))
 
         if isinstance(expr, exp.ColumnDef):

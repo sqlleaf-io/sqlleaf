@@ -15,5 +15,5 @@ class AthenaGenerator(BaseGenerator):
     dialect = "athena"
 
     @util.singledispatchmethodlogger
-    def process(self, expr: exp.Expression, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process(self, expr: exp.Expr, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         yield from super().process(expr, processor_ctx, ctx)

@@ -384,7 +384,7 @@ def _get_properties_to_include(options: t.List[str]) -> t.Dict:
     return properties
 
 
-def _process_unnamed(statement: exp.Expression, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query:
+def _process_unnamed(statement: exp.Expr, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query:
     """
     Process an unnamed statement - one not inside a 'CREATE <name>' statement.
     """

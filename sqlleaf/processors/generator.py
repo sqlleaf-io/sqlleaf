@@ -382,7 +382,7 @@ def add_node_if_not_exists(node_attrs: NodeAttributes, graph: nx.MultiDiGraph) -
     return node_attrs
 
 
-def get_scope(statement: exp.Expression) -> Scope:
+def get_scope(statement: exp.Expr) -> Scope:
     """
     Build the scope for a statement.
     """
@@ -393,7 +393,7 @@ def get_scope(statement: exp.Expression) -> Scope:
     return scope
 
 
-def get_expression_for_column(column: exp.Column | int, expr: exp.Expression) -> exp.Expression:
+def get_expression_for_column(column: exp.Column | int, expr: exp.Expr) -> exp.Expr:
     """
     Get the expression that matches the given column name.
     e.g. given "SELECT 1 AS a, 2 AS b", column 'b' maps to expression 2.
@@ -425,11 +425,11 @@ TableOrScopeType = exp.Table | Scope
 
 @dataclass(frozen=True)
 class ScopeTraversal:
-    expression: exp.Expression
+    expression: exp.Expr
     scope: TableOrScopeType = None
 
 
-def get_column_index(column: exp.Column | int, expr: exp.Expression):
+def get_column_index(column: exp.Column | int, expr: exp.Expr):
     index = (
         column
         if isinstance(column, int)
@@ -501,7 +501,7 @@ def set_cte_properties(path: t.List[ScopeTraversal]) -> None:
             break
 
 
-def is_node_inside_a_recursive_cte(expr: exp.Expression) -> bool:
+def is_node_inside_a_recursive_cte(expr: exp.Expr) -> bool:
     """
     Check if we're inside a recursive CTE
     """

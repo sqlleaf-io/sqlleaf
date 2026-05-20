@@ -71,7 +71,7 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
     query.set_statement(statement)
 
 
-def _convert_table_to_select(statement: exp.Expression) -> exp.Expression:
+def _convert_table_to_select(statement: exp.Expr) -> exp.Expr:
     """
     Convert the statement "TABLE x" to "SELECT * FROM x"
     """
