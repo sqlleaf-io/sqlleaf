@@ -11,6 +11,25 @@ from sqlleaf.objects.node_types import NodeAttributes
 
 logger = logging.getLogger("sqlleaf")
 
+class IncludeNodesArgs(t.TypedDict, total=False):
+    include_literals: bool
+    include_functions: bool
+    include_nulls: bool
+    include_vars: bool
+    include_variables: bool
+    include_ctes: bool
+    include_derived_tables: bool
+    include_pivots: bool
+    include_system_tables: bool
+    include_defaults: bool
+    include_udfs: bool
+    include_stars: bool
+    include_sequences: bool
+    include_stages: bool
+    include_windows: bool
+    include_intervals: bool
+
+
 def are_types_compatible(subtyp: str, typ: str, dialect: str) -> bool:
     """
     Check if two types are compatible. Type `subtyp` must be equal or less than `typ`.

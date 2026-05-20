@@ -25,7 +25,7 @@ class Lineage:
         self.paths: t.Dict[str, t.List[LineagePath]] = {}  # The paths throughout the graph
         self.object_mapping = None
 
-    def generate(self, sql: str, dialect: str):
+    def generate(self, sql: str, dialect: str, **opts: t.Unpack[types.IncludeNodesArgs]):
         """
         Generate lineage for one or more SQL statements.
         """
