@@ -388,10 +388,6 @@ def _process_unnamed(statement: exp.Expr, dialect: str, object_mapping: mappings
     """
     Process an unnamed statement - one not inside a 'CREATE <name>' statement.
     """
-    query = None
-
-
-
     mapping = {
         exp.Copy: CopyQuery,
         exp.Put: PutQuery,
@@ -401,10 +397,7 @@ def _process_unnamed(statement: exp.Expr, dialect: str, object_mapping: mappings
         exp.Select: SelectQuery,
         exp.Merge: MergeQuery,
     }
-
-    query_class = mapping.get(type(statement))
-    if not query_class:
-        return None
+    query_class = mapping[type(statement)]
 
     query = query_class(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
 

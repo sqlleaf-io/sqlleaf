@@ -431,10 +431,38 @@ class CopyQuery(Query):
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=expr.this,
+            child_table=util.get_table(expr.this),  # TODO: is this wrong with a COPY (SELECT)?
         )
-        self.source = expr.args["files"][0]
-        self.target = expr.args["this"]
+        self.named_columns: t.List[str] = []
+
+        if dialect == "postgres":
+            # Postgres treats STDOUT and STDIN the same
+            if expr.args["kind"]:
+                # COPY X FROM STDOUT/STDIN
+                self.source = expr.args["files"][0]
+                self.target = expr.args["this"]
+                if isinstance(self.target, exp.Schema):
+                    # Named columns were provided
+                    self.named_columns = [e.name for e in self.target.expressions]
+                    self.target = self.target.this
+            else:
+                # COPY X TO STDOUT/STDIN
+                self.source = expr.args["this"]
+                self.target = expr.args["files"][0]
+                if isinstance(self.source, exp.Schema):
+                    # Named columns were provided
+                    self.named_columns = [e.name for e in self.source.expressions]
+                    self.source = self.source.this
+
+        elif dialect == "snowflake":
+            self.source = expr.args["files"][0]
+            self.target = expr.args["this"]
+
+        if self.source and self.target:
+            # It may be a subquery
+            self.source = self.source.unnest()
+            self.target = self.target.unnest()
+
         self.is_source_a_stage = False
         self.is_target_a_stage = False
 
@@ -445,8 +473,7 @@ class CopyQuery(Query):
 
     def configure_stage(self, expr: exp.Copy):
         """
-        Set the name if we are a Snowflake 'stage'.
-        This involves manually normalising (uppercasing) the name.
+        Normalize (uppercase) the name if we are a Snowflake stage.
         sqlglot only normalizes columns - see comments in `sqlglot.optimizer.normalize_identifiers()`
         """
         source = expr.args["files"][0]

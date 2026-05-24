@@ -57,7 +57,7 @@ def generate_column_lineage_for_query(
         return graph
 
     generate_column_lineage_for_columns(child_table, generator, processor_ctx, ctx)
-    return graph
+    return processor_ctx.graph
 
 
 def generate_column_lineage_for_columns(
@@ -73,7 +73,7 @@ def generate_column_lineage_for_columns(
     scope_positions = calculate_scope_positions(scope)
 
     # Process the selected columns
-    for selected_node, default_node in _get_column_nodes_for_table(processor_ctx, ctx):
+    for selected_node, default_node in _iter_columns_nodes_of_table(processor_ctx, ctx):
         child_node = selected_node or default_node
         logger.info(
             "Calculating lineage. Column: %s, Table: %s, Index: %s",
@@ -82,17 +82,26 @@ def generate_column_lineage_for_columns(
             child_node.ctx.select_index
         )
 
-        # Process any default expressions for columns
+        # A column may have both lineage and a default expression; process both.
         # TODO: make this a CLI flag for whether to include these exprs in lineage
         if default_node:
             constraint_expr = default_node.get_column_constraint_expression()
             constraint_ctx = replace(processor_ctx, expr=constraint_expr.this, new_data_type=child_node.data_type, child_node_attrs=child_node)
+            # Walk only the expression
             walk_expressions_and_build_graph(generator=generator, processor_ctx=constraint_ctx, ctx=ctx)
+
         if selected_node:
-            walk_query_and_build_graph(generator, child_node, scope, scope_positions, processor_ctx, child_node.ctx)
+            if processor_ctx.query.dialect == "postgres" and isinstance(processor_ctx.query, CopyQuery):
+                # If the source is STDIN, short circuit
+                stmt_original = processor_ctx.query.statement_original
+                processor_ctx = replace(processor_ctx, expr=stmt_original, new_data_type=child_node.data_type, child_node_attrs=child_node)
+                walk_expressions_and_build_graph(generator=generator, processor_ctx=processor_ctx, ctx=ctx)
+            else:
+                # Walk the whole query
+                walk_query_and_build_graph(generator, child_node, scope, scope_positions, processor_ctx, child_node.ctx)
 
 
-def _get_column_nodes_for_table(processor_ctx: ProcessorContext, ctx: NodeContext) -> (
+def _iter_columns_nodes_of_table(processor_ctx: ProcessorContext, ctx: NodeContext) -> (
     t.Generator[ColumnNode, ColumnNode]
 ):
     """
@@ -550,7 +559,7 @@ def check_for_external_table(generator: BaseGenerator, processor_ctx: ProcessorC
     if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external": #isinstance(query.statement, exp.Create):
         location_expr = query.statement.args["properties"].find(exp.LocationProperty)
 
-        for child_node, _ in _get_column_nodes_for_table(processor_ctx, ctx):
+        for child_node, _ in _iter_columns_nodes_of_table(processor_ctx, ctx):
             processor_ctx = replace(processor_ctx, expr=location_expr, child_node_attrs=child_node)
             ctx = replace(ctx, select_index=child_node.ctx.select_index)
             walk_expressions_and_build_graph(generator=generator, processor_ctx=processor_ctx, ctx=ctx)

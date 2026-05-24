@@ -2,6 +2,7 @@ import typing as t
 import logging
 import copy
 
+import sqlglot
 from sqlglot import exp
 from sqlglot.optimizer import optimize, qualify, RULES
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
@@ -10,6 +11,12 @@ from sqlleaf import exception, mappings, util
 from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query, CTASQuery, TableQuery, DeleteQuery
 
 logger = logging.getLogger("sqlleaf")
+
+"""
+Transform an SQL query into a form that we can easily generate the lineage from.
+We transform all queries into `INSERT .. SELECT` where possible so that we have
+a single query type to work over.
+"""
 
 
 def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
@@ -55,10 +62,12 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
     elif isinstance(query, TableQuery):
         pass
 
-    statement = _validate_values(statement)
+    _validate_values(statement)
 
-    # Apply sqlglot's optimize() functions to infer schemas, qualify columns, etc
+    # Qualify columns, add aliases and optimize the expressions
     statement = _apply_optimizations(statement, query, object_mapping, query.child_table)
+
+    _validate_syntax(statement, query)
 
     old = query.statement.sql(dialect=query.dialect)
     new = statement.sql(dialect=query.dialect)
@@ -323,7 +332,7 @@ def _convert_update_to_insert(statement: exp.Update, dialect: str) -> exp.Insert
         select_statement = select_statement.from_(into_table)
 
     # Convert the statement into an insert
-    insert_statement = exp.insert(
+    insert_expr = exp.insert(
         expression=select_statement,
         columns=alias_names,
         into=into_table,
@@ -331,10 +340,10 @@ def _convert_update_to_insert(statement: exp.Update, dialect: str) -> exp.Insert
         dialect=dialect,
     )
     if with_:
-        insert_statement.set("with_", with_)
+        insert_expr.set("with_", with_)
 
-    statement.replace(insert_statement)
-    return insert_statement
+    statement.replace(insert_expr)
+    return insert_expr
 
 
 def _convert_on_conflict_to_update(statement: exp.OnConflict | exp.Update, object_mapping: mappings.ObjectMapping, query: UpdateQuery) -> exp.Update:
@@ -480,39 +489,52 @@ def _convert_copy_to_insert(statement: exp.Copy, query: CopyQuery, object_mappin
         => is_target_a_stage = True
         => produces lineage: N table columns -> @stage
     """
-    expr = statement
     dialect = query.dialect
 
     # Assume the stage is a source
-    child_table = expr.this
-    parent_table = expr.args["files"][0]
+    child_table = statement.this.find(exp.Table)
+    parent_table = statement.args["files"][0]
+
     source_table = child_table
 
-    if query.is_target_a_stage:
-        source_table = parent_table
+    if dialect == "snowflake":
+        if query.is_target_a_stage:
+            source_table = parent_table
 
-    table_query = object_mapping.find_query(kind="table", table=source_table)
-    child_columns = table_query.get_column_names_with_types()
-    column_names = tuple(child_columns.keys())
+    column_names = query.named_columns
+    if not column_names:
+        table_query = object_mapping.find_query(kind="table", table=source_table)
+        table_columns = table_query.get_column_names_with_types()
+        column_names = tuple(table_columns.keys())
+
+    # Transform to a SELECT
+    if isinstance(query.source, exp.Select):
+        select = query.source
+    else:
+        select = exp.select(*(column_names), dialect=dialect).from_(query.source)
+
+    # The columns are needed in the select, but not in the insert
+    if query.is_target_a_stage:
+        column_names = []
 
     # Convert the Copy to an Insert so that the lineage functions work
-    select = exp.select(*column_names, dialect=dialect).from_(parent_table)
-    expr_insert = exp.insert(
+    insert_expr = exp.insert(
         expression=select,
-        into=child_table,
+        into=query.target,
+        columns=column_names,
         dialect=dialect,
     )
 
-    if query.is_target_a_stage:
+    if dialect == "snowflake" and query.is_target_a_stage:
         # Any object that is referenced as a source table needs to be added to the table mapping
         # for the lineage functions to work - such as this Stage
-        col_defs = [exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(data_type)) for name, data_type in child_columns.items()]
+        col_defs = [exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(data_type)) for name, data_type in table_columns.items()]
 
         child_table_query = object_mapping.find_query(kind="stage", table=child_table)
         child_table_query.column_defs = col_defs
 
     # We don't worry about `self.is_source_a_stage` here as that is handled in the process_column() later
-    return expr_insert
+    return insert_expr
 
 
 RULES_OVERRIDE = [
@@ -542,12 +564,23 @@ def _validate_values(statement: exp.Insert) -> exp.Insert:
     return statement
 
 
+def _validate_syntax(statement: exp.Expr, query: Query):
+    """
+    Ensure that the transformed query is parseable.
+    """
+    try:
+        sqlglot.parse_one(statement.sql(dialect=query.dialect), dialect=query.dialect)
+    except sqlglot.errors.ParseError:
+        if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external":
+            # Bug in sqlglot: parsing the output for CREATE EXTERNAL TABLE WITH (FORMAT=TEXTFILE) breaks the parser
+            pass
+
+
 def _apply_optimizations(
-    statement: exp.Insert, query: Query, object_mapping: mappings.ObjectMapping, child_table, match_columns: bool = True
+    statement: exp.Insert, query: Query, object_mapping: mappings.ObjectMapping, child_table, add_column_names: bool = True
 ) -> exp.Insert:
     """
-    1. We pass validate=false to prevent errors like: sqlglot.errors.OptimizeError: Column '"v_ca_start_date_id"' could not be resolved
-    2. We pass infer_schema=True to source unqualified columns from the source table (if missing from the `schema` param)
+    1. We pass infer_schema=True to source unqualified columns from the source table (if missing from the `schema` param)
         e.g. so that
             INSERT INTO my.other
             SELECT name
@@ -555,31 +588,37 @@ def _apply_optimizations(
         produces
             my.table.name -> my.other.name
     """
-    # Rewrite the columns in any child writable CTEs.
-    # We cannot rely on lineage() to collect the RETURNING statements
-    # due to limitations with the optimizer.build_scope function: it only
-    # considers select statements.
-    stmt = qualify.qualify(
+    validate_columns = True
+
+    # Check if we should validate the columns exist for each table
+    if isinstance(query, CopyQuery):
+        src, src_name = query.source, query.source.name
+        if isinstance(src, exp.Identifier) and src_name in ["stdin", "stdout"]:
+            validate_columns = False
+        elif isinstance(src, exp.Literal):
+            validate_columns = False
+
+    qualify.qualify(
         statement,
         schema=object_mapping,
         infer_schema=True,
         dialect=query.dialect,
         isolate_tables=False,
-        validate_qualify_columns=True,
+        validate_qualify_columns=validate_columns,
         quote_identifiers=False,
     )
     _add_aliases_to_pseudocolumns(statement)
 
-    if match_columns:
-        _add_column_names_to_insert(stmt, object_mapping, child_table)
+    if add_column_names:
+        _add_column_names_to_insert(statement, query , object_mapping, child_table)
 
     # Selectively apply sqlglot's optimization rules.
-    stmt = optimize(expression=stmt, dialect=query.dialect, schema=object_mapping, rules=RULES_OVERRIDE)
+    statement = optimize(expression=statement, dialect=query.dialect, schema=object_mapping, rules=RULES_OVERRIDE)
 
     # We don't want to merge the CTEs as they provide useful info to the user
     # so we skip merge_ctes() and call the function below directly instead
-    stmt = merge_derived_tables(stmt)
-    return stmt
+    statement = merge_derived_tables(statement)
+    return statement
 
 
 def _rename_returning_columns(expr: exp.CTE, query: Query, object_mapping: mappings.ObjectMapping, child_table: exp.Table):
@@ -630,24 +669,30 @@ def _rename_returning_columns(expr: exp.CTE, query: Query, object_mapping: mappi
     else:
         new_select = exp.select(*returning_expr.expressions).from_(child_table)
 
-    new_select = _apply_optimizations(new_select, query, object_mapping, child_table, match_columns=False)
+    new_select = _apply_optimizations(new_select, query, object_mapping, child_table, add_column_names=False)
 
     expr.set("this", new_select)
     return expr
 
 
-def _add_column_names_to_insert(statement: exp.Insert, object_mapping: mappings.ObjectMapping, child_table: exp.Table):
+def _add_column_names_to_insert(statement: exp.Insert, query: Query, object_mapping: mappings.ObjectMapping, child_table: exp.Table):
     """
     Add aliases to SELECTs that are missing them by looking at the corresponding INSERT column.
     This prevents sqlglot from assigning its own generated names as aliases.
     This needs to run after qualify() as it expands stars and aliases.
 
-    For example, the statement:
+    For example, given
+        CREATE TABLE my.apple (a VARCHAR, b VARCHAR);
+    the statement:
         INSERT INTO my.apple SELECT name, age FROM my.pear
     renames to:
         INSERT INTO my.apple (a,b) SELECT name as a, age as b FROM my.pear
     """
     if not isinstance(statement, exp.Insert) or not statement.selects:
+        return
+
+    # sqlglot throws a parse error on named columns for Snowflake: INSERT INTO @"my_eXt_sTaGe" (NAME, AGE) SELECT ...
+    if query.dialect == "snowflake" and (query.is_source_a_stage or query.is_target_a_stage):
         return
 
     selects = statement.selects

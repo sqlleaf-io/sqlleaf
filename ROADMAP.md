@@ -149,17 +149,18 @@ CREATE TYPE
 
 COPY
   Sources:
-    - [ ] Table
-    - [ ] Table with named columns
-    - [ ] SELECT
-    - [ ] VALUES
-    - [ ] INSERT|UPDATE|MERGE|DELETE .. RETURNING
-    - [ ] STDIN
+    - [x] Table
+    - [x] Table with named columns
+    - [x] SELECT
+    - [x] VALUES
+    - [o] INSERT|UPDATE|MERGE|DELETE .. RETURNING
+        - INSERT not supported by sqlglot
+    - [x] STDIN
   Targets:
-    - [ ] STDOUT
-    - [ ] Table
-    - [ ] Table with named columns
-    - [ ] PROGRAM
+    - [x] STDOUT
+    - [x] Table
+    - [x] Table with named columns
+    - [x] PROGRAM
 
 DO
 - not supported by sqlglot

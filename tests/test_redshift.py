@@ -110,8 +110,8 @@ def test__table_external(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ['column[name s3://my-bucket/new/fruit/]', 'column[fruit.ext.name]'],
-        ['column[age s3://my-bucket/new/fruit/]', 'column[fruit.ext.age]']
+        ['column[name path=s3://my-bucket/new/fruit/]', 'column[fruit.ext.name]'],
+        ['column[age path=s3://my-bucket/new/fruit/]', 'column[fruit.ext.age]']
     ]
     assert "column[name type=UNKNOWN kind=file format=TEXTFILE path=s3://my-bucket/new/fruit/]" in h.nodes_full
     assert "column[fruit.ext.age type=INT kind=table subkind=external]" in h.nodes_full

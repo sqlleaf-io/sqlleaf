@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import typing as t
+from pathlib import Path
 from dataclasses import replace
 
 from sqlglot import exp
@@ -9,7 +10,7 @@ from sqlglot import exp
 from sqlleaf import util, exception
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import (
-    ColumnNode, SequenceNode,
+    ColumnNode, SequenceNode, StreamNode, ProgramNode,
 )
 from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
 
@@ -117,3 +118,50 @@ class PostgresGenerator(BaseGenerator):
             # TODO: why is this needed? It's 2 levels up
             table_function: exp.Table = expr.parent.parent
             yield from self.do_grandparents([table_function.this], parent, processor_ctx, ctx)
+
+    @process.register
+    def process_copy(self, expr: exp.Copy, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+        """
+        COPY x FROM/TO y
+        """
+        source = processor_ctx.query.source
+        target = processor_ctx.query.target
+
+        if source.name in ["stdin", "stdout"]:
+            node = StreamNode(
+                name=source.name,
+                processor_ctx=processor_ctx,
+                ctx=ctx,
+            )
+            yield EdgeToCreate(node, processor_ctx.child_node_attrs)
+
+        elif isinstance(source, exp.Literal):
+            # A filename. Create a file node.
+            processor_ctx = replace(processor_ctx, expr=source, new_data_type=processor_ctx.child_node_attrs._data_type)
+            node = ColumnNode(
+                catalog="",
+                schema="",
+                table="",
+                column=processor_ctx.child_node_attrs.column,
+                processor_ctx=processor_ctx,
+                ctx=ctx,
+                skip_table_properties=True,
+            )
+            format = "".join(Path(source.name).suffixes)
+            format = format[1:] if format else "UNKNOWN"
+            node.set_file_properties(format=format, path=source.name)
+            yield EdgeToCreate(node, processor_ctx.child_node_attrs)
+
+        elif target.name in ["stdin", "stdout"]:
+            node = StreamNode(
+                name=target.name,
+                processor_ctx=processor_ctx,
+                ctx=ctx,
+            )
+            yield EdgeToCreate(processor_ctx.child_node_attrs, node)
+        elif target.name in ["program"]:
+            node = ProgramNode(
+                processor_ctx=processor_ctx,
+                ctx=ctx,
+            )
+            yield EdgeToCreate(processor_ctx.child_node_attrs, node)

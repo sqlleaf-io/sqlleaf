@@ -42,6 +42,10 @@ class SnowflakeGenerator(BaseGenerator):
         yield EdgeToCreate(file_node, stage_node)
 
     @process.register
+    def process_copy(self, expr: exp.Copy, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+        yield from self.process_column(expr, processor_ctx, ctx)
+
+    @process.register
     def process_column(self, expr: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
         """
         If the source is actually a Stage, don't try to create a Column.

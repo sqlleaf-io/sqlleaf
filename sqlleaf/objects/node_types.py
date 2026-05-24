@@ -19,11 +19,13 @@ from enum import StrEnum, auto
 def _function_name(expr: exp.Expr, dialect: str) -> str:
     """
     Remove everything from the first '(' to the last ')' from a string.
+    We use this method because exp.Func.sql_name() includes the function's context in its name.
     """
     try:
         # Get the name without its parameters
         name = expr.__class__().sql(dialect=dialect)
     except TypeError as e:
+        # Some classes can't be converted to SQL using this method (e.g. CONCAT() in Postgres)
         name = expr.__class__().sql()
 
     first_bracket = name.find('(')
@@ -66,7 +68,8 @@ class NodeAttributes:
         kind: str = "",
     ):
         self.expr = expr
-        self.data_type = str(data_type)  # TODO: could we just assign expr.type = data_type and remove this?
+        self._data_type = data_type
+        self.data_type = str(data_type)
         self.column = column
         self.kind = kind
         self.catalog = catalog
@@ -322,7 +325,7 @@ class ColumnNode(NodeAttributes):
     @property
     def friendly_name(self):
         if self.parent_kind == TableType.FILE:
-            return self.wrap(f"{self.get_name()} {self.path}")
+            return self.wrap(f"{self.get_name()} path={self.path}")
         return self.wrap(self.get_name())
 
 
@@ -598,6 +601,41 @@ class PivotNode(_PivotNode):
 class UnpivotNode(_PivotNode):
     def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
         super().__init__("unpivot", processor_ctx, ctx)
+
+
+class StreamNode(NodeAttributes):
+    def __init__(self, name: str, processor_ctx: ProcessorContext, ctx: NodeContext):
+        super().__init__(
+            kind="stream",
+            data_type=processor_ctx.data_type,
+            expr=processor_ctx.expr,
+            column=name,
+            ctx=ctx,
+        )
+
+    @property
+    def full_name(self):
+        return self.friendly_name
+
+
+class ProgramNode(NodeAttributes):
+    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+        expr: exp.Copy = processor_ctx.expr
+
+        program = expr.args["params"][0].sql()
+        name, args = (program + " ").split(" ", maxsplit=1)
+        super().__init__(
+            kind="program",
+            data_type=exp.DataType.build("UNKNOWN"),
+            expr=processor_ctx.expr,
+            ctx=ctx,
+            column=name
+        )
+        self.program_args = args.strip()
+
+    @property
+    def full_name(self):
+        return self.wrap(f"{self.column} args='{self.program_args}'")
 
 
 class EdgeAttributes:
