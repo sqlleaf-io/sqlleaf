@@ -25,13 +25,13 @@ class ProcessorContext:
     query: Query
     expr: exp.Expr
     scope: TableOrScopeType
-    scope_positions: t.Dict[int, t.Dict[int, int]] = None
-    data_type: exp.DataType = None
-    child_node_attrs: NodeAttributes = None
+    scope_positions: t.Dict[int, t.Dict[int, int]] | None = None
+    data_type: exp.DataType | None = None
+    child_node_attrs: NodeAttributes | None = None
     # Override the data_type if needed
-    new_data_type: InitVar[exp.DataType] = None
+    new_data_type: InitVar[exp.DataType | None] = None
 
-    def __post_init__(self, new_data_type: exp.DataType = None):
+    def __post_init__(self, new_data_type: exp.DataType | None = None):
         """
         Called via replace() or if a new object is instantiated
         """
@@ -55,10 +55,10 @@ class ProcessorContext:
             parent = expr.parent
             while parent:
                 if not is_missing_type(parent):
-                    return parent.type
+                    return t.cast(exp.DataType, parent.type)
                 parent = parent.parent
 
-            return expr.parent.type
+            return t.cast(exp.DataType, expr.parent.type)
         return expr.type
 
 

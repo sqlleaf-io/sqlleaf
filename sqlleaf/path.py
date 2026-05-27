@@ -97,7 +97,7 @@ def find_all_paths(graph: nx.MultiDiGraph) -> t.Generator[LineagePath]:
                 yield lineage_path
 
 
-def find_edges_along_cycle_path(g: nx.MultiDiGraph, cycle: t.List[str], path: t.List[EdgeAttributes] = None) -> t.Generator[t.List[EdgeAttributes]]:
+def find_edges_along_cycle_path(g: nx.MultiDiGraph, cycle: t.List[str], path: t.Optional[t.List[EdgeAttributes]] = None) -> t.Generator[t.List[EdgeAttributes]]:
     """
     Given a cycle, find all the edges along it and return these as the new path.
     A path must be provided so that iteration doesn't deviate into non-cycle paths.
@@ -118,7 +118,7 @@ def find_edges_along_cycle_path(g: nx.MultiDiGraph, cycle: t.List[str], path: t.
 
 
 def find_edges_from_root(
-    g: nx.MultiDiGraph, node: str, path: t.List[EdgeAttributes] = None, seen: t.Set[str] = None
+    g: nx.MultiDiGraph, node: str, path: t.Optional[t.List[EdgeAttributes]] = None, seen: t.Optional[t.Set[str]] = None
 ) -> t.Generator[t.List[EdgeAttributes]]:
     """
     Find all the complete paths in a graph by traversing the descendants of a node until we find
@@ -169,11 +169,16 @@ def find_edges_from_root(
 
 
 def _traverse_path_along_edges(
-    g: nx.MultiDiGraph, node_src: str, node_dst: str, path: t.List = None, seen: t.Set = None
+    g: nx.MultiDiGraph, node_src: str, node_dst: str, path: t.Optional[t.List] = None, seen: t.Optional[t.Set] = None
 ) -> t.Generator[t.List[EdgeAttributes]]:
     """
     Get the list of edges between two nodes, and find the paths for each of them.
     """
+    if path is None:
+        path = []
+    if seen is None:
+        seen = set()
+
     edges = g.get_edge_data(node_src, node_dst)
     for idx, data in edges.items():
         hop = data["attrs"]

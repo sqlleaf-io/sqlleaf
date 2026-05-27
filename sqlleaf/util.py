@@ -6,6 +6,8 @@ from functools import singledispatchmethod
 from sqlglot import exp
 import networkx as nx
 
+from sqlleaf import exception
+
 logger = logging.getLogger("sqlleaf")
 
 
@@ -59,7 +61,7 @@ def long_sha256_hash(text: str):
     return hashlib.md5(text.encode()).hexdigest()
 
 
-def find_edges_downward(g: nx.MultiDiGraph, node: str, seen: t.Set = None, depth: int = 0):
+def find_edges_downward(g: nx.MultiDiGraph, node: str, seen: t.Optional[t.Set[str]] = None, depth: int = 0):
     """
     Traverse the graph, returning any unseen edges.
 
@@ -82,7 +84,7 @@ def find_edges_downward(g: nx.MultiDiGraph, node: str, seen: t.Set = None, depth
                 yield from find_edges_downward(g, n, seen.union([n]), depth + 1)
 
 
-def find_paths(g: nx.MultiDiGraph, start=0, path: t.List = None, seen: t.Set = None):
+def find_paths(g: nx.MultiDiGraph, start=0, path: t.Optional[t.List[int]] = None, seen: t.Optional[t.Set[int]] = None):
     """
     Find all the complete paths in a graph by traversing the descendants of a node until we find
     a node without any descendants.
@@ -133,7 +135,7 @@ def copy_expression(expr: exp.Expr) -> exp.Expr:
     return expr
 
 
-def column_def_to_column(column_def: exp.ColumnDef, parent_table: exp.Table = None) -> exp.Column:
+def column_def_to_column(column_def: exp.ColumnDef, parent_table: t.Optional[exp.Table] = None) -> exp.Column:
     """
     Convert an exp.ColumnDef to an exp.Column
     """
@@ -142,7 +144,8 @@ def column_def_to_column(column_def: exp.ColumnDef, parent_table: exp.Table = No
     elif isinstance(column_def.parent, exp.Schema):
         table: exp.Table = column_def.parent.this
     else:
-        table: exp.Table = column_def.parent
+        table = column_def.parent
+        assert isinstance(table, exp.Table)
 
     col = exp.column(
         column_def.name,
@@ -155,7 +158,10 @@ def column_def_to_column(column_def: exp.ColumnDef, parent_table: exp.Table = No
 
 
 def get_table(expr: exp.Expr) -> exp.Table:
-    return expr.find(exp.Table)
+    table = expr.find(exp.Table)
+    if table is None:
+        raise exception.SqlLeafException(message=f"Could not find an exp.Table in expression: {expr.sql()}")
+    return table
 
 
 def get_function_args(expr: exp.Func):
@@ -239,8 +245,8 @@ class SingleDispatchMethodLogger(singledispatchmethod):
     Override the functools.singledispatchmethod class to print the methods that get called.
     Used for debugging purposes.
     """
-    def __get__(self, instance: t.Any, owner: t.Any = None) -> t.Any:
-        if instance is None:
+    def __get__(self, obj: t.Any, cls: t.Any = None) -> t.Any:
+        if obj is None:
             return self
 
         # Intercept execution and print the types
@@ -248,12 +254,12 @@ class SingleDispatchMethodLogger(singledispatchmethod):
             target_type = type(args[0])
             actual_func = self.dispatcher.dispatch(target_type)
 
-            logger.debug(f"Dispatching to: '{actual_func.__name__}' for expr: {type(args[0])}")
+            logger.debug(f"Dispatching to: '{getattr(actual_func, '__name__')}' for expr: {type(args[0])}")
 
-            result = actual_func(instance, *args, **kwargs)
+            result = actual_func(obj, *args, **kwargs)
             return result
 
-        wrapper.register = self.register
+        t.cast(t.Any, wrapper).register = self.register
         return wrapper
 
 

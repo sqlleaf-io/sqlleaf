@@ -49,6 +49,9 @@ class ObjectMapping(MappingSchema):
             match_depth: whether to enforce that the table must match the schema's depth or not.
         """
         table = query.child_table
+        if table is None:
+            return
+
         normalized_table = self._normalize_table(table, dialect=dialect, normalize=normalize)
         parts = self.table_parts(normalized_table)
 
@@ -105,7 +108,7 @@ class ObjectMapping(MappingSchema):
         kind: str,
         table: exp.Table,
         raise_on_missing: bool = True,
-    ) -> t.Optional[Query]:
+    ) -> Query | None:
         """
         Returns the Query for a given object kind and exp.Table.
 
@@ -147,7 +150,7 @@ class ObjectMapping(MappingSchema):
     def supported_table_args(self) -> t.Tuple[str, ...]:
         return exp.TABLE_PARTS
 
-    def get_table_or_stage(self, table: exp.Table, raise_on_missing: bool = True):
+    def get_table_or_stage(self, table: exp.Table, raise_on_missing: bool = True) -> Query | None:
         """
         Get the 'CREATE' query for a table or stage.
         """

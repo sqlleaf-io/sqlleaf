@@ -6,6 +6,7 @@ import networkx as nx
 from sqlglot import exp
 
 from sqlleaf import mappings, util, path, types
+from sqlleaf.mappings import ObjectMapping
 from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery, ProcedureQuery, TableQuery
 from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, GraphAttributes
 from sqlleaf.path import LineagePath
@@ -25,15 +26,15 @@ class Lineage:
         self.graph = new_graph()  # The graph that contains all lineage
         self.subgraphs: t.List[nx.MultiDiGraph] = []  # The subgraphs that make up the main graph
         self.paths: t.Dict[str, t.List[LineagePath]] = {}  # The paths throughout the graph
-        self.object_mapping = None
+        self.object_mapping: ObjectMapping | None = None
 
     def generate(self, sql: str, dialect: str, **opts: t.Unpack[types.IncludeNodesArgs]):
         """
         Generate lineage for one or more SQL statements.
         """
-        self.init_mapping(dialect=dialect)
+        object_mapping = self.init_mapping(dialect=dialect)
 
-        parent_queries = collector.collect_queries(sql, dialect, self.object_mapping)
+        parent_queries = collector.collect_queries(sql, dialect, object_mapping)
 
         for parent_query in parent_queries:
             graph = new_graph()
@@ -42,8 +43,8 @@ class Lineage:
             for query in queries:
                 # Transform every query, but only produce lineage for certain ones
                 if query_has_lineage(query):
-                    transformer.transform_query(query, self.object_mapping)
-                    generator.generate_column_lineage_for_query(query, graph, self.object_mapping)
+                    transformer.transform_query(query, object_mapping)
+                    generator.generate_column_lineage_for_query(query, graph, object_mapping)
                 query.set_to_original()
 
             graph.graph["attrs"].add_query(parent_query)
@@ -216,11 +217,10 @@ class Lineage:
                 else:
                     print("\n")
 
-    def init_mapping(self, dialect: str):
-        if not self.object_mapping:
+    def init_mapping(self, dialect: str) -> mappings.ObjectMapping:
+        if self.object_mapping is None:
             self.object_mapping = mappings.ObjectMapping(dialect=dialect)
-            return
-
+        return self.object_mapping
 
 def new_graph() -> nx.MultiDiGraph:
     """

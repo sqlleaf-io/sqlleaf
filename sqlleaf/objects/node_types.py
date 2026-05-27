@@ -59,7 +59,7 @@ class NodeAttributes:
     def __init__(
         self,
         expr: exp.Expr,
-        data_type: exp.DataType,
+        data_type: exp.DataType | None,
         ctx: NodeContext,
         column: str,
         table: str = "",
@@ -69,7 +69,7 @@ class NodeAttributes:
     ):
         self.expr = expr
         self._data_type = data_type
-        self.data_type = str(data_type)
+        self.data_type = str(data_type) if data_type else ""
         self.column = column
         self.kind = kind
         self.catalog = catalog
@@ -154,7 +154,7 @@ class ColumnNode(NodeAttributes):
         ctx: NodeContext,
         skip_table_properties: bool = False,
     ):
-        expr: exp.ColumnDef = processor_ctx.expr
+        expr = t.cast(exp.ColumnDef, processor_ctx.expr)
 
         super().__init__(
             kind="column",
@@ -168,7 +168,7 @@ class ColumnNode(NodeAttributes):
         )
         self.parent_kind: str = ""
         self.parent_subkind: str = ""
-        self.source_scope: TableOrScopeType = None
+        self.source_scope: TableOrScopeType | None = None
         self.has_child_scope: bool = False    # Whether the query's source is inside an inner scope that still need to be resolved
 
         if not skip_table_properties:
@@ -184,7 +184,7 @@ class ColumnNode(NodeAttributes):
         Change the column's source table to be its fully qualified name, not its alias,
         so that the ColumnNode is provided complete information.
         """
-        column: exp.Column = self.expr
+        column = t.cast(exp.Column, self.expr)
         _c = column.copy()
 
         if isinstance(source, exp.Table):
@@ -219,11 +219,11 @@ class ColumnNode(NodeAttributes):
         Figure out the table's type (view/table) by inspecting the original query in the mapping.
         """
         scope = processor_ctx.scope
-        if scope:
+        if isinstance(scope, Scope):
             source = scope.sources.get(table)
             if not source:
                 # Nested 'rows_from' queries have their aliases in 'references'
-                self.source_scope = dict(scope.references)[table]
+                self.source_scope = dict(scope.references).get(table)
                 self.parent_kind = TableType.DERIVED_TABLE
                 return
 
@@ -241,7 +241,7 @@ class ColumnNode(NodeAttributes):
                     self.parent_kind = TableType.DERIVED_TABLE
                     return
                 elif source.scope_type == ScopeType.CTE:
-                    selected_table, _ = scope.selected_sources.get(table, (None, None))
+                    selected_table, _ = t.cast(Scope, scope).selected_sources.get(table, (None, None))
                     if not selected_table:
                         message = f"Table '{table}' is referenced but there is no FROM containing it."
                         raise exception.SqlLeafException(message=message)
@@ -250,17 +250,18 @@ class ColumnNode(NodeAttributes):
                     self.parent_kind = TableType.CTE
 
                     # Check if the CTE is a subtype
-                    for cte in source.parent.ctes:
-                        if cte.alias_or_name == selected_table.name:
-                            if cte.args["materialized"]:
-                                self.parent_subkind = TableSubtype.MATERIALIZED
-                            else:
-                                with_: exp.With = cte.parent
-                                if with_.recursive:
-                                    # TODO: requires new algorithm
-                                    logger.debug("Set node to be a recursive CTE.")
-                                    self.parent_subkind = TableSubtype.RECURSIVE
-                            break
+                    if source.parent:
+                        for cte in source.parent.ctes:
+                            if cte.alias_or_name == selected_table.name:
+                                if cte.args["materialized"]:
+                                    self.parent_subkind = TableSubtype.MATERIALIZED
+                                else:
+                                    with_ = cte.parent
+                                    if isinstance(with_, exp.With) and with_.recursive:
+                                        # TODO: requires new algorithm
+                                        logger.debug("Set node to be a recursive CTE.")
+                                        self.parent_subkind = TableSubtype.RECURSIVE
+                                break
                     return
 
                 elif source.scope_type == ScopeType.DERIVED_TABLE:
@@ -284,14 +285,15 @@ class ColumnNode(NodeAttributes):
             if query.property:
                 self.parent_subkind = TableSubtype(query.property)
 
-    def get_column_constraint_expression(self) -> exp.ColumnConstraintKind:
+    def get_column_constraint_expression(self) -> exp.ColumnConstraintKind | None:
         """
         Get the DEFAULT or GENERATED expression for this column, if it exists.
         There is only one, but this
         """
         types = (exp.DefaultColumnConstraint, exp.ComputedColumnConstraint)
-        constraints = [c.kind for c in self.expr.constraints if isinstance(c.kind, types)]
-        return constraints[0] if constraints else None
+        expr = t.cast(exp.ColumnDef, self.expr)
+        constraints = [c.kind for c in expr.constraints if isinstance(c, exp.ColumnConstraint) and isinstance(c.kind, types)]
+        return t.cast(exp.ColumnConstraintKind, constraints[0]) if constraints else None
 
     def get_name(self):
         tokens = [self.catalog, self.schema, self.table, self.column]
@@ -331,7 +333,7 @@ class ColumnNode(NodeAttributes):
 
 class FunctionNode(NodeAttributes):
     def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr: exp.Binary | exp.Func = processor_ctx.expr
+        expr = t.cast(t.Union[exp.Binary, exp.Func], processor_ctx.expr)
 
         if isinstance(expr, exp.Binary):
             name = expr.key
@@ -394,7 +396,7 @@ class UserDefinedFunctionNode(NodeAttributes):
 
 class JsonPathNode(NodeAttributes):
     def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr: exp.JSONExtract = processor_ctx.expr
+        expr = t.cast(exp.JSONExtract, processor_ctx.expr)
 
         self.selectors = self.json_selectors(expr)
         self.selector = "".join([str(s) for s in self.selectors])
@@ -502,7 +504,7 @@ class SequenceNode(NodeAttributes):
 
 class WindowNode(NodeAttributes):
     def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr: exp.Window = processor_ctx.expr.this
+        expr = t.cast(exp.Window, processor_ctx.expr.this)
 
         super().__init__(
             kind="window",
@@ -515,7 +517,7 @@ class WindowNode(NodeAttributes):
 
 class StageNode(NodeAttributes):
     def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr: exp.Var = processor_ctx.expr
+        expr = t.cast(exp.Var, processor_ctx.expr)
 
         if str(expr).startswith("@"):
             if not str(expr).startswith('@"'):
@@ -537,7 +539,7 @@ class StageNode(NodeAttributes):
 
 class FileNode(NodeAttributes):
     def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr: exp.Literal = processor_ctx.expr
+        expr = t.cast(exp.Literal, processor_ctx.expr)
         filename = expr.this.removeprefix("file://")
         super().__init__(
             kind="file",
@@ -554,7 +556,7 @@ class FileNode(NodeAttributes):
 
 class IntervalNode(NodeAttributes):
     def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr: exp.Interval = processor_ctx.expr
+        expr = t.cast(exp.Interval, processor_ctx.expr)
         name = f'"{str(expr.this.name)} {str(expr.unit)}"'
         super().__init__(
             kind="interval",
@@ -573,7 +575,7 @@ class IntervalNode(NodeAttributes):
 
 class _PivotNode(NodeAttributes):
     def __init__(self, kind: str, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr: exp.Column = processor_ctx.expr
+        expr = t.cast(exp.Column, processor_ctx.expr)
         super().__init__(
             kind=kind,
             data_type=processor_ctx.data_type,
@@ -620,7 +622,7 @@ class StreamNode(NodeAttributes):
 
 class ProgramNode(NodeAttributes):
     def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr: exp.Copy = processor_ctx.expr
+        expr = t.cast(exp.Copy, processor_ctx.expr)
 
         program = expr.args["params"][0].sql()
         name, args = (program + " ").split(" ", maxsplit=1)
@@ -654,6 +656,9 @@ class EdgeAttributes:
         # These positions help unique identify syntax inside a set of SQL statements
         self.select_idx = select_idx  # The position of this column inside a set of selected columns (e.g. SELECT 'a', 'b', 'c')
         self.path_idx = path_idx  # <TODO: can I rely on the query hash instead?> The position of this edge inside a set of identical edges (e.g. two edges between nodes A->B). This can occur if the same query is used across multiple files.
+
+        self.path_id: str | None = None
+        self.path_hop: int | None = None
 
     @property
     def id(self):

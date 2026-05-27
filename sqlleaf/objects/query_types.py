@@ -15,7 +15,7 @@ class Query:
         kind: str,
         dialect: str,
         statement: exp.Expr,
-        child_table: exp.Table,
+        child_table: exp.Table | None,
         statement_index: int,
     ):
         self.kind = kind
@@ -134,7 +134,7 @@ class MergeQuery(Query):
 
 class SelectQuery(Query):
     def __init__(self, expr: exp.Select, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
-        child_table = util.get_table(expr)
+        child_table = expr.find(exp.Table)
         super().__init__(
             kind="select",
             statement=expr,
@@ -148,14 +148,15 @@ class SelectQuery(Query):
 
 
 class InsertQuery(Query):
-    def __init__(self, expr: exp.Insert, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
-        child_table = util.get_table(expr)
+    def __init__(self, expr: exp.Insert, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int, table: exp.Table | None = None):
+        if not table:
+            table = util.get_table(expr)
         super().__init__(
             kind="insert",
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=child_table,
+            child_table=table,
         )
 
     def get_ctes(self):
@@ -163,8 +164,9 @@ class InsertQuery(Query):
 
 
 class UpdateQuery(Query):
-    def __init__(self, expr: exp.Update, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
-        table = util.get_table(expr)
+    def __init__(self, expr: exp.Update, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int, table: exp.Table | None = None):
+        if not table:
+            table = util.get_table(expr)
         super().__init__(
             kind="update",
             statement=expr,
@@ -426,12 +428,16 @@ class StageQuery(Query):
 
 class CopyQuery(Query):
     def __init__(self, expr: exp.Copy, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
+        if isinstance(expr.this.unnest(), exp.Values):
+            table = None
+        else:
+            table = util.get_table(expr.this)
         super().__init__(
             kind="copy",
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=util.get_table(expr.this),  # TODO: is this wrong with a COPY (SELECT)?
+            child_table=table,
         )
         self.named_columns: t.List[str] = []
 

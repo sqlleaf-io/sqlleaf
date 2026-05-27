@@ -86,25 +86,28 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     parsed = sqlglot.parse(text, dialect=dialect)
 
     for index, stmt in enumerate(parsed):
+        if not stmt:
+            continue
         if isinstance(stmt, exp.Command):
             logger.warning(f"Unsupported statement: {stmt.sql(dialect=dialect)}")
             unsupported.append((index, stmt))
             continue
 
         # Remove duplicate queries
-        _id = util.short_sha256_hash(stmt.sql())
+        sql_text = stmt.sql()
+        _id = util.short_sha256_hash(sql_text)
         if _id in queries:
-            logger.debug(f"Skipping duplicate query: {stmt.sql()}")
+            logger.debug(f"Skipping duplicate query: {sql_text}")
             continue
 
-        if stmt.key == "create":
+        if stmt.key == "create" and isinstance(stmt, exp.Create):
             if stmt.kind == "TABLE":
                 if isinstance(stmt.expression, (exp.Select, exp.Values)):
                     kind = "ctas"
                 else:
                     kind = "table"
             else:
-                kind = stmt.kind.lower()
+                kind = (stmt.kind or "").lower()
         elif stmt.key == "select" and "into" in stmt.args:
             # TODO: this is dialect-dependent! mysql converts, but postgres does not
             # sqlglot rewrites 'SELECT INTO' to 'CREATE TABLE AS' during parse()
@@ -172,8 +175,7 @@ def _collect_insert_children(query: InsertQuery, object_mapping: mappings.Object
     if not isinstance(on_conflict, exp.OnConflict) or on_conflict.args["action"].name == "DO NOTHING":
         return
 
-    update_query = UpdateQuery(expr=on_conflict, dialect=query.dialect, object_mapping=object_mapping, statement_index=0)
-    update_query.child_table = query.child_table
+    update_query = UpdateQuery(expr=on_conflict, dialect=query.dialect, object_mapping=object_mapping, statement_index=0, table=query.child_table)
     query.add_child_query(update_query)
 
 
@@ -213,12 +215,11 @@ def _collect_merge_children(parent_query: MergeQuery, object_mapping: mappings.O
         when_expr = util.copy_expression(when)
 
         if isinstance(when_expr, exp.Update):
-            update_query = UpdateQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i)
-            update_query.child_table = merge.child_table
+            update_query = UpdateQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i, table=merge.child_table)
             parent_query.add_child_query(update_query)
 
         elif isinstance(when_expr, exp.Insert):
-            insert_query = InsertQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i)
+            insert_query = InsertQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i, table=merge.child_table)
             insert_query.child_table = merge.child_table
             merge.add_child_query(insert_query)
 
@@ -234,7 +235,7 @@ def _set_column_defs(query: TableQuery, object_mapping: mappings.ObjectMapping):
         if isinstance(expression, exp.ColumnDef):
             all_columns.append(expression)
         elif isinstance(expression, exp.LikeProperty):
-            like_columns = _collect_like_columns(expression, object_mapping, query.child_table)
+            like_columns = _collect_like_columns(expression, object_mapping, t.cast(exp.Table, query.child_table))
             all_columns.extend(like_columns)
         elif isinstance(expression, exp.Identifier):
             # CREATE TABLE (a INT, b);
@@ -278,16 +279,17 @@ def _collect_inherited_columns(
 
     for inh_prop in inherits_properties:
         for inh_table in inh_prop.expressions:
-            parent_table_query = object_mapping.find_query(kind="table", table=inh_table)
+            parent_table_query = t.cast(TableQuery, object_mapping.find_query(kind="table", table=inh_table))
             parent_table_query.inherited_by.append(query)
             query.inherits.append(parent_table_query)
 
             # Re-assign the columns to a copy of the correct table
-            schema = util.copy_expression(query.child_table.parent)
-            for parent_col_def in parent_table_query.column_defs:
-                col_def = parent_col_def.copy()
-                schema.append("expressions", col_def)
-                column_defs.append(col_def)
+            if query.child_table and query.child_table.parent:
+                schema = util.copy_expression(query.child_table.parent)
+                for parent_col_def in parent_table_query.column_defs:
+                    col_def = parent_col_def.copy()
+                    schema.append("expressions", col_def)
+                    column_defs.append(col_def)
 
     return column_defs
 
@@ -307,7 +309,7 @@ def _collect_like_columns(like_property: exp.LikeProperty, object_mapping: mappi
     properties = _get_properties_to_include(property_names)
 
     # Look up the like-table's columns and determine which properties to transfer
-    parent_table_query = object_mapping.find_query(kind="table", table=like_property.this)
+    parent_table_query = t.cast(TableQuery, object_mapping.find_query(kind="table", table=like_property.this))
     parent_columns = parent_table_query.get_column_defs()
 
     for parent_col_def in parent_columns:
@@ -397,36 +399,46 @@ def _process_unnamed(statement: exp.Expr, dialect: str, object_mapping: mappings
         exp.Select: SelectQuery,
         exp.Merge: MergeQuery,
     }
-    query_class = mapping[type(statement)]
-
-    query = query_class(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
-
     if isinstance(statement, exp.Insert):
+        query = InsertQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
         _collect_insert_children(query, object_mapping)
+    elif isinstance(statement, exp.Update):
+        query = UpdateQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
     elif isinstance(statement, exp.Merge):
+        query = MergeQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
         _collect_merge_children(query, object_mapping)
     elif isinstance(statement, exp.Delete):
-        if not statement.find((exp.Insert, exp.Update, exp.Merge)):
+        query = DeleteQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+        if not statement.find(exp.Insert, exp.Update, exp.Merge):
             logging.warning(
                 "Skipping statement: A DELETE query must have a data-modifying statement, such as an INSERT, to contain lineage."
             )
     elif isinstance(statement, exp.Select):
-        if not statement.find((exp.Insert, exp.Update, exp.Merge, exp.Delete)):
+        query = SelectQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+        if not statement.find(exp.Insert, exp.Update, exp.Merge, exp.Delete):
             logging.warning(
                 "Skipping statement: A SELECT query must have a data-modifying statement, such as an INSERT, to contain lineage."
             )
+    elif isinstance(statement, exp.Copy):
+        query = CopyQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+    elif isinstance(statement, exp.Put):
+        query = PutQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+    else:
+        return t.cast(Query, None)
 
-    if query and not isinstance(statement, (exp.Copy, exp.Put)):
+    if not query:
+        return t.cast(Query, None)
+    if not isinstance(statement, (exp.Copy, exp.Put)):
         _collect_writable_cte_queries(query, dialect, object_mapping)
 
     return query
 
 
-def _process_tables(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query:
+def _process_tables(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query | None:
     """
     Process a 'CREATE TABLE' statement.
     """
-    query = None
+    query: Query | None = None
     if statement.kind == "TABLE":
         # CREATE TABLE ...
         query = TableQuery(statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
@@ -508,7 +520,7 @@ def _unnest_values_inside_select(statement: exp.Create):
         while isinstance(parent, exp.Select) and parent.is_star and parent.parent_select:
             parent = parent.parent_select
 
-        if parent:
+        if parent and parent.parent:
             values_expr.pop()
             parent.parent.set("expression", values_expr)
 
@@ -519,8 +531,8 @@ def _determine_column_defs(statement: exp.Create, object_mapping: mappings.Objec
     """
     source = statement.args.get("source", None)
     if source:
-        table: TableQuery = object_mapping.find_query(kind="table", table=source)
-        col_defs = table.get_column_defs(include_system=False)
+        table_q = t.cast(TableQuery, object_mapping.find_query(kind="table", table=t.cast(exp.Table, source)))
+        col_defs = table_q.get_column_defs(include_system=False)
     elif isinstance(statement.expression, exp.Values):
         columns = [stmt.name for stmt in statement.this.expressions]
         types = [val.type for val in statement.expression.expressions[0].expressions]
