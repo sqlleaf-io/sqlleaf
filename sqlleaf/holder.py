@@ -86,8 +86,15 @@ class Lineage:
 
     def get_nodes(self) -> t.List[NodeAttributes]:
         nodes = [data["attrs"] for n, data in self.graph.nodes(data=True)]
-        # TODO: sort on full_name?
-        nodes = sorted(nodes, key=lambda e: (e.catalog, e.schema, e.table, e.column))
+        # TODO: sort on selected index?
+        nodes = sorted(
+            nodes, key=lambda e: (
+                getattr(e, "catalog", ""),
+                getattr(e, "schema", ""),
+                getattr(e, "table", ""),
+                e.name
+            )
+       )
         return nodes
 
     def get_queries(self) -> t.List[Query]:

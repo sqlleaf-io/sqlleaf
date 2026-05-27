@@ -10,7 +10,7 @@ from sqlglot.optimizer import Scope
 from sqlleaf import util, exception
 from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import (
-    ColumnNode, PivotNode, UnpivotNode,
+    ColumnNode, PivotNode, UnpivotNode, NodeAttributes,
 )
 from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
 
@@ -104,16 +104,16 @@ class RedshiftGenerator(BaseGenerator):
         CREATE EXTERNAL TABLE ... LOCATION
         """
         location = expr.this
-        child_node = processor_ctx.child_node_attrs
+        child_node =  t.cast(NodeAttributes, processor_ctx.child_node_attrs)
         query = processor_ctx.query
-        table = query.child_table
+        table = t.cast(exp.Table, query.child_table)
 
         # Create: column[name kind=file subkind=text type=INT path=s3://my-bucket/a/b/c]
         column_node = ColumnNode(
             catalog=table.catalog,
             schema="",
             table="",
-            column=child_node.column,
+            column=child_node.name,
             processor_ctx=processor_ctx,
             ctx=ctx,
             skip_table_properties=True,
@@ -121,7 +121,7 @@ class RedshiftGenerator(BaseGenerator):
         format = query.statement_transformed.args["properties"].find(exp.FileFormatProperty).this
         column_node.set_file_properties(format=format, path=location.name)
 
-        yield EdgeToCreate(column_node, processor_ctx.child_node_attrs)
+        yield EdgeToCreate(column_node, child_node)
 
 
 def _get_pivot_expr(scope: Scope) -> exp.Pivot | None:

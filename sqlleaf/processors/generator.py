@@ -77,7 +77,7 @@ def generate_column_lineage_for_columns(
         child_node = selected_node or default_node
         logger.info(
             "Calculating lineage. Column: %s, Table: %s, Index: %s",
-            child_node.column,
+            child_node.name,
             table.name,
             child_node.ctx.select_index
         )
@@ -131,7 +131,7 @@ def _iter_columns_nodes_of_table(processor_ctx: ProcessorContext, ctx: NodeConte
             ctx=ctx,
         )
 
-        if isinstance(query, TableQuery) or child_node.column in query.get_selected_column_names():
+        if isinstance(query, TableQuery) or child_node.name in query.get_selected_column_names():
             # A 'CREATE TABLE' has no SELECT, so include all columns
             selected_node = child_node
 
@@ -331,7 +331,7 @@ def find_inherited_columns(
 
     # Collect any columns from inherited tables with the same name
     for inh_table in table_query.inherited_by:
-        col_def = [c for c in inh_table.get_column_defs() if c.name == column_node.column][0]
+        col_def = [c for c in inh_table.get_column_defs() if c.name == column_node.name][0]
         col = util.column_def_to_column(column_def=col_def, parent_table=inh_table.child_table)
         col_ctx = replace(processor_ctx, expr=col, scope=None)  # Remove the node so that the column isn't renamed
         for edge in generator.process_column(col, col_ctx, ctx):

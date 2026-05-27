@@ -61,20 +61,14 @@ class NodeAttributes:
         expr: exp.Expr,
         data_type: exp.DataType | None,
         ctx: NodeContext,
-        column: str,
-        table: str = "",
-        schema: str = "",
-        catalog: str = "",
+        name: str,
         kind: str = "",
     ):
         self.expr = expr
         self._data_type = data_type
         self.data_type = str(data_type) if data_type else ""
-        self.column = column
+        self.name = name
         self.kind = kind
-        self.catalog = catalog
-        self.schema = schema
-        self.table = table
         self.member = ""
         self.ctx = ctx
 
@@ -87,20 +81,17 @@ class NodeAttributes:
 
     @property
     def full_name(self):
-        return self.wrap(f"{self.column} type={self.data_type}")
+        return self.wrap(f"{self.name} type={self.data_type}")
 
     @property
     def friendly_name(self):
-        return f"{self.kind}[{self.column}]"
+        return f"{self.kind}[{self.name}]"
 
     @property
     def id(self):
         # TODO: add correct fields
         fields = [
-            self.catalog,
-            self.schema,
-            self.table,
-            self.column,
+            self.name,
             self.data_type,
             util.type_name(self.expr),
         ]
@@ -111,10 +102,7 @@ class NodeAttributes:
         return {
             "id": self.id,
             "full_name": self.full_name,
-            "catalog": self.catalog,
-            "schema": self.schema,
-            "table": self.table,
-            "column": self.column,
+            "name": self.name,
             "data_type": self.data_type,
             "kind": self.kind,
         }
@@ -126,20 +114,20 @@ class LiteralNode(NodeAttributes):
             kind="literal",
             data_type=processor_ctx.data_type,
             expr=processor_ctx.expr,
-            column=name,
+            name=name,
             ctx=ctx,
         )
 
     @property
     def full_name(self):
-        name = self.column.replace("'", '"')
+        name = self.name.replace("'", '"')
         return self.wrap(
             f"{name} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
     def friendly_name(self):
-        name = self.column.replace("'", '"')
+        name = self.name.replace("'", '"')
         return f"{self.kind}[{name}]"
 
 
@@ -158,14 +146,15 @@ class ColumnNode(NodeAttributes):
 
         super().__init__(
             kind="column",
-            catalog=catalog,
-            schema=schema,
-            table=table,
-            column=column,
+            name=column,
             data_type=processor_ctx.data_type,
             expr=expr,
             ctx=ctx,
         )
+        self.catalog = catalog
+        self.schema = schema
+        self.table = table
+
         self.parent_kind: str = ""
         self.parent_subkind: str = ""
         self.source_scope: TableOrScopeType | None = None
@@ -178,6 +167,31 @@ class ColumnNode(NodeAttributes):
         # if table_type == "cte":
         #     self.member = processor_ctx.node.recursive_cte_member_kind
 
+
+    @property
+    def id(self):
+        # TODO: add correct fields
+        fields = [
+            self.catalog,
+            self.schema,
+            self.table,
+            self.name,
+            self.data_type,
+            util.type_name(self.expr),
+        ]
+        name = "node:" + util.short_sha256_hash(":".join(fields))
+        return name
+
+    def to_dict(self):
+        d = super().to_dict()
+        d.update(
+            {
+                "catalog": self.catalog,
+                "schema": self.schema,
+                "table": self.table,
+            }
+        )
+        return d
 
     def rename_table(self, source: exp.Table | exp.Values, dialect: str):
         """
@@ -296,7 +310,7 @@ class ColumnNode(NodeAttributes):
         return t.cast(exp.ColumnConstraintKind, constraints[0]) if constraints else None
 
     def get_name(self):
-        tokens = [self.catalog, self.schema, self.table, self.column]
+        tokens = [self.catalog, self.schema, self.table, self.name]
         return ".".join([tok for tok in tokens if tok])
 
     def as_table(self) -> exp.Table:
@@ -344,20 +358,20 @@ class FunctionNode(NodeAttributes):
             kind="function",
             data_type=processor_ctx.data_type,
             expr=processor_ctx.expr,
-            column=name,
+            name=name,
             ctx=ctx,
         )
 
     @property
     def full_name(self):
-        name = f"{self.column}".upper()
+        name = f"{self.name}".upper()
         return self.wrap(
             f"{name} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
     def friendly_name(self):
-        name = f"{self.column}".upper()
+        name = f"{self.name}".upper()
         return self.wrap(name)
 
 
@@ -374,13 +388,13 @@ class UserDefinedFunctionNode(NodeAttributes):
             kind="udf",
             data_type=processor_ctx.data_type,
             expr=expr,
-            schema=schema,
-            column=expr.this,
+            name=expr.this,
             ctx=ctx,
         )
+        self.schema = schema
 
     def get_name(self):
-        tokens = [self.schema, self.column]
+        tokens = [self.schema, self.name]
         return ".".join([tok for tok in tokens if tok])
 
     @property
@@ -406,7 +420,7 @@ class JsonPathNode(NodeAttributes):
             kind="jsonpath",
             data_type=processor_ctx.data_type,
             expr=expr,
-            column=self.selector,
+            name=self.selector,
             ctx=ctx,
         )
 
@@ -430,7 +444,7 @@ class JsonPathNode(NodeAttributes):
 
     @property
     def full_name(self):
-        return self.wrap(f"{self.column} depth={self.selector_depth}")
+        return self.wrap(f"{self.name} depth={self.selector_depth}")
 
 
 class VariableNode(NodeAttributes):
@@ -439,7 +453,7 @@ class VariableNode(NodeAttributes):
             kind="variable",
             data_type=processor_ctx.data_type,
             expr=processor_ctx.expr,
-            column='todo',
+            name='todo',
             ctx=ctx,
         )
 
@@ -450,13 +464,13 @@ class StarNode(NodeAttributes):
             kind="star",
             data_type=exp.DataType.build("UNKNOWN"),
             expr=processor_ctx.expr,
-            column="*",
+            name="*",
             ctx=ctx,
         )
 
     @property
     def full_name(self):
-        return self.wrap(f"{self.column}")
+        return self.wrap(f"{self.name}")
 
 
 class VarNode(NodeAttributes):
@@ -465,7 +479,7 @@ class VarNode(NodeAttributes):
             kind="var",
             data_type=exp.DataType.build("NULL"),
             expr=processor_ctx.expr,
-            column=processor_ctx.expr.name,
+            name=processor_ctx.expr.name,
             ctx=ctx,
         )
 
@@ -476,14 +490,14 @@ class NullNode(NodeAttributes):
             kind="null",
             data_type=exp.DataType.build("NULL"),
             expr=processor_ctx.expr,
-            column="null",
+            name="null",
             ctx=ctx,
         )
 
     @property
     def full_name(self):
         return self.wrap(
-            f"{self.column} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{self.name} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
@@ -497,7 +511,7 @@ class SequenceNode(NodeAttributes):
             kind="sequence",
             data_type=exp.DataType.build("INT"),
             expr=processor_ctx.expr,
-            column=name,
+            name=name,
             ctx=ctx,
         )
 
@@ -510,7 +524,7 @@ class WindowNode(NodeAttributes):
             kind="window",
             data_type=processor_ctx.data_type,
             expr=processor_ctx.expr,
-            column=_function_name(expr, processor_ctx.query.dialect),
+            name=_function_name(expr, processor_ctx.query.dialect),
             ctx=ctx,
         )
 
@@ -528,13 +542,13 @@ class StageNode(NodeAttributes):
             kind="stage",
             data_type=None,
             expr=expr,
-            column=expr.name.removeprefix("@").replace('"', ""),
+            name=expr.name.removeprefix("@").replace('"', ""),
             ctx=ctx,
         )
 
     @property
     def full_name(self):
-        return self.wrap(f"{self.column}")
+        return self.wrap(f"{self.name}")
 
 
 class FileNode(NodeAttributes):
@@ -545,13 +559,13 @@ class FileNode(NodeAttributes):
             kind="file",
             data_type=None,
             expr=processor_ctx.expr,
-            column=filename,
+            name=filename,
             ctx=ctx,
         )
 
     @property
     def full_name(self):
-        return self.wrap(f"{self.column}")
+        return self.wrap(f"{self.name}")
 
 
 class IntervalNode(NodeAttributes):
@@ -562,14 +576,14 @@ class IntervalNode(NodeAttributes):
             kind="interval",
             data_type=processor_ctx.data_type,
             expr=processor_ctx.expr,
-            column=name,
+            name=name,
             ctx=ctx,
         )
 
     @property
     def full_name(self):
         return self.wrap(
-            f"{self.column} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{self.name} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
 
@@ -580,7 +594,7 @@ class _PivotNode(NodeAttributes):
             kind=kind,
             data_type=processor_ctx.data_type,
             expr=processor_ctx.expr,
-            column=expr.name,
+            name=expr.name,
             ctx=ctx,
         )
         self.source: str = ""
@@ -611,7 +625,7 @@ class StreamNode(NodeAttributes):
             kind="stream",
             data_type=processor_ctx.data_type,
             expr=processor_ctx.expr,
-            column=name,
+            name=name,
             ctx=ctx,
         )
 
@@ -631,13 +645,13 @@ class ProgramNode(NodeAttributes):
             data_type=exp.DataType.build("UNKNOWN"),
             expr=processor_ctx.expr,
             ctx=ctx,
-            column=name
+            name=name
         )
         self.program_args = args.strip()
 
     @property
     def full_name(self):
-        return self.wrap(f"{self.column} args='{self.program_args}'")
+        return self.wrap(f"{self.name} args='{self.program_args}'")
 
 
 class EdgeAttributes:

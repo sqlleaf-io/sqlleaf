@@ -142,7 +142,7 @@ class PostgresGenerator(BaseGenerator):
                 catalog="",
                 schema="",
                 table="",
-                column=processor_ctx.child_node_attrs.column,
+                column=processor_ctx.child_node_attrs.name,
                 processor_ctx=processor_ctx,
                 ctx=ctx,
                 skip_table_properties=True,
