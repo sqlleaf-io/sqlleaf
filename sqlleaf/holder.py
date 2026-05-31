@@ -7,14 +7,14 @@ from sqlglot import exp
 
 from sqlleaf import mappings, util, path, types
 from sqlleaf.mappings import ObjectMapping
-from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery, ProcedureQuery, TableQuery
+from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery, TableQuery, UnloadQuery
 from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, GraphAttributes
 from sqlleaf.path import LineagePath
 from sqlleaf.processors import collector, transformer, generator
 
 logger = logging.getLogger("sqlleaf")
 
-QUERIES_WITH_LINEAGE = (InsertQuery, UpdateQuery, ViewQuery, CTASQuery, PutQuery, CopyQuery, TableQuery)
+QUERIES_WITH_LINEAGE = (InsertQuery, UpdateQuery, ViewQuery, CTASQuery, PutQuery, CopyQuery, TableQuery, UnloadQuery)
 
 
 class Lineage:
@@ -44,7 +44,7 @@ class Lineage:
                 # Transform every query, but only produce lineage for certain ones
                 if query_has_lineage(query):
                     transformer.transform_query(query, object_mapping)
-                    generator.generate_column_lineage_for_query(query, graph, object_mapping)
+                    generator.generate_lineage_for_query(query, graph, object_mapping)
                 query.set_to_original()
 
             graph.graph["attrs"].add_query(parent_query)

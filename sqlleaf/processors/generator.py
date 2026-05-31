@@ -13,14 +13,14 @@ if t.TYPE_CHECKING:
 
 from sqlleaf import util, exception, mappings
 from sqlleaf.objects.context import ProcessorContext, NodeContext
-from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, StageNode, ColumnNode, TableType
-from sqlleaf.objects.query_types import Query, UpdateQuery, CopyQuery, PutQuery, TableQuery
+from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, StageNode, ColumnNode, TableType, StreamNode, ProgramNode
+from sqlleaf.objects.query_types import Query, UpdateQuery, CopyQuery, PutQuery, TableQuery, UnloadQuery
 from sqlleaf.processors.dialects.base import BaseGenerator
 
 logger = logging.getLogger("sqlleaf")
 
 
-def generate_column_lineage_for_query(
+def generate_lineage_for_query(
     query: Query,
     graph: nx.MultiDiGraph,
     object_mapping: mappings.ObjectMapping,
@@ -56,11 +56,11 @@ def generate_column_lineage_for_query(
     if check_for_external_table(generator, processor_ctx, ctx):
         return graph
 
-    generate_column_lineage_for_columns(child_table, generator, processor_ctx, ctx)
+    generate_lineage_for_columns(child_table, generator, processor_ctx, ctx)
     return processor_ctx.graph
 
 
-def generate_column_lineage_for_columns(
+def generate_lineage_for_columns(
     table: exp.Table,
     generator: BaseGenerator,
     processor_ctx: ProcessorContext,
@@ -73,14 +73,10 @@ def generate_column_lineage_for_columns(
     scope_positions = calculate_scope_positions(scope)
 
     # Process the selected columns
-    for selected_node, default_node in _iter_columns_nodes_of_table(processor_ctx, ctx):
-        child_node = selected_node or default_node
-        logger.info(
-            "Calculating lineage. Column: %s, Table: %s, Index: %s",
-            child_node.name,
-            table.name,
-            child_node.ctx.select_index
-        )
+    columns_processed = 0
+    for selected_node, default_node in _iter_child_nodes(processor_ctx, ctx):
+        child_node: ColumnNode = selected_node or default_node
+        logger.info(f"Calculating lineage downstream of {child_node.friendly_name}")
 
         # A column may have both lineage and a default expression; process both.
         # TODO: make this a CLI flag for whether to include these exprs in lineage
@@ -91,48 +87,145 @@ def generate_column_lineage_for_columns(
             walk_expressions_and_build_graph(generator=generator, processor_ctx=constraint_ctx, ctx=ctx)
 
         if selected_node:
-            if processor_ctx.query.dialect == "postgres" and isinstance(processor_ctx.query, CopyQuery):
-                # If the source is STDIN, short circuit
-                stmt_original = processor_ctx.query.statement_original
-                processor_ctx = replace(processor_ctx, expr=stmt_original, new_data_type=child_node.data_type, child_node_attrs=child_node)
-                walk_expressions_and_build_graph(generator=generator, processor_ctx=processor_ctx, ctx=ctx)
-            else:
-                # Walk the whole query
-                walk_query_and_build_graph(generator, child_node, scope, scope_positions, processor_ctx, child_node.ctx)
+            walk_query_and_build_graph(generator, child_node, scope, scope_positions, processor_ctx, child_node.ctx)
+            columns_processed += 1
 
+    if columns_processed == 0:
+        raise exception.SqlLeafException("Expected to process columns but count was 0. Review underlying logic.")
 
-def _iter_columns_nodes_of_table(processor_ctx: ProcessorContext, ctx: NodeContext) -> (
-    t.Generator[ColumnNode, ColumnNode]
+def _iter_child_nodes(processor_ctx: ProcessorContext, ctx: NodeContext) -> (
+    t.Generator[t.Tuple[ColumnNode | None, ColumnNode | None]]
 ):
     """
-    Iterate over every column that was either selected in a query or has a default expression.
+    Iterate over every column of a table that was either selected in a query or has a default expression.
     """
+    query = processor_ctx.query
+
+    # TODO: change 'child_table' to be 'child_object' with a property/type
+    #  of table/file/stream so that this function is simplified
+    #  Also include a function to get the child columns from the object.
+
+    # Both COPY and UNLOAD can have SELECTs as their sources,
+    # which have arbitrary columns that vary in length
+    # due to their sourcing from any table.
+
+    # TODO: move this logic into the 'child_object' class once it's created
+    if isinstance(query, (CopyQuery, UnloadQuery)):
+        yield from _iter_child_nodes_from_non_table(processor_ctx, ctx)
+    else:
+        yield from _iter_child_nodes_from_table(processor_ctx, ctx)
+
+
+def _iter_child_nodes_from_non_table(processor_ctx: ProcessorContext, ctx: NodeContext):
     object_mapping = processor_ctx.object_mapping
     query = processor_ctx.query
-    table = query.child_table
+    child_table = processor_ctx.query.child_table
+
+    if isinstance(child_table, exp.Literal):
+        # Use the parent table's columns as the child columns
+        child_table_query = object_mapping.get_table_or_stage(query.source)
+        table_type = "file"
+
+    elif isinstance(child_table, exp.Identifier):
+        child_table_query = object_mapping.get_table_or_stage(query.source)
+        if child_table.name in ["stdin", "stdout"]:
+            table_type = "stream"
+        elif child_table.name in ["program"]:
+            table_type = "program"
+        else:
+            raise exception.SqlLeafException(f"Unknown child column name in COPY: {child_table.name}")
+
+    elif isinstance(child_table, exp.Table):
+        table_type = "table"
+        child_table_query = object_mapping.get_table_or_stage(child_table)
+
+    else:
+        raise exception.SqlLeafException(f"Unknown child column type in COPY: {child_table}")
+
+    child_columns = child_table_query.get_column_defs()
+    select_idx = 0
+
+    # Iterate over every column and yield it if it is referenced in the query.
+    for col_def in child_columns:
+        child_node = None
+        processor_ctx = replace(processor_ctx, expr=col_def)
+        ctx = replace(ctx, select_index=select_idx)
+
+        if table_type == "file":
+            child_node = ColumnNode(
+                catalog="",
+                schema="",
+                table="",
+                column=col_def.name,
+                processor_ctx=processor_ctx,
+                ctx=ctx,
+                skip_table_properties=True
+            )
+            format = util.get_file_format(child_table.name)
+            child_node.set_file_properties(format=format, path=child_table.name)
+
+        elif table_type == "table":
+            child_node = ColumnNode(
+                catalog=child_table.catalog,
+                schema=child_table.db,
+                table=child_table.name,
+                column=col_def.name,
+                processor_ctx=processor_ctx,
+                ctx=ctx,
+            )
+
+        elif table_type == "stream":
+            # Use the ColumnDef as the expr so that correct columns
+            # are selected during walk()
+            child_node = StreamNode(
+                name=child_table.name,
+                processor_ctx=processor_ctx,
+                ctx=ctx,
+            )
+
+        elif table_type == "program":
+            # Use the ColumnDef as the expr so that correct columns
+            # are selected during walk()
+            child_node = ProgramNode(
+                processor_ctx=processor_ctx,
+                ctx=ctx,
+            )
+
+        yield child_node, None
+        select_idx += 1
+
+
+def _iter_child_nodes_from_table(processor_ctx: ProcessorContext, ctx: NodeContext):
+    object_mapping = processor_ctx.object_mapping
+    query = processor_ctx.query
+    child_table = processor_ctx.query.child_table
 
     # Ensure the child table exists with the expected columns
-    child_table_query = object_mapping.get_table_or_stage(table)
+    # TODO: shouldn't this be the order of the columns in the query, not the
+    #  column definiton order in the table?
+    child_table_query = object_mapping.get_table_or_stage(child_table)
     child_columns = child_table_query.get_column_defs()
 
     select_idx = 0
 
+    # Iterate over every column and yield it if it is referenced in the query.
     for col_def in child_columns:
         selected_node = default_node = None
         processor_ctx = replace(processor_ctx, expr=col_def)
         ctx = replace(ctx, select_index=select_idx)
 
         child_node = ColumnNode(
-            catalog=table.catalog,
-            schema=table.db,
-            table=table.name,
+            catalog=child_table.catalog,
+            schema=child_table.db,
+            table=child_table.name,
             column=col_def.name,
             processor_ctx=processor_ctx,
             ctx=ctx,
         )
 
-        if isinstance(query, TableQuery) or child_node.name in query.get_selected_column_names():
-            # A 'CREATE TABLE' has no SELECT, so include all columns
+        if col_def.name in query.get_selected_column_names() or isinstance(query, TableQuery):
+            # Check if the column is selected.
+            # Also, a 'CREATE TABLE' has no SELECT, so include all columns for this case.
             selected_node = child_node
 
         if child_node.get_column_constraint_expression():
@@ -146,8 +239,9 @@ def _iter_columns_nodes_of_table(processor_ctx: ProcessorContext, ctx: NodeConte
             select_idx += 1
 
 
+OutputNodeType = ColumnNode | StreamNode | ProgramNode
 def walk_query_and_build_graph(
-    generator: BaseGenerator, child_node_attrs: ColumnNode, scope: Scope, scope_positions, processor_ctx: ProcessorContext, ctx: NodeContext
+    generator: BaseGenerator, child_node_attrs: OutputNodeType, scope: Scope, scope_positions, processor_ctx: ProcessorContext, ctx: NodeContext
 ) -> None:
     """
     Walk over each query (and its subqueries) to collect the expressions for each column.
@@ -211,7 +305,7 @@ def walk_query_scope(column: exp.Column, scope: Scope) -> t.Generator[ScopeTrave
                 scope=s,
             )
     else:
-        # Create the node for this step in the lineage chain, and attach it to the previous one.
+        # Create the node for this step in the lineage chain
         select = get_expression_for_column(column, scope.expression)
         st = ScopeTraversal(
             expression=select,
@@ -556,10 +650,10 @@ def check_for_external_table(generator: BaseGenerator, processor_ctx: ProcessorC
     """
     query = processor_ctx.query
 
-    if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external": #isinstance(query.statement, exp.Create):
+    if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external":
         location_expr = query.statement.args["properties"].find(exp.LocationProperty)
 
-        for child_node, _ in _iter_columns_nodes_of_table(processor_ctx, ctx):
+        for child_node, _ in _iter_child_nodes(processor_ctx, ctx):
             processor_ctx = replace(processor_ctx, expr=location_expr, child_node_attrs=child_node)
             ctx = replace(ctx, select_index=child_node.ctx.select_index)
             walk_expressions_and_build_graph(generator=generator, processor_ctx=processor_ctx, ctx=ctx)

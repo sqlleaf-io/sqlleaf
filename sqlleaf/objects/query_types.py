@@ -2,9 +2,10 @@ from __future__ import annotations
 import logging
 import typing as t
 
-from sqlglot import exp
+import sqlglot
+from sqlglot import exp, TokenType
 
-from sqlleaf import util, mappings
+from sqlleaf import util, mappings, exception
 
 logger = logging.getLogger("sqlleaf")
 
@@ -205,7 +206,7 @@ class CTASQuery(Query):
             if with_data := props.find(exp.WithDataProperty):
                 self.with_data: bool = not with_data.args["no"]
 
-        self.property: str = util.set_properties(statement)
+        self.property: str = util.find_property(statement)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs + self.system_column_defs if include_system else self.column_defs
@@ -236,7 +237,7 @@ class ViewQuery(Query):
         self.column_defs: t.List[exp.ColumnDef] = columns
         self.inherited_by: t.List[TableQuery] = []
 
-        self.property: str = util.set_properties(statement)
+        self.property: str = util.find_property(statement)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs
@@ -263,7 +264,7 @@ class TableQuery(Query):
         self.inherits: t.List[TableQuery] = []
         self.inherited_by: t.List[TableQuery] = []
 
-        self.property: str = util.set_properties(statement)
+        self.property: str = util.find_property(statement)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs + self.system_column_defs if include_system else self.column_defs
@@ -420,7 +421,7 @@ class StageQuery(Query):
         self.child_table.this.set("this", "@" + stage_name)
         self.child_table.this.set("quoted", False)
 
-        self.property = util.set_properties(statement)
+        self.property = util.find_property(statement)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs
@@ -428,18 +429,16 @@ class StageQuery(Query):
 
 class CopyQuery(Query):
     def __init__(self, expr: exp.Copy, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
-        if isinstance(expr.this.unnest(), exp.Values):
-            table = None
-        else:
-            table = util.get_table(expr.this)
         super().__init__(
             kind="copy",
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=table,
+            child_table=None,
         )
         self.named_columns: t.List[str] = []
+        self.source: exp.Table | exp.Literal | None = None
+        self.target: exp.Table | exp.Literal | None = None
 
         if dialect == "postgres":
             # Postgres treats STDOUT and STDIN the same
@@ -449,6 +448,7 @@ class CopyQuery(Query):
                 self.target = expr.args["this"]
                 if isinstance(self.target, exp.Schema):
                     # Named columns were provided
+                    # TODO: remove in favour of query.get_selected_column_names() ?
                     self.named_columns = [e.name for e in self.target.expressions]
                     self.target = self.target.this
             else:
@@ -475,6 +475,9 @@ class CopyQuery(Query):
         if dialect == "snowflake":
             self.configure_stage(expr)
 
+        if not isinstance(expr.this.unnest(), exp.Values):
+            self.child_table = self.target
+
         self.set_statement(expr)
 
     def configure_stage(self, expr: exp.Copy):
@@ -494,6 +497,41 @@ class CopyQuery(Query):
             self.is_target_a_stage = True
             if not str(target).startswith('@"'):
                 target.this.set("this", str(target).upper())
+
+
+class UnloadQuery(Query):
+    def __init__(self, expr: exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
+        select_expr, to_location_expr = self._parse_expression(expr)
+
+        super().__init__(
+            kind="unload",
+            statement=select_expr,
+            dialect=dialect,
+            statement_index=statement_index,
+            child_table=to_location_expr,
+        )
+
+    def _parse_expression(self, statement: exp.Command) -> t.Tuple[exp.Select, exp.Literal]:
+        """
+        Parse an UNLOAD statement for Redshift.
+        We parse this ourselves due to missing support in sqlglot.
+        """
+        # Syntax: "UNLOAD ('SELECT ...') TO ..."
+        expected_tokens = [TokenType.L_PAREN, TokenType.STRING, TokenType.R_PAREN, TokenType.VAR, TokenType.STRING]
+        actual_tokens = sqlglot.tokenize(statement.expression.name, dialect='redshift')
+
+        # Basic validation - ensure the token types match
+        for i in range(len(expected_tokens)):
+            if expected_tokens[i] != actual_tokens[i].token_type:
+                # This may be incorrect! Use the parser instead once available.
+                raise exception.SqlLeafException(message=f"Invalid syntax for UNLOAD expression: {statement.sql(dialect="redshift")}")
+
+        select_expr = sqlglot.parse_one(actual_tokens[1].text, dialect='redshift')
+        if not isinstance(select_expr, exp.Select):
+            raise exception.SqlLeafException(message=f"Invalid expression inside UNLOAD. Expected SELECT but got: {select_expr.sql(dialect="redshift")}")
+
+        to_location = actual_tokens[4].text
+        return select_expr, exp.convert(to_location)
 
 
 class PutQuery(Query):

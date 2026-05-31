@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import typing as t
-from pathlib import Path
 from dataclasses import replace
 
 from sqlglot import exp
@@ -12,6 +11,7 @@ from sqlleaf.objects.context import ProcessorContext, NodeContext
 from sqlleaf.objects.node_types import (
     ColumnNode, SequenceNode, StreamNode, ProgramNode,
 )
+from sqlleaf.objects.query_types import CopyQuery
 from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
 
 logger = logging.getLogger("sqlleaf")
@@ -21,7 +21,11 @@ class PostgresGenerator(BaseGenerator):
 
     @util.singledispatchmethodlogger
     def process(self, expr: exp.Expr, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
-        yield from super().process(expr, processor_ctx, ctx)
+        if isinstance(processor_ctx.query, CopyQuery) and isinstance(processor_ctx.query.source, (exp.Literal, exp.Identifier)):
+            # Push all the non-column sources through process_copy for now (until we can do it inside the ColumnNode)
+            yield from self.process_copy(expr, processor_ctx, ctx)
+        else:
+            yield from super().process(expr, processor_ctx, ctx)
 
     @process.register
     def process_table(self, expr: exp.Table, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
@@ -125,8 +129,8 @@ class PostgresGenerator(BaseGenerator):
         COPY x FROM/TO y
         """
         source = processor_ctx.query.source
-        target = processor_ctx.query.target
 
+        # This logic only processes the query, not the expression
         if source.name in ["stdin", "stdout"]:
             node = StreamNode(
                 name=source.name,
@@ -147,21 +151,9 @@ class PostgresGenerator(BaseGenerator):
                 ctx=ctx,
                 skip_table_properties=True,
             )
-            format = "".join(Path(source.name).suffixes)
-            format = format[1:] if format else "UNKNOWN"
+            format = util.get_file_format(source.name)
             node.set_file_properties(format=format, path=source.name)
             yield EdgeToCreate(node, processor_ctx.child_node_attrs)
 
-        elif target.name in ["stdin", "stdout"]:
-            node = StreamNode(
-                name=target.name,
-                processor_ctx=processor_ctx,
-                ctx=ctx,
-            )
-            yield EdgeToCreate(processor_ctx.child_node_attrs, node)
-        elif target.name in ["program"]:
-            node = ProgramNode(
-                processor_ctx=processor_ctx,
-                ctx=ctx,
-            )
-            yield EdgeToCreate(processor_ctx.child_node_attrs, node)
+        else:
+            raise exception.SqlLeafException(message=f"Unknown source type for COPY: {type(source)}")

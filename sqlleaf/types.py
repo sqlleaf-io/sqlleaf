@@ -60,6 +60,7 @@ def update_column_data_types(graph: nx.MultiDiGraph):
     types are by default UNKNOWN and therefore need resolution.
     """
     # TODO: Use sqlglot.expressions.DataType.is_type() as a first check
+    #  if arg.is_type(*exp.DataType.TEXT_TYPES):
     logger.debug("Skipping data types as it's faulty")
     return
 

@@ -29,7 +29,7 @@ logger = logging.getLogger("sqlleaf")
 
 @dataclass(frozen=True)
 class EdgeToCreate:
-    parent: NodeAttributes
+    parent: NodeAttributes | None
     child: NodeAttributes
 
 

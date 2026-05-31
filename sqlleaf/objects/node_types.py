@@ -69,7 +69,6 @@ class NodeAttributes:
         self.data_type = str(data_type) if data_type else ""
         self.name = name
         self.kind = kind
-        self.member = ""
         self.ctx = ctx
 
     # Allows the class to be used a networkx node
@@ -154,6 +153,7 @@ class ColumnNode(NodeAttributes):
         self.catalog = catalog
         self.schema = schema
         self.table = table
+        self.member = ""
 
         self.parent_kind: str = ""
         self.parent_subkind: str = ""
@@ -213,7 +213,7 @@ class ColumnNode(NodeAttributes):
                 else:
                     column.set("table", exp.to_identifier(source.name))
             if _c != column:
-                logger.debug(f"Renamed node {column.sql()} to {column.sql()}")
+                logger.debug(f"Renamed node {_c.sql()} to {column.sql()}")
 
             self.expr = column
             self.catalog = column.catalog
@@ -636,7 +636,7 @@ class StreamNode(NodeAttributes):
 
 class ProgramNode(NodeAttributes):
     def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr = t.cast(exp.Copy, processor_ctx.expr)
+        expr = t.cast(exp.Copy, processor_ctx.query.statement_original)
 
         program = expr.args["params"][0].sql()
         name, args = (program + " ").split(" ", maxsplit=1)

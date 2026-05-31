@@ -2,6 +2,7 @@ import logging
 import typing as t
 import hashlib
 from functools import singledispatchmethod
+from pathlib import Path
 
 from sqlglot import exp
 import networkx as nx
@@ -229,15 +230,21 @@ def get_cycles(graph: nx.MultiDiGraph):
         yield cycle, errors
 
 
-def set_properties(statement: exp.Create) -> str:
+def find_property(statement: exp.Create) -> str:
     """
-    Get a table/view's properties (e.g. TEMPORARY, EXTERNAL, RECURSIVE)
+    Get the table/view's property (e.g. TEMPORARY, EXTERNAL, RECURSIVE)
     """
     properties = (exp.TemporaryProperty, exp.ExternalProperty, exp.MaterializedProperty)
     property = ""
     if props := statement.args["properties"]:
         property = str(props.find(properties) or "").lower()
     return property
+
+
+def get_file_format(file_path: str) -> str:
+    format = "".join(Path(file_path).suffixes)
+    format = format[1:] if format else "UNKNOWN"
+    return format
 
 
 class SingleDispatchMethodLogger(singledispatchmethod):

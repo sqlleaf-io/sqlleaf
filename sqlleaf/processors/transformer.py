@@ -8,7 +8,7 @@ from sqlglot.optimizer import optimize, qualify, RULES
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query, CTASQuery, TableQuery, DeleteQuery
+from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query, CTASQuery, TableQuery, DeleteQuery, UnloadQuery
 
 logger = logging.getLogger("sqlleaf")
 
@@ -57,6 +57,9 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping):
 
     elif isinstance(query, CopyQuery):
         statement = _convert_copy_to_insert(statement, query, object_mapping)
+
+    elif isinstance(query, UnloadQuery):
+        statement = _convert_unload_to_insert(statement, query, object_mapping)
 
     elif isinstance(query, CTASQuery):
         statement = _convert_outer_values_to_select(statement.expression, statement, object_mapping, query.child_table)
@@ -483,9 +486,9 @@ def _add_information_from_merge(statement: exp.Insert | exp.Update, query: Inser
     return statement
 
 
-def _convert_copy_to_insert(statement: exp.Copy, query: CopyQuery, object_mapping) -> exp.Insert:
+def _convert_copy_to_insert(statement: exp.Copy, query: CopyQuery, object_mapping: mappings.ObjectMapping) -> exp.Insert:
     """
-    Convert the COPY statement into an INSERT statement so that the lineage functions can process it.
+    Convert the COPY statement into an INSERT statement.
 
     COPY INTO <table> FROM @stage
         -> INSERT INTO <table> SELECT * FROM @stage
@@ -524,7 +527,7 @@ def _convert_copy_to_insert(statement: exp.Copy, query: CopyQuery, object_mappin
     if query.is_target_a_stage:
         column_names = []
 
-    # Convert the Copy to an Insert so that the lineage functions work
+    # Convert the Copy to an Insert
     insert_expr = exp.insert(
         expression=select,
         into=query.target,
@@ -541,6 +544,26 @@ def _convert_copy_to_insert(statement: exp.Copy, query: CopyQuery, object_mappin
         child_table_query.column_defs = col_defs
 
     # We don't worry about `self.is_source_a_stage` here as that is handled in the process_column() later
+    return insert_expr
+
+
+def _convert_unload_to_insert(statement: exp.Select, query: UnloadQuery, object_mapping: mappings.ObjectMapping) -> exp.Insert:
+    """
+    Convert the UNLOAD statement into an INSERT statement.
+
+    UNLOAD ('SELECT * FROM fruit.raw') TO 's3://object-path/name-prefix'
+        -> INSERT INTO 's3://object-path/name-prefix' SELECT * FROM fruit.raw
+    """
+    dialect = query.dialect
+
+    # Convert the Unload to an Insert
+    table = exp.table_(query.child_table.name)
+    insert_expr = exp.insert(
+        expression=statement,
+        into=table,
+        dialect=dialect,
+    )
+
     return insert_expr
 
 
@@ -616,7 +639,7 @@ def _apply_optimizations(
     )
     _add_aliases_to_pseudocolumns(statement)
 
-    if add_column_names and isinstance(statement, exp.Insert) and child_table:
+    if add_column_names and isinstance(statement, exp.Insert):
         _add_column_names_to_insert(statement, query , object_mapping, child_table)
 
     # Selectively apply sqlglot's optimization rules.
@@ -688,7 +711,7 @@ def _add_column_names_to_insert(statement: exp.Insert, query: Query, object_mapp
     This prevents sqlglot from assigning its own generated names as aliases.
     This needs to run after qualify() as it expands stars and aliases.
 
-    For example, given
+    For example, given table:
         CREATE TABLE my.apple (a VARCHAR, b VARCHAR);
     the statement:
         INSERT INTO my.apple SELECT name, age FROM my.pear
@@ -700,6 +723,10 @@ def _add_column_names_to_insert(statement: exp.Insert, query: Query, object_mapp
 
     # sqlglot throws a parse error on named columns for Snowflake: INSERT INTO @"my_eXt_sTaGe" (NAME, AGE) SELECT ...
     if query.dialect == "snowflake" and (query.is_source_a_stage or query.is_target_a_stage):
+        return
+
+    if isinstance(query, (CopyQuery, UnloadQuery)):
+        # The aliases and column names aleady exist from a previous transformation
         return
 
     selects = statement.selects

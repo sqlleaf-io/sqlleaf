@@ -27,6 +27,7 @@ from sqlleaf.objects.query_types import (
     MergeQuery,
     DeleteQuery,
     Query,
+    UnloadQuery,
 )
 from sqlleaf.processors.transformer import clean_stored_procedure_text
 
@@ -60,6 +61,7 @@ def get_query_processors():
         "update": _process_unnamed,
         "merge": _process_unnamed,
         "delete": _process_unnamed,
+        "unload": _process_unload,
         "stage": _process_stage,
         "copy": _process_unnamed,
         "put": _process_unnamed,
@@ -88,10 +90,15 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     for index, stmt in enumerate(parsed):
         if not stmt:
             continue
+
+        kind = ""
         if isinstance(stmt, exp.Command):
-            logger.warning(f"Unsupported statement: {stmt.sql(dialect=dialect)}")
-            unsupported.append((index, stmt))
-            continue
+            if dialect == "redshift" and stmt.name == "UNLOAD":
+                kind = "unload"
+            else:
+                logger.warning(f"Unsupported statement: {stmt.sql(dialect=dialect)}")
+                unsupported.append((index, stmt))
+                continue
 
         # Remove duplicate queries
         sql_text = stmt.sql()
@@ -100,22 +107,8 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
             logger.debug(f"Skipping duplicate query: {sql_text}")
             continue
 
-        if stmt.key == "create" and isinstance(stmt, exp.Create):
-            if stmt.kind == "TABLE":
-                if isinstance(stmt.expression, (exp.Select, exp.Values)):
-                    kind = "ctas"
-                else:
-                    kind = "table"
-            else:
-                kind = (stmt.kind or "").lower()
-        elif stmt.key == "select" and "into" in stmt.args:
-            # TODO: this is dialect-dependent! mysql converts, but postgres does not
-            # sqlglot rewrites 'SELECT INTO' to 'CREATE TABLE AS' during parse()
-            # but it's not shown until we produce it with sql(), so we re-parse it
-            stmt = sqlglot.parse_one(stmt.sql(dialect=""), dialect=dialect)
-            kind = "ctas"
-        else:
-            kind = stmt.key.lower()
+        if not kind:
+            stmt, kind = _determine_query_kind(stmt, kind)
 
         if kind not in processors:
             unknown[kind] = unknown[kind] + 1 if kind in unknown else 1
@@ -124,7 +117,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         # Convert the statement to uppercase if the dialect supports it
         stmt = normalize_identifiers(stmt, dialect=dialect, store_original_column_identifiers=True)
 
-        query: Query = processors[kind](statement=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=index)
+        query: t.Optional[Query] = processors[kind](statement=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=index)
         if query:
             queries[_id] = query
             counts[kind] += 1
@@ -136,6 +129,30 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     if unsupported:
         logger.warning("Unsupported statements: %s", len(unsupported))
     return list(queries.values())
+
+
+def _determine_query_kind(statement: exp.Expr, dialect: str) -> t.Tuple[exp.Expr, str]:
+    """
+    Determine a query's "kind" from the expression, which maps to how it will be processed.
+    """
+    if statement.key == "create" and isinstance(statement, exp.Create):
+        if statement.kind == "TABLE":
+            if isinstance(statement.expression, (exp.Select, exp.Values)):
+                kind = "ctas"
+            else:
+                kind = "table"
+        else:
+            kind = (statement.kind or "").lower()
+    elif statement.key == "select" and "into" in statement.args:
+        # TODO: this is dialect-dependent! mysql converts, but postgres does not
+        # sqlglot rewrites 'SELECT INTO' to 'CREATE TABLE AS' during parse()
+        # but it's not shown until we produce it with sql(), so we re-parse it
+        statement = sqlglot.parse_one(statement.sql(dialect=""), dialect=dialect)
+        kind = "ctas"
+    else:
+        kind = statement.key.lower()
+
+    return statement, kind
 
 
 def _collect_writable_cte_queries(parent_query: Query, dialect: str, object_mapping: mappings.ObjectMapping):
@@ -390,15 +407,6 @@ def _process_unnamed(statement: exp.Expr, dialect: str, object_mapping: mappings
     """
     Process an unnamed statement - one not inside a 'CREATE <name>' statement.
     """
-    mapping = {
-        exp.Copy: CopyQuery,
-        exp.Put: PutQuery,
-        exp.Insert: InsertQuery,
-        exp.Update: UpdateQuery,
-        exp.Delete: DeleteQuery,
-        exp.Select: SelectQuery,
-        exp.Merge: MergeQuery,
-    }
     if isinstance(statement, exp.Insert):
         query = InsertQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
         _collect_insert_children(query, object_mapping)
@@ -621,4 +629,9 @@ def _process_stored_procedures(statement: exp.Create, dialect: str, object_mappi
 def _process_stage(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query:
     query = StageQuery(statement, dialect, statement_index)
     object_mapping.add_query(kind="stage", query=query, dialect=dialect)
+    return query
+
+
+def _process_unload(statement: exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query:
+    query = UnloadQuery(statement, dialect, object_mapping, statement_index)
     return query
