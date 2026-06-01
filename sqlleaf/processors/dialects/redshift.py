@@ -10,7 +10,7 @@ from sqlglot.optimizer import Scope
 from sqlleaf import util, exception
 from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
-    ColumnNode, PivotNode, UnpivotNode, NodeAttributes,
+    ColumnNode, PivotNode, UnpivotNode, NodeAttributes, FileColumnNode,
 )
 from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
 
@@ -108,18 +108,15 @@ class RedshiftGenerator(BaseGenerator):
         query = gen_ctx.query
         table = t.cast(exp.Table, query.child_object)
 
-        # Create: column[name kind=file subkind=text type=INT path=s3://my-bucket/a/b/c]
-        column_node = ColumnNode(
-            catalog=table.catalog,
-            schema="",
-            table="",
+        # Create: column[name kind=file format=text type=INT path=s3://my-bucket/a/b/c]
+        format = query.statement_transformed.args["properties"].find(exp.FileFormatProperty).this
+        column_node = FileColumnNode(
             column=child_node.name,
+            format=format,
+            path=location.name,
             gen_ctx=gen_ctx,
             pos_ctx=pos_ctx,
-            skip_table_properties=True,
         )
-        format = query.statement_transformed.args["properties"].find(exp.FileFormatProperty).this
-        column_node.set_file_properties(format=format, path=location.name)
 
         yield EdgeToCreate(column_node, child_node)
 

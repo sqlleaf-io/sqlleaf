@@ -140,7 +140,6 @@ class ColumnNode(NodeAttributes):
         column: str,
         gen_ctx: GeneratorContext,
         pos_ctx: PositionContext,
-        skip_table_properties: bool = False,
     ):
         expr = t.cast(exp.ColumnDef, gen_ctx.expr)
 
@@ -161,8 +160,7 @@ class ColumnNode(NodeAttributes):
         self.source_scope: TableOrScopeType | None = None
         self.has_child_scope: bool = False    # Whether the query's source is inside an inner scope that still need to be resolved
 
-        if not skip_table_properties:
-            self.set_table_properties(catalog, schema, table, gen_ctx)
+        self.set_table_properties(catalog, schema, table, gen_ctx)
 
         # TODO: new algorithm
         # if table_type == "cte":
@@ -220,14 +218,6 @@ class ColumnNode(NodeAttributes):
             self.catalog = column.catalog
             self.schema = column.db
             self.table = column.table
-
-    def set_file_properties(self, format: str, path: str):
-        """
-        column[name kind=file format=text type=INT path=s3://my-bucket/a/b/c]
-        """
-        self.parent_kind = TableType.FILE
-        self.path = path
-        self.format = format
 
     def set_table_properties(self, catalog: str, schema: str, table: str, gen_ctx: GeneratorContext):
         """
@@ -334,16 +324,62 @@ class ColumnNode(NodeAttributes):
         if self.parent_kind == TableType.CTE:
             parts.append(f"statement={self.ctx.statement_index}")
 
-        if self.parent_kind == TableType.FILE:
-            parts.append(f"format={self.format} path={self.path}")
-
         return self.wrap(" ".join(parts))
 
     @property
     def friendly_name(self):
-        if self.parent_kind == TableType.FILE:
-            return self.wrap(f"{self.get_name()} path={self.path}")
         return self.wrap(self.get_name())
+
+
+class FileColumnNode(NodeAttributes):
+    def __init__(
+        self,
+        column: str,
+        format: str,
+        path: str,
+        gen_ctx: GeneratorContext,
+        pos_ctx: PositionContext,
+    ):
+        expr = t.cast(exp.ColumnDef, gen_ctx.expr)
+
+        super().__init__(
+            kind="column",
+            name=column,
+            data_type=gen_ctx.data_type,
+            expr=expr,
+            pos_ctx=pos_ctx,
+        )
+        self.format = format
+        self.path = path
+
+    @property
+    def id(self):
+        fields = [
+            self.path,
+            self.name,
+            self.data_type,
+            util.type_name(self.expr),
+        ]
+        name = "node:" + util.short_sha256_hash(":".join(fields))
+        return name
+
+    def to_dict(self):
+        d = super().to_dict()
+        d.update(
+            {
+                "format": self.format,
+                "path": self.path,
+            }
+        )
+        return d
+
+    @property
+    def full_name(self):
+        return self.wrap(f"{self.name} type={self.data_type} kind=file format={self.format} path={self.path}")
+
+    @property
+    def friendly_name(self):
+        return self.wrap(f"{self.name} path={self.path}")
 
 
 class FunctionNode(NodeAttributes):

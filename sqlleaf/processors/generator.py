@@ -14,7 +14,7 @@ if t.TYPE_CHECKING:
 
 from sqlleaf import util, exception, mappings
 from sqlleaf.objects.context import GeneratorContext, PositionContext
-from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, StageNode, ColumnNode, TableType, StreamNode, ProgramNode
+from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, StageNode, ColumnNode, TableType, StreamNode, ProgramNode, FileColumnNode
 from sqlleaf.objects.query_types import Query, UpdateQuery, CopyQuery, PutQuery, TableQuery, UnloadQuery
 from sqlleaf.processors.dialects.base import BaseGenerator
 
@@ -129,17 +129,14 @@ def _iter_child_nodes(target: exp.Table | exp.Literal | exp.Identifier, gen_ctx:
 
         match target_type:
             case TargetObjectType.FILE:
-                child_node = ColumnNode(
-                    catalog="",
-                    schema="",
-                    table="",
+                format = util.get_file_format(target.name)
+                child_node = FileColumnNode(
                     column=col_def.name,
+                    format=format,
+                    path=target.name,
                     gen_ctx=gen_ctx,
                     pos_ctx=pos_ctx,
-                    skip_table_properties=True
                 )
-                format = util.get_file_format(target.name)
-                child_node.set_file_properties(format=format, path=target.name)
 
             case TargetObjectType.TABLE:
                 child_node = ColumnNode(

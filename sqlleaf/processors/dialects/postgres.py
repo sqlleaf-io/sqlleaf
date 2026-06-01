@@ -9,7 +9,7 @@ from sqlglot import exp
 from sqlleaf import util, exception
 from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
-    ColumnNode, SequenceNode, StreamNode, ProgramNode,
+    ColumnNode, SequenceNode, StreamNode, ProgramNode, FileColumnNode,
 )
 from sqlleaf.objects.query_types import CopyQuery
 from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
@@ -142,17 +142,14 @@ class PostgresGenerator(BaseGenerator):
         elif isinstance(source, exp.Literal):
             # A filename. Create a file node.
             gen_ctx = replace(gen_ctx, expr=source, new_data_type=gen_ctx.child_node._data_type)
-            node = ColumnNode(
-                catalog="",
-                schema="",
-                table="",
+            format = util.get_file_format(source.name)
+            node = FileColumnNode(
                 column=gen_ctx.child_node.name,
+                format=format,
+                path=source.name,
                 gen_ctx=gen_ctx,
                 pos_ctx=pos_ctx,
-                skip_table_properties=True,
             )
-            format = util.get_file_format(source.name)
-            node.set_file_properties(format=format, path=source.name)
             yield EdgeToCreate(node, gen_ctx.child_node)
 
         else:
