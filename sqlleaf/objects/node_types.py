@@ -1,13 +1,14 @@
 from __future__ import annotations
 import logging
 import typing as t
+from dataclasses import replace
 
 from sqlglot import exp
 from sqlglot.optimizer.scope import ScopeType, Scope
 
-from sqlleaf import util, exception
+from sqlleaf import util, exception, mappings
 from sqlleaf.objects.context import NodeContext, ProcessorContext
-from sqlleaf.objects.query_types import Query
+from sqlleaf.objects.query_types import Query, CopyQuery, UnloadQuery
 
 logger = logging.getLogger("sqlleaf")
 
@@ -652,6 +653,9 @@ class ProgramNode(NodeAttributes):
     @property
     def full_name(self):
         return self.wrap(f"{self.name} args='{self.program_args}'")
+
+
+
 
 
 class EdgeAttributes:

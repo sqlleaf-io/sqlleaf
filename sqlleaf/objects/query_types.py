@@ -16,7 +16,7 @@ class Query:
         kind: str,
         dialect: str,
         statement: exp.Expr,
-        child_table: exp.Table | None,
+        child_table: exp.Table | exp.Literal | exp.Identifier | None,
         statement_index: int,
     ):
         self.kind = kind
@@ -510,6 +510,7 @@ class UnloadQuery(Query):
             statement_index=statement_index,
             child_table=to_location_expr,
         )
+        self.source = select_expr
 
     def _parse_expression(self, statement: exp.Command) -> t.Tuple[exp.Select, exp.Literal]:
         """

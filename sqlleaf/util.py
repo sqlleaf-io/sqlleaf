@@ -158,6 +158,10 @@ def column_def_to_column(column_def: exp.ColumnDef, parent_table: t.Optional[exp
     return col
 
 
+def str_to_column_def(name: str) -> exp.ColumnDef:
+    return exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build("UNKNOWN"))
+
+
 def get_table(expr: exp.Expr) -> exp.Table:
     table = expr.find(exp.Table)
     if table is None:
