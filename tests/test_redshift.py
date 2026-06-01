@@ -1,6 +1,8 @@
 import os
 import sys
 
+from sqlleaf.objects.query_types import UnloadQuery
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
@@ -86,14 +88,28 @@ def test__select_pivot_alias(holder):
 
 def test__unload(holder):
     sql = """
-    UNLOAD ('SELECT * FROM fruit.raw')
+    CREATE TABLE source(name VARCHAR, amount INT);
+
+    UNLOAD ('SELECT * FROM source')
     TO 's3://object-path/name-prefix'
     IAM_ROLE 'arn:aws:iam::0123456789012:role/MyRedshiftRole';
     """
-    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+    h = holder(sql=sql, dialect=DIALECT)
 
-    assert len(h.nodes) == 0
-    assert len(h.queries) == 0
+    assert h.paths == [
+        ['column[source.name]', 'column[name path=s3://object-path/name-prefix]'],
+        ['column[source.amount]', 'column[amount path=s3://object-path/name-prefix]']
+    ]
+    assert h.nodes_full == [
+        'column[amount type=UNKNOWN kind=file format=UNKNOWN '
+        'path=s3://object-path/name-prefix]',
+        'column[name type=UNKNOWN kind=file format=UNKNOWN '
+        'path=s3://object-path/name-prefix]',
+        'column[source.amount type=INT kind=table]',
+        'column[source.name type=VARCHAR kind=table]',
+    ]
+    assert len(h.edges) == 2
+    assert isinstance(h.queries[1], UnloadQuery)
 
 
 def test__table_external(holder):
