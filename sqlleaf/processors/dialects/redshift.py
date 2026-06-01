@@ -8,7 +8,7 @@ from sqlglot import exp
 from sqlglot.optimizer import Scope
 
 from sqlleaf import util, exception
-from sqlleaf.objects.context import ProcessorContext, NodeContext
+from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
     ColumnNode, PivotNode, UnpivotNode, NodeAttributes,
 )
@@ -20,11 +20,11 @@ class RedshiftGenerator(BaseGenerator):
     dialect = "redshift"
 
     @util.singledispatchmethodlogger
-    def process(self, expr: exp.Expr, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
-        yield from super().process(expr, processor_ctx, ctx)
+    def process(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+        yield from super().process(expr, gen_ctx, pos_ctx)
 
     @process.register
-    def process_unpivot(self, expr: exp.Pivot, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_unpivot(self, expr: exp.Pivot, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT * FROM ... UNPIVOT ( ... )
         """
@@ -33,7 +33,7 @@ class RedshiftGenerator(BaseGenerator):
         # We have lineage:
         #   <column> -> UNPIVOT -> <expression>
         #   <value> -> UNPIVOT -> <field>
-        selected_column = processor_ctx.scope.columns[ctx.select_index]
+        selected_column = gen_ctx.scope.columns[pos_ctx.select_index]
         pivot_expression = expr.expressions[0]
         pivot_field = expr.fields[0]
 
@@ -50,23 +50,23 @@ class RedshiftGenerator(BaseGenerator):
             pivot_value = pivot_alias.args[arg]
 
             unpivot_node = UnpivotNode(
-                processor_ctx=processor_ctx,
-                ctx=ctx,
+                gen_ctx=gen_ctx,
+                pos_ctx=pos_ctx,
             )
             source = pivot_value.name if arg == "this" else ""  # Only columns are sources for now
             unpivot_node.set(source=source, target=selected_column.name)
-            yield EdgeToCreate(unpivot_node, processor_ctx.child_node_attrs)
+            yield EdgeToCreate(unpivot_node, gen_ctx.child_node)
 
-            yield from self.do_grandparents([pivot_value], unpivot_node, processor_ctx, ctx)
+            yield from self.do_grandparents([pivot_value], unpivot_node, gen_ctx, pos_ctx)
 
 
     @process.register
-    def process_pivot(self, expr: exp.Pivot, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_pivot(self, expr: exp.Pivot, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT * FROM (SELECT  ...) PIVOT ( ... )
         """
         # Find the associated expression for the column, and process it
-        selected_column = processor_ctx.scope.columns[ctx.select_index]
+        selected_column = gen_ctx.scope.columns[pos_ctx.select_index]
         pivot_column_mapping = _get_pivot_mapping(expr)
 
         # The associated column and expression
@@ -74,39 +74,39 @@ class RedshiftGenerator(BaseGenerator):
         pivot_expr = column_and_expr["expression"]
 
         pivot_node = PivotNode(
-            processor_ctx=processor_ctx,
-            ctx=ctx,
+            gen_ctx=gen_ctx,
+            pos_ctx=pos_ctx,
         )
         pivot_node.set(source=pivot_expr.alias_or_name, target=selected_column.alias_or_name)
-        yield EdgeToCreate(pivot_node, processor_ctx.child_node_attrs)
+        yield EdgeToCreate(pivot_node, gen_ctx.child_node)
 
         grandparents = [pivot_expr]
-        yield from self.do_grandparents(grandparents, pivot_node, processor_ctx, ctx)
+        yield from self.do_grandparents(grandparents, pivot_node, gen_ctx, pos_ctx)
 
 
     @process.register
-    def process_column(self, expr: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
-        pivot = _get_pivot_expr(processor_ctx.scope)
+    def process_column(self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+        pivot = _get_pivot_expr(gen_ctx.scope)
         if (pivot and pivot.alias_or_name == expr.table and
-            not isinstance(processor_ctx.child_node_attrs, UnpivotNode)  # Prevent infinite recursion
+            not isinstance(gen_ctx.child_node, UnpivotNode)  # Prevent infinite recursion
         ):
-            processor_ctx = replace(processor_ctx, expr=pivot)
+            gen_ctx = replace(gen_ctx, expr=pivot)
             if pivot.unpivot:
-                yield from self.process_unpivot(pivot, processor_ctx, ctx)
+                yield from self.process_unpivot(pivot, gen_ctx, pos_ctx)
             else:
-                yield from self.process_pivot(pivot, processor_ctx, ctx)
+                yield from self.process_pivot(pivot, gen_ctx, pos_ctx)
         else:
-            yield from super().process(expr, processor_ctx, ctx)
+            yield from super().process(expr, gen_ctx, pos_ctx)
 
     @process.register
-    def process_location(self, expr: exp.LocationProperty, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_location(self, expr: exp.LocationProperty, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         CREATE EXTERNAL TABLE ... LOCATION
         """
         location = expr.this
-        child_node =  t.cast(NodeAttributes, processor_ctx.child_node_attrs)
-        query = processor_ctx.query
-        table = t.cast(exp.Table, query.child_table)
+        child_node =  t.cast(NodeAttributes, gen_ctx.child_node)
+        query = gen_ctx.query
+        table = t.cast(exp.Table, query.child_object)
 
         # Create: column[name kind=file subkind=text type=INT path=s3://my-bucket/a/b/c]
         column_node = ColumnNode(
@@ -114,8 +114,8 @@ class RedshiftGenerator(BaseGenerator):
             schema="",
             table="",
             column=child_node.name,
-            processor_ctx=processor_ctx,
-            ctx=ctx,
+            gen_ctx=gen_ctx,
+            pos_ctx=pos_ctx,
             skip_table_properties=True,
         )
         format = query.statement_transformed.args["properties"].find(exp.FileFormatProperty).this

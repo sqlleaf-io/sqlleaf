@@ -7,7 +7,7 @@ from sqlglot import exp
 from sqlglot.optimizer.scope import ScopeType, Scope
 
 from sqlleaf import util, exception, mappings
-from sqlleaf.objects.context import NodeContext, ProcessorContext
+from sqlleaf.objects.context import PositionContext, GeneratorContext
 from sqlleaf.objects.query_types import Query, CopyQuery, UnloadQuery
 
 logger = logging.getLogger("sqlleaf")
@@ -61,7 +61,7 @@ class NodeAttributes:
         self,
         expr: exp.Expr,
         data_type: exp.DataType | None,
-        ctx: NodeContext,
+        pos_ctx: PositionContext,
         name: str,
         kind: str = "",
     ):
@@ -70,7 +70,7 @@ class NodeAttributes:
         self.data_type = str(data_type) if data_type else ""
         self.name = name
         self.kind = kind
-        self.ctx = ctx
+        self.ctx = pos_ctx
 
     # Allows the class to be used a networkx node
     def __hash__(self):
@@ -109,13 +109,13 @@ class NodeAttributes:
 
 
 class LiteralNode(NodeAttributes):
-    def __init__(self, name: str, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def __init__(self, name: str, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
         super().__init__(
             kind="literal",
-            data_type=processor_ctx.data_type,
-            expr=processor_ctx.expr,
+            data_type=gen_ctx.data_type,
+            expr=gen_ctx.expr,
             name=name,
-            ctx=ctx,
+            pos_ctx=pos_ctx,
         )
 
     @property
@@ -138,18 +138,18 @@ class ColumnNode(NodeAttributes):
         schema: str,
         table: str,
         column: str,
-        processor_ctx: ProcessorContext,
-        ctx: NodeContext,
+        gen_ctx: GeneratorContext,
+        pos_ctx: PositionContext,
         skip_table_properties: bool = False,
     ):
-        expr = t.cast(exp.ColumnDef, processor_ctx.expr)
+        expr = t.cast(exp.ColumnDef, gen_ctx.expr)
 
         super().__init__(
             kind="column",
             name=column,
-            data_type=processor_ctx.data_type,
+            data_type=gen_ctx.data_type,
             expr=expr,
-            ctx=ctx,
+            pos_ctx=pos_ctx,
         )
         self.catalog = catalog
         self.schema = schema
@@ -162,11 +162,11 @@ class ColumnNode(NodeAttributes):
         self.has_child_scope: bool = False    # Whether the query's source is inside an inner scope that still need to be resolved
 
         if not skip_table_properties:
-            self.set_table_properties(catalog, schema, table, processor_ctx)
+            self.set_table_properties(catalog, schema, table, gen_ctx)
 
         # TODO: new algorithm
         # if table_type == "cte":
-        #     self.member = processor_ctx.node.recursive_cte_member_kind
+        #     self.member = gen_ctx.node.recursive_cte_member_kind
 
 
     @property
@@ -229,11 +229,11 @@ class ColumnNode(NodeAttributes):
         self.path = path
         self.format = format
 
-    def set_table_properties(self, catalog: str, schema: str, table: str, processor_ctx: ProcessorContext):
+    def set_table_properties(self, catalog: str, schema: str, table: str, gen_ctx: GeneratorContext):
         """
         Figure out the table's type (view/table) by inspecting the original query in the mapping.
         """
-        scope = processor_ctx.scope
+        scope = gen_ctx.scope
         if isinstance(scope, Scope):
             source = scope.sources.get(table)
             if not source:
@@ -290,8 +290,8 @@ class ColumnNode(NodeAttributes):
 
         # Get the table type from the mapping
         name = ".".join([tok for tok in tokens if tok])
-        tab = exp.to_table(name, dialect=processor_ctx.query.dialect)
-        query = processor_ctx.object_mapping.get_table_or_stage(table=tab, raise_on_missing=False)
+        tab = exp.to_table(name, dialect=gen_ctx.query.dialect)
+        query = gen_ctx.object_mapping.get_table_or_stage(table=tab, raise_on_missing=False)
 
         if not query or query.kind == "ctas":
             self.parent_kind = TableType.TABLE
@@ -347,20 +347,20 @@ class ColumnNode(NodeAttributes):
 
 
 class FunctionNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr = t.cast(t.Union[exp.Binary, exp.Func], processor_ctx.expr)
+    def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
+        expr = t.cast(t.Union[exp.Binary, exp.Func], gen_ctx.expr)
 
         if isinstance(expr, exp.Binary):
             name = expr.key
         else:
-            name = _function_name(expr, processor_ctx.query.dialect)
+            name = _function_name(expr, gen_ctx.query.dialect)
 
         super().__init__(
             kind="function",
-            data_type=processor_ctx.data_type,
-            expr=processor_ctx.expr,
+            data_type=gen_ctx.data_type,
+            expr=gen_ctx.expr,
             name=name,
-            ctx=ctx,
+            pos_ctx=pos_ctx,
         )
 
     @property
@@ -380,17 +380,17 @@ class UserDefinedFunctionNode(NodeAttributes):
     def __init__(
         self,
         schema: str,
-        processor_ctx: ProcessorContext,
-        ctx: NodeContext,
+        gen_ctx: GeneratorContext,
+        pos_ctx: PositionContext,
     ):
-        expr = processor_ctx.expr
+        expr = gen_ctx.expr
 
         super().__init__(
             kind="udf",
-            data_type=processor_ctx.data_type,
+            data_type=gen_ctx.data_type,
             expr=expr,
             name=expr.this,
-            ctx=ctx,
+            pos_ctx=pos_ctx,
         )
         self.schema = schema
 
@@ -410,8 +410,8 @@ class UserDefinedFunctionNode(NodeAttributes):
 
 
 class JsonPathNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr = t.cast(exp.JSONExtract, processor_ctx.expr)
+    def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
+        expr = t.cast(exp.JSONExtract, gen_ctx.expr)
 
         self.selectors = self.json_selectors(expr)
         self.selector = "".join([str(s) for s in self.selectors])
@@ -419,10 +419,10 @@ class JsonPathNode(NodeAttributes):
 
         super().__init__(
             kind="jsonpath",
-            data_type=processor_ctx.data_type,
+            data_type=gen_ctx.data_type,
             expr=expr,
             name=self.selector,
-            ctx=ctx,
+            pos_ctx=pos_ctx,
         )
 
     def json_selectors(self, expr: exp.JSONExtract):
@@ -449,24 +449,24 @@ class JsonPathNode(NodeAttributes):
 
 
 class VariableNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
         super().__init__(
             kind="variable",
-            data_type=processor_ctx.data_type,
-            expr=processor_ctx.expr,
+            data_type=gen_ctx.data_type,
+            expr=gen_ctx.expr,
             name='todo',
-            ctx=ctx,
+            pos_ctx=pos_ctx,
         )
 
 
 class StarNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
         super().__init__(
             kind="star",
             data_type=exp.DataType.build("UNKNOWN"),
-            expr=processor_ctx.expr,
+            expr=gen_ctx.expr,
             name="*",
-            ctx=ctx,
+            pos_ctx=pos_ctx,
         )
 
     @property
@@ -475,24 +475,24 @@ class StarNode(NodeAttributes):
 
 
 class VarNode(NodeAttributes):
-    def __init__(self, processor_ctx, ctx: NodeContext):
+    def __init__(self, gen_ctx, pos_ctx: PositionContext):
         super().__init__(
             kind="var",
             data_type=exp.DataType.build("NULL"),
-            expr=processor_ctx.expr,
-            name=processor_ctx.expr.name,
-            ctx=ctx,
+            expr=gen_ctx.expr,
+            name=gen_ctx.expr.name,
+            pos_ctx=pos_ctx,
         )
 
 
 class NullNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
         super().__init__(
             kind="null",
             data_type=exp.DataType.build("NULL"),
-            expr=processor_ctx.expr,
+            expr=gen_ctx.expr,
             name="null",
-            ctx=ctx,
+            pos_ctx=pos_ctx,
         )
 
     @property
@@ -507,32 +507,32 @@ class NullNode(NodeAttributes):
 
 
 class SequenceNode(NodeAttributes):
-    def __init__(self, name: str, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def __init__(self, name: str, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
         super().__init__(
             kind="sequence",
             data_type=exp.DataType.build("INT"),
-            expr=processor_ctx.expr,
+            expr=gen_ctx.expr,
             name=name,
-            ctx=ctx,
+            pos_ctx=pos_ctx,
         )
 
 
 class WindowNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr = t.cast(exp.Window, processor_ctx.expr.this)
+    def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
+        expr = t.cast(exp.Window, gen_ctx.expr.this)
 
         super().__init__(
             kind="window",
-            data_type=processor_ctx.data_type,
-            expr=processor_ctx.expr,
-            name=_function_name(expr, processor_ctx.query.dialect),
-            ctx=ctx,
+            data_type=gen_ctx.data_type,
+            expr=gen_ctx.expr,
+            name=_function_name(expr, gen_ctx.query.dialect),
+            pos_ctx=pos_ctx,
         )
 
 
 class StageNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr = t.cast(exp.Var, processor_ctx.expr)
+    def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
+        expr = t.cast(exp.Var, gen_ctx.expr)
 
         if str(expr).startswith("@"):
             if not str(expr).startswith('@"'):
@@ -544,7 +544,7 @@ class StageNode(NodeAttributes):
             data_type=None,
             expr=expr,
             name=expr.name.removeprefix("@").replace('"', ""),
-            ctx=ctx,
+            pos_ctx=pos_ctx,
         )
 
     @property
@@ -553,15 +553,15 @@ class StageNode(NodeAttributes):
 
 
 class FileNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr = t.cast(exp.Literal, processor_ctx.expr)
+    def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
+        expr = t.cast(exp.Literal, gen_ctx.expr)
         filename = expr.this.removeprefix("file://")
         super().__init__(
             kind="file",
             data_type=None,
-            expr=processor_ctx.expr,
+            expr=gen_ctx.expr,
             name=filename,
-            ctx=ctx,
+            pos_ctx=pos_ctx,
         )
 
     @property
@@ -570,15 +570,15 @@ class FileNode(NodeAttributes):
 
 
 class IntervalNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr = t.cast(exp.Interval, processor_ctx.expr)
+    def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
+        expr = t.cast(exp.Interval, gen_ctx.expr)
         name = f'"{str(expr.this.name)} {str(expr.unit)}"'
         super().__init__(
             kind="interval",
-            data_type=processor_ctx.data_type,
-            expr=processor_ctx.expr,
+            data_type=gen_ctx.data_type,
+            expr=gen_ctx.expr,
             name=name,
-            ctx=ctx,
+            pos_ctx=pos_ctx,
         )
 
     @property
@@ -589,14 +589,14 @@ class IntervalNode(NodeAttributes):
 
 
 class _PivotNode(NodeAttributes):
-    def __init__(self, kind: str, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr = t.cast(exp.Column, processor_ctx.expr)
+    def __init__(self, kind: str, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
+        expr = t.cast(exp.Column, gen_ctx.expr)
         super().__init__(
             kind=kind,
-            data_type=processor_ctx.data_type,
-            expr=processor_ctx.expr,
+            data_type=gen_ctx.data_type,
+            expr=gen_ctx.expr,
             name=expr.name,
-            ctx=ctx,
+            pos_ctx=pos_ctx,
         )
         self.source: str = ""
         self.target: str = ""
@@ -611,23 +611,23 @@ class _PivotNode(NodeAttributes):
 
 
 class PivotNode(_PivotNode):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        super().__init__("pivot", processor_ctx, ctx)
+    def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
+        super().__init__("pivot", gen_ctx, pos_ctx)
 
 
 class UnpivotNode(_PivotNode):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        super().__init__("unpivot", processor_ctx, ctx)
+    def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
+        super().__init__("unpivot", gen_ctx, pos_ctx)
 
 
 class StreamNode(NodeAttributes):
-    def __init__(self, name: str, processor_ctx: ProcessorContext, ctx: NodeContext):
+    def __init__(self, name: str, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
         super().__init__(
             kind="stream",
-            data_type=processor_ctx.data_type,
-            expr=processor_ctx.expr,
+            data_type=gen_ctx.data_type,
+            expr=gen_ctx.expr,
             name=name,
-            ctx=ctx,
+            pos_ctx=pos_ctx,
         )
 
     @property
@@ -636,16 +636,16 @@ class StreamNode(NodeAttributes):
 
 
 class ProgramNode(NodeAttributes):
-    def __init__(self, processor_ctx: ProcessorContext, ctx: NodeContext):
-        expr = t.cast(exp.Copy, processor_ctx.query.statement_original)
+    def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
+        expr = t.cast(exp.Copy, gen_ctx.query.statement_original)
 
         program = expr.args["params"][0].sql()
         name, args = (program + " ").split(" ", maxsplit=1)
         super().__init__(
             kind="program",
             data_type=exp.DataType.build("UNKNOWN"),
-            expr=processor_ctx.expr,
-            ctx=ctx,
+            expr=gen_ctx.expr,
+            pos_ctx=pos_ctx,
             name=name
         )
         self.program_args = args.strip()

@@ -192,7 +192,7 @@ def _collect_insert_children(query: InsertQuery, object_mapping: mappings.Object
     if not isinstance(on_conflict, exp.OnConflict) or on_conflict.args["action"].name == "DO NOTHING":
         return
 
-    update_query = UpdateQuery(expr=on_conflict, dialect=query.dialect, object_mapping=object_mapping, statement_index=0, table=query.child_table)
+    update_query = UpdateQuery(expr=on_conflict, dialect=query.dialect, object_mapping=object_mapping, statement_index=0, table=query.child_object)
     query.add_child_query(update_query)
 
 
@@ -232,12 +232,12 @@ def _collect_merge_children(parent_query: MergeQuery, object_mapping: mappings.O
         when_expr = util.copy_expression(when)
 
         if isinstance(when_expr, exp.Update):
-            update_query = UpdateQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i, table=merge.child_table)
+            update_query = UpdateQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i, table=merge.child_object)
             parent_query.add_child_query(update_query)
 
         elif isinstance(when_expr, exp.Insert):
-            insert_query = InsertQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i, table=merge.child_table)
-            insert_query.child_table = merge.child_table
+            insert_query = InsertQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i, table=merge.child_object)
+            insert_query.child_object = merge.child_object
             merge.add_child_query(insert_query)
 
 
@@ -252,7 +252,7 @@ def _set_column_defs(query: TableQuery, object_mapping: mappings.ObjectMapping):
         if isinstance(expression, exp.ColumnDef):
             all_columns.append(expression)
         elif isinstance(expression, exp.LikeProperty):
-            like_columns = _collect_like_columns(expression, object_mapping, t.cast(exp.Table, query.child_table))
+            like_columns = _collect_like_columns(expression, object_mapping, t.cast(exp.Table, query.child_object))
             all_columns.extend(like_columns)
         elif isinstance(expression, exp.Identifier):
             # CREATE TABLE (a INT, b);
@@ -301,8 +301,8 @@ def _collect_inherited_columns(
             query.inherits.append(parent_table_query)
 
             # Re-assign the columns to a copy of the correct table
-            if query.child_table and query.child_table.parent:
-                schema = util.copy_expression(query.child_table.parent)
+            if query.child_object and query.child_object.parent:
+                schema = util.copy_expression(query.child_object.parent)
                 for parent_col_def in parent_table_query.column_defs:
                     col_def = parent_col_def.copy()
                     schema.append("expressions", col_def)
@@ -311,7 +311,7 @@ def _collect_inherited_columns(
     return column_defs
 
 
-def _collect_like_columns(like_property: exp.LikeProperty, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> t.List[exp.ColumnDef]:
+def _collect_like_columns(like_property: exp.LikeProperty, object_mapping: mappings.ObjectMapping, child_object: exp.Table) -> t.List[exp.ColumnDef]:
     """
     Search for tables referenced as 'CREATE TABLE b (LIKE a)'.
     A table can have multiple LIKE clauses.
@@ -342,12 +342,12 @@ def _collect_like_columns(like_property: exp.LikeProperty, object_mapping: mappi
                         try:
                             referenced_parent_col_def = [c for c in parent_columns if c.name == inner_col.name][0]
                         except IndexError:
-                            message = f"Column '{inner_col.name}' does not exist in table '{child_table}'."
+                            message = f"Column '{inner_col.name}' does not exist in table '{child_object}'."
                             raise exception.SqlLeafException(message=message)
 
-                        inner_col.set("catalog", exp.to_identifier(child_table.catalog))
-                        inner_col.set("db", exp.to_identifier(child_table.db))
-                        inner_col.set("table", exp.to_identifier(child_table.this))
+                        inner_col.set("catalog", exp.to_identifier(child_object.catalog))
+                        inner_col.set("db", exp.to_identifier(child_object.db))
+                        inner_col.set("table", exp.to_identifier(child_object.this))
                         inner_col.type = referenced_parent_col_def.kind
             else:
                 # Discard the column's expression

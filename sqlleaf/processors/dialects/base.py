@@ -7,7 +7,7 @@ from dataclasses import replace, dataclass
 from sqlglot import exp
 
 from sqlleaf import util, exception
-from sqlleaf.objects.context import ProcessorContext, NodeContext
+from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
     NodeAttributes,
     ColumnNode,
@@ -39,7 +39,7 @@ class BaseGenerator:
     dialect = ""
 
     @util.singledispatchmethodlogger
-    def process(self, expr: exp.Expr, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         raise exception.SqlLeafException(message=f"Unhandled expression type: {type(expr)}")
 
     def __init_subclass__(cls, **kwargs):
@@ -55,7 +55,7 @@ class BaseGenerator:
             raise exception.SqlLeafException(message=f"Unknown dialect: {class_name}")
         return target_class()
 
-    def do_grandparents(self, grandparents: t.List[exp.Expr], parent: NodeAttributes, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def do_grandparents(self, grandparents: t.List[exp.Expr], parent: NodeAttributes, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         Process a list of expressions of a parent expression.
 
@@ -63,82 +63,82 @@ class BaseGenerator:
         with additional expressions to now process, i.e. [grandparents]->parent->child
         """
         if parent.kind in ["function", "udf"]:
-            ctx = replace(ctx, function_depth=ctx.function_depth + 1)
+            pos_ctx = replace(pos_ctx, function_depth=pos_ctx.function_depth + 1)
 
         for grand_expr in grandparents:
-            processor_ctx = replace(processor_ctx, expr=grand_expr, child_node_attrs=parent)
-            yield from self.process(processor_ctx.expr, processor_ctx=processor_ctx, ctx=ctx)
-            ctx = replace(ctx, function_arg_index=ctx.function_arg_index + 1)
+            gen_ctx = replace(gen_ctx, expr=grand_expr, child_node=parent)
+            yield from self.process(gen_ctx.expr, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
+            pos_ctx = replace(pos_ctx, function_arg_index=pos_ctx.function_arg_index + 1)
 
     @process.register
-    def process_function(self, expr: exp.Func, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
-        parent = FunctionNode(processor_ctx, ctx)
-        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+    def process_function(self, expr: exp.Func, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+        parent = FunctionNode(gen_ctx, pos_ctx)
+        yield EdgeToCreate(parent, gen_ctx.child_node)
 
         grandparents = util.get_function_args(expr=expr)
-        yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
+        yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
 
     @process.register
-    def process_placeholder(self, expr: exp.Placeholder, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_placeholder(self, expr: exp.Placeholder, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         CREATE PROCEDURE proc(v_amount INT) AS
         SELECT v_amount     <-- placeholder
         """
         expr: exp.ColumnDef = expr.this
-        processor_ctx = replace(processor_ctx, new_data_type=expr.kind)
-        parent = VariableNode(processor_ctx, ctx)
-        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+        gen_ctx = replace(gen_ctx, new_data_type=expr.kind)
+        parent = VariableNode(gen_ctx, pos_ctx)
+        yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
-    def process_array(self, expr: exp.Array, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_array(self, expr: exp.Array, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT ARRAY[1,2,3]
         """
         values = [str(e) for e in expr.expressions]
         values = "{" + ",".join(values) + "}"
-        parent = LiteralNode(name=values, processor_ctx=processor_ctx, ctx=ctx)
-        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+        parent = LiteralNode(name=values, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
+        yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
-    def process_window(self, expr: exp.Window, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_window(self, expr: exp.Window, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT ROW_NUMBER() OVER (ORDER BY name DESC) AS amount
         """
-        parent = WindowNode(processor_ctx=processor_ctx, ctx=ctx)
-        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+        parent = WindowNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx)
+        yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register(exp.Literal)
     @process.register(exp.Boolean)
-    def process_literal(self, expr: exp.Literal, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_literal(self, expr: exp.Literal, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         select 'hello' as greeting
         """
-        parent = LiteralNode(name=expr.sql(), processor_ctx=processor_ctx, ctx=ctx)
-        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+        parent = LiteralNode(name=expr.sql(), gen_ctx=gen_ctx, pos_ctx=pos_ctx)
+        yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
-    def process_star(self, expr: exp.Star, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_star(self, expr: exp.Star, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         select count(*) as cnt
         """
-        parent = StarNode(processor_ctx, ctx)
-        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+        parent = StarNode(gen_ctx, pos_ctx)
+        yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
-    def process_null(self, expr: exp.Null, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
-        parent = NullNode(processor_ctx, ctx)
-        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+    def process_null(self, expr: exp.Null, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+        parent = NullNode(gen_ctx, pos_ctx)
+        yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
-    def process_neg(self, expr: exp.Neg, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_neg(self, expr: exp.Neg, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT -10
         """
-        parent = LiteralNode(name="-" + expr.name, processor_ctx=processor_ctx, ctx=ctx)
-        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+        parent = LiteralNode(name="-" + expr.name, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
+        yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
-    def process_anonymous(self, expr: exp.Anonymous, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_anonymous(self, expr: exp.Anonymous, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         User-defined functions.
 
@@ -154,38 +154,38 @@ class BaseGenerator:
 
         # Process a UDF
         node_args = list(expr.flatten())
-        parent = UserDefinedFunctionNode(schema=schema, processor_ctx=processor_ctx, ctx=ctx)
+        parent = UserDefinedFunctionNode(schema=schema, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
 
         table_expr = exp.table_(table=function, db=schema)
-        udf_obj = processor_ctx.object_mapping.find_query(kind="udf", table=table_expr)
+        udf_obj = gen_ctx.object_mapping.find_query(kind="udf", table=table_expr)
 
         if udf_obj:
             if isinstance(udf_obj.return_expr, exp.Literal):
                 # TODO: this may be incorrect - analyse UDFs properly
                 node_args = [udf_obj.return_expr]
 
-        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+        yield EdgeToCreate(parent, gen_ctx.child_node)
 
         grandparents = node_args
-        yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
+        yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
 
     @process.register
-    def process_within_group(self, expr: exp.WithinGroup, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_within_group(self, expr: exp.WithinGroup, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT MODE() WITHIN GROUP (ORDER BY name DESC) AS name
         """
-        processor_ctx = replace(processor_ctx, expr=expr.this)
-        yield from self.process(expr.this, processor_ctx, ctx)
+        gen_ctx = replace(gen_ctx, expr=expr.this)
+        yield from self.process(expr.this, gen_ctx, pos_ctx)
 
     @process.register
-    def process_select(self, expr: exp.Select, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_select(self, expr: exp.Select, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT (SELECT 1) AS name
         """
         yield EdgeToCreate(None, None)
 
     @process.register
-    def process_case(self, expr: exp.Case, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_case(self, expr: exp.Case, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT CASE WHEN count(*) > 1 THEN 1 ELSE 0 END AS my_var
         """
@@ -194,37 +194,37 @@ class BaseGenerator:
         thens = [if_expr.args.get("true") or if_expr.args.get("false") for if_expr in expr.args["ifs"]]
         grandparents = [default] + thens
 
-        parent = processor_ctx.child_node_attrs
-        yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
+        parent = gen_ctx.child_node
+        yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
 
     @process.register
-    def process_binary(self, expr: exp.Binary, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_binary(self, expr: exp.Binary, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT 1 + 2 AS age
         """
         if isinstance(expr, exp.Dot):
             # Process this as a UDF
             logger.debug("Found exp.Dot inside exp.Binary")
-            processor_ctx = replace(processor_ctx, expr=expr.right)
-            yield from self.process(expr.right, processor_ctx, ctx)
+            gen_ctx = replace(gen_ctx, expr=expr.right)
+            yield from self.process(expr.right, gen_ctx, pos_ctx)
         else:
-            parent = FunctionNode(processor_ctx, ctx)
-            yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+            parent = FunctionNode(gen_ctx, pos_ctx)
+            yield EdgeToCreate(parent, gen_ctx.child_node)
 
             grandparents = [expr.left, expr.right]
-            yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
+            yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
 
     @process.register
-    def process_var(self, expr: exp.Var, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_var(self, expr: exp.Var, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         A variable in a stored procedure or UDF, or the keyword 'DEFAULT'
         """
-        parent = VarNode(processor_ctx=processor_ctx, ctx=ctx)
-        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+        parent = VarNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx)
+        yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
-    def process_column(self, expr: exp.Column, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
-        if not is_node_a_placeholder(expr=expr, query=processor_ctx.query):
+    def process_column(self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+        if not is_node_a_placeholder(expr=expr, query=gen_ctx.query):
             # The actual placeholder is processed elsewhere
 
             parent = ColumnNode(
@@ -232,64 +232,64 @@ class BaseGenerator:
                 schema=expr.db,
                 table=expr.table,
                 column=expr.name,
-                processor_ctx=processor_ctx,
-                ctx=ctx,
+                gen_ctx=gen_ctx,
+                pos_ctx=pos_ctx,
             )
 
             # Rename the column's table/schema/catalog to be fully qualified
-            if processor_ctx.scope:
-                scope = processor_ctx.scope
+            if gen_ctx.scope:
+                scope = gen_ctx.scope
                 source_table = dict(scope.references)[expr.table]
 
                 if not isinstance(source_table, (exp.Table, exp.Values, exp.Subquery)):
                     raise exception.SqlLeafException(message=f"Unexpected source type: {type(source_table)}")
 
                 if not isinstance(source_table, exp.Subquery):
-                    parent.rename_table(source_table, processor_ctx.query.dialect)
+                    parent.rename_table(source_table, gen_ctx.query.dialect)
 
-            yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+            yield EdgeToCreate(parent, gen_ctx.child_node)
 
             if isinstance(parent.source_scope, exp.Table):
                 # Traverse into the table (esp. needed by "ROWS FROM")
                 ex = parent.source_scope
-                processor_ctx = replace(processor_ctx, expr=ex, child_node_attrs=parent)
-                yield from self.process(ex, processor_ctx, ctx)
+                gen_ctx = replace(gen_ctx, expr=ex, child_node=parent)
+                yield from self.process(ex, gen_ctx, pos_ctx)
 
     @process.register(exp.JSONExtract)
     @process.register(exp.JSONBExtract)
-    def process_json(self, expr: exp.JSONExtract, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
-        parent = JsonPathNode(processor_ctx=processor_ctx, ctx=ctx)
+    def process_json(self, expr: exp.JSONExtract, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+        parent = JsonPathNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx)
 
         # Get the bottom expression to extract the JSON paths
         source = expr.this
         while isinstance(source, (exp.JSONExtract, exp.JSONExtractScalar)):
             source = source.this
 
-        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+        yield EdgeToCreate(parent, gen_ctx.child_node)
 
-        processor_ctx = replace(processor_ctx, expr=source, child_node_attrs=parent)
-        yield from self.process(source, processor_ctx, ctx)
+        gen_ctx = replace(gen_ctx, expr=source, child_node=parent)
+        yield from self.process(source, gen_ctx, pos_ctx)
 
 
     @process.register
-    def process_interval(self, expr: exp.Interval, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
-        parent = IntervalNode(processor_ctx=processor_ctx, ctx=ctx)
-        yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+    def process_interval(self, expr: exp.Interval, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+        parent = IntervalNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx)
+        yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register(exp.DataType)
     @process.register(exp.Identifier)
     @process.register(exp.ColumnDef)
     @process.register(exp.Table)
-    def skip(self, expr: exp.Expr, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def skip(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         logger.debug(f"Skipping expression: {type(expr)} {str(expr)}")
         yield EdgeToCreate(None, None)
 
     @process.register
-    def process_values(self, expr: exp.Values, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_values(self, expr: exp.Values, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT FROM (VALUES ())
         """
-        selected_column: exp.Column = processor_ctx.child_node_attrs.expr
+        selected_column: exp.Column = gen_ctx.child_node.expr
 
         # Select the correct values from the list according to the column's position in the alias
         if isinstance(expr.parent, exp.From):
@@ -298,11 +298,11 @@ class BaseGenerator:
             value_exprs = [tup_expr.expressions[col_idx] for tup_expr in expr.expressions]
 
             grandparents = value_exprs
-            parent = processor_ctx.child_node_attrs
-            yield from self.do_grandparents(grandparents, parent, processor_ctx, ctx)
+            parent = gen_ctx.child_node
+            yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
 
     @process.register
-    def process_subquery(self, expr: exp.Subquery, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_subquery(self, expr: exp.Subquery, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         SELECT 1 + (SELECT 2)
 
@@ -315,12 +315,12 @@ class BaseGenerator:
             raise exception.SqlLeafException("A subquery must return only one column")
 
         # Update the scope to be the subquery itself, as it is a subscope
-        subquery_scope = [s for s in processor_ctx.scope.subquery_scopes if s.expression == expr.this][0]
+        subquery_scope = [s for s in gen_ctx.scope.subquery_scopes if s.expression == expr.this][0]
 
-        height, width = processor_ctx.scope_positions[id(expr.this)]
-        child_ctx = replace(ctx, query_depth=height, query_width=width)
-        p_ctx = replace(processor_ctx, expr=expr.selects[0], scope=subquery_scope)
-        return self.process(p_ctx.expr, processor_ctx=p_ctx, ctx=child_ctx)
+        height, width = gen_ctx.scope_positions[id(expr.this)]
+        child_ctx = replace(pos_ctx, query_depth=height, query_width=width)
+        p_ctx = replace(gen_ctx, expr=expr.selects[0], scope=subquery_scope)
+        return self.process(p_ctx.expr, gen_ctx=p_ctx, pos_ctx=child_ctx)
 
 def is_node_a_placeholder(expr: exp.Column, query: Query) -> bool:
     """

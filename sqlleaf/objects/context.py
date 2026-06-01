@@ -19,7 +19,7 @@ TableOrScopeType = exp.Table | Scope
 
 
 @dataclass(frozen=True)
-class ProcessorContext:
+class GeneratorContext:
     graph: nx.MultiDiGraph
     object_mapping: mappings.ObjectMapping
     query: Query
@@ -27,7 +27,7 @@ class ProcessorContext:
     scope: TableOrScopeType
     scope_positions: t.Dict[int, t.Dict[int, int]] | None = None
     data_type: exp.DataType | None = None
-    child_node_attrs: NodeAttributes | None = None
+    child_node: NodeAttributes | None = None
     # Override the data_type if needed
     new_data_type: InitVar[exp.DataType | None] = None
 
@@ -63,7 +63,7 @@ class ProcessorContext:
 
 
 @dataclass(frozen=True)
-class NodeContext:
+class PositionContext:
     # The position of this query inside a list of queries, e.g. SELECT 'a'; SELECT 'b' -> a=0, b=1
     statement_index: str
 

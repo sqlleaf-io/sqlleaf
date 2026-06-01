@@ -13,7 +13,7 @@ if t.TYPE_CHECKING:
     pass
 
 from sqlleaf import util, exception, mappings
-from sqlleaf.objects.context import ProcessorContext, NodeContext
+from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, StageNode, ColumnNode, TableType, StreamNode, ProgramNode
 from sqlleaf.objects.query_types import Query, UpdateQuery, CopyQuery, PutQuery, TableQuery, UnloadQuery
 from sqlleaf.processors.dialects.base import BaseGenerator
@@ -33,13 +33,13 @@ def generate_lineage_for_query(
     over sqlglot's abstract syntax tree (AST) to determine the set of nodes
     and transformations used along the path to reach the table's columns.
     """
-    child_table = query.child_table
+    child_object = query.child_object
     statement = query.statement
 
     logger.info(f"Getting lineage for query: {statement.sql(dialect=query.dialect)}")
 
-    ctx = NodeContext(statement_index=query.get_statement_index())
-    processor_ctx = ProcessorContext(
+    pos_ctx = PositionContext(statement_index=query.get_statement_index())
+    gen_ctx = GeneratorContext(
         graph=graph,
         object_mapping=object_mapping,
         query=query,
@@ -48,34 +48,34 @@ def generate_lineage_for_query(
     )
     generator = BaseGenerator.from_dialect(query.dialect)
 
-    if check_for_put(generator, processor_ctx, ctx):
+    if check_for_put(generator, gen_ctx, pos_ctx):
         return graph
 
-    if check_for_trigger(child_table, object_mapping):
+    if check_for_trigger(child_object, object_mapping):
         return graph
 
-    if check_for_external_table(generator, processor_ctx, ctx):
+    if check_for_external_table(generator, gen_ctx, pos_ctx):
         return graph
 
-    generate_lineage_for_columns(child_table, generator, processor_ctx, ctx)
-    return processor_ctx.graph
+    generate_lineage_for_columns(child_object, generator, gen_ctx, pos_ctx)
+    return gen_ctx.graph
 
 
 def generate_lineage_for_columns(
     table: exp.Table,
     generator: BaseGenerator,
-    processor_ctx: ProcessorContext,
-    ctx: NodeContext,
+    gen_ctx: GeneratorContext,
+    pos_ctx: PositionContext,
 ):
     """
     Generate the lineage for a set of columns from a given table.
     """
-    scope = get_scope(statement=processor_ctx.query.statement)
+    scope = get_scope(statement=gen_ctx.query.statement)
     scope_positions = calculate_scope_positions(scope)
 
     # Process the selected columns
     columns_processed = 0
-    for selected_node, default_node in _iter_child_nodes(table, processor_ctx, ctx):
+    for selected_node, default_node in _iter_child_nodes(table, gen_ctx, pos_ctx):
         child_node: ColumnNode = selected_node or default_node
         logger.info(f"Calculating lineage downstream of {child_node.friendly_name}")
 
@@ -83,12 +83,12 @@ def generate_lineage_for_columns(
         # TODO: make this a CLI flag for whether to include these exprs in lineage
         if default_node:
             constraint_expr = default_node.get_column_constraint_expression()
-            constraint_ctx = replace(processor_ctx, expr=constraint_expr.this, new_data_type=child_node.data_type, child_node_attrs=child_node)
+            constraint_ctx = replace(gen_ctx, expr=constraint_expr.this, new_data_type=child_node.data_type, child_node=child_node)
             # Walk only the expression
-            walk_expressions_and_build_graph(generator=generator, processor_ctx=constraint_ctx, ctx=ctx)
+            walk_expressions_and_build_graph(generator=generator, gen_ctx=constraint_ctx, pos_ctx=pos_ctx)
 
         if selected_node:
-            walk_query_and_build_graph(generator, child_node, scope, scope_positions, processor_ctx, child_node.ctx)
+            walk_query_and_build_graph(generator, child_node, scope, scope_positions, gen_ctx, child_node.ctx)
             columns_processed += 1
 
     if columns_processed == 0:
@@ -105,7 +105,7 @@ class TargetObjectType(StrEnum):
     PROGRAM = auto()
 
 
-def _iter_child_nodes(target: exp.Table | exp.Literal | exp.Identifier, processor_ctx: ProcessorContext, ctx: NodeContext) -> (
+def _iter_child_nodes(target: exp.Table | exp.Literal | exp.Identifier, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> (
     t.Generator[t.Tuple[ColumnNode | None, ColumnNode | None]]
 ):
     """
@@ -114,8 +114,8 @@ def _iter_child_nodes(target: exp.Table | exp.Literal | exp.Identifier, processo
 
     # Both COPY and UNLOAD can have SELECTs as their sources, which have arbitrary
     # columns that vary in length due to their sourcing from any table.
-    query = processor_ctx.query
-    target_type, target_columns = determine_object_type(target, processor_ctx)
+    query = gen_ctx.query
+    target_type, target_columns = determine_object_type(target, gen_ctx)
 
     select_idx = 0
 
@@ -124,8 +124,8 @@ def _iter_child_nodes(target: exp.Table | exp.Literal | exp.Identifier, processo
         selected_node = None
         default_node = None
         process_defaults = False
-        processor_ctx = replace(processor_ctx, expr=col_def)
-        ctx = replace(ctx, select_index=select_idx)
+        gen_ctx = replace(gen_ctx, expr=col_def)
+        pos_ctx = replace(pos_ctx, select_index=select_idx)
 
         match target_type:
             case TargetObjectType.FILE:
@@ -134,8 +134,8 @@ def _iter_child_nodes(target: exp.Table | exp.Literal | exp.Identifier, processo
                     schema="",
                     table="",
                     column=col_def.name,
-                    processor_ctx=processor_ctx,
-                    ctx=ctx,
+                    gen_ctx=gen_ctx,
+                    pos_ctx=pos_ctx,
                     skip_table_properties=True
                 )
                 format = util.get_file_format(target.name)
@@ -147,8 +147,8 @@ def _iter_child_nodes(target: exp.Table | exp.Literal | exp.Identifier, processo
                     schema=target.db,
                     table=target.name,
                     column=col_def.name,
-                    processor_ctx=processor_ctx,
-                    ctx=ctx,
+                    gen_ctx=gen_ctx,
+                    pos_ctx=pos_ctx,
                 )
                 process_defaults = True
 
@@ -157,16 +157,16 @@ def _iter_child_nodes(target: exp.Table | exp.Literal | exp.Identifier, processo
                 # are selected during walk()
                 child_node = StreamNode(
                     name=target.name,
-                    processor_ctx=processor_ctx,
-                    ctx=ctx,
+                    gen_ctx=gen_ctx,
+                    pos_ctx=pos_ctx,
                 )
 
             case TargetObjectType.PROGRAM:
                 # Use the ColumnDef as the expr so that correct columns
                 # are selected during walk()
                 child_node = ProgramNode(
-                    processor_ctx=processor_ctx,
-                    ctx=ctx,
+                    gen_ctx=gen_ctx,
+                    pos_ctx=pos_ctx,
                 )
 
         if col_def.name in query.get_selected_column_names() or isinstance(query, TableQuery):
@@ -185,15 +185,15 @@ def _iter_child_nodes(target: exp.Table | exp.Literal | exp.Identifier, processo
             select_idx += 1
 
 
-def determine_object_type(target, processor_ctx: ProcessorContext):
+def determine_object_type(target, gen_ctx: GeneratorContext):
     """
     Given a target object, figure out all its columns.
 
     This is straightforward if source isn't a JOIN: we just use the source object's columns.
     But if it is a JOIN, we use the selected columns rather than the source's columns.
     """
-    query = processor_ctx.query
-    object_mapping = processor_ctx.object_mapping
+    query = gen_ctx.query
+    object_mapping = gen_ctx.object_mapping
 
     if isinstance(target, exp.Literal):
         # Use the parent table's columns as the child columns
@@ -238,45 +238,45 @@ def get_column_defs(target, query, object_mapping: mappings.ObjectMapping) -> t.
 
 OutputNodeType = ColumnNode | StreamNode | ProgramNode
 def walk_query_and_build_graph(
-    generator: BaseGenerator, child_node_attrs: OutputNodeType, scope: Scope, scope_positions, processor_ctx: ProcessorContext, ctx: NodeContext
+    generator: BaseGenerator, child_node: OutputNodeType, scope: Scope, scope_positions, gen_ctx: GeneratorContext, pos_ctx: PositionContext
 ) -> None:
     """
     Walk over each query (and its subqueries) to collect the expressions for each column.
     For any expression subtrees found, invoke an 'expression walker' to process them.
     """
-    processor_ctx = replace(processor_ctx, scope=scope, child_node_attrs=child_node_attrs)
-    query = processor_ctx.query
+    gen_ctx = replace(gen_ctx, scope=scope, child_node=child_node)
+    query = gen_ctx.query
 
     for scope_traversal in walk_query_scope(
-        column=child_node_attrs.expr,
+        column=child_node.expr,
         scope=scope,
     ):
         logger.debug("----")
         if isinstance(query, CopyQuery) and query.is_target_a_stage:
             # Set the column to be a StageNode (if applicable) since we now have the lineage from using the dummy column
-            processor_ctx = replace(processor_ctx, expr=query.target.this)
-            child_node_attrs = StageNode(processor_ctx=processor_ctx, ctx=ctx)
+            gen_ctx = replace(gen_ctx, expr=query.target.this)
+            child_node = StageNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx)
 
         logger.debug(f"Processing node expr: {scope_traversal.expression}, Id: {id(scope_traversal)}")
-        logger.debug(f"Child node: {child_node_attrs.full_name}")
+        logger.debug(f"Child node: {child_node.full_name}")
 
         height, width = scope_positions[id(scope_traversal.scope.expression)]
-        child_ctx = replace(ctx, query_depth=height, query_width=width)
-        processor_ctx = replace(
-            processor_ctx,
+        child_ctx = replace(pos_ctx, query_depth=height, query_width=width)
+        gen_ctx = replace(
+            gen_ctx,
             expr=scope_traversal.expression,
             scope=scope_traversal.scope,
             scope_positions=scope_positions,
-            child_node_attrs=child_node_attrs,
+            child_node=child_node,
         )
 
-        nodes = walk_expressions_and_build_graph(generator, processor_ctx, child_ctx)
+        nodes = walk_expressions_and_build_graph(generator, gen_ctx, child_ctx)
         if nodes:
             logger.debug(f"Produced nodes: {[n.full_name for n in nodes]}")
 
             for n in nodes:
                 if isinstance(n, ColumnNode) and n.has_child_scope:
-                    walk_query_and_build_graph(generator, n, n.source_scope, scope_positions, processor_ctx, ctx)
+                    walk_query_and_build_graph(generator, n, n.source_scope, scope_positions, gen_ctx, pos_ctx)
 
 
 def walk_query_scope(column: exp.Column, scope: Scope) -> t.Generator[ScopeTraversal]:
@@ -314,8 +314,8 @@ def walk_query_scope(column: exp.Column, scope: Scope) -> t.Generator[ScopeTrave
 
 def walk_expressions_and_build_graph(
     generator: BaseGenerator,
-    processor_ctx: ProcessorContext,
-    ctx: NodeContext,
+    gen_ctx: GeneratorContext,
+    pos_ctx: PositionContext,
 ) -> t.List[NodeAttributes]:
     """
     Collect the leaves of an expression so that we can get the full set of data sources and function arguments
@@ -331,10 +331,10 @@ def walk_expressions_and_build_graph(
     """
     nodes_created = []
 
-    for edge in generator.process(processor_ctx.expr, processor_ctx, ctx):
-        parent_node_attrs, child_node_attrs = edge.parent, edge.child
+    for edge in generator.process(gen_ctx.expr, gen_ctx, pos_ctx):
+        parent_node_attrs, child_node = edge.parent, edge.child
         if parent_node_attrs:
-            node_exists = processor_ctx.graph.has_node(parent_node_attrs.full_name)
+            node_exists = gen_ctx.graph.has_node(parent_node_attrs.full_name)
             if not node_exists:
                 nodes_created.append(parent_node_attrs)
             """
@@ -342,26 +342,26 @@ def walk_expressions_and_build_graph(
             justified in implementing this behaviour in our own way: by mapping each inherited column to the query's columns.
             """
             inherited_columns_of_parent = find_inherited_columns_for_parent(
-                column_node=parent_node_attrs, generator=generator, processor_ctx=processor_ctx, ctx=ctx
+                column_node=parent_node_attrs, generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx
             )
             inherited_columns_of_child = find_inherited_columns_for_child(
-                column_node=child_node_attrs, generator=generator, processor_ctx=processor_ctx, ctx=ctx
+                column_node=child_node, generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx
             )
 
             for parent_node in [parent_node_attrs] + inherited_columns_of_parent:
-                for child_node in [child_node_attrs] + inherited_columns_of_child:
+                for child_node in [child_node] + inherited_columns_of_child:
                     add_nodes_with_edge_to_graph(
                         parent_node,
                         child_node,
-                        processor_ctx.graph,
-                        processor_ctx.query,
-                        ctx,
+                        gen_ctx.graph,
+                        gen_ctx.query,
+                        pos_ctx,
                     )
     return nodes_created
 
 
 def find_inherited_columns_for_parent(
-    column_node: NodeAttributes, generator: BaseGenerator, processor_ctx: ProcessorContext, ctx: NodeContext
+    column_node: NodeAttributes, generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: PositionContext
 ) -> t.List[ColumnNode]:
     """
     Find the inherited columns for a particular column, but only for the form 'SELECT FROM ONLY <table>'
@@ -381,14 +381,14 @@ def find_inherited_columns_for_parent(
             if parent_table.args.get("only", False):
                 inherited_columns = []
             else:
-                inherited_columns = find_inherited_columns(column_node=column_node, generator=generator, processor_ctx=processor_ctx, ctx=ctx)
+                inherited_columns = find_inherited_columns(column_node=column_node, generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
                 logger.debug(f"Including inherited columns as sources: {[c.friendly_name for c in inherited_columns]}")
 
     return inherited_columns
 
 
 def find_inherited_columns_for_child(
-    column_node: NodeAttributes, generator: BaseGenerator, processor_ctx: ProcessorContext, ctx: NodeContext
+    column_node: NodeAttributes, generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: PositionContext
 ) -> t.List[ColumnNode]:
     """
     Find the inherited columns for a particular column, but only for the form 'MERGE|UPDATE ONLY <table>'
@@ -398,15 +398,15 @@ def find_inherited_columns_for_child(
         return inherited_columns
 
     # Only return inherited columns for UPDATE
-    if isinstance(processor_ctx.query, UpdateQuery) and not processor_ctx.query.only:
-        inherited_columns = find_inherited_columns(column_node=column_node, generator=generator, processor_ctx=processor_ctx, ctx=ctx)
+    if isinstance(gen_ctx.query, UpdateQuery) and not gen_ctx.query.only:
+        inherited_columns = find_inherited_columns(column_node=column_node, generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
         logger.debug(f"Including inherited columns as targets: {[c.friendly_name for c in inherited_columns]}")
 
     return inherited_columns
 
 
 def find_inherited_columns(
-    column_node: ColumnNode, generator: BaseGenerator, processor_ctx: ProcessorContext, ctx: NodeContext
+    column_node: ColumnNode, generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: PositionContext
 ) -> t.List[ColumnNode]:
     """
     Find all inherited columns from a table that are similar to some column.
@@ -418,14 +418,14 @@ def find_inherited_columns(
     """
     inherited_column_nodes = []
     table = column_node.as_table()
-    table_query = processor_ctx.object_mapping.find_query(kind="table", table=table)
+    table_query = gen_ctx.object_mapping.find_query(kind="table", table=table)
 
     # Collect any columns from inherited tables with the same name
     for inh_table in table_query.inherited_by:
         col_def = [c for c in inh_table.get_column_defs() if c.name == column_node.name][0]
-        col = util.column_def_to_column(column_def=col_def, parent_table=inh_table.child_table)
-        col_ctx = replace(processor_ctx, expr=col, scope=None)  # Remove the node so that the column isn't renamed
-        for edge in generator.process_column(col, col_ctx, ctx):
+        col = util.column_def_to_column(column_def=col_def, parent_table=inh_table.child_object)
+        col_ctx = replace(gen_ctx, expr=col, scope=None)  # Remove the node so that the column isn't renamed
+        for edge in generator.process_column(col, col_ctx, pos_ctx):
             inh_node_attrs = edge.parent
             inherited_column_nodes.append(inh_node_attrs)
 
@@ -434,16 +434,16 @@ def find_inherited_columns(
 
 def add_nodes_with_edge_to_graph(
     parent_node_attrs: NodeAttributes,
-    child_node_attrs: NodeAttributes,
+    child_node: NodeAttributes,
     graph: nx.MultiDiGraph,
     query: Query,
-    ctx: NodeContext,
+    pos_ctx: PositionContext,
 ):
     """
     Add two nodes and an edge between them to the graph.
     """
     p_attrs = add_node_if_not_exists(parent_node_attrs, graph)
-    c_attrs = add_node_if_not_exists(child_node_attrs, graph)
+    c_attrs = add_node_if_not_exists(child_node, graph)
 
     if p_attrs and c_attrs:
         p_full_name = p_attrs.full_name
@@ -453,7 +453,7 @@ def add_nodes_with_edge_to_graph(
             parent=p_attrs,
             child=c_attrs,
             query=query,
-            select_idx=ctx.select_index,
+            select_idx=pos_ctx.select_index,
             path_idx=-1,  # -1 is temp
         )
         graph.add_edge(p_full_name, c_full_name, attrs=edge_attrs)
@@ -617,42 +617,42 @@ def check_for_trigger(table: exp.Table, object_mapping: mappings.ObjectMapping) 
     """
     if trigger := object_mapping.find_query(kind="trigger", table=table):
         if trigger.timing == "INSTEAD OF":
-            logger.debug("Skipping lineage for all columns of table '%s' since trigger '%s' overrides it." % (exp.table_name(child_table), t.name))
+            logger.debug("Skipping lineage for all columns of table '%s' since trigger '%s' overrides it." % (exp.table_name(child_object), t.name))
             # TODO: Use the trigger's function as the lineage
             # func = trigger.execute
             return True
     return False
 
 
-def check_for_put(generator: BaseGenerator, processor_ctx: ProcessorContext, ctx: NodeContext) -> bool:
+def check_for_put(generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> bool:
     """
     Check if this is a PUT query.
     """
-    query = processor_ctx.query
-    graph = processor_ctx.graph
-    expr: exp.Put = processor_ctx.expr
+    query = gen_ctx.query
+    graph = gen_ctx.graph
+    expr: exp.Put = gen_ctx.expr
 
     if query.dialect == "snowflake" and isinstance(query, PutQuery):
         # Short-circuit this function; it's not an insert
-        for edge in generator.process(expr, processor_ctx, ctx):
+        for edge in generator.process(expr, gen_ctx, pos_ctx):
             file_node, stage_node = edge.parent, edge.child
-            add_nodes_with_edge_to_graph(file_node, stage_node, graph, query, ctx)
+            add_nodes_with_edge_to_graph(file_node, stage_node, graph, query, pos_ctx)
             return True
     return False
 
 
-def check_for_external_table(generator: BaseGenerator, processor_ctx: ProcessorContext, ctx: NodeContext) -> bool:
+def check_for_external_table(generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> bool:
     """
     Check if this is a CREATE EXTERNAL TABLE query.
     """
-    query = processor_ctx.query
+    query = gen_ctx.query
 
     if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external":
         location_expr = query.statement.args["properties"].find(exp.LocationProperty)
 
-        for child_node, _ in _iter_child_nodes(query.child_table,processor_ctx, ctx):
-            processor_ctx = replace(processor_ctx, expr=location_expr, child_node_attrs=child_node)
-            ctx = replace(ctx, select_index=child_node.ctx.select_index)
-            walk_expressions_and_build_graph(generator=generator, processor_ctx=processor_ctx, ctx=ctx)
+        for child_node, _ in _iter_child_nodes(query.child_object,gen_ctx, pos_ctx):
+            gen_ctx = replace(gen_ctx, expr=location_expr, child_node=child_node)
+            pos_ctx = replace(pos_ctx, select_index=child_node.ctx.select_index)
+            walk_expressions_and_build_graph(generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
         return True
     return False

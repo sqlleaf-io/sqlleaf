@@ -7,7 +7,7 @@ from dataclasses import replace
 from sqlglot import exp
 
 from sqlleaf import util, exception
-from sqlleaf.objects.context import ProcessorContext, NodeContext
+from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
     ColumnNode, SequenceNode, StreamNode, ProgramNode,
 )
@@ -20,15 +20,15 @@ class PostgresGenerator(BaseGenerator):
     dialect = "postgres"
 
     @util.singledispatchmethodlogger
-    def process(self, expr: exp.Expr, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
-        if isinstance(processor_ctx.query, CopyQuery) and isinstance(processor_ctx.query.source, (exp.Literal, exp.Identifier)):
+    def process(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+        if isinstance(gen_ctx.query, CopyQuery) and isinstance(gen_ctx.query.source, (exp.Literal, exp.Identifier)):
             # Push all the non-column sources through process_copy for now (until we can do it inside the ColumnNode)
-            yield from self.process_copy(expr, processor_ctx, ctx)
+            yield from self.process_copy(expr, gen_ctx, pos_ctx)
         else:
-            yield from super().process(expr, processor_ctx, ctx)
+            yield from super().process(expr, gen_ctx, pos_ctx)
 
     @process.register
-    def process_table(self, expr: exp.Table, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_table(self, expr: exp.Table, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         Process a table or a table function.
         This is a bit awkward as we have the sequence: Table -> ColumnDef -> Table
@@ -43,7 +43,7 @@ class PostgresGenerator(BaseGenerator):
                 downstream_exprs.extend(cols if cols else [table_function])
 
             # Get the expression associated with the column name
-            child_column_name = processor_ctx.child_node_attrs.expr.name
+            child_column_name = gen_ctx.child_node.expr.name
             for i, col in enumerate(expr.alias_column_names):
                 if col == child_column_name:
                     # Returns ColumnDef | Function | Table
@@ -52,14 +52,14 @@ class PostgresGenerator(BaseGenerator):
                         # A table function inside a 'ROWS FROM'
                         down_expr = down_expr.this
 
-                    processor_ctx = replace(processor_ctx, expr=down_expr)
-                    yield from self.process(down_expr, processor_ctx, ctx)
+                    gen_ctx = replace(gen_ctx, expr=down_expr)
+                    yield from self.process(down_expr, gen_ctx, pos_ctx)
                     break
         else:
-            yield from super().process(expr, processor_ctx, ctx)
+            yield from super().process(expr, gen_ctx, pos_ctx)
 
     @process.register
-    def process_anonymous(self, expr: exp.Anonymous, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_anonymous(self, expr: exp.Anonymous, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         Either user-defined functions or sequence functions.
 
@@ -87,17 +87,17 @@ class PostgresGenerator(BaseGenerator):
 
             # Ensure the sequence exists
             seq_table = exp.table_(table=seq_name_expr.name, db=schema)
-            if not processor_ctx.object_mapping.find_query(kind="sequence", table=seq_table):
+            if not gen_ctx.object_mapping.find_query(kind="sequence", table=seq_table):
                 logger.warning(f"Sequence '{full_name}' not found.")
 
-            parent = SequenceNode(name=seq_name_expr.name, processor_ctx=processor_ctx, ctx=ctx)
-            yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+            parent = SequenceNode(name=seq_name_expr.name, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
+            yield EdgeToCreate(parent, gen_ctx.child_node)
         else:
-            yield from super().process(expr, processor_ctx, ctx)
+            yield from super().process(expr, gen_ctx, pos_ctx)
 
     @process.register
-    def process_column_def(self, expr: exp.ColumnDef, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
-        processor_ctx = replace(processor_ctx, new_data_type=expr.kind)
+    def process_column_def(self, expr: exp.ColumnDef, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+        gen_ctx = replace(gen_ctx, new_data_type=expr.kind)
 
         if isinstance(expr.parent, exp.TableAlias):
             # An alias to a table function inside 'ROWS FROM'
@@ -113,47 +113,47 @@ class PostgresGenerator(BaseGenerator):
                 schema="",
                 table=table_alias,
                 column=expr.name,
-                processor_ctx=processor_ctx,
-                ctx=ctx,
+                gen_ctx=gen_ctx,
+                pos_ctx=pos_ctx,
             )
-            yield EdgeToCreate(parent, processor_ctx.child_node_attrs)
+            yield EdgeToCreate(parent, gen_ctx.child_node)
 
             # Process the table function
             # TODO: why is this needed? It's 2 levels up
             table_function: exp.Table = expr.parent.parent
-            yield from self.do_grandparents([table_function.this], parent, processor_ctx, ctx)
+            yield from self.do_grandparents([table_function.this], parent, gen_ctx, pos_ctx)
 
     @process.register
-    def process_copy(self, expr: exp.Copy, processor_ctx: ProcessorContext, ctx: NodeContext) -> t.Iterator[EdgeToCreate]:
+    def process_copy(self, expr: exp.Copy, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         COPY x FROM/TO y
         """
-        source = processor_ctx.query.source
+        source = gen_ctx.query.source
 
         # This logic only processes the query, not the expression
         if source.name in ["stdin", "stdout"]:
             node = StreamNode(
                 name=source.name,
-                processor_ctx=processor_ctx,
-                ctx=ctx,
+                gen_ctx=gen_ctx,
+                pos_ctx=pos_ctx,
             )
-            yield EdgeToCreate(node, processor_ctx.child_node_attrs)
+            yield EdgeToCreate(node, gen_ctx.child_node)
 
         elif isinstance(source, exp.Literal):
             # A filename. Create a file node.
-            processor_ctx = replace(processor_ctx, expr=source, new_data_type=processor_ctx.child_node_attrs._data_type)
+            gen_ctx = replace(gen_ctx, expr=source, new_data_type=gen_ctx.child_node._data_type)
             node = ColumnNode(
                 catalog="",
                 schema="",
                 table="",
-                column=processor_ctx.child_node_attrs.name,
-                processor_ctx=processor_ctx,
-                ctx=ctx,
+                column=gen_ctx.child_node.name,
+                gen_ctx=gen_ctx,
+                pos_ctx=pos_ctx,
                 skip_table_properties=True,
             )
             format = util.get_file_format(source.name)
             node.set_file_properties(format=format, path=source.name)
-            yield EdgeToCreate(node, processor_ctx.child_node_attrs)
+            yield EdgeToCreate(node, gen_ctx.child_node)
 
         else:
             raise exception.SqlLeafException(message=f"Unknown source type for COPY: {type(source)}")

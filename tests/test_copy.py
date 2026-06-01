@@ -229,7 +229,7 @@ def test_copy_into_file_from_table_named_columns(holder):
 # TODO: COPY a SELECT with a join from 2 tables
 
 # I'll comment out the COPY .. SELECT for now until the
-# child_table is replaced with child_object. This should make the code
+# child_object is replaced with child_object. This should make the code
 # and logic easier to handle that case.
 
 

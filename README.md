@@ -274,7 +274,7 @@ class MyCustomBuilder(BaseGenerator):
     dialect = 'my_dialect'
     
     # Example: Override the Column node creation logic
-    def process_column(self, processor_ctx, ctx):
+    def process_column(self, gen_ctx, pos_ctx):
         # Add your logic here...
         node_attrs = ColumnNode(table='my_table', column='my_column', ...)
         children = []

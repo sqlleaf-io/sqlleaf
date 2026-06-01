@@ -48,7 +48,7 @@ class ObjectMapping(MappingSchema):
             normalize: whether to normalize identifiers according to the dialect of interest.
             match_depth: whether to enforce that the table must match the schema's depth or not.
         """
-        table = query.child_table
+        table = query.child_object
         if table is None:
             return
 
@@ -155,11 +155,11 @@ class ObjectMapping(MappingSchema):
         Get the 'CREATE' query for a table or stage.
         """
         if str(table).startswith("@"):
-            child_table_query = self.find_query(kind="stage", table=table)
+            child_object_query = self.find_query(kind="stage", table=table)
         else:
-            child_table_query = self.find_query(kind="table", table=table)
+            child_object_query = self.find_query(kind="table", table=table)
 
-        if not child_table_query and raise_on_missing:
+        if not child_object_query and raise_on_missing:
             raise exception.SqlLeafException(message="Unknown table", table=str(table))
 
-        return child_table_query
+        return child_object_query

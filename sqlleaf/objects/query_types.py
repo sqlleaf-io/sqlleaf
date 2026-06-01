@@ -16,12 +16,12 @@ class Query:
         kind: str,
         dialect: str,
         statement: exp.Expr,
-        child_table: exp.Table | exp.Literal | exp.Identifier | None,
+        child_object: exp.Table | exp.Literal | exp.Identifier | None,
         statement_index: int,
     ):
         self.kind = kind
         self.dialect = dialect
-        self.child_table = child_table  # The target table
+        self.child_object = child_object  # The target table
         self.parent_query = None
         self.child_queries = []
 
@@ -110,7 +110,7 @@ class DeleteQuery(Query):
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=expr.this,
+            child_object=expr.this,
         )
 
     def get_ctes(self):
@@ -126,7 +126,7 @@ class MergeQuery(Query):
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=expr.this,
+            child_object=expr.this,
         )
 
     def get_ctes(self):
@@ -135,13 +135,13 @@ class MergeQuery(Query):
 
 class SelectQuery(Query):
     def __init__(self, expr: exp.Select, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
-        child_table = expr.find(exp.Table)
+        child_object = expr.find(exp.Table)
         super().__init__(
             kind="select",
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=child_table,
+            child_object=child_object,
         )
 
     def get_ctes(self):
@@ -157,7 +157,7 @@ class InsertQuery(Query):
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=table,
+            child_object=table,
         )
 
     def get_ctes(self):
@@ -173,7 +173,7 @@ class UpdateQuery(Query):
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=table,
+            child_object=table,
         )
         self.only = table.args.get("only", False) if table else False  # Not available inside a MERGE
 
@@ -195,7 +195,7 @@ class CTASQuery(Query):
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=util.get_table(statement),
+            child_object=util.get_table(statement),
         )
         self.column_defs: t.List[exp.ColumnDef] = columns
         self.system_column_defs: t.List[exp.ColumnDef] = []
@@ -232,7 +232,7 @@ class ViewQuery(Query):
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=util.get_table(statement),
+            child_object=util.get_table(statement),
         )
         self.column_defs: t.List[exp.ColumnDef] = columns
         self.inherited_by: t.List[TableQuery] = []
@@ -257,7 +257,7 @@ class TableQuery(Query):
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=util.get_table(statement.this),
+            child_object=util.get_table(statement.this),
         )
         self.column_defs: t.List[exp.ColumnDef] = []
         self.system_column_defs: t.List[exp.ColumnDef] = []
@@ -289,7 +289,7 @@ class ProcedureQuery(Query):
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=table,
+            child_object=table,
         )
         self.schema = table.db
         self.procedure = table.name
@@ -349,7 +349,7 @@ class UserDefinedFunctionQuery(Query):
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=statement.this.this,
+            child_object=statement.this.this,
         )
         self.schema = schema
         self.function = function
@@ -376,7 +376,7 @@ class SequenceQuery(Query):
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=statement.this,
+            child_object=statement.this,
         )
 
 
@@ -395,7 +395,7 @@ class TriggerQuery(Query):
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=properties.args["table"],
+            child_object=properties.args["table"],
         )
         self.name = statement.name  # before_fruit_insert
         self.table = properties.args["table"]  # Table(fruit.processed)
@@ -412,14 +412,14 @@ class StageQuery(Query):
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=util.get_table(statement),
+            child_object=util.get_table(statement),
         )
         self.column_defs: t.List[exp.ColumnDef] = []
         # Needed due to a bug in sqlglot. Never access the table name via print()!
         #  as it prints double-double quotes
-        stage_name = str(self.child_table.this)
-        self.child_table.this.set("this", "@" + stage_name)
-        self.child_table.this.set("quoted", False)
+        stage_name = str(self.child_object.this)
+        self.child_object.this.set("this", "@" + stage_name)
+        self.child_object.this.set("quoted", False)
 
         self.property = util.find_property(statement)
 
@@ -434,7 +434,7 @@ class CopyQuery(Query):
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=None,
+            child_object=None,
         )
         self.named_columns: t.List[str] = []
         self.source: exp.Table | exp.Literal | None = None
@@ -476,7 +476,7 @@ class CopyQuery(Query):
             self.configure_stage(expr)
 
         if not isinstance(expr.this.unnest(), exp.Values):
-            self.child_table = self.target
+            self.child_object = self.target
 
         self.set_statement(expr)
 
@@ -508,7 +508,7 @@ class UnloadQuery(Query):
             statement=select_expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=to_location_expr,
+            child_object=to_location_expr,
         )
         self.source = select_expr
 
@@ -542,7 +542,7 @@ class PutQuery(Query):
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_table=expr.this,
+            child_object=expr.this,
         )
         self.source = expr.name
         self.target = expr.args["target"].name
