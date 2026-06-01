@@ -34,9 +34,10 @@ class Lineage:
         """
         object_mapping = self.init_mapping(dialect=dialect)
 
-        parent_queries = collector.collect_queries(sql, dialect, object_mapping)
+        result = collector.collect_queries(sql, dialect, object_mapping)
 
-        for parent_query in parent_queries:
+        for parent_query in result.queries:
+            # A parent query is a top-level query, possibly containing others
             graph = new_graph()
             queries = parent_query.get_all_queries()
 

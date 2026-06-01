@@ -1,5 +1,6 @@
 import logging
 import typing as t
+from dataclasses import dataclass, field
 
 import sqlglot
 from sqlglot import exp
@@ -68,7 +69,14 @@ def get_query_processors():
     }
 
 
-def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapping) -> t.List[Query]:
+@dataclass(frozen=True)
+class CollectQueryResult:
+    queries: t.Dict = field(default_factory=dict)
+    unknown: t.Dict = field(default_factory=dict)
+    unsupported: t.List = field(default_factory=list)
+
+
+def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapping) -> CollectQueryResult:
     """
     Parse a series of SQL statements provided as text.
     This includes tables, views, procedures, functions, sequences, etc.
@@ -128,7 +136,8 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         logger.warning("Unknown statements: %s", dict(unknown.items()))
     if unsupported:
         logger.warning("Unsupported statements: %s", len(unsupported))
-    return list(queries.values())
+
+    return CollectQueryResult(queries=list(queries.values()), unknown=unknown, unsupported=unsupported)
 
 
 def _determine_query_kind(statement: exp.Expr, dialect: str) -> t.Tuple[exp.Expr, str]:
