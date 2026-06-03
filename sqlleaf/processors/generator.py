@@ -413,7 +413,7 @@ def find_inherited_columns_for_parent(
     if not isinstance(column_node, ColumnNode) or column_node.parent_kind == TableType.CTE:
         return []
 
-    # Find the column's exp.Table in the expression, and check if it has 'ONLY' set
+    # Find the column's exp.Table in the expression and check if it has 'ONLY' set
     if not column_node.expr.parent_select:
         return []
 

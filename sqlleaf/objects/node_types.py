@@ -71,14 +71,17 @@ class NodeAttributes:
         self.ctx = pos_ctx
 
     # Allows the class to be used a networkx node
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.full_name)
 
     def get_data_type(self) -> exp.DataType:
         assert self._data_type is not None
         return self._data_type
 
-    def wrap(self, name: str):
+    def wrap(self, name: str, with_positions: bool = False):
+        if with_positions:
+            pos = self.ctx.as_str()
+            name = f"{name} {pos}"
         return f"{self.kind}[{name}]"
 
     @property
@@ -123,13 +126,7 @@ class LiteralNode(NodeAttributes):
     @property
     def full_name(self):
         name = self.name.replace("'", '"')
-        return self.wrap(
-            f"{name} type={self.data_type} "
-            f"query_depth={self.ctx.query_depth} "
-            f"query_width={self.ctx.query_width} "
-            f"statement={self.ctx.statement_index} select={self.ctx.select_index} "
-            f"func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
-        )
+        return self.wrap(f"{name} type={self.data_type}", with_positions=True)
 
     @property
     def friendly_name(self):
@@ -412,12 +409,7 @@ class FunctionNode(NodeAttributes):
     @property
     def full_name(self):
         name = f"{self.name}".upper()
-        return self.wrap(
-            f"{name} type={self.data_type} "
-            f"query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} "
-            f"statement={self.ctx.statement_index} select={self.ctx.select_index} "
-            f"func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
-        )
+        return self.wrap(f"{name} type={self.data_type}", with_positions=True)
 
     @property
     def friendly_name(self):
@@ -449,12 +441,7 @@ class UserDefinedFunctionNode(NodeAttributes):
 
     @property
     def full_name(self):
-        return self.wrap(
-            f"{self.get_name()} type={self.data_type} "
-            f"query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} "
-            f"statement={self.ctx.statement_index} select={self.ctx.select_index} "
-            f"func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
-        )
+        return self.wrap(f"{self.get_name()} type={self.data_type}", with_positions=True)
 
     @property
     def friendly_name(self):
@@ -549,11 +536,7 @@ class NullNode(NodeAttributes):
 
     @property
     def full_name(self):
-        return self.wrap(
-            f"{self.name} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} "
-            f"statement={self.ctx.statement_index} select={self.ctx.select_index} "
-            f"func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
-        )
+        return self.wrap(f"{self.name} type={self.data_type}", with_positions=True)
 
     @property
     def friendly_name(self):
@@ -645,11 +628,7 @@ class IntervalNode(NodeAttributes):
 
     @property
     def full_name(self):
-        return self.wrap(
-            f"{self.name} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} "
-            f"statement={self.ctx.statement_index} select={self.ctx.select_index} "
-            f"func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
-        )
+        return self.wrap(f"{self.name} type={self.data_type}", with_positions=True)
 
 
 class _PivotNode(NodeAttributes):

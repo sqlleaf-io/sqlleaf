@@ -127,8 +127,19 @@ class PositionContext:
     # The argument of a function: e.g. SELECT my.func('a', 'b') -> a=0, b=1
     function_arg_index: int = 0
 
-    # The depth of a subquery, e.g. WITH cte AS ( SELECT 'a' ) SELECT 'a' -> The first a=1, second a=0
+    # The depth of a subquery, e.g. WITH cte AS (SELECT 'a') SELECT 'a' -> The first a=1, second a=0
     query_depth: int = 0
 
     # The width of a subquery, e.g. SELECT 4 + (SELECT 5) + (SELECT 6) -> depth(4)=0, depth(5)=1, depth(6)=1
     query_width: int = 0
+
+    def as_str(self) -> str:
+        parts = [
+            f"query_depth={self.query_depth}",
+            f"query_width={self.query_width}",
+            f"statement={self.statement_index}",
+            f"select={self.select_index}",
+            f"func_depth={self.function_depth}",
+            f"func_arg={self.function_arg_index}",
+        ]
+        return " ".join(parts)
