@@ -9,7 +9,6 @@ import pytest
 
 from sqlleaf.exception import SqlLeafException
 from sqlleaf.objects.query_types import DeleteQuery, InsertQuery, MergeQuery, SelectQuery, UpdateQuery
-from tests.new_fixtures import is_subset
 
 DIALECT = "postgres"
 
@@ -209,13 +208,8 @@ def test__cte_two_same_name_different_query(holder):
         ["literal[1]", "column[cte1.name]", "column[fruit.processed.name]"],
         ["literal[2]", "column[cte1.name]", "column[fruit.raw.name]"],
     ]
-    assert is_subset(
-        subarr=[
-            "column[cte1.name type=INT kind=cte statement=0]",
-            "column[cte1.name type=INT kind=cte statement=1]",
-        ],
-        arr=h.nodes_full,
-    )
+    assert "column[cte1.name type=INT kind=cte statement=0]" in h.nodes_full
+    assert "column[cte1.name type=INT kind=cte statement=1]" in h.nodes_full
     assert [InsertQuery, InsertQuery] == list(map(type, h.queries))
     assert len(h.nodes) == 6
     assert len(h.edges) == 4

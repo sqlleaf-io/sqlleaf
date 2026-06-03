@@ -10,7 +10,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 from sqlleaf.objects.query_types import InsertQuery, SequenceQuery
-from tests.new_fixtures import is_subset
 
 DIALECT = "postgres"
 
@@ -76,14 +75,9 @@ def test__table_like_table_generated(holder):
         ['literal["banana"]', "column[fruit.b_like_a.name]", "function[CONCAT]", "column[fruit.b_like_a.gen]"],
         ['literal["fruit"]', "column[fruit.b_like_a.kind]", "function[CONCAT]", "column[fruit.b_like_a.gen]"],
     ]
-    assert is_subset(
-        subarr=[
-            "column[fruit.b_like_a.gen type=TEXT kind=table]",
-            "column[fruit.b_like_a.kind type=TEXT kind=table]",
-            "column[fruit.b_like_a.name type=VARCHAR kind=table]",
-        ],
-        arr=h.nodes_full,
-    )
+    assert "column[fruit.b_like_a.gen type=TEXT kind=table]" in h.nodes_full
+    assert "column[fruit.b_like_a.kind type=TEXT kind=table]" in h.nodes_full
+    assert "column[fruit.b_like_a.name type=VARCHAR kind=table]" in h.nodes_full
     assert len(h.nodes) == 6
     assert len(h.edges) == 5
 

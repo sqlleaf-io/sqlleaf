@@ -10,8 +10,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import sqlglot
 
-from tests.new_fixtures import is_subset
-
 DIALECT = "postgres"
 
 # TODO: unnest([N...]) returns N columns named 'unnest', but sqlglot calls them 'offset'
@@ -374,14 +372,8 @@ def test__select_rows_from(holder):
         ["literal[1]", "function[GENERATE_SERIES]", "column[x.amount]", "column[fruit.processed.amount]"],
         ["literal[3]", "function[GENERATE_SERIES]", "column[x.amount]", "column[fruit.processed.amount]"],
     ]
-    assert is_subset(
-        subarr=[
-            # TODO: fix type
-            "column[x.age type=UNKNOWN kind=derived_table]",
-            "column[y.a type=INT kind=derived_table]",
-        ],
-        arr=h.nodes_full,
-    )
+    assert "column[x.age type=UNKNOWN kind=derived_table]" in h.nodes_full
+    assert "column[y.a type=INT kind=derived_table]" in h.nodes_full
     # TODO: duplicate nodes (literals and udfs)
     # assert len(h.nodes) == 17     # Correct
 
