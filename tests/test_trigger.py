@@ -4,7 +4,6 @@ import pytest
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from tests.new_fixtures import holder, is_subset
 
 DIALECT = "postgres"
 
@@ -19,6 +18,6 @@ def test__trigger_before_insert(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert {"fruit.b_like_a.label", "fruit.b_like_a.name", "fruit.b_like_a.age"}.issubset(nodes)
+    assert {"fruit.b_like_a.label", "fruit.b_like_a.name", "fruit.b_like_a.age"}.issubset(h.nodes)
     assert len(h.nodes) == 6
     assert len(h.edges) == 3

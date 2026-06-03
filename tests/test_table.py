@@ -8,7 +8,7 @@ from sqlleaf.exception import SqlLeafException
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
-from tests.new_fixtures import holder, is_subset
+from tests.new_fixtures import is_subset
 from sqlleaf.objects.query_types import InsertQuery, SequenceQuery
 
 DIALECT = "postgres"
@@ -208,7 +208,7 @@ def test__table_fails_missing_column_type(holder):
         sql = """
         CREATE TABLE fail (a INT, b);
         """
-        h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+        holder(sql=sql, dialect=DIALECT)
 
     assert e.value.args[0] == "Column 'b' must define a data type."
 

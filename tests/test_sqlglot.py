@@ -9,7 +9,6 @@ import pytest
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from tests.new_fixtures import holder
 
 DIALECT = "postgres"
 
@@ -35,4 +34,4 @@ tests = [
 @pytest.mark.parametrize("query", tests)
 def test_expression(query, holder):
     sql = "INSERT INTO fruit.processed " + query + " AS name;"
-    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+    holder(sql=sql, dialect=DIALECT, with_tables=True)

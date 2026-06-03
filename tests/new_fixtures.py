@@ -7,14 +7,15 @@ from sqlleaf.objects.query_types import TableQuery
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import logging
+from sqlglot import exp
+
+import sqlleaf
 
 logging.basicConfig(level=logging.NOTSET)
 logger = logging.getLogger("sqlleaf")
 logger.setLevel(logging.DEBUG)
 
-import sqlleaf
 
-from sqlglot import exp
 
 
 class LineageHolderDummy:

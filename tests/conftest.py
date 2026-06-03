@@ -1,4 +1,3 @@
-import pprint
 import pytest
 
 
@@ -22,8 +21,6 @@ import pytest
 
 
 # conftest.py
-import pprint
-import pytest
 
 
 @pytest.hookimpl(tryfirst=True)

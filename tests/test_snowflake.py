@@ -6,9 +6,6 @@ import pytest
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
-from tests.new_fixtures import (
-    holder,
-)
 from sqlleaf.objects.query_types import PutQuery, StageQuery, CopyQuery, TableQuery
 
 DIALECT = "snowflake"
@@ -59,7 +56,7 @@ def test___copy_stage(holder, case):
 
 
 def test___put_stage(holder):
-    sql = f"""
+    sql = """
     CREATE STAGE my_int_stage
       URL='s3://load/files/';
       

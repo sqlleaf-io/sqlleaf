@@ -5,10 +5,7 @@ import pytest
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-import sqlglot
-
-from tests.new_fixtures import holder
-from sqlleaf.objects.query_types import InsertQuery
+DIALECT = "postgres"
 
 
 @pytest.mark.skip(reason="todo")
@@ -18,7 +15,7 @@ def test__system_tables_postgres(holder):
     SELECT tableowner FROM pg_tables WHERE schemaname = 'public';
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
-    h.generate(queries, dialect="postgres")
+    h.generate(sql, dialect="postgres")
 
     assert h.paths == [
         ["null[NULL]", "column[fruit.b.color]"],

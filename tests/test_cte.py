@@ -8,7 +8,7 @@ import pytest
 from sqlleaf.objects.query_types import InsertQuery, UpdateQuery, SelectQuery, MergeQuery, DeleteQuery
 from sqlleaf.exception import SqlLeafException
 
-from tests.new_fixtures import holder, is_subset
+from tests.new_fixtures import is_subset
 
 DIALECT = "postgres"
 
@@ -295,7 +295,7 @@ def test__cte_fails_for_returning_unaliased_function(holder):
         SELECT name
         FROM first_cte;
         """
-        h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+        holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert e.value.args[0] == "Non-column expression (UPPER(name)) must have an alias inside RETURNING to prevent ambiguity."
 
@@ -312,7 +312,7 @@ def test__cte_fails_for_returning_ambiguous_aliases(holder):
         SELECT name
         FROM first_cte;
         """
-        h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+        holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert e.value.args[0] == "Column reference 'first_cte.name' is ambiguous (2 possible options)"
 

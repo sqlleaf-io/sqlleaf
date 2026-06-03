@@ -7,7 +7,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import sqlglot
 
-from tests.new_fixtures import holder
 from sqlleaf.objects.query_types import InsertQuery
 
 DIALECT = "postgres"
@@ -143,6 +142,6 @@ def test__insert_overriding(holder):
         sql = """
         INSERT INTO products (id, name) OVERRIDING SYSTEM VALUE VALUES (500, 'Legacy Item');
         """
-        h = holder(sql=sql, dialect=DIALECT)
+        holder(sql=sql, dialect=DIALECT)
 
     assert e.value.args[0].startswith("Invalid expression / Unexpected token.")

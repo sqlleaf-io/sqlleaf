@@ -9,7 +9,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import sqlglot
 
-from tests.new_fixtures import holder, is_subset
+from tests.new_fixtures import is_subset
 
 DIALECT = "postgres"
 
@@ -54,7 +54,7 @@ def test__select_with_ordinality(holder):
     INSERT INTO fruit.processed
     SELECT * FROM unnest(ARRAY['apple', 'banana']) WITH ORDINALITY AS t(name, age);
     """
-    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+    holder(sql=sql, dialect=DIALECT, with_tables=True)
 
 
 def test__select_values(holder):
@@ -238,7 +238,7 @@ def test__select_fails_unknown_column(holder):
         SELECT hello
         FROM fruit.raw;
         """
-        h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+        holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert e.value.args[0].startswith("Column 'hello' could not be resolved.")
 

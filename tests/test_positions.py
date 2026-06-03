@@ -7,7 +7,6 @@ from sqlleaf.exception import SqlLeafException
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from tests.new_fixtures import holder
 
 DIALECT = "postgres"
 
@@ -108,7 +107,7 @@ def test__subquery_fail_union(holder):
         INSERT INTO person (age)
         SELECT (SELECT 1 UNION SELECT 2);
         """
-        h = holder(sql=sql, dialect=DIALECT)
+        holder(sql=sql, dialect=DIALECT)
         print()
 
     assert e.value.args[0] == "A subquery must return only one column"
@@ -144,7 +143,7 @@ def test__subquery_fails_more_than_one_column(holder):
         INSERT INTO person (age)
         SELECT 1 + (SELECT 2 AS age, 3 as num) AS age;
         """
-        h = holder(sql=sql, dialect=DIALECT)
+        holder(sql=sql, dialect=DIALECT)
 
     assert e.value.args[0] == "A subquery must return only one column"
 
