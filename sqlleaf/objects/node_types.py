@@ -62,6 +62,7 @@ class NodeAttributes:
         pos_ctx: PositionContext,
         name: str,
         kind: str = "",
+        with_positions: bool = False,
     ):
         self.expr = expr
         self.data_type = str(data_type) if data_type else ""
@@ -69,6 +70,7 @@ class NodeAttributes:
         self.name = name
         self.kind = kind
         self.ctx = pos_ctx
+        self.with_positions = with_positions
 
     # Allows the class to be used a networkx node
     def __hash__(self) -> int:
@@ -78,28 +80,47 @@ class NodeAttributes:
         assert self._data_type is not None
         return self._data_type
 
-    def wrap(self, name: str, with_positions: bool = False):
+    def wrap(self, name: str, with_positions: bool = False) -> str:
         if with_positions:
             pos = self.ctx.as_str()
             name = f"{name} {pos}"
         return f"{self.kind}[{name}]"
 
-    @property
-    def full_name(self):
-        return self.wrap(f"{self.name} type={self.data_type}")
+    def fields(self) -> dict[str, str]:
+        return {"type": self.data_type}
+
+    def friendly_fields(self) -> dict[str, str]:
+        return {}
+
+    def get_name(self) -> str:
+        return self.name
+
+    def _build_name(self, fields_dict: dict[str, str], with_positions: bool = False) -> str:
+        """Build a formatted name with fields."""
+        fields = " ".join([f"{k}={v}" for k, v in fields_dict.items() if v])
+        name = f"{self.get_name()} {fields}" if fields else self.get_name()
+        return self.wrap(name, with_positions=with_positions)
 
     @property
-    def friendly_name(self):
-        return f"{self.kind}[{self.name}]"
+    def full_name(self)-> str:
+        return self._build_name(self.fields(), with_positions=self.with_positions)
 
     @property
-    def id(self):
+    def friendly_name(self)-> str:
+        return self._build_name(self.friendly_fields())
+
+    @property
+    def id(self)-> str:
         # TODO: add correct fields
+        fields_dict = self.fields()
         fields = [
             self.name,
-            self.data_type,
             util.type_name(self.expr),
         ]
+        # Add values from fields_dict to the hash
+        for k, v in sorted(fields_dict.items()):
+            fields.append(f"{k}={v}")
+
         name = "node:" + util.short_sha256_hash(":".join(fields))
         return name
 
@@ -121,17 +142,14 @@ class LiteralNode(NodeAttributes):
             expr=gen_ctx.expr,
             name=name,
             pos_ctx=pos_ctx,
+            with_positions=True,
         )
 
-    @property
-    def full_name(self):
-        name = self.name.replace("'", '"')
-        return self.wrap(f"{name} type={self.data_type}", with_positions=True)
+    def fields(self) -> dict[str, str]:
+        return {"type": self.data_type}
 
-    @property
-    def friendly_name(self):
-        name = self.name.replace("'", '"')
-        return f"{self.kind}[{name}]"
+    def get_name(self) -> str:
+        return self.name.replace("'", '"')
 
 
 class ColumnNode(NodeAttributes):
@@ -171,19 +189,6 @@ class ColumnNode(NodeAttributes):
         # if table_type == "cte":
         #     self.member = gen_ctx.node.recursive_cte_member_kind
 
-    @property
-    def id(self):
-        # TODO: add correct fields
-        fields = [
-            self.catalog,
-            self.schema,
-            self.table,
-            self.name,
-            self.data_type,
-            util.type_name(self.expr),
-        ]
-        name = "node:" + util.short_sha256_hash(":".join(fields))
-        return name
 
     def to_dict(self):
         d = super().to_dict()
@@ -196,7 +201,7 @@ class ColumnNode(NodeAttributes):
         )
         return d
 
-    def rename_table(self, source: exp.Table | exp.Values, dialect: str):
+    def rename_table(self, source: exp.Table | exp.Values, dialect: str)-> None:
         """
         Change the column's source table to be its fully qualified name, not its alias,
         so that the ColumnNode is provided complete information.
@@ -223,7 +228,7 @@ class ColumnNode(NodeAttributes):
             self.schema = column.db
             self.table = column.table
 
-    def set_table_properties(self, catalog: str, schema: str, table: str, gen_ctx: GeneratorContext):
+    def set_table_properties(self, catalog: str, schema: str, table: str, gen_ctx: GeneratorContext) -> None:
         """
         Figure out the table's type (view/table) by inspecting the original query in the mapping.
         """
@@ -311,31 +316,34 @@ class ColumnNode(NodeAttributes):
         tokens = [self.catalog, self.schema, self.table, self.name]
         return ".".join([tok for tok in tokens if tok])
 
+    @property
+    def full_name(self):
+        fields_dict = self.fields()
+        fields = " ".join([f"{k}={v}" for k, v in fields_dict.items() if v])
+        return self.wrap(fields, with_positions=self.with_positions)
+
     def as_table(self) -> exp.Table:
         return exp.table_(catalog=self.catalog, db=self.schema, table=self.table)
 
-    @property
-    def full_name(self):
-        parts = [
-            self.get_name(),
-            f"type={self.data_type}",
-            f"kind={self.parent_kind}",
-        ]
+    def fields(self) -> dict[str, str]:
+        f = {
+            "name": self.name,
+            "table": self.table,
+            "schema": self.schema,
+            "type": self.data_type,
+            "kind": self.parent_kind,
+        }
 
         if self.parent_subkind:
-            parts.append(f"subkind={self.parent_subkind}")
+            f["subkind"] = self.parent_subkind
 
         if self.parent_kind == TableType.CTE and self.parent_subkind == TableSubtype.RECURSIVE:
-            parts.append(f"member={self.member}")
+            f["member"] = self.member
 
         if self.parent_kind == TableType.CTE:
-            parts.append(f"statement={self.ctx.statement_index}")
+            f["statement"] = str(self.ctx.statement_index)
 
-        return self.wrap(" ".join(parts))
-
-    @property
-    def friendly_name(self):
-        return self.wrap(self.get_name())
+        return f
 
 
 class FileColumnNode(NodeAttributes):
@@ -359,16 +367,6 @@ class FileColumnNode(NodeAttributes):
         self.file_format = file_format
         self.file_path = file_path
 
-    @property
-    def id(self):
-        fields = [
-            self.file_path,
-            self.name,
-            self.data_type,
-            util.type_name(self.expr),
-        ]
-        name = "node:" + util.short_sha256_hash(":".join(fields))
-        return name
 
     def to_dict(self):
         d = super().to_dict()
@@ -380,13 +378,16 @@ class FileColumnNode(NodeAttributes):
         )
         return d
 
-    @property
-    def full_name(self):
-        return self.wrap(f"{self.name} type={self.data_type} kind=file format={self.file_format} path={self.file_path}")
+    def fields(self) -> dict[str, str]:
+        return {
+            "type": self.data_type,
+            "kind": "file",
+            "format": self.file_format,
+            "path": self.file_path,
+        }
 
-    @property
-    def friendly_name(self):
-        return self.wrap(f"{self.name} path={self.file_path}")
+    def friendly_fields(self) -> dict[str, str]:
+        return {"path": self.file_path}
 
 
 class FunctionNode(NodeAttributes):
@@ -404,17 +405,14 @@ class FunctionNode(NodeAttributes):
             expr=gen_ctx.expr,
             name=name,
             pos_ctx=pos_ctx,
+            with_positions=True,
         )
 
-    @property
-    def full_name(self):
-        name = f"{self.name}".upper()
-        return self.wrap(f"{name} type={self.data_type}", with_positions=True)
+    def fields(self) -> dict[str, str]:
+        return {"type": self.data_type}
 
-    @property
-    def friendly_name(self):
-        name = f"{self.name}".upper()
-        return self.wrap(name)
+    def get_name(self) -> str:
+        return f"{self.name}".upper()
 
 
 class UserDefinedFunctionNode(NodeAttributes):
@@ -432,20 +430,16 @@ class UserDefinedFunctionNode(NodeAttributes):
             expr=expr,
             name=expr.this,
             pos_ctx=pos_ctx,
+            with_positions=True,
         )
         self.schema = schema
 
-    def get_name(self):
+    def get_name(self) -> str:
         tokens = [self.schema, self.name]
-        return ".".join([tok for tok in tokens if tok])
+        return ".".join([tok for tok in tokens if tok]).upper()
 
-    @property
-    def full_name(self):
-        return self.wrap(f"{self.get_name()} type={self.data_type}", with_positions=True)
-
-    @property
-    def friendly_name(self):
-        return self.wrap(f"{self.get_name()}".upper())
+    def fields(self) -> dict[str, str]:
+        return {"type": self.data_type}
 
 
 class JsonPathNode(NodeAttributes):
@@ -482,9 +476,11 @@ class JsonPathNode(NodeAttributes):
 
         return elements
 
-    @property
-    def full_name(self):
-        return self.wrap(f"{self.name} depth={self.selector_depth}")
+    def fields(self) -> dict[str, str]:
+        return {"depth": str(self.selector_depth)}
+
+    def friendly_fields(self) -> dict[str, str]:
+        return {}
 
 
 class VariableNode(NodeAttributes):
@@ -508,9 +504,8 @@ class StarNode(NodeAttributes):
             pos_ctx=pos_ctx,
         )
 
-    @property
-    def full_name(self):
-        return self.wrap(f"{self.name}")
+    def fields(self) -> dict[str, str]:
+        return {}
 
 
 class VarNode(NodeAttributes):
@@ -532,15 +527,14 @@ class NullNode(NodeAttributes):
             expr=gen_ctx.expr,
             name="null",
             pos_ctx=pos_ctx,
+            with_positions=True,
         )
 
-    @property
-    def full_name(self):
-        return self.wrap(f"{self.name} type={self.data_type}", with_positions=True)
+    def fields(self) -> dict[str, str]:
+        return {"type": exp.DataType.build("NULL")}
 
-    @property
-    def friendly_name(self):
-        return self.wrap("NULL")
+    def get_name(self) -> str:
+        return "NULL"
 
 
 class SequenceNode(NodeAttributes):
@@ -554,12 +548,11 @@ class SequenceNode(NodeAttributes):
         )
         self.subkind = subkind
 
-    @property
-    def full_name(self):
-        parts = [f"{self.name} type={self.data_type}"]
+    def fields(self) -> dict[str, str]:
+        f = {"type": self.data_type}
         if self.subkind:
-            parts.append(f"kind={self.subkind}")
-        return self.wrap(" ".join(parts))
+            f["kind"] = self.subkind
+        return f
 
 
 class WindowNode(NodeAttributes):
@@ -573,6 +566,9 @@ class WindowNode(NodeAttributes):
             name=_function_name(expr, gen_ctx.query.dialect),
             pos_ctx=pos_ctx,
         )
+
+    def fields(self) -> dict[str, str]:
+        return {"type": self.data_type}
 
 
 class StageNode(NodeAttributes):
@@ -592,9 +588,8 @@ class StageNode(NodeAttributes):
             pos_ctx=pos_ctx,
         )
 
-    @property
-    def full_name(self):
-        return self.wrap(f"{self.name}")
+    def fields(self) -> dict[str, str]:
+        return {}
 
 
 class FileNode(NodeAttributes):
@@ -609,9 +604,8 @@ class FileNode(NodeAttributes):
             pos_ctx=pos_ctx,
         )
 
-    @property
-    def full_name(self):
-        return self.wrap(f"{self.name}")
+    def fields(self) -> dict[str, str]:
+        return {}
 
 
 class IntervalNode(NodeAttributes):
@@ -624,11 +618,11 @@ class IntervalNode(NodeAttributes):
             expr=gen_ctx.expr,
             name=name,
             pos_ctx=pos_ctx,
+            with_positions=True,
         )
 
-    @property
-    def full_name(self):
-        return self.wrap(f"{self.name} type={self.data_type}", with_positions=True)
+    def fields(self) -> dict[str, str]:
+        return {"type": self.data_type}
 
 
 class _PivotNode(NodeAttributes):
@@ -648,9 +642,21 @@ class _PivotNode(NodeAttributes):
         self.source = source
         self.target = target
 
+    def fields(self) -> dict[str, str]:
+        f = {}
+        # Keep empty strings as values to match expected test output
+        f["source"] = self.source
+        f["target"] = self.target
+        f["statement"] = str(self.ctx.statement_index)
+        return f
+
+    def get_name(self) -> str:
+        return ""
+
     @property
     def full_name(self):
-        return self.wrap(f"source={self.source} target={self.target} statement={self.ctx.statement_index}")
+        fields = " ".join([f"{k}={v}" for k, v in self.fields().items()])
+        return self.wrap(fields)
 
 
 class PivotNode(_PivotNode):
@@ -673,9 +679,11 @@ class StreamNode(NodeAttributes):
             pos_ctx=pos_ctx,
         )
 
-    @property
-    def full_name(self):
-        return self.friendly_name
+    def fields(self) -> dict[str, str]:
+        return {}
+
+    def get_name(self) -> str:
+        return self.name
 
 
 class ProgramNode(NodeAttributes):
@@ -689,9 +697,8 @@ class ProgramNode(NodeAttributes):
         )
         self.program_args = args.strip()
 
-    @property
-    def full_name(self):
-        return self.wrap(f"{self.name} args='{self.program_args}'")
+    def fields(self) -> dict[str, str]:
+        return {"args": f"'{self.program_args}'"}
 
 
 class EdgeAttributes:

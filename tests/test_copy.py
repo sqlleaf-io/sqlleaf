@@ -30,8 +30,8 @@ def test_copy_to_stream(holder, stream):
     ]
     assert h.nodes_full == [
         f"stream[{s}]",
-        "column[fruit.simple.age type=INT kind=table]",
-        "column[fruit.simple.name type=VARCHAR kind=table]",
+        "column[name=age table=simple schema=fruit type=INT kind=table]",
+        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
 
@@ -51,8 +51,8 @@ def test_copy_from_stream(holder, stream):
     ]
     assert h.nodes_full == [
         f"stream[{s}]",
-        "column[fruit.simple.age type=INT kind=table]",
-        "column[fruit.simple.name type=VARCHAR kind=table]",
+        "column[name=age table=simple schema=fruit type=INT kind=table]",
+        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
 
@@ -131,8 +131,8 @@ def test_copy_into_table_from_file(holder):
     assert h.nodes_full == [
         "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
         "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
-        "column[fruit.simple.age type=INT kind=table]",
-        "column[fruit.simple.name type=VARCHAR kind=table]",
+        "column[name=age table=simple schema=fruit type=INT kind=table]",
+        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
 
 
@@ -149,8 +149,8 @@ def test_copy_into_table_from_file_named_columns(holder):
     assert h.nodes_full == [
         "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
         "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
-        "column[fruit.simple.age type=INT kind=table]",
-        "column[fruit.simple.name type=VARCHAR kind=table]",
+        "column[name=age table=simple schema=fruit type=INT kind=table]",
+        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
 
 
@@ -168,8 +168,8 @@ def test_copy_into_file_from_table(holder):
     assert h.nodes_full == [
         "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
         "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
-        "column[fruit.simple.age type=INT kind=table]",
-        "column[fruit.simple.name type=VARCHAR kind=table]",
+        "column[name=age table=simple schema=fruit type=INT kind=table]",
+        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
 
 
@@ -187,8 +187,8 @@ def test_copy_into_file_from_table_named_columns(holder):
     assert h.nodes_full == [
         "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
         "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
-        "column[fruit.simple.age type=INT kind=table]",
-        "column[fruit.simple.name type=VARCHAR kind=table]",
+        "column[name=age table=simple schema=fruit type=INT kind=table]",
+        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
 
 
@@ -247,6 +247,6 @@ def test_copy_into_program_from_table(holder):
     ]
     assert h.nodes_full == [
         "program[gzip args='> /tmp/data.csv.gz']",
-        "column[fruit.simple.age type=INT kind=table]",
-        "column[fruit.simple.name type=VARCHAR kind=table]",
+        "column[name=age table=simple schema=fruit type=INT kind=table]",
+        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]

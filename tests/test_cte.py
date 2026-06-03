@@ -208,8 +208,8 @@ def test__cte_two_same_name_different_query(holder):
         ["literal[1]", "column[cte1.name]", "column[fruit.processed.name]"],
         ["literal[2]", "column[cte1.name]", "column[fruit.raw.name]"],
     ]
-    assert "column[cte1.name type=INT kind=cte statement=0]" in h.nodes_full
-    assert "column[cte1.name type=INT kind=cte statement=1]" in h.nodes_full
+    assert "column[name=name table=cte1 type=INT kind=cte statement=0]" in h.nodes_full
+    assert "column[name=name table=cte1 type=INT kind=cte statement=1]" in h.nodes_full
     assert [InsertQuery, InsertQuery] == list(map(type, h.queries))
     assert len(h.nodes) == 6
     assert len(h.edges) == 4
@@ -507,10 +507,10 @@ def test__cte_merge_inside_insert(holder):
 
     assert h.paths == [
         ["udf[MERGE_ACTION]", "column[cte.action]", "column[fruit_drink.action]"],
-        ["column[drink.name2]", "column[cte.name2]", "column[fruit_drink.name2]"],
         ["column[drink.name2]", "column[fruit.name]", "column[cte.name]", "column[fruit_drink.name]"],
-        ["column[drink.kind2]", "column[cte.kind2]", "column[fruit_drink.kind2]"],
+        ["column[drink.name2]", "column[cte.name2]", "column[fruit_drink.name2]"],
         ["column[drink.kind2]", "column[fruit.kind]", "column[cte.kind]", "column[fruit_drink.kind]"],
+        ["column[drink.kind2]", "column[cte.kind2]", "column[fruit_drink.kind2]"],
     ]
     assert (
         h.queries[3].statement_transformed.sql(dialect=DIALECT) == "WITH cte AS ("
@@ -673,6 +673,6 @@ def test__cte_materialized(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [["literal[1]", "column[cte.n]", "column[fruit.processed.age]"]]
-    assert "column[cte.n type=INT kind=cte subkind=materialized statement=0]" in h.nodes_full
+    assert "column[name=n table=cte type=INT kind=cte subkind=materialized statement=0]" in h.nodes_full
     assert len(h.nodes) == 3
     assert len(h.edges) == 2

@@ -21,7 +21,7 @@ def test__view_simple(holder, case):
 
     assert h.paths == [["literal[-1]", "column[one.number]"]]
     subkind = f" subkind={case.lower()}" if case else ""
-    assert f"column[one.number type=INT kind=view{subkind}]" in h.nodes_full
+    assert f"column[name=number table=one type=INT kind=view{subkind}]" in h.nodes_full
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
 

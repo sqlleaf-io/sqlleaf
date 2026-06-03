@@ -42,7 +42,7 @@ def test__select_parens(holder, substr):
 
     assert h.nodes_full == [
         "literal[1 type=INT query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]",
-        "column[person.age type=INT kind=table]",
+        "column[name=age table=person type=INT kind=table]",
     ]
     assert h.paths == [["literal[1]", "column[person.age]"]]
     assert len(h.edges) == 1
@@ -70,7 +70,7 @@ def test__select_values(holder):
         ['literal["one"]', "column[t.letter]", "column[fruit.processed.kind]"],
         ['literal["two"]', "column[t.letter]", "column[fruit.processed.kind]"],
     ]
-    assert "column[t.letter type=VARCHAR kind=derived_table]" in h.nodes_full
+    assert "column[name=letter table=t type=VARCHAR kind=derived_table]" in h.nodes_full
     assert len(h.nodes) == 8
     assert len(h.edges) == 6
 
@@ -169,8 +169,8 @@ def test__select_cast(holder):
     assert h.paths == [["column[fruit.raw.name]", "function[CAST]", "column[fruit.processed.age]"]]
     assert h.nodes_full == [
         "function[CAST type=INT query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]",
-        "column[fruit.processed.age type=INT kind=table]",
-        "column[fruit.raw.name type=VARCHAR kind=table]",
+        "column[name=age table=processed schema=fruit type=INT kind=table]",
+        "column[name=name table=raw schema=fruit type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
 
@@ -230,7 +230,7 @@ def test__select_hidden_system_columns(holder):
         ["column[fruit.raw.xmax]", "column[fruit.processed.amount]"],
         ["column[fruit.raw.xmax]", "column[fruit.processed.number]"],
     ]
-    assert "column[fruit.new.xmax type=OID kind=table]" in h.nodes_full
+    assert "column[name=xmax table=new schema=fruit type=OID kind=table]" in h.nodes_full
     assert len(h.nodes) == 9
     assert len(h.edges) == 5
 
@@ -372,8 +372,8 @@ def test__select_rows_from(holder):
         ["literal[1]", "function[GENERATE_SERIES]", "column[x.amount]", "column[fruit.processed.amount]"],
         ["literal[3]", "function[GENERATE_SERIES]", "column[x.amount]", "column[fruit.processed.amount]"],
     ]
-    assert "column[x.age type=UNKNOWN kind=derived_table]" in h.nodes_full
-    assert "column[y.a type=INT kind=derived_table]" in h.nodes_full
+    assert "column[name=age table=x type=UNKNOWN kind=derived_table]" in h.nodes_full
+    assert "column[name=a table=y type=INT kind=derived_table]" in h.nodes_full
     # TODO: duplicate nodes (literals and udfs)
     # assert len(h.nodes) == 17     # Correct
 

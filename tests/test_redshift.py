@@ -33,9 +33,9 @@ def test__select_pivot_no_alias(holder):
     assert h.nodes_full == [
         "pivot[source= target=john statement=2]",
         "function[SUM type=BIGINT query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]",
-        "column[_0.amount type=INT kind=derived_table]",
-        "column[source.amount type=INT kind=table]",
-        "column[target.john_total type=INT kind=table]",
+        "column[name=amount table=_0 type=INT kind=derived_table]",
+        "column[name=amount table=source type=INT kind=table]",
+        "column[name=john_total table=target type=INT kind=table]",
     ]
     assert len(h.edges) == 4
 
@@ -73,14 +73,14 @@ def test__select_pivot_alias(holder):
         "function[AVG type=DOUBLE query_depth=0 query_width=0 statement=2 select=3 func_depth=0 func_arg=0]",
         "function[SUM type=BIGINT query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]",
         "function[SUM type=BIGINT query_depth=0 query_width=0 statement=2 select=2 func_depth=0 func_arg=0]",
-        "column[_0.age type=INT kind=derived_table]",
-        "column[_0.amount type=INT kind=derived_table]",
-        "column[source.age type=INT kind=table]",
-        "column[source.amount type=INT kind=table]",
-        "column[target.john_average type=DECIMAL(10, 2) kind=table]",
-        "column[target.john_total type=INT kind=table]",
-        "column[target.mary_average type=DECIMAL(10, 2) kind=table]",
-        "column[target.mary_total type=INT kind=table]",
+        "column[name=age table=_0 type=INT kind=derived_table]",
+        "column[name=amount table=_0 type=INT kind=derived_table]",
+        "column[name=age table=source type=INT kind=table]",
+        "column[name=amount table=source type=INT kind=table]",
+        "column[name=john_average table=target type=DECIMAL(10, 2) kind=table]",
+        "column[name=john_total table=target type=INT kind=table]",
+        "column[name=mary_average table=target type=DECIMAL(10, 2) kind=table]",
+        "column[name=mary_total table=target type=INT kind=table]",
     ]
     assert len(h.edges) == 14
 
@@ -102,8 +102,8 @@ def test__unload(holder):
     assert h.nodes_full == [
         "column[amount type=UNKNOWN kind=file format=UNKNOWN path=s3://object-path/name-prefix]",
         "column[name type=UNKNOWN kind=file format=UNKNOWN path=s3://object-path/name-prefix]",
-        "column[source.amount type=INT kind=table]",
-        "column[source.name type=VARCHAR kind=table]",
+        "column[name=amount table=source type=INT kind=table]",
+        "column[name=name table=source type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
     assert isinstance(h.queries[1], UnloadQuery)
@@ -127,7 +127,7 @@ def test__table_external(holder):
         ["column[age path=s3://my-bucket/new/fruit/]", "column[fruit.ext.age]"],
     ]
     assert "column[name type=UNKNOWN kind=file format=TEXTFILE path=s3://my-bucket/new/fruit/]" in h.nodes_full
-    assert "column[fruit.ext.age type=INT kind=table subkind=external]" in h.nodes_full
+    assert "column[name=age table=ext schema=fruit type=INT kind=table subkind=external]" in h.nodes_full
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
 
@@ -154,9 +154,9 @@ def test__select_unpivot(holder):
         "unpivot[source= target=name statement=2]",
         "unpivot[source=john_total target=amount statement=2]",
         'literal["john" type=VARCHAR query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]',
-        "column[source.john_total type=INT kind=table]",
-        "column[target.amount type=INT kind=table]",
-        "column[target.name type=VARCHAR kind=table]",
+        "column[name=john_total table=source type=INT kind=table]",
+        "column[name=amount table=target type=INT kind=table]",
+        "column[name=name table=target type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 4
 

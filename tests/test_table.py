@@ -22,7 +22,7 @@ def test__table_types(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert "column[fruit.new.age type=INT kind=table subkind=temporary]" in h.nodes_full
+    assert "column[name=age table=new schema=fruit type=INT kind=table subkind=temporary]" in h.nodes_full
 
 
 def test__table_like_table(holder):
@@ -75,9 +75,9 @@ def test__table_like_table_generated(holder):
         ['literal["banana"]', "column[fruit.b_like_a.name]", "function[CONCAT]", "column[fruit.b_like_a.gen]"],
         ['literal["fruit"]', "column[fruit.b_like_a.kind]", "function[CONCAT]", "column[fruit.b_like_a.gen]"],
     ]
-    assert "column[fruit.b_like_a.gen type=TEXT kind=table]" in h.nodes_full
-    assert "column[fruit.b_like_a.kind type=TEXT kind=table]" in h.nodes_full
-    assert "column[fruit.b_like_a.name type=VARCHAR kind=table]" in h.nodes_full
+    assert "column[name=gen table=b_like_a schema=fruit type=TEXT kind=table]" in h.nodes_full
+    assert "column[name=kind table=b_like_a schema=fruit type=TEXT kind=table]" in h.nodes_full
+    assert "column[name=name table=b_like_a schema=fruit type=VARCHAR kind=table]" in h.nodes_full
     assert len(h.nodes) == 6
     assert len(h.edges) == 5
 
