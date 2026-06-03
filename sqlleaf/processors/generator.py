@@ -7,12 +7,14 @@ from enum import StrEnum, auto
 
 import networkx as nx
 from sqlglot import exp
-from sqlglot.optimizer import Scope, build_scope, traverse_scope
+from sqlglot.optimizer import Scope, build_scope
+
 
 if t.TYPE_CHECKING:
     pass
 
 from sqlleaf import util, exception, mappings
+from sqlleaf.typing import E
 from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, StageNode, ColumnNode, TableType, StreamNode, ProgramNode, FileColumnNode
 from sqlleaf.objects.query_types import Query, UpdateQuery, CopyQuery, PutQuery, TableQuery, UnloadQuery
@@ -57,12 +59,11 @@ def generate_lineage_for_query(
     if check_for_external_table(generator, gen_ctx, pos_ctx):
         return graph
 
-    generate_lineage_for_columns(child_object, generator, gen_ctx, pos_ctx)
+    generate_lineage_for_columns(generator, gen_ctx, pos_ctx)
     return gen_ctx.graph
 
 
 def generate_lineage_for_columns(
-    table: exp.Table,
     generator: BaseGenerator,
     gen_ctx: GeneratorContext,
     pos_ctx: PositionContext,
@@ -71,24 +72,28 @@ def generate_lineage_for_columns(
     Generate the lineage for a set of columns from a given table.
     """
     scope = get_scope(statement=gen_ctx.query.statement)
-    scope_positions = calculate_scope_positions(scope)
+    gen_ctx.scope_positions.calculate(scope)
 
     # Process the selected columns
     columns_processed = 0
-    for selected_node, default_node in _iter_child_nodes(table, gen_ctx, pos_ctx):
-        child_node: ColumnNode = selected_node or default_node
+    for selected_node, default_node in _iter_child_nodes(gen_ctx, pos_ctx):
+        child_node: TargetNodeType | None = selected_node or default_node
+        if not child_node:
+            break
+
         logger.info(f"Calculating lineage downstream of {child_node.friendly_name}")
 
         # A column may have both lineage and a default expression; process both.
         # TODO: make this a CLI flag for whether to include these exprs in lineage
         if default_node:
             constraint_expr = default_node.get_column_constraint_expression()
-            constraint_ctx = replace(gen_ctx, expr=constraint_expr.this, new_data_type=child_node.data_type, child_node=child_node)
-            # Walk only the expression
-            walk_expressions_and_build_graph(generator=generator, gen_ctx=constraint_ctx, pos_ctx=pos_ctx)
+            if constraint_expr and constraint_expr.this:
+                constraint_ctx = replace(gen_ctx, expr=constraint_expr.this, new_data_type=child_node.data_type if child_node else None, child_node=child_node)
+                # Walk only the expression
+                walk_expressions_and_build_graph(generator=generator, gen_ctx=constraint_ctx, pos_ctx=pos_ctx)
 
         if selected_node:
-            walk_query_and_build_graph(generator, child_node, scope, scope_positions, gen_ctx, child_node.ctx)
+            walk_query_and_build_graph(generator, child_node, scope, gen_ctx, child_node.ctx)
             columns_processed += 1
 
     if columns_processed == 0:
@@ -105,8 +110,10 @@ class TargetObjectType(StrEnum):
     PROGRAM = auto()
 
 
-def _iter_child_nodes(target: exp.Table | exp.Literal | exp.Identifier, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> (
-    t.Generator[t.Tuple[ColumnNode | None, ColumnNode | None]]
+TargetNodeType = ColumnNode | FileColumnNode | StreamNode | ProgramNode | StageNode
+
+def _iter_child_nodes(gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> (
+    t.Generator[t.Tuple[TargetNodeType | None, ColumnNode | None]]
 ):
     """
     Iterate over every column of a table that was either selected in a query or has a default expression.
@@ -115,7 +122,8 @@ def _iter_child_nodes(target: exp.Table | exp.Literal | exp.Identifier, gen_ctx:
     # Both COPY and UNLOAD can have SELECTs as their sources, which have arbitrary
     # columns that vary in length due to their sourcing from any table.
     query = gen_ctx.query
-    target_type, target_columns = determine_object_type(target, gen_ctx)
+    expr = query.get_target()
+    target_type, target_columns = determine_object_type(gen_ctx)
 
     select_idx = 0
 
@@ -129,31 +137,37 @@ def _iter_child_nodes(target: exp.Table | exp.Literal | exp.Identifier, gen_ctx:
 
         match target_type:
             case TargetObjectType.FILE:
-                format = util.get_file_format(target.name)
+                file_format = util.get_file_format(expr.name)
                 child_node = FileColumnNode(
                     column=col_def.name,
-                    format=format,
-                    path=target.name,
+                    file_format=file_format,
+                    file_path=expr.name,
                     gen_ctx=gen_ctx,
                     pos_ctx=pos_ctx,
                 )
 
-            case TargetObjectType.TABLE:
+            case TargetObjectType.TABLE if isinstance(expr, exp.Table):
                 child_node = ColumnNode(
-                    catalog=target.catalog,
-                    schema=target.db,
-                    table=target.name,
+                    catalog=expr.catalog,
+                    schema=expr.db,
+                    table=expr.name,
                     column=col_def.name,
                     gen_ctx=gen_ctx,
                     pos_ctx=pos_ctx,
                 )
                 process_defaults = True
 
+            case TargetObjectType.TABLE:
+                # expr is likely exp.Literal or exp.Identifier but target_type is TABLE
+                # This could happen if COPY/UNLOAD mapping is not perfectly aligned
+                # Fallback to a basic NodeAttributes or handle as error
+                raise exception.SqlLeafException(f"Expected exp.Table for TABLE target type, but got {type(expr)}")
+
             case TargetObjectType.STREAM:
                 # Use the ColumnDef as the expr so that correct columns
                 # are selected during walk()
                 child_node = StreamNode(
-                    name=target.name,
+                    name=expr.name,
                     gen_ctx=gen_ctx,
                     pos_ctx=pos_ctx,
                 )
@@ -171,7 +185,7 @@ def _iter_child_nodes(target: exp.Table | exp.Literal | exp.Identifier, gen_ctx:
             # A 'CREATE TABLE' has no SELECT, so include all columns if this case.
             selected_node = child_node
 
-        if process_defaults and child_node.get_column_constraint_expression():
+        if process_defaults and isinstance(child_node, ColumnNode) and child_node.get_column_constraint_expression():
             default_node = child_node
             # TODO: unset all index positions, set 'default=true' as position
 
@@ -182,7 +196,7 @@ def _iter_child_nodes(target: exp.Table | exp.Literal | exp.Identifier, gen_ctx:
             select_idx += 1
 
 
-def determine_object_type(target, gen_ctx: GeneratorContext):
+def determine_object_type(gen_ctx: GeneratorContext):
     """
     Given a target object, figure out all its columns.
 
@@ -191,51 +205,59 @@ def determine_object_type(target, gen_ctx: GeneratorContext):
     """
     query = gen_ctx.query
     object_mapping = gen_ctx.object_mapping
+    expr = query.get_target()
 
-    if isinstance(target, exp.Literal):
+    if isinstance(expr, exp.Literal):
         # Use the parent table's columns as the child columns
         # Assumes this is a COPY | UNLOAD
         target_type = TargetObjectType.FILE
-        columns_from_object = get_column_defs(query.source, query, object_mapping)
+        table_with_columns = query.get_source()
 
-    elif isinstance(target, exp.Identifier):
-        columns_from_object = get_column_defs(query.source, query, object_mapping)
-        if target.name in ["stdin", "stdout"]:
+    elif isinstance(expr, exp.Identifier):
+        table_with_columns = query.get_source()
+        if expr.name in ["stdin", "stdout"]:
             target_type = TargetObjectType.STREAM
-        elif target.name in ["program"]:
+        elif expr.name in ["program"]:
             target_type = TargetObjectType.PROGRAM
         else:
-            raise exception.SqlLeafException(f"Unknown child column name in COPY: {target.name}")
+            raise exception.SqlLeafException(f"Unknown child column name in COPY: {expr.name}")
 
-    elif isinstance(target, exp.Table):
+    elif isinstance(expr, exp.Table):
         target_type = TargetObjectType.TABLE
-        columns_from_object = get_column_defs(target, query, object_mapping)
+        table_with_columns = query.get_target_as_table()
 
     else:
-        raise exception.SqlLeafException(f"Unknown child column type in COPY: {target}")
+        raise exception.SqlLeafException(f"Unknown child column type in COPY: {expr}")
 
+    columns_from_object = get_column_defs(table_with_columns, query, object_mapping)
     return target_type, columns_from_object
 
 
-def get_column_defs(target, query, object_mapping: mappings.ObjectMapping) -> t.List[exp.ColumnDef]:
+def get_column_defs(table_with_columns: exp.Table | exp.Literal | exp.Identifier | exp.Schema | exp.Select | exp.Values, query: Query, object_mapping: mappings.ObjectMapping) -> t.List[exp.ColumnDef]:
     """
     Most of the time, the sources and target are tables.
     However, with COPY/UNLOAD, they can be files or streams.
 
-    If the target is not a table and the source is an
+    If the target is not a table and the source is a SELECT,
+    there may be a JOIN with many tables as the source.
     """
     if isinstance(query, (CopyQuery, UnloadQuery)):
-        if isinstance(query.source, exp.Select):
+        if isinstance(query.get_source(), exp.Select):
             columns = query.get_selected_column_names()
             return [util.str_to_column_def(col) for col in columns]
 
-    table_query = object_mapping.get_table_or_stage(target)
+    if not isinstance(table_with_columns, exp.Table):
+        return []
+
+    table_query = object_mapping.get_table_or_stage(table_with_columns)
+    if not table_query:
+        return []
+
     return table_query.get_column_defs()
 
 
-OutputNodeType = ColumnNode | StreamNode | ProgramNode
 def walk_query_and_build_graph(
-    generator: BaseGenerator, child_node: OutputNodeType, scope: Scope, scope_positions, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    generator: BaseGenerator, child_node: TargetNodeType, scope: Scope, gen_ctx: GeneratorContext, pos_ctx: PositionContext
 ) -> None:
     """
     Walk over each query (and its subqueries) to collect the expressions for each column.
@@ -245,25 +267,24 @@ def walk_query_and_build_graph(
     query = gen_ctx.query
 
     for scope_traversal in walk_query_scope(
-        column=child_node.expr,
+        column=t.cast(t.Union[exp.Column, int], child_node.expr),
         scope=scope,
     ):
         logger.debug("----")
         if isinstance(query, CopyQuery) and query.is_target_a_stage:
             # Set the column to be a StageNode (if applicable) since we now have the lineage from using the dummy column
-            gen_ctx = replace(gen_ctx, expr=query.target.this)
+            gen_ctx = replace(gen_ctx, expr=query.get_target().this)
             child_node = StageNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx)
 
         logger.debug(f"Processing node expr: {scope_traversal.expression}, Id: {id(scope_traversal)}")
         logger.debug(f"Child node: {child_node.full_name}")
 
-        height, width = scope_positions[id(scope_traversal.scope.expression)]
+        height, width = gen_ctx.scope_positions.get_scope_for_expr(scope_traversal.scope.expression)
         child_ctx = replace(pos_ctx, query_depth=height, query_width=width)
         gen_ctx = replace(
             gen_ctx,
             expr=scope_traversal.expression,
             scope=scope_traversal.scope,
-            scope_positions=scope_positions,
             child_node=child_node,
         )
 
@@ -272,11 +293,11 @@ def walk_query_and_build_graph(
             logger.debug(f"Produced nodes: {[n.full_name for n in nodes]}")
 
             for n in nodes:
-                if isinstance(n, ColumnNode) and n.has_child_scope:
-                    walk_query_and_build_graph(generator, n, n.source_scope, scope_positions, gen_ctx, pos_ctx)
+                if isinstance(n, ColumnNode) and n.has_child_scope and isinstance(n.source_scope, Scope):
+                    walk_query_and_build_graph(generator, n, n.source_scope, gen_ctx, pos_ctx)
 
 
-def walk_query_scope(column: exp.Column, scope: Scope) -> t.Generator[ScopeTraversal]:
+def walk_query_scope(column: exp.Column | int, scope: Scope) -> t.Generator[ScopeTraversal]:
     """
     Walk over each query scope (i.e. a SELECT statement) and return the expression linked to the column.
     """
@@ -329,27 +350,27 @@ def walk_expressions_and_build_graph(
     nodes_created = []
 
     for edge in generator.process(gen_ctx.expr, gen_ctx, pos_ctx):
-        parent_node_attrs, child_node = edge.parent, edge.child
-        if parent_node_attrs:
-            node_exists = gen_ctx.graph.has_node(parent_node_attrs.full_name)
+        parent_node, child_node = edge.parent, edge.child
+        if parent_node:
+            node_exists = gen_ctx.graph.has_node(parent_node.full_name)
             if not node_exists:
-                nodes_created.append(parent_node_attrs)
+                nodes_created.append(parent_node)
             """
             Considering Postgres inheritance operates 'behind the scenes' outside of the query's syntax), we are
             justified in implementing this behaviour in our own way: by mapping each inherited column to the query's columns.
             """
             inherited_columns_of_parent = find_inherited_columns_for_parent(
-                column_node=parent_node_attrs, generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx
+                column_node=parent_node, generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx
             )
             inherited_columns_of_child = find_inherited_columns_for_child(
                 column_node=child_node, generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx
             )
 
-            for parent_node in [parent_node_attrs] + inherited_columns_of_parent:
-                for child_node in [child_node] + inherited_columns_of_child:
+            for parent in [parent_node] + inherited_columns_of_parent:
+                for child in [child_node] + inherited_columns_of_child:
                     add_nodes_with_edge_to_graph(
-                        parent_node,
-                        child_node,
+                        parent,
+                        child,
                         gen_ctx.graph,
                         gen_ctx.query,
                         pos_ctx,
@@ -385,7 +406,7 @@ def find_inherited_columns_for_parent(
 
 
 def find_inherited_columns_for_child(
-    column_node: NodeAttributes, generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    column_node: NodeAttributes | None, generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: PositionContext
 ) -> t.List[ColumnNode]:
     """
     Find the inherited columns for a particular column, but only for the form 'MERGE|UPDATE ONLY <table>'
@@ -418,9 +439,9 @@ def find_inherited_columns(
     table_query = gen_ctx.object_mapping.find_query(kind="table", table=table)
 
     # Collect any columns from inherited tables with the same name
-    for inh_table in table_query.inherited_by:
+    for inh_table in getattr(table_query, "inherited_by", []):
         col_def = [c for c in inh_table.get_column_defs() if c.name == column_node.name][0]
-        col = util.column_def_to_column(column_def=col_def, parent_table=inh_table.child_object)
+        col = util.column_def_to_column(column_def=col_def, parent_table=inh_table.get_target_as_table())
         col_ctx = replace(gen_ctx, expr=col, scope=None)  # Remove the node so that the column isn't renamed
         for edge in generator.process_column(col, col_ctx, pos_ctx):
             inh_node_attrs = edge.parent
@@ -430,8 +451,8 @@ def find_inherited_columns(
 
 
 def add_nodes_with_edge_to_graph(
-    parent_node_attrs: NodeAttributes,
-    child_node: NodeAttributes,
+    parent_node: NodeAttributes | None,
+    child_node: NodeAttributes | None,
     graph: nx.MultiDiGraph,
     query: Query,
     pos_ctx: PositionContext,
@@ -439,7 +460,7 @@ def add_nodes_with_edge_to_graph(
     """
     Add two nodes and an edge between them to the graph.
     """
-    p_attrs = add_node_if_not_exists(parent_node_attrs, graph)
+    p_attrs = add_node_if_not_exists(parent_node, graph)
     c_attrs = add_node_if_not_exists(child_node, graph)
 
     if p_attrs and c_attrs:
@@ -456,10 +477,10 @@ def add_nodes_with_edge_to_graph(
         graph.add_edge(p_full_name, c_full_name, attrs=edge_attrs)
         logger.debug(f"Added edge between {p_full_name} [{id(p_attrs)}] -> {c_full_name} [{id(c_attrs)}]")
     else:
-        logger.debug(f"Skipping edge creation as both nodes already exist.")
+        logger.debug("Skipping edge creation as both nodes already exist.")
 
 
-def add_node_if_not_exists(node_attrs: NodeAttributes, graph: nx.MultiDiGraph) -> NodeAttributes:
+def add_node_if_not_exists(node_attrs: NodeAttributes | None, graph: nx.MultiDiGraph) -> NodeAttributes | None:
     """
     Add a node to the graph if it doesn't already exist.
 
@@ -490,21 +511,21 @@ def get_scope(statement: exp.Expr) -> Scope:
     return scope
 
 
-def get_expression_for_column(column: exp.Column | int, expr: exp.Expr) -> exp.Expr:
+def get_expression_for_column(column: exp.Column | int, expr: E) -> E:
     """
     Get the expression that matches the given column name.
     e.g. given "SELECT 1 AS a, 2 AS b", column 'b' maps to expression 2.
     """
     if isinstance(column, int):
         # The index of the query in "SELECT 1 UNION SELECT 2"
-        select = expr.selects[column]
+        select = getattr(expr, "selects")[column]
     else:
         if isinstance(expr, exp.Values):
             # SELECT FROM (VALUES ())
             selects = [expr]
         else:
             # Common path
-            selects = [select for select in expr.selects if select.alias_or_name == column.name]
+            selects = [select for select in getattr(expr, "selects") if select.alias_or_name == column.name]
 
         if len(selects) > 1:
             message = f"Column reference '{column}' is ambiguous ({len(selects)} possible options)"
@@ -514,7 +535,7 @@ def get_expression_for_column(column: exp.Column | int, expr: exp.Expr) -> exp.E
             select = selects[0]
         else:
             select = expr
-    return select
+    return t.cast(E, select)
 
 
 TableOrScopeType = exp.Table | Scope
@@ -523,7 +544,7 @@ TableOrScopeType = exp.Table | Scope
 @dataclass(frozen=True)
 class ScopeTraversal:
     expression: exp.Expr
-    scope: TableOrScopeType = None
+    scope: TableOrScopeType
 
 
 def get_column_index(column: exp.Column | int, expr: exp.Expr):
@@ -531,90 +552,56 @@ def get_column_index(column: exp.Column | int, expr: exp.Expr):
         column
         if isinstance(column, int)
         else next(
-            (i for i, sel in enumerate(expr.selects) if sel.alias_or_name == column.name),
+            (i for i, sel in enumerate(getattr(expr, "selects")) if sel.alias_or_name == column.name),
             -1,  # mypy will not allow a None here, but a negative index should never be returned
         )
     )
     if index == -1:
-        raise exception.SqlLeafException(message=f"Could not find {column.name} in {expr}")
+        col_name = column if isinstance(column, int) else column.name
+        raise exception.SqlLeafException(message=f"Could not find {col_name} in {expr}")
     return index
 
 
-def calculate_scope_positions(scope: Scope) -> t.Dict[int, t.Dict[int, int]]:
-    """
-    Determine the height and width of every scope (SELECT statement) in the query's expression tree.
-    This iterates over every expression in the tree via Depth-First Search, looking for scopes.
-    """
-    root_expr = scope.expression.root()
-    scopes = {id(scope.expression): scope for scope in list(traverse_scope(root_expr))}
-
-    # For each height, map to the current width
-    heights_to_widths = {}
-    expr_ids_to_positions = {}
-    stack = [(root_expr, 1)]
-
-    while stack:
-        node, h = stack.pop()
-        node_id = id(node)
-
-        if node_id in scopes:
-            logger.debug(f"Found scope expr ({node.__class__.__name__}): {node.sql()}")
-
-            if not expr_ids_to_positions:   # Root node
-                expr_ids_to_positions[node_id] = (0, 0)
-                heights_to_widths[0] = 0
-            else:
-                # Track the width across varying heights
-                w = heights_to_widths.get(h, 0)
-                expr_ids_to_positions[node_id] = (h, w)
-                heights_to_widths[h] = w + 1
-                logger.debug(f"Set height={h} width={w}")
-                h = h + 1
-            scopes.pop(node_id)
-
-        for v in node.iter_expressions(reverse=True):
-            stack.append((v, h))
-
-    return expr_ids_to_positions
+# def set_cte_properties(path: t.List[ScopeTraversal]) -> None:
+#     """
+#     Check for properties related to recursive CTEs.
+#
+#     Make the first node recursive if anything in its path is also recursive.
+#     Otherwise, we set it to be the anchor, as its children are the anchor part
+#     of the expression.
+#     """
+#     root_node: ScopeTraversal = path[0]
+#     if root_node.is_parent_a_recursive_cte:
+#         for n in path[1:]:
+#             if is_node_inside_a_recursive_cte(n):
+#                 if n.is_parent_a_recursive_cte:
+#                     root_node.recursive_cte_member_kind = "recursive"
+#                     n.recursive_cte_member_kind = "anchor"
+#                 else:
+#                     root_node.recursive_cte_member_kind = "anchor"
+#             break
 
 
-def set_cte_properties(path: t.List[ScopeTraversal]) -> None:
-    """
-    Check for properties related to recursive CTEs.
-
-    Make the first node recursive if anything in its path is also recursive.
-    Otherwise, we set it to be the anchor, as its children are the anchor part
-    of the expression.
-    """
-    root_node: ScopeTraversal = path[0]
-    if root_node.is_parent_a_recursive_cte:
-        for n in path[1:]:
-            if is_node_inside_a_recursive_cte(n):
-                if n.is_parent_a_recursive_cte:
-                    root_node.recursive_cte_member_kind = "recursive"
-                    n.recursive_cte_member_kind = "anchor"
-                else:
-                    root_node.recursive_cte_member_kind = "anchor"
-            break
+# def is_node_inside_a_recursive_cte(expr: exp.Expr) -> bool:
+#     """
+#     Check if we're inside a recursive CTE
+#     """
+#     if parent_cte := expr.find_ancestor(exp.CTE):
+#         if parent_cte.parent.recursive:
+#             return True
+#     return False
 
 
-def is_node_inside_a_recursive_cte(expr: exp.Expr) -> bool:
-    """
-    Check if we're inside a recursive CTE
-    """
-    if parent_cte := expr.find_ancestor(exp.CTE):
-        if parent_cte.parent.recursive:
-            return True
-    return False
-
-
-def check_for_trigger(table: exp.Table, object_mapping: mappings.ObjectMapping) -> bool:
+def check_for_trigger(table: exp.Table | exp.Literal | exp.Identifier | exp.Schema, object_mapping: mappings.ObjectMapping) -> bool:
     """
     Check if a trigger overrides the query's behaviour.
     """
+    if not isinstance(table, exp.Table):
+        return False
+
     if trigger := object_mapping.find_query(kind="trigger", table=table):
-        if trigger.timing == "INSTEAD OF":
-            logger.debug("Skipping lineage for all columns of table '%s' since trigger '%s' overrides it." % (exp.table_name(child_object), t.name))
+        if getattr(trigger, "timing", None) == "INSTEAD OF":
+            logger.debug("Skipping lineage for all columns of table '%s' since trigger '%s' overrides it." % (exp.table_name(table), getattr(trigger, "name", "")))
             # TODO: Use the trigger's function as the lineage
             # func = trigger.execute
             return True
@@ -627,9 +614,9 @@ def check_for_put(generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: 
     """
     query = gen_ctx.query
     graph = gen_ctx.graph
-    expr: exp.Put = gen_ctx.expr
 
     if query.dialect == "snowflake" and isinstance(query, PutQuery):
+        expr = query.statement
         # Short-circuit this function; it's not an insert
         for edge in generator.process(expr, gen_ctx, pos_ctx):
             file_node, stage_node = edge.parent, edge.child
@@ -647,9 +634,10 @@ def check_for_external_table(generator: BaseGenerator, gen_ctx: GeneratorContext
     if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external":
         location_expr = query.statement.args["properties"].find(exp.LocationProperty)
 
-        for child_node, _ in _iter_child_nodes(query.child_object,gen_ctx, pos_ctx):
-            gen_ctx = replace(gen_ctx, expr=location_expr, child_node=child_node)
-            pos_ctx = replace(pos_ctx, select_index=child_node.ctx.select_index)
-            walk_expressions_and_build_graph(generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
+        for child_node, _ in _iter_child_nodes(gen_ctx, pos_ctx):
+            if child_node:
+                gen_ctx = replace(gen_ctx, expr=location_expr, child_node=child_node)
+                pos_ctx = replace(pos_ctx, select_index=child_node.ctx.select_index)
+                walk_expressions_and_build_graph(generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
         return True
     return False

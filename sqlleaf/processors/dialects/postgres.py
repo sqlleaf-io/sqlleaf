@@ -9,7 +9,7 @@ from sqlglot import exp
 from sqlleaf import util, exception
 from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
-    ColumnNode, SequenceNode, StreamNode, ProgramNode, FileColumnNode,
+    ColumnNode, SequenceNode, StreamNode, FileColumnNode,
 )
 from sqlleaf.objects.query_types import CopyQuery
 from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
@@ -21,7 +21,7 @@ class PostgresGenerator(BaseGenerator):
 
     @util.singledispatchmethodlogger
     def process(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
-        if isinstance(gen_ctx.query, CopyQuery) and isinstance(gen_ctx.query.source, (exp.Literal, exp.Identifier)):
+        if isinstance(gen_ctx.query, CopyQuery) and isinstance(gen_ctx.query.get_source(), (exp.Literal, exp.Identifier)):
             # Push all the non-column sources through process_copy for now (until we can do it inside the ColumnNode)
             yield from self.process_copy(expr, gen_ctx, pos_ctx)
         else:
@@ -43,7 +43,7 @@ class PostgresGenerator(BaseGenerator):
                 downstream_exprs.extend(cols if cols else [table_function])
 
             # Get the expression associated with the column name
-            child_column_name = gen_ctx.child_node.expr.name
+            child_column_name = gen_ctx.get_child_node().expr.name
             for i, col in enumerate(expr.alias_column_names):
                 if col == child_column_name:
                     # Returns ColumnDef | Function | Table
@@ -120,7 +120,7 @@ class PostgresGenerator(BaseGenerator):
 
             # Process the table function
             # TODO: why is this needed? It's 2 levels up
-            table_function: exp.Table = expr.parent.parent
+            table_function: exp.Table = t.cast(exp.Table, expr.parent.parent)
             yield from self.do_grandparents([table_function.this], parent, gen_ctx, pos_ctx)
 
     @process.register
@@ -128,7 +128,7 @@ class PostgresGenerator(BaseGenerator):
         """
         COPY x FROM/TO y
         """
-        source = gen_ctx.query.source
+        source = gen_ctx.query.get_source()
 
         # This logic only processes the query, not the expression
         if source.name in ["stdin", "stdout"]:
@@ -141,12 +141,12 @@ class PostgresGenerator(BaseGenerator):
 
         elif isinstance(source, exp.Literal):
             # A filename. Create a file node.
-            gen_ctx = replace(gen_ctx, expr=source, new_data_type=gen_ctx.child_node._data_type)
-            format = util.get_file_format(source.name)
+            gen_ctx = replace(gen_ctx, expr=source, new_data_type=gen_ctx.get_child_node().get_data_type())
+            file_format = util.get_file_format(source.name)
             node = FileColumnNode(
-                column=gen_ctx.child_node.name,
-                format=format,
-                path=source.name,
+                column=gen_ctx.get_child_node().name,
+                file_format=file_format,
+                file_path=source.name,
                 gen_ctx=gen_ctx,
                 pos_ctx=pos_ctx,
             )

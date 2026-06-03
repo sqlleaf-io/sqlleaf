@@ -244,7 +244,7 @@ def query_has_lineage(query: Query) -> bool:
     has_lineage = True
     if not isinstance(query, QUERIES_WITH_LINEAGE):
         has_lineage = False
-    elif isinstance(query, CopyQuery) and isinstance(query.source, exp.Values):
+    elif isinstance(query, CopyQuery) and isinstance(query.get_source(), exp.Values):
         has_lineage = False
     elif isinstance(query, CTASQuery) and not query.with_data:
         has_lineage = False

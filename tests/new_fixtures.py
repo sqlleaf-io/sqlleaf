@@ -46,7 +46,7 @@ class LineageHolderDummy:
         new_queries = []
         for query in self._all_queries:
             # Remove the COMMON_TABLES queries
-            if not (isinstance(query, TableQuery) and exp.table_name(query.child_object).lower() in ["fruit.raw", "fruit.processed"]):
+            if not (isinstance(query, TableQuery) and exp.table_name(query.get_target_as_table()).lower() in ["fruit.raw", "fruit.processed"]):
                 new_queries.append(query)
         return new_queries
 

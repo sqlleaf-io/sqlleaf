@@ -1,20 +1,18 @@
 from __future__ import annotations
+from enum import StrEnum, auto
 import logging
 import typing as t
-from dataclasses import replace
 
 from sqlglot import exp
 from sqlglot.optimizer.scope import ScopeType, Scope
 
-from sqlleaf import util, exception, mappings
+from sqlleaf import util, exception
 from sqlleaf.objects.context import PositionContext, GeneratorContext
-from sqlleaf.objects.query_types import Query, CopyQuery, UnloadQuery
+from sqlleaf.objects.query_types import Query
 
 logger = logging.getLogger("sqlleaf")
 
 TableOrScopeType = exp.Table | Scope
-
-from enum import StrEnum, auto
 
 
 def _function_name(expr: exp.Expr, dialect: str) -> str:
@@ -25,7 +23,7 @@ def _function_name(expr: exp.Expr, dialect: str) -> str:
     try:
         # Get the name without its parameters
         name = expr.__class__().sql(dialect=dialect)
-    except TypeError as e:
+    except TypeError:
         # Some classes can't be converted to SQL using this method (e.g. CONCAT() in Postgres)
         name = expr.__class__().sql()
 
@@ -66,8 +64,8 @@ class NodeAttributes:
         kind: str = "",
     ):
         self.expr = expr
-        self._data_type = data_type
         self.data_type = str(data_type) if data_type else ""
+        self._data_type = data_type
         self.name = name
         self.kind = kind
         self.ctx = pos_ctx
@@ -75,6 +73,10 @@ class NodeAttributes:
     # Allows the class to be used a networkx node
     def __hash__(self):
         return hash(self.full_name)
+
+    def get_data_type(self) -> exp.DataType:
+        assert self._data_type is not None
+        return self._data_type
 
     def wrap(self, name: str):
         return f"{self.kind}[{name}]"
@@ -223,18 +225,20 @@ class ColumnNode(NodeAttributes):
         """
         Figure out the table's type (view/table) by inspecting the original query in the mapping.
         """
+        tokens = []
         scope = gen_ctx.scope
         if isinstance(scope, Scope):
             source = scope.sources.get(table)
             if not source:
                 # Nested 'rows_from' queries have their aliases in 'references'
-                self.source_scope = dict(scope.references).get(table)
+                self.source_scope = dict(scope.references).get(table)   # tyy: ignore[invalid-assignment]
                 self.parent_kind = TableType.DERIVED_TABLE
                 return
 
             self.source_scope: TableOrScopeType = source
 
             if isinstance(source, exp.Table):
+                tokens = [str(s) for s in source.parts]
                 if "rows_from" in source.args:
                     self.parent_kind = TableType.DERIVED_TABLE
                     return
@@ -246,7 +250,7 @@ class ColumnNode(NodeAttributes):
                     self.parent_kind = TableType.DERIVED_TABLE
                     return
                 elif source.scope_type == ScopeType.CTE:
-                    selected_table, _ = t.cast(Scope, scope).selected_sources.get(table, (None, None))
+                    selected_table, _ = scope.selected_sources.get(table, (None, None))
                     if not selected_table:
                         message = f"Table '{table}' is referenced but there is no FROM containing it."
                         raise exception.SqlLeafException(message=message)
@@ -274,7 +278,6 @@ class ColumnNode(NodeAttributes):
                     self.parent_kind = TableType.DERIVED_TABLE
                     return
 
-            tokens = [str(s) for s in source.parts]
         else:
             tokens = [catalog, schema, table]
 
@@ -335,8 +338,8 @@ class FileColumnNode(NodeAttributes):
     def __init__(
         self,
         column: str,
-        format: str,
-        path: str,
+        file_format: str,
+        file_path: str,
         gen_ctx: GeneratorContext,
         pos_ctx: PositionContext,
     ):
@@ -349,13 +352,13 @@ class FileColumnNode(NodeAttributes):
             expr=expr,
             pos_ctx=pos_ctx,
         )
-        self.format = format
-        self.path = path
+        self.file_format = file_format
+        self.file_path = file_path
 
     @property
     def id(self):
         fields = [
-            self.path,
+            self.file_path,
             self.name,
             self.data_type,
             util.type_name(self.expr),
@@ -367,19 +370,19 @@ class FileColumnNode(NodeAttributes):
         d = super().to_dict()
         d.update(
             {
-                "format": self.format,
-                "path": self.path,
+                "format": self.file_format,
+                "path": self.file_path,
             }
         )
         return d
 
     @property
     def full_name(self):
-        return self.wrap(f"{self.name} type={self.data_type} kind=file format={self.format} path={self.path}")
+        return self.wrap(f"{self.name} type={self.data_type} kind=file format={self.file_format} path={self.file_path}")
 
     @property
     def friendly_name(self):
-        return self.wrap(f"{self.name} path={self.path}")
+        return self.wrap(f"{self.name} path={self.file_path}")
 
 
 class FunctionNode(NodeAttributes):

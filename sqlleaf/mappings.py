@@ -48,9 +48,12 @@ class ObjectMapping(MappingSchema):
             normalize: whether to normalize identifiers according to the dialect of interest.
             match_depth: whether to enforce that the table must match the schema's depth or not.
         """
-        table = query.child_object
-        if table is None:
-            return
+        table = query.get_target_as_table()
+        # if table is None:
+        #     return
+
+        # if not isinstance(table, exp.Table):
+        #     raise exception.SqlLeafException(message=f"Cannot add non-table expression '{table.sql()}' to mapping.")
 
         normalized_table = self._normalize_table(table, dialect=dialect, normalize=normalize)
         parts = self.table_parts(normalized_table)

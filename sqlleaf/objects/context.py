@@ -5,7 +5,7 @@ from dataclasses import dataclass, InitVar
 
 import networkx as nx
 from sqlglot import exp
-from sqlglot.optimizer import Scope
+from sqlglot.optimizer import Scope, traverse_scope
 
 from sqlleaf import util, mappings
 
@@ -15,7 +15,52 @@ if t.TYPE_CHECKING:
 
 logger = logging.getLogger("sqlleaf")
 
-TableOrScopeType = exp.Table | Scope
+TableOrScopeType = exp.Table | Scope | None
+
+
+class ScopePositions:
+    def __init__(self):
+        self.positions: t.Dict[int, t.Dict[int, int]] = {}
+
+    def get_scope_for_expr(self, expr: exp.Expr) -> dict[int, int]:
+        return self.positions[id(expr)]
+
+    def calculate(self, scope: Scope) -> None:
+        """
+        Determine the height and width of every scope (SELECT statement) in the query's expression tree.
+        This iterates over every expression in the tree via Depth-First Search, looking for scopes.
+        """
+        root_expr = scope.expression.root()
+        scopes = {id(scope.expression): scope for scope in list(traverse_scope(root_expr))}
+
+        # For each height, map to the current width
+        heights_to_widths = {}
+        expr_ids_to_positions = {}
+        stack = [(root_expr, 1)]
+
+        while stack:
+            node, h = stack.pop()
+            node_id = id(node)
+
+            if node_id in scopes:
+                logger.debug(f"Found scope expr ({node.__class__.__name__}): {node.sql()}")
+
+                if not expr_ids_to_positions:   # Root node
+                    expr_ids_to_positions[node_id] = (0, 0)
+                    heights_to_widths[0] = 0
+                else:
+                    # Track the width across varying heights
+                    w = heights_to_widths.get(h, 0)
+                    expr_ids_to_positions[node_id] = (h, w)
+                    heights_to_widths[h] = w + 1
+                    logger.debug(f"Set height={h} width={w}")
+                    h = h + 1
+                scopes.pop(node_id)
+
+            for v in node.iter_expressions(reverse=True):
+                stack.append((v, h))
+
+        self.positions = expr_ids_to_positions
 
 
 @dataclass(frozen=True)
@@ -25,7 +70,7 @@ class GeneratorContext:
     query: Query
     expr: exp.Expr
     scope: TableOrScopeType
-    scope_positions: t.Dict[int, t.Dict[int, int]] | None = None
+    scope_positions: ScopePositions = ScopePositions()
     data_type: exp.DataType | None = None
     child_node: NodeAttributes | None = None
     # Override the data_type if needed
@@ -41,15 +86,20 @@ class GeneratorContext:
         object.__setattr__(self, "data_type", expr_type)
         object.__setattr__(self, "expr", unwrapped_expr)
 
-    def get_expr_type(self, expr: exp.Expr) -> exp.DataType:
+    def get_child_node(self) -> NodeAttributes:
+        assert self.child_node is not None
+        return self.child_node
+
+    @staticmethod
+    def get_expr_type(expr: exp.Expr) -> exp.DataType:
         """
         Determine the expression's data type. If it's missing, use an ancestor's data type.
         """
         def is_missing_type(x: exp.Expr) -> bool:
-            return not (x.type or x.is_type(exp.DataType.Type.UNKNOWN))
+            return not (x.type or x.is_type(exp.DataType.build("UNKNOWN")))
 
         if isinstance(expr, exp.ColumnDef):
-            return expr.kind
+            return expr.kind or exp.DataType.build("UNKNOWN")
         elif is_missing_type(expr) and expr.parent:
             # Use an ancestor's type
             parent = expr.parent
@@ -59,7 +109,7 @@ class GeneratorContext:
                 parent = parent.parent
 
             return t.cast(exp.DataType, expr.parent.type)
-        return expr.type
+        return expr.type or exp.DataType.build("UNKNOWN")
 
 
 @dataclass(frozen=True)

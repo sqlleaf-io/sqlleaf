@@ -6,6 +6,7 @@ import sqlglot
 from sqlglot import exp, TokenType
 
 from sqlleaf import util, mappings, exception
+from sqlleaf.typing import TargetExprType, SourceExprType
 
 logger = logging.getLogger("sqlleaf")
 
@@ -16,7 +17,7 @@ class Query:
         kind: str,
         dialect: str,
         statement: exp.Expr,
-        child_object: exp.Table | exp.Literal | exp.Identifier | None,
+        child_object: TargetExprType,
         statement_index: int,
     ):
         self.kind = kind
@@ -24,6 +25,8 @@ class Query:
         self.child_object = child_object  # The target table
         self.parent_query = None
         self.child_queries = []
+        self.column_defs: t.List[exp.ColumnDef] = []
+        self.property = ""
 
         # Remove comments at initialisation
         for expr in statement.walk():
@@ -31,12 +34,29 @@ class Query:
 
         self.statement_index = statement_index  # The position of this query within a list of queries
         self.statement_original = statement
-        self.statement_transformed = None
+        self.statement_transformed: exp.Expr
 
         self.statement = statement
         self.set_statement(self.statement_original)
 
+        self.source: SourceExprType
+        self.target: TargetExprType = child_object
+
         logger.debug(f"Created Query: {self.__class__}")
+
+    def get_source(self)-> SourceExprType:
+        return self.source
+
+    def get_target(self) -> TargetExprType:
+        return self.target
+
+    def get_target_as_table(self) -> exp.Table:
+        """
+        For functions that only accept tables.
+        """
+        if not isinstance(self.target, exp.Table):
+            raise exception.SqlLeafException(message=f"Expected the target object to be a table but it is a {type(self.target)}")
+        return self.target
 
     def get_statement_index(self) -> str:
         """
@@ -50,6 +70,21 @@ class Query:
 
     def set_statement(self, statement: exp.Expr):
         self.statement = statement
+
+    def get_ctes(self) -> t.List:
+        return []
+
+    def get_column_defs(self, include_system: bool = False) -> t.List:
+        return []
+
+    def get_column_names_with_types(self, include_system: bool = False) -> t.Dict[str, str]:
+        """
+        Used by sqlglot's MappingSchema
+        """
+        # columns = {col.name: str(col.kind) for col in self.get_column_defs(include_system=include_system)}
+        # return columns
+        # TODO: remove from child classes?
+        return {}
 
     @property
     def id(self) -> str:
@@ -72,7 +107,7 @@ class Query:
         for query in child_queries:
             self.add_child_query(query)
 
-    def get_all_queries(self, types: t.Tuple = None):
+    def get_all_queries(self, types: t.Tuple | None = None):
         """
         Collect all queries (self + children recursively), optionally filtered by type.
         """
@@ -135,13 +170,12 @@ class MergeQuery(Query):
 
 class SelectQuery(Query):
     def __init__(self, expr: exp.Select, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
-        child_object = expr.find(exp.Table)
         super().__init__(
             kind="select",
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=child_object,
+            child_object=util.get_table(expr),
         )
 
     def get_ctes(self):
@@ -417,9 +451,9 @@ class StageQuery(Query):
         self.column_defs: t.List[exp.ColumnDef] = []
         # Needed due to a bug in sqlglot. Never access the table name via print()!
         #  as it prints double-double quotes
-        stage_name = str(self.child_object.this)
-        self.child_object.this.set("this", "@" + stage_name)
-        self.child_object.this.set("quoted", False)
+        stage_name = str(self.get_target().this)
+        self.get_target().this.set("this", "@" + stage_name)
+        self.get_target().this.set("quoted", False)
 
         self.property = util.find_property(statement)
 
@@ -429,56 +463,63 @@ class StageQuery(Query):
 
 class CopyQuery(Query):
     def __init__(self, expr: exp.Copy, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
+        self.named_columns: t.List[str] = []
+
+        # TODO: move these variables/types to SourceExpr/TargetExpr
+        self.is_source_a_stage = False
+        self.is_target_a_stage = False
+
+        self.source, self.target = self.process(expr, dialect)
+        # self.source = source
+        # self.target = target
+
+        # if not isinstance(expr.this.unnest(), exp.Values):
+        #     child_object = self.target
+        # else:
+        #     child_object = self.target
+
         super().__init__(
             kind="copy",
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=None,
+            child_object=self.target,
         )
-        self.named_columns: t.List[str] = []
-        self.source: exp.Table | exp.Literal | None = None
-        self.target: exp.Table | exp.Literal | None = None
 
+    def process(self, expr: exp.Copy, dialect: str) -> t.Tuple[SourceExprType, TargetExprType]:
+        """
+        Determine the source and target expressions of the query.
+        """
         if dialect == "postgres":
             # Postgres treats STDOUT and STDIN the same
             if expr.args["kind"]:
                 # COPY X FROM STDOUT/STDIN
-                self.source = expr.args["files"][0]
-                self.target = expr.args["this"]
-                if isinstance(self.target, exp.Schema):
-                    # Named columns were provided
-                    # TODO: remove in favour of query.get_selected_column_names() ?
-                    self.named_columns = [e.name for e in self.target.expressions]
-                    self.target = self.target.this
+                source = expr.args["files"][0]
+                target = expr.args["this"]
+                if isinstance(target, exp.Schema):
+                    target = target.this
             else:
                 # COPY X TO STDOUT/STDIN
-                self.source = expr.args["this"]
-                self.target = expr.args["files"][0]
-                if isinstance(self.source, exp.Schema):
+                source = expr.args["this"]
+                target = expr.args["files"][0]
+                if isinstance(source, exp.Schema):
                     # Named columns were provided
-                    self.named_columns = [e.name for e in self.source.expressions]
-                    self.source = self.source.this
+                    # self.named_columns = [e.name for e in self.source.expressions]
+                    source = source.this
 
         elif dialect == "snowflake":
-            self.source = expr.args["files"][0]
-            self.target = expr.args["this"]
+            source = expr.args["files"][0]
+            target = expr.args["this"]
 
-        if self.source and self.target:
-            # It may be a subquery
-            self.source = self.source.unnest()
-            self.target = self.target.unnest()
-
-        self.is_source_a_stage = False
-        self.is_target_a_stage = False
+        # It may be a subquery
+        source = source.unnest()
+        target = target.unnest()
 
         if dialect == "snowflake":
             self.configure_stage(expr)
 
-        if not isinstance(expr.this.unnest(), exp.Values):
-            self.child_object = self.target
+        return source, target
 
-        self.set_statement(expr)
 
     def configure_stage(self, expr: exp.Copy):
         """
@@ -532,7 +573,7 @@ class UnloadQuery(Query):
             raise exception.SqlLeafException(message=f"Invalid expression inside UNLOAD. Expected SELECT but got: {select_expr.sql(dialect="redshift")}")
 
         to_location = actual_tokens[4].text
-        return select_expr, exp.convert(to_location)
+        return select_expr, t.cast(exp.Literal, exp.convert(to_location))
 
 
 class PutQuery(Query):
@@ -544,5 +585,6 @@ class PutQuery(Query):
             statement_index=statement_index,
             child_object=expr.this,
         )
+        # TODO: fix types below
         self.source = expr.name
         self.target = expr.args["target"].name

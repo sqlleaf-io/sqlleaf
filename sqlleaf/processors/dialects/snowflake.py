@@ -52,7 +52,7 @@ class SnowflakeGenerator(BaseGenerator):
         """
         query = gen_ctx.query
         if isinstance(query, CopyQuery) and query.is_source_a_stage:
-            stage_name: exp.Var = query.source.this
+            stage_name: exp.Var = query.get_source().this
             stage_ctx = replace(gen_ctx, expr=stage_name)
             parent = StageNode(gen_ctx=stage_ctx, pos_ctx=pos_ctx)
             yield EdgeToCreate(parent, gen_ctx.child_node)

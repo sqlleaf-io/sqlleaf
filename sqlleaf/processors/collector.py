@@ -30,7 +30,6 @@ from sqlleaf.objects.query_types import (
     Query,
     UnloadQuery,
 )
-from sqlleaf.processors.transformer import clean_stored_procedure_text
 
 logger = logging.getLogger("sqlleaf")
 
@@ -71,7 +70,7 @@ def get_query_processors():
 
 @dataclass(frozen=True)
 class CollectQueryResult:
-    queries: t.Dict = field(default_factory=dict)
+    queries: t.List = field(default_factory=list)
     unknown: t.Dict = field(default_factory=dict)
     unsupported: t.List = field(default_factory=list)
 
@@ -183,6 +182,9 @@ def _collect_writable_cte_queries(parent_query: Query, dialect: str, object_mapp
     for i, cte in enumerate(parent_query.get_ctes()):
         cte_expr = cte.this
 
+        if isinstance(cte_expr, exp.Select):
+            continue
+
         query = _process_unnamed(cte_expr, dialect, object_mapping, i)
         if not query:
             logger.warning(f"Skipping unsupported query type in CTE: {type(cte_expr)}")
@@ -201,7 +203,7 @@ def _collect_insert_children(query: InsertQuery, object_mapping: mappings.Object
     if not isinstance(on_conflict, exp.OnConflict) or on_conflict.args["action"].name == "DO NOTHING":
         return
 
-    update_query = UpdateQuery(expr=on_conflict, dialect=query.dialect, object_mapping=object_mapping, statement_index=0, table=query.child_object)
+    update_query = UpdateQuery(expr=on_conflict, dialect=query.dialect, object_mapping=object_mapping, statement_index=0, table=query.get_target_as_table())
     query.add_child_query(update_query)
 
 
@@ -241,11 +243,11 @@ def _collect_merge_children(parent_query: MergeQuery, object_mapping: mappings.O
         when_expr = util.copy_expression(when)
 
         if isinstance(when_expr, exp.Update):
-            update_query = UpdateQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i, table=merge.child_object)
+            update_query = UpdateQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i, table=merge.get_target_as_table())
             parent_query.add_child_query(update_query)
 
         elif isinstance(when_expr, exp.Insert):
-            insert_query = InsertQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i, table=merge.child_object)
+            insert_query = InsertQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i, table=merge.get_target_as_table())
             insert_query.child_object = merge.child_object
             merge.add_child_query(insert_query)
 
@@ -261,7 +263,7 @@ def _set_column_defs(query: TableQuery, object_mapping: mappings.ObjectMapping):
         if isinstance(expression, exp.ColumnDef):
             all_columns.append(expression)
         elif isinstance(expression, exp.LikeProperty):
-            like_columns = _collect_like_columns(expression, object_mapping, t.cast(exp.Table, query.child_object))
+            like_columns = _collect_like_columns(expression, object_mapping, query.get_target_as_table())
             all_columns.extend(like_columns)
         elif isinstance(expression, exp.Identifier):
             # CREATE TABLE (a INT, b);
@@ -310,8 +312,9 @@ def _collect_inherited_columns(
             query.inherits.append(parent_table_query)
 
             # Re-assign the columns to a copy of the correct table
-            if query.child_object and query.child_object.parent:
-                schema = util.copy_expression(query.child_object.parent)
+            expr = query.get_target()
+            if expr.parent:
+                schema = util.copy_expression(expr.parent)
                 for parent_col_def in parent_table_query.column_defs:
                     col_def = parent_col_def.copy()
                     schema.append("expressions", col_def)
@@ -412,10 +415,11 @@ def _get_properties_to_include(options: t.List[str]) -> t.Dict:
     return properties
 
 
-def _process_unnamed(statement: exp.Expr, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query:
+def _process_unnamed(statement: exp.Expr, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query | None:
     """
     Process an unnamed statement - one not inside a 'CREATE <name>' statement.
     """
+    query = None
     if isinstance(statement, exp.Insert):
         query = InsertQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
         _collect_insert_children(query, object_mapping)
@@ -440,11 +444,10 @@ def _process_unnamed(statement: exp.Expr, dialect: str, object_mapping: mappings
         query = CopyQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
     elif isinstance(statement, exp.Put):
         query = PutQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
-    else:
-        return t.cast(Query, None)
 
     if not query:
-        return t.cast(Query, None)
+        return None
+
     if not isinstance(statement, (exp.Copy, exp.Put)):
         _collect_writable_cte_queries(query, dialect, object_mapping)
 
@@ -603,7 +606,7 @@ def _process_functions(statement: exp.Create, dialect: str, object_mapping: mapp
     if isinstance(statement.expression, exp.Heredoc):
         # Extract the queries between the $$ .. $$
         queries = collect_queries(text=statement.expression.this, dialect=dialect, object_mapping=object_mapping)
-        query.add_child_queries(child_queries=queries)
+        query.add_child_queries(child_queries=queries.queries)
 
     return query
 
@@ -626,12 +629,12 @@ def _process_stored_procedures(statement: exp.Create, dialect: str, object_mappi
     # TODO: find a way to get each SP's text from a query that has multiple SPs defined in it.
     #  sqlglot will parse the 2 SPs, but does not provide the original, raw text. This is imperfect
     #  as we would like to keep the original text for various reasons.
-    transformed_text = clean_stored_procedure_text(query.statement_original.sql())
-    query.text_transformed = transformed_text
+    # transformed_text = clean_stored_procedure_text(query.statement_original.sql())
+    # query.text_transformed = transformed_text
 
     # The original text is lost, so we are forced to use the transformed text in its place for now
-    queries = collect_queries(text=transformed_text, dialect=dialect, object_mapping=object_mapping)
-    query.add_child_queries(child_queries=queries)
+    # queries = collect_queries(text=transformed_text, dialect=dialect, object_mapping=object_mapping)
+    # query.add_child_queries(child_queries=queries)
     return query
 
 

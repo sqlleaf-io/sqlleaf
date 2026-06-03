@@ -10,7 +10,7 @@ from sqlglot.optimizer import Scope
 from sqlleaf import util, exception
 from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
-    ColumnNode, PivotNode, UnpivotNode, NodeAttributes, FileColumnNode,
+    PivotNode, UnpivotNode, NodeAttributes, FileColumnNode,
 )
 from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
 
@@ -33,7 +33,8 @@ class RedshiftGenerator(BaseGenerator):
         # We have lineage:
         #   <column> -> UNPIVOT -> <expression>
         #   <value> -> UNPIVOT -> <field>
-        selected_column = gen_ctx.scope.columns[pos_ctx.select_index]
+        scope = t.cast(Scope, gen_ctx.scope)
+        selected_column = scope.columns[pos_ctx.select_index]
         pivot_expression = expr.expressions[0]
         pivot_field = expr.fields[0]
 
@@ -66,7 +67,8 @@ class RedshiftGenerator(BaseGenerator):
         SELECT * FROM (SELECT  ...) PIVOT ( ... )
         """
         # Find the associated expression for the column, and process it
-        selected_column = gen_ctx.scope.columns[pos_ctx.select_index]
+        scope = t.cast(Scope, gen_ctx.scope)
+        selected_column = scope.columns[pos_ctx.select_index]
         pivot_column_mapping = _get_pivot_mapping(expr)
 
         # The associated column and expression
@@ -86,7 +88,8 @@ class RedshiftGenerator(BaseGenerator):
 
     @process.register
     def process_column(self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
-        pivot = _get_pivot_expr(gen_ctx.scope)
+        scope = t.cast(Scope, gen_ctx.scope)
+        pivot = _get_pivot_expr(scope)
         if (pivot and pivot.alias_or_name == expr.table and
             not isinstance(gen_ctx.child_node, UnpivotNode)  # Prevent infinite recursion
         ):
@@ -104,16 +107,14 @@ class RedshiftGenerator(BaseGenerator):
         CREATE EXTERNAL TABLE ... LOCATION
         """
         location = expr.this
-        child_node =  t.cast(NodeAttributes, gen_ctx.child_node)
-        query = gen_ctx.query
-        table = t.cast(exp.Table, query.child_object)
+        child_node = t.cast(NodeAttributes, gen_ctx.child_node)
 
         # Create: column[name kind=file format=text type=INT path=s3://my-bucket/a/b/c]
-        format = query.statement_transformed.args["properties"].find(exp.FileFormatProperty).this
+        file_format = gen_ctx.query.statement_transformed.args["properties"].find(exp.FileFormatProperty).this
         column_node = FileColumnNode(
             column=child_node.name,
-            format=format,
-            path=location.name,
+            file_format=file_format,
+            file_path=location.name,
             gen_ctx=gen_ctx,
             pos_ctx=pos_ctx,
         )

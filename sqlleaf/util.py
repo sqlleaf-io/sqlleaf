@@ -8,6 +8,7 @@ from sqlglot import exp
 import networkx as nx
 
 from sqlleaf import exception
+from sqlleaf.typing import E
 
 logger = logging.getLogger("sqlleaf")
 
@@ -107,20 +108,20 @@ def find_paths(g: nx.MultiDiGraph, start=0, path: t.Optional[t.List[int]] = None
                 yield from find_paths(g, n, path + [n], seen.union([n]))
 
 
-def unwrap_expression(expr: exp.Expr) -> exp.Expr:
+def unwrap_expression(expr: E) -> exp.Expr:
     """
     Extract the expression from underneath an Alias or a Paren.
     """
     ex = expr
     while isinstance(ex, (exp.Alias, exp.Paren)):
         ex = ex.unalias()
-        if isinstance(ex, (exp.Subquery)):
-           break
+        if isinstance(ex, (exp.Subquery,)):
+            break
         ex = ex.unnest()
     return ex
 
 
-def copy_expression(expr: exp.Expr) -> exp.Expr:
+def copy_expression(expr: E) -> E:
     """
     Copy an expression.
 
@@ -132,7 +133,7 @@ def copy_expression(expr: exp.Expr) -> exp.Expr:
             # Get the equivalent statement in the copy
             for j, new_ex in enumerate(copy_expr.walk()):
                 if j == i:
-                    return new_ex
+                    return t.cast(E, new_ex)
     return expr
 
 
@@ -159,6 +160,9 @@ def column_def_to_column(column_def: exp.ColumnDef, parent_table: t.Optional[exp
 
 
 def str_to_column_def(name: str) -> exp.ColumnDef:
+    """
+    Convert a string into a ColumnDef.
+    """
     return exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build("UNKNOWN"))
 
 
@@ -246,9 +250,9 @@ def find_property(statement: exp.Create) -> str:
 
 
 def get_file_format(file_path: str) -> str:
-    format = "".join(Path(file_path).suffixes)
-    format = format[1:] if format else "UNKNOWN"
-    return format
+    file_format = "".join(Path(file_path).suffixes)
+    file_format = file_format[1:] if file_format else "UNKNOWN"
+    return file_format
 
 
 class SingleDispatchMethodLogger(singledispatchmethod):

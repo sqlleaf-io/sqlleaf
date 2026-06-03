@@ -5,6 +5,7 @@ import typing as t
 from dataclasses import replace, dataclass
 
 from sqlglot import exp
+from sqlglot.optimizer import Scope
 
 from sqlleaf import util, exception
 from sqlleaf.objects.context import GeneratorContext, PositionContext
@@ -22,7 +23,7 @@ from sqlleaf.objects.node_types import (
     WindowNode,
     VariableNode,
 )
-from sqlleaf.objects.query_types import Query, ProcedureQuery
+from sqlleaf.objects.query_types import Query, ProcedureQuery, UserDefinedFunctionQuery
 
 logger = logging.getLogger("sqlleaf")
 
@@ -30,7 +31,7 @@ logger = logging.getLogger("sqlleaf")
 @dataclass(frozen=True)
 class EdgeToCreate:
     parent: NodeAttributes | None
-    child: NodeAttributes
+    child: NodeAttributes | None
 
 
 class BaseGenerator:
@@ -55,13 +56,17 @@ class BaseGenerator:
             raise exception.SqlLeafException(message=f"Unknown dialect: {class_name}")
         return target_class()
 
-    def do_grandparents(self, grandparents: t.List[exp.Expr], parent: NodeAttributes, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+    def do_grandparents(self, grandparents: t.List[exp.Expr], parent: t.Optional[NodeAttributes], gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> (
+        t.Iterator[EdgeToCreate]
+    ):
         """
         Process a list of expressions of a parent expression.
 
         This is usually called after a parent->child edge being added to the graph
         with additional expressions to now process, i.e. [grandparents]->parent->child
         """
+        if parent is None:
+            raise exception.SqlLeafException(message="A parent cannot be None when processing grandparents.")
         if parent.kind in ["function", "udf"]:
             pos_ctx = replace(pos_ctx, function_depth=pos_ctx.function_depth + 1)
 
@@ -159,7 +164,7 @@ class BaseGenerator:
         table_expr = exp.table_(table=function, db=schema)
         udf_obj = gen_ctx.object_mapping.find_query(kind="udf", table=table_expr)
 
-        if udf_obj:
+        if udf_obj and isinstance(udf_obj, UserDefinedFunctionQuery):
             if isinstance(udf_obj.return_expr, exp.Literal):
                 # TODO: this may be incorrect - analyse UDFs properly
                 node_args = [udf_obj.return_expr]
@@ -237,9 +242,8 @@ class BaseGenerator:
             )
 
             # Rename the column's table/schema/catalog to be fully qualified
-            if gen_ctx.scope:
-                scope = gen_ctx.scope
-                source_table = dict(scope.references)[expr.table]
+            if gen_ctx.scope and isinstance(gen_ctx.scope, Scope):
+                source_table = dict(gen_ctx.scope.references)[expr.table]
 
                 if not isinstance(source_table, (exp.Table, exp.Values, exp.Subquery)):
                     raise exception.SqlLeafException(message=f"Unexpected source type: {type(source_table)}")
@@ -289,7 +293,7 @@ class BaseGenerator:
         """
         SELECT FROM (VALUES ())
         """
-        selected_column: exp.Column = gen_ctx.child_node.expr
+        selected_column: exp.Column = t.cast(exp.Column, gen_ctx.get_child_node().expr)
 
         # Select the correct values from the list according to the column's position in the alias
         if isinstance(expr.parent, exp.From):
@@ -315,9 +319,10 @@ class BaseGenerator:
             raise exception.SqlLeafException("A subquery must return only one column")
 
         # Update the scope to be the subquery itself, as it is a subscope
-        subquery_scope = [s for s in gen_ctx.scope.subquery_scopes if s.expression == expr.this][0]
+        scope = t.cast(Scope, gen_ctx.scope)
+        subquery_scope = [s for s in scope.subquery_scopes if s.expression == expr.this][0]
 
-        height, width = gen_ctx.scope_positions[id(expr.this)]
+        height, width = gen_ctx.scope_positions.get_scope_for_expr(expr.this)
         child_ctx = replace(pos_ctx, query_depth=height, query_width=width)
         p_ctx = replace(gen_ctx, expr=expr.selects[0], scope=subquery_scope)
         return self.process(p_ctx.expr, gen_ctx=p_ctx, pos_ctx=child_ctx)
