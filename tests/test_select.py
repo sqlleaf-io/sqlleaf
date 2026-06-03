@@ -1,10 +1,10 @@
-from tests.new_fixtures import holder as holder
 import os
 import sys
 
 import pytest
 
-from sqlleaf.objects.query_types import TableQuery, InsertQuery
+from sqlleaf.objects.query_types import InsertQuery, TableQuery
+from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -20,10 +20,9 @@ DIALECT = "postgres"
 """
 SELECT * FROM unnest(ARRAY['apple', 'banana']);                             -- Invalid
 SELECT * FROM unnest(ARRAY['apple', 'banana']) WITH ORDINALITY;             -- Invalid
-SELECT * FROM unnest(ARRAY['apple', 'banana']) WITH ORDINALITY AS t(a,b);   -- Valid        but sqlglot sets fruit => fruit.offset
-SELECT fruit FROM unnest(ARRAY['apple', 'banana']);                         -- Valid        but sqlglot sets fruit => fruit.offset
+SELECT * FROM unnest(ARRAY['apple', 'banana']) WITH ORDINALITY AS t(a,b);   -- Valid  sqlglot sets fruit => fruit.offset
+SELECT fruit FROM unnest(ARRAY['apple', 'banana']);                         -- Valid  sqlglot sets fruit => fruit.offset
 """
-
 
 
 literal_ones = [
@@ -31,6 +30,8 @@ literal_ones = [
     "((1))",
     "(((1)))",
 ]
+
+
 @pytest.mark.parametrize("substr", literal_ones)
 def test__select_parens(holder, substr):
     sql = f"""
@@ -42,10 +43,10 @@ def test__select_parens(holder, substr):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.nodes_full == [
-        'literal[1 type=INT query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]',
-        'column[person.age type=INT kind=table]'
+        "literal[1 type=INT query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]",
+        "column[person.age type=INT kind=table]",
     ]
-    assert h.paths == [['literal[1]', 'column[person.age]']]
+    assert h.paths == [["literal[1]", "column[person.age]"]]
     assert len(h.edges) == 1
 
 
@@ -89,9 +90,7 @@ def test__select_dpipe_cte(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.paths == 2 * [
-        ['literal["hello"]', 'column[cte.other]', 'function[DPIPE]', 'column[fruit.processed.kind]']
-    ]
+    assert h.paths == 2 * [['literal["hello"]', "column[cte.other]", "function[DPIPE]", "column[fruit.processed.kind]"]]
     assert len(h.nodes) == 4
     assert len(h.edges) == 4
 
@@ -134,11 +133,11 @@ def test__select_case(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
-        ['literal[2]', 'column[fruit.processed.age]'],
-        ['literal[1]', 'column[fruit.processed.age]'],
-        ['literal[6]', 'column[fruit.processed.number]'],
-        ['null[NULL]', 'column[fruit.processed.number]'],
-        ['literal[5]', 'column[fruit.processed.number]']
+        ["literal[2]", "column[fruit.processed.age]"],
+        ["literal[1]", "column[fruit.processed.age]"],
+        ["literal[6]", "column[fruit.processed.number]"],
+        ["null[NULL]", "column[fruit.processed.number]"],
+        ["literal[5]", "column[fruit.processed.number]"],
     ]
     assert len(h.nodes) == 7
     assert len(h.edges) == 5
@@ -154,7 +153,8 @@ def test__select_row(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
-        ['column[fruit.raw.name]', 'udf[ROW]', 'column[fruit.processed.name]'], ['column[fruit.raw.kind]', 'udf[ROW]', 'column[fruit.processed.name]']
+        ["column[fruit.raw.name]", "udf[ROW]", "column[fruit.processed.name]"],
+        ["column[fruit.raw.kind]", "udf[ROW]", "column[fruit.processed.name]"],
     ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 3
@@ -168,11 +168,11 @@ def test__select_cast(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.paths == [['column[fruit.raw.name]', 'function[CAST]', 'column[fruit.processed.age]']]
+    assert h.paths == [["column[fruit.raw.name]", "function[CAST]", "column[fruit.processed.age]"]]
     assert h.nodes_full == [
-        'function[CAST type=INT query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]',
-        'column[fruit.processed.age type=INT kind=table]',
-        'column[fruit.raw.name type=VARCHAR kind=table]',
+        "function[CAST type=INT query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]",
+        "column[fruit.processed.age type=INT kind=table]",
+        "column[fruit.raw.name type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
 
@@ -192,16 +192,21 @@ def test__select_filter_and_where(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
-        ['column[fruit.raw.age]', 'function[SUM]', 'column[fruit.processed.age]'],
-        ['star[*]', 'function[COUNT]', 'column[fruit.processed.amount]'],
-        ['literal[1]', 'column[fruit.processed.age]']
+        ["column[fruit.raw.age]", "function[SUM]", "column[fruit.processed.age]"],
+        ["star[*]", "function[COUNT]", "column[fruit.processed.amount]"],
+        ["literal[1]", "column[fruit.processed.age]"],
     ]
     assert len(h.nodes) == 7
     assert len(h.edges) == 5
     # Ensure the FILTER is dropped
-    assert h.queries[0].statement_transformed.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (age, amount) SELECT SUM(raw.age) AS age, COUNT(*) AS amount FROM fruit.raw AS raw"
+    assert (
+        h.queries[0].statement_transformed.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed (age, amount) SELECT SUM(raw.age) AS age, COUNT(*) AS amount FROM fruit.raw AS raw"  # noqa: E501
+    )
     # Ensure the WHERE is dropped
-    assert h.queries[1].statement_transformed.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (age) SELECT 1 AS age"
+    assert (
+        h.queries[1].statement_transformed.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (age) SELECT 1 AS age"
+    )
 
 
 def test__select_hidden_system_columns(holder):
@@ -267,8 +272,8 @@ def test__select_value_twice(holder, case):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
-        [f"{kind}[{value.removesuffix("()")}]", "column[fruit.processed.name]"],
-        [f"{kind}[{value.removesuffix("()")}]", "column[fruit.processed.age]"],
+        [f"{kind}[{value.removesuffix('()')}]", "column[fruit.processed.name]"],
+        [f"{kind}[{value.removesuffix('()')}]", "column[fruit.processed.age]"],
     ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
@@ -277,7 +282,7 @@ def test__select_value_twice(holder, case):
 def test__select_window_function(holder):
     sql = """
     INSERT INTO fruit.processed (amount, age)
-    SELECT 
+    SELECT
         ROW_NUMBER() OVER (ORDER BY name DESC) AS amount,
         RANK() OVER (PARTITION BY age ORDER BY kind) AS age
     FROM fruit.raw;
@@ -303,7 +308,7 @@ def test__select_join_to_self(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
     assert h.paths == [
-        ['column[fruit.processed.name]', 'column[fruit.processed.name]'],
+        ["column[fruit.processed.name]", "column[fruit.processed.name]"],
         ["column[fruit.raw.color]", "column[fruit.processed.kind]"],
         ["column[fruit.raw.age]", "column[fruit.processed.age]"],
     ]
@@ -323,8 +328,14 @@ def test__select_assorted(holder):
     INSERT INTO anything SELECT 1;
     """
     h = holder(sql=sql, dialect=DIALECT)
-    assert "literal[{1,2,3} type=ARRAY<INT> query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]" in h.nodes_full
-    assert 'interval["-10.75 MINUTE" type=INTERVAL query_depth=0 query_width=0 statement=1 select=1 func_depth=0 func_arg=0]' in h.nodes_full
+    assert (
+        "literal[{1,2,3} type=ARRAY<INT> query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]"
+        in h.nodes_full
+    )
+    assert (
+        'interval["-10.75 MINUTE" type=INTERVAL query_depth=0 query_width=0 statement=1 select=1 func_depth=0 func_arg=0]'  # noqa: E501
+        in h.nodes_full
+    )
     assert len(h.nodes) == 5
     assert len(h.edges) == 3
 
@@ -346,8 +357,20 @@ def test__select_rows_from(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
     assert h.paths == [
         ['literal[{"x","y"}]', "function[UNNEST]", "column[x.name]", "column[fruit.processed.name]"],
-        ['literal["[{"a":40,"b":"foo"}]"]', "udf[JSON_TO_RECORDSET]", "column[y.b]", "column[x.kind]", "column[fruit.processed.kind]"],
-        ['literal["[{"a":40,"b":"foo"}]"]', "udf[JSON_TO_RECORDSET]", "column[y.a]", "column[x.age]", "column[fruit.processed.age]"],
+        [
+            'literal["[{"a":40,"b":"foo"}]"]',
+            "udf[JSON_TO_RECORDSET]",
+            "column[y.b]",
+            "column[x.kind]",
+            "column[fruit.processed.kind]",
+        ],
+        [
+            'literal["[{"a":40,"b":"foo"}]"]',
+            "udf[JSON_TO_RECORDSET]",
+            "column[y.a]",
+            "column[x.age]",
+            "column[fruit.processed.age]",
+        ],
         ["literal[1]", "function[GENERATE_SERIES]", "column[x.amount]", "column[fruit.processed.amount]"],
         ["literal[3]", "function[GENERATE_SERIES]", "column[x.amount]", "column[fruit.processed.amount]"],
     ]
@@ -420,10 +443,7 @@ def test__select_table(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [
-        ['column[t1.name1]', 'column[t2.name1]'],
-        ['column[t1.name2]', 'column[t2.name2]']
-    ]
+    assert h.paths == [["column[t1.name1]", "column[t2.name1]"], ["column[t1.name2]", "column[t2.name2]"]]
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
     assert len(h.queries) == 3

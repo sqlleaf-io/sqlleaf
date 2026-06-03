@@ -1,9 +1,10 @@
-from tests.new_fixtures import holder as holder
 import os
 import sys
 
 import pytest
 from sqlglot.errors import ParseError
+
+from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -12,6 +13,7 @@ DIALECT = "postgres"
 
 simple_table = "CREATE TABLE fruit.simple (name VARCHAR, age INT);"
 streams = ["STDIN", "STDOUT"]
+
 
 @pytest.mark.parametrize("stream", streams)
 def test_copy_to_stream(holder, stream):
@@ -23,13 +25,13 @@ def test_copy_to_stream(holder, stream):
 
     s = stream.lower()
     assert h.paths == [
-        ['column[fruit.simple.name]', f'stream[{s}]'],
-        ['column[fruit.simple.age]', f'stream[{s}]'],
+        ["column[fruit.simple.name]", f"stream[{s}]"],
+        ["column[fruit.simple.age]", f"stream[{s}]"],
     ]
     assert h.nodes_full == [
-        f'stream[{s}]',
-        'column[fruit.simple.age type=INT kind=table]',
-        'column[fruit.simple.name type=VARCHAR kind=table]',
+        f"stream[{s}]",
+        "column[fruit.simple.age type=INT kind=table]",
+        "column[fruit.simple.name type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
 
@@ -44,13 +46,13 @@ def test_copy_from_stream(holder, stream):
 
     s = stream.lower()
     assert h.paths == [
-        [f'stream[{s}]', 'column[fruit.simple.age]'],
-        [f'stream[{s}]', 'column[fruit.simple.name]'],
+        [f"stream[{s}]", "column[fruit.simple.age]"],
+        [f"stream[{s}]", "column[fruit.simple.name]"],
     ]
     assert h.nodes_full == [
-        f'stream[{s}]',
-        'column[fruit.simple.age type=INT kind=table]',
-        'column[fruit.simple.name type=VARCHAR kind=table]',
+        f"stream[{s}]",
+        "column[fruit.simple.age type=INT kind=table]",
+        "column[fruit.simple.name type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
 
@@ -123,14 +125,14 @@ def test_copy_into_table_from_file(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-        ['column[name path=/tmp/data.csv]', 'column[fruit.simple.name]'],
-        ['column[age path=/tmp/data.csv]', 'column[fruit.simple.age]']
+        ["column[name path=/tmp/data.csv]", "column[fruit.simple.name]"],
+        ["column[age path=/tmp/data.csv]", "column[fruit.simple.age]"],
     ]
     assert h.nodes_full == [
-        'column[age type=INT kind=file format=csv path=/tmp/data.csv]',
-        'column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]',
-        'column[fruit.simple.age type=INT kind=table]',
-        'column[fruit.simple.name type=VARCHAR kind=table]'
+        "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
+        "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
+        "column[fruit.simple.age type=INT kind=table]",
+        "column[fruit.simple.name type=VARCHAR kind=table]",
     ]
 
 
@@ -141,14 +143,14 @@ def test_copy_into_table_from_file_named_columns(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-        ['column[name path=/tmp/data.csv]', 'column[fruit.simple.name]'],
-        ['column[age path=/tmp/data.csv]', 'column[fruit.simple.age]']
+        ["column[name path=/tmp/data.csv]", "column[fruit.simple.name]"],
+        ["column[age path=/tmp/data.csv]", "column[fruit.simple.age]"],
     ]
     assert h.nodes_full == [
-        'column[age type=INT kind=file format=csv path=/tmp/data.csv]',
-        'column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]',
-        'column[fruit.simple.age type=INT kind=table]',
-        'column[fruit.simple.name type=VARCHAR kind=table]'
+        "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
+        "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
+        "column[fruit.simple.age type=INT kind=table]",
+        "column[fruit.simple.name type=VARCHAR kind=table]",
     ]
 
 
@@ -160,14 +162,14 @@ def test_copy_into_file_from_table(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-        ['column[fruit.simple.name]', 'column[name path=/tmp/data.csv]'],
-        ['column[fruit.simple.age]', 'column[age path=/tmp/data.csv]']
+        ["column[fruit.simple.name]", "column[name path=/tmp/data.csv]"],
+        ["column[fruit.simple.age]", "column[age path=/tmp/data.csv]"],
     ]
     assert h.nodes_full == [
-        'column[age type=INT kind=file format=csv path=/tmp/data.csv]',
-        'column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]',
-        'column[fruit.simple.age type=INT kind=table]',
-        'column[fruit.simple.name type=VARCHAR kind=table]'
+        "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
+        "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
+        "column[fruit.simple.age type=INT kind=table]",
+        "column[fruit.simple.name type=VARCHAR kind=table]",
     ]
 
 
@@ -179,14 +181,14 @@ def test_copy_into_file_from_table_named_columns(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-        ['column[fruit.simple.name]', 'column[name path=/tmp/data.csv]'],
-        ['column[fruit.simple.age]', 'column[age path=/tmp/data.csv]']
+        ["column[fruit.simple.name]", "column[name path=/tmp/data.csv]"],
+        ["column[fruit.simple.age]", "column[age path=/tmp/data.csv]"],
     ]
     assert h.nodes_full == [
-        'column[age type=INT kind=file format=csv path=/tmp/data.csv]',
-        'column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]',
-        'column[fruit.simple.age type=INT kind=table]',
-        'column[fruit.simple.name type=VARCHAR kind=table]'
+        "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
+        "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
+        "column[fruit.simple.age type=INT kind=table]",
+        "column[fruit.simple.name type=VARCHAR kind=table]",
     ]
 
 
@@ -240,11 +242,11 @@ def test_copy_into_program_from_table(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-        ['column[fruit.simple.name]', 'program[gzip]'],
-        ['column[fruit.simple.age]', 'program[gzip]'],
+        ["column[fruit.simple.name]", "program[gzip]"],
+        ["column[fruit.simple.age]", "program[gzip]"],
     ]
     assert h.nodes_full == [
         "program[gzip args='> /tmp/data.csv.gz']",
-        'column[fruit.simple.age type=INT kind=table]',
-        'column[fruit.simple.name type=VARCHAR kind=table]',
+        "column[fruit.simple.age type=INT kind=table]",
+        "column[fruit.simple.name type=VARCHAR kind=table]",
     ]

@@ -1,8 +1,9 @@
-from tests.new_fixtures import holder as holder
 import os
 import sys
 
 import pytest
+
+from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -41,14 +42,15 @@ def test__insert_values_multiple(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
-        ['literal["apple"]', 'column[fruit.raw.name]'],
-        ['literal["orange"]', 'column[fruit.raw.name]'],
-        ['literal["upper_apple"]', 'function[UPPER]', 'column[fruit.raw.kind]'],
-        ['literal["upper_orange"]', 'function[UPPER]', 'column[fruit.raw.kind]']
+        ['literal["apple"]', "column[fruit.raw.name]"],
+        ['literal["orange"]', "column[fruit.raw.name]"],
+        ['literal["upper_apple"]', "function[UPPER]", "column[fruit.raw.kind]"],
+        ['literal["upper_orange"]', "function[UPPER]", "column[fruit.raw.kind]"],
     ]
     assert [InsertQuery] == list(map(type, h.queries))
     assert len(h.nodes) == 8
     assert len(h.edges) == 6
+
 
 def test__insert_default_values(holder):
     sql = """
@@ -75,7 +77,9 @@ def test__insert_default_values(holder):
         ["literal[99]", "column[fruit.a.size]"],
         ["literal[99]", "column[fruit.a.size]"],
     ]
-    assert h.queries[2].statement_transformed.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
+    assert (
+        h.queries[2].statement_transformed.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
+    )
     assert len(h.nodes) == 12
     assert len(h.edges) == 7
 
@@ -132,7 +136,7 @@ def test__insert_on_conflict_do_nothing(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.paths == [['literal["john"]', 'column[fruit.processed.name]']]
+    assert h.paths == [['literal["john"]', "column[fruit.processed.name]"]]
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
 

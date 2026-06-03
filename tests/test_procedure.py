@@ -1,9 +1,9 @@
-from tests.new_fixtures import holder as holder
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from tests.new_fixtures import holder as holder
 
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 DIALECT = "postgres"
@@ -38,11 +38,17 @@ DIALECT = "postgres"
 #     """
 #     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 #
-#     assert h.paths == [
-#         ["column[fruit.raw.kind]", "function[UPPER]", "column[cte.knd]", "function[LOWER]", "column[fruit.processed.kind]"],
-#         ["variable[v_amount]", "column[fruit.processed.amount]"],
-#         ["literal[1]", "column[fruit.processed.number]"],
-#     ]
+# assert h.paths == [
+#     [
+#         "column[fruit.raw.kind]",
+#         "function[UPPER]",
+#         "column[cte.knd]",
+#         "function[LOWER]",
+#         "column[fruit.processed.kind]"
+#     ],
+#     ["variable[v_amount]", "column[fruit.processed.amount]"],
+#     ["literal[1]", "column[fruit.processed.number]"],
+# ]
 #     assert len(h.queries) == 1 and isinstance(h.queries[0], ProcedureQuery)
 
 

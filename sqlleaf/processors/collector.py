@@ -6,29 +6,29 @@ import sqlglot
 from sqlglot import exp
 from sqlglot.dialects import postgres
 from sqlglot.expressions import ColumnDef
-from sqlglot.optimizer.qualify import qualify
 from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
+from sqlglot.optimizer.qualify import qualify
 
 from sqlleaf import exception, mappings, util
 from sqlleaf.objects.query_types import (
-    StageQuery,
-    ProcedureQuery,
-    TriggerQuery,
-    UserDefinedFunctionQuery,
-    CTASQuery,
-    ViewQuery,
-    SequenceQuery,
-    TableQuery,
-    SelectQuery,
-    PutQuery,
     CopyQuery,
-    UpdateQuery,
+    CTASQuery,
+    DeleteQuery,
     InsertQuery,
     MergeQuery,
-    DeleteQuery,
+    ProcedureQuery,
+    PutQuery,
     Query,
+    SelectQuery,
+    SequenceQuery,
+    StageQuery,
+    TableQuery,
+    TriggerQuery,
     UnloadQuery,
+    UpdateQuery,
+    UserDefinedFunctionQuery,
+    ViewQuery,
 )
 
 logger = logging.getLogger("sqlleaf")
@@ -124,12 +124,14 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         # Convert the statement to uppercase if the dialect supports it
         stmt = normalize_identifiers(stmt, dialect=dialect, store_original_column_identifiers=True)
 
-        query: t.Optional[Query] = processors[kind](statement=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=index)
+        query: t.Optional[Query] = processors[kind](
+            statement=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=index
+        )
         if query:
             queries[_id] = query
             counts[kind] += 1
 
-    found = {k:v for k,v in counts.items() if v > 0}
+    found = {k: v for k, v in counts.items() if v > 0}
     logger.debug("Found statements: %s", dict(found.items()))
     if unknown:
         logger.warning("Unknown statements: %s", dict(unknown.items()))
@@ -203,7 +205,13 @@ def _collect_insert_children(query: InsertQuery, object_mapping: mappings.Object
     if not isinstance(on_conflict, exp.OnConflict) or on_conflict.args["action"].name == "DO NOTHING":
         return
 
-    update_query = UpdateQuery(expr=on_conflict, dialect=query.dialect, object_mapping=object_mapping, statement_index=0, table=query.get_target_as_table())
+    update_query = UpdateQuery(
+        expr=on_conflict,
+        dialect=query.dialect,
+        object_mapping=object_mapping,
+        statement_index=0,
+        table=query.get_target_as_table(),
+    )
     query.add_child_query(update_query)
 
 
@@ -243,11 +251,23 @@ def _collect_merge_children(parent_query: MergeQuery, object_mapping: mappings.O
         when_expr = util.copy_expression(when)
 
         if isinstance(when_expr, exp.Update):
-            update_query = UpdateQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i, table=merge.get_target_as_table())
+            update_query = UpdateQuery(
+                expr=when_expr,
+                dialect=parent_query.dialect,
+                object_mapping=object_mapping,
+                statement_index=i,
+                table=merge.get_target_as_table(),
+            )
             parent_query.add_child_query(update_query)
 
         elif isinstance(when_expr, exp.Insert):
-            insert_query = InsertQuery(expr=when_expr, dialect=parent_query.dialect, object_mapping=object_mapping, statement_index=i, table=merge.get_target_as_table())
+            insert_query = InsertQuery(
+                expr=when_expr,
+                dialect=parent_query.dialect,
+                object_mapping=object_mapping,
+                statement_index=i,
+                table=merge.get_target_as_table(),
+            )
             insert_query.child_object = merge.child_object
             merge.add_child_query(insert_query)
 
@@ -323,7 +343,9 @@ def _collect_inherited_columns(
     return column_defs
 
 
-def _collect_like_columns(like_property: exp.LikeProperty, object_mapping: mappings.ObjectMapping, child_object: exp.Table) -> t.List[exp.ColumnDef]:
+def _collect_like_columns(
+    like_property: exp.LikeProperty, object_mapping: mappings.ObjectMapping, child_object: exp.Table
+) -> t.List[exp.ColumnDef]:
     """
     Search for tables referenced as 'CREATE TABLE b (LIKE a)'.
     A table can have multiple LIKE clauses.
@@ -415,35 +437,53 @@ def _get_properties_to_include(options: t.List[str]) -> t.Dict:
     return properties
 
 
-def _process_unnamed(statement: exp.Expr, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query | None:
+def _process_unnamed(
+    statement: exp.Expr, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+) -> Query | None:
     """
     Process an unnamed statement - one not inside a 'CREATE <name>' statement.
     """
     query = None
     if isinstance(statement, exp.Insert):
-        query = InsertQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+        query = InsertQuery(
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
         _collect_insert_children(query, object_mapping)
     elif isinstance(statement, exp.Update):
-        query = UpdateQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+        query = UpdateQuery(
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
     elif isinstance(statement, exp.Merge):
-        query = MergeQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+        query = MergeQuery(
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
         _collect_merge_children(query, object_mapping)
     elif isinstance(statement, exp.Delete):
-        query = DeleteQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+        query = DeleteQuery(
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
         if not statement.find(exp.Insert, exp.Update, exp.Merge):
             logging.warning(
-                "Skipping statement: A DELETE query must have a data-modifying statement, such as an INSERT, to contain lineage."
+                "Skipping statement: A DELETE query must have a data-modifying statement, "
+                "such as an INSERT, to contain lineage."
             )
     elif isinstance(statement, exp.Select):
-        query = SelectQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+        query = SelectQuery(
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
         if not statement.find(exp.Insert, exp.Update, exp.Merge, exp.Delete):
             logging.warning(
-                "Skipping statement: A SELECT query must have a data-modifying statement, such as an INSERT, to contain lineage."
+                "Skipping statement: A SELECT query must have a data-modifying statement, "
+                "such as an INSERT, to contain lineage."
             )
     elif isinstance(statement, exp.Copy):
-        query = CopyQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+        query = CopyQuery(
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
     elif isinstance(statement, exp.Put):
-        query = PutQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+        query = PutQuery(
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
 
     if not query:
         return None
@@ -454,14 +494,18 @@ def _process_unnamed(statement: exp.Expr, dialect: str, object_mapping: mappings
     return query
 
 
-def _process_tables(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query | None:
+def _process_tables(
+    statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+) -> Query | None:
     """
     Process a 'CREATE TABLE' statement.
     """
     query: Query | None = None
     if statement.kind == "TABLE":
         # CREATE TABLE ...
-        query = TableQuery(statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
+        query = TableQuery(
+            statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
         _set_column_defs(query, object_mapping)
         object_mapping.add_query(
             kind="table",
@@ -477,7 +521,9 @@ def _process_tables(statement: exp.Create, dialect: str, object_mapping: mapping
     return query
 
 
-def _process_views_and_ctas(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query:
+def _process_views_and_ctas(
+    statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+) -> Query:
     """
     Convert a series of `CREATE VIEW/TABLE AS ...` SQL DDL statements into sqlglot's MappingSchema
     to extract the table and column details.
@@ -563,7 +609,9 @@ def _determine_column_defs(statement: exp.Create, object_mapping: mappings.Objec
     return col_defs
 
 
-def _process_functions(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query:
+def _process_functions(
+    statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+) -> Query:
     """
     Process a "CREATE FUNCTION" statement.
     """
@@ -611,7 +659,9 @@ def _process_functions(statement: exp.Create, dialect: str, object_mapping: mapp
     return query
 
 
-def _process_triggers(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query:
+def _process_triggers(
+    statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+) -> Query:
     """
     Process a "CREATE TRIGGER" statement.
     """
@@ -620,7 +670,9 @@ def _process_triggers(statement: exp.Create, dialect: str, object_mapping: mappi
     return query
 
 
-def _process_stored_procedures(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query:
+def _process_stored_procedures(
+    statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+) -> Query:
     """
     Process a "CREATE PROCEDURE" statement.
     """
@@ -638,12 +690,16 @@ def _process_stored_procedures(statement: exp.Create, dialect: str, object_mappi
     return query
 
 
-def _process_stage(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query:
+def _process_stage(
+    statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+) -> Query:
     query = StageQuery(statement, dialect, statement_index)
     object_mapping.add_query(kind="stage", query=query, dialect=dialect)
     return query
 
 
-def _process_unload(statement: exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int) -> Query:
+def _process_unload(
+    statement: exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+) -> Query:
     query = UnloadQuery(statement, dialect, object_mapping, statement_index)
     return query

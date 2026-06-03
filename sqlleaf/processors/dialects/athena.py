@@ -11,6 +11,7 @@ from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
 
 logger = logging.getLogger("sqlleaf")
 
+
 class AthenaGenerator(BaseGenerator):
     dialect = "athena"
 

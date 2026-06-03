@@ -1,13 +1,15 @@
-from tests.new_fixtures import holder as holder
 import os
 import sys
 
 import pytest
 
+from tests.new_fixtures import holder as holder
+
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 DIALECT = "postgres"
+
 
 def test__ctas_named_columns(holder):
     sql = """
@@ -29,7 +31,7 @@ def test__ctas_with_no_data(holder):
     CREATE TABLE fruit.cooked AS
     SELECT name, age FROM fruit.raw
     WITH NO DATA;
-    
+
     INSERT INTO fruit.cooked (name, age)
     SELECT 'apple', 10;
     """
@@ -42,7 +44,7 @@ def test__ctas_with_no_data(holder):
 
 def test__ctas_cte(holder):
     sql = """
-    CREATE TABLE fruit.cte AS 
+    CREATE TABLE fruit.cte AS
     WITH data(col1, col2) AS (
         SELECT name, kind FROM fruit.raw
     )
@@ -63,6 +65,8 @@ values_exprs = [
     "SELECT * FROM (VALUES (1, 'Alice'), (2, 'Bob'));",
     "SELECT * FROM (SELECT * FROM (VALUES (1, 'Alice'), (2, 'Bob')));",
 ]
+
+
 @pytest.mark.parametrize("expr", values_exprs)
 def test__ctas_values(holder, expr):
     sql = f"""
@@ -72,10 +76,10 @@ def test__ctas_values(holder, expr):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ['literal[1]', 'column[some_table.id]'],
-        ['literal[2]', 'column[some_table.id]'],
-        ['literal["Alice"]', 'column[some_table.name]'],
-        ['literal["Bob"]', 'column[some_table.name]']
+        ["literal[1]", "column[some_table.id]"],
+        ["literal[2]", "column[some_table.id]"],
+        ['literal["Alice"]', "column[some_table.name]"],
+        ['literal["Bob"]', "column[some_table.name]"],
     ]
     assert len(h.nodes) == 6
     assert len(h.edges) == 4

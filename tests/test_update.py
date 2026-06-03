@@ -1,11 +1,12 @@
-from tests.new_fixtures import holder as holder
 import os
 import sys
+
+from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
-from sqlleaf.objects.query_types import UpdateQuery, TableQuery
+from sqlleaf.objects.query_types import TableQuery, UpdateQuery
 
 DIALECT = "postgres"
 
@@ -19,8 +20,8 @@ def test__update_simple(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
-        ['literal["john"]', 'column[fruit.processed.name]'],
-        ['column[fruit.raw.age]', 'column[fruit.processed.age]']
+        ['literal["john"]', "column[fruit.processed.name]"],
+        ["column[fruit.raw.age]", "column[fruit.processed.age]"],
     ]
     assert [UpdateQuery] == list(map(type, h.queries))
     assert len(h.nodes) == 4
@@ -72,5 +73,3 @@ def test__update_with_multiple_joins(holder):
 
     assert h.paths == [["column[fruit.raw.age]", "column[fruit.processed.age]"]]
     assert [TableQuery, UpdateQuery] == list(map(type, h.queries))
-
-

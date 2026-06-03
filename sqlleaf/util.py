@@ -1,11 +1,11 @@
+import hashlib
 import logging
 import typing as t
-import hashlib
 from functools import singledispatchmethod
 from pathlib import Path
 
-from sqlglot import exp
 import networkx as nx
+from sqlglot import exp
 
 from sqlleaf import exception
 from sqlleaf.typing import E
@@ -67,7 +67,8 @@ def find_edges_downward(g: nx.MultiDiGraph, node: str, seen: t.Optional[t.Set[st
     """
     Traverse the graph, returning any unseen edges.
 
-    Similar to find_edges_from_root(), except we return an unseen edge found at each hop, rather than the entire path leading us there.
+    Similar to find_edges_from_root(), except we return an unseen edge found at each hop,
+    rather than the entire path leading us there.
     """
     if seen is None:
         seen = {node}
@@ -260,6 +261,7 @@ class SingleDispatchMethodLogger(singledispatchmethod):
     Override the functools.singledispatchmethod class to print the methods that get called.
     Used for debugging purposes.
     """
+
     def __get__(self, obj: t.Any, cls: t.Any = None) -> t.Any:
         if obj is None:
             return self

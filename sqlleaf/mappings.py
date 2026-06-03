@@ -1,6 +1,6 @@
 import typing as t
 
-from sqlglot import exp, MappingSchema
+from sqlglot import MappingSchema, exp
 from sqlglot.dialects.dialect import DialectType
 from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
@@ -23,7 +23,9 @@ class ObjectMapping(MappingSchema):
         """
         Initialize a mapping of tables parts to exp.Table
         """
-        super().__init__(dialect=dialect, normalize=False)  # Set `normalize=False` to prevent an unnecessary second parse.
+        super().__init__(
+            dialect=dialect, normalize=False
+        )  # Set `normalize=False` to prevent an unnecessary second parse.
         self.kind_mapping = {}
         self.kind_mapping_trie = {}
 

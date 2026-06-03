@@ -1,5 +1,6 @@
-import sys
 import os
+import sys
+
 import pytest
 
 from sqlleaf.objects.query_types import TableQuery
@@ -7,6 +8,7 @@ from sqlleaf.objects.query_types import TableQuery
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 import logging
+
 from sqlglot import exp
 
 import sqlleaf
@@ -14,8 +16,6 @@ import sqlleaf
 logging.basicConfig(level=logging.NOTSET)
 logger = logging.getLogger("sqlleaf")
 logger.setLevel(logging.DEBUG)
-
-
 
 
 class LineageHolderDummy:
@@ -47,7 +47,10 @@ class LineageHolderDummy:
         new_queries = []
         for query in self._all_queries:
             # Remove the COMMON_TABLES queries
-            if not (isinstance(query, TableQuery) and exp.table_name(query.get_target_as_table()).lower() in ["fruit.raw", "fruit.processed"]):
+            if not (
+                isinstance(query, TableQuery)
+                and exp.table_name(query.get_target_as_table()).lower() in ["fruit.raw", "fruit.processed"]
+            ):
                 new_queries.append(query)
         return new_queries
 

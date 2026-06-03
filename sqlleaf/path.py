@@ -1,10 +1,11 @@
 from __future__ import annotations
+
 import logging
 import typing as t
 
 import networkx as nx
 
-from sqlleaf import util, exception
+from sqlleaf import exception, util
 from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes
 
 logger = logging.getLogger("sqlleaf")
@@ -81,7 +82,9 @@ def find_all_paths(graph: nx.MultiDiGraph) -> t.Generator[LineagePath]:
                     continue
 
                 logger.debug(
-                    "Found edge path using root: %s --- %s", [e.id for e in path], [(e.parent.friendly_name, e.child.friendly_name) for e in path]
+                    "Found edge path using root: %s --- %s",
+                    [e.id for e in path],
+                    [(e.parent.friendly_name, e.child.friendly_name) for e in path],
                 )
                 lineage_path = LineagePath(hops=path)
                 yield lineage_path
@@ -91,13 +94,17 @@ def find_all_paths(graph: nx.MultiDiGraph) -> t.Generator[LineagePath]:
         for cycle in cycles:
             for path in find_edges_along_cycle_path(graph, cycle):
                 logger.debug(
-                    "Found edge path from cycle: %s --- %s", [e.id for e in path], [(e.parent.friendly_name, e.child.friendly_name) for e in path]
+                    "Found edge path from cycle: %s --- %s",
+                    [e.id for e in path],
+                    [(e.parent.friendly_name, e.child.friendly_name) for e in path],
                 )
                 lineage_path = LineagePath(hops=path)
                 yield lineage_path
 
 
-def find_edges_along_cycle_path(g: nx.MultiDiGraph, cycle: t.List[str], path: t.Optional[t.List[EdgeAttributes]] = None) -> t.Generator[t.List[EdgeAttributes]]:
+def find_edges_along_cycle_path(
+    g: nx.MultiDiGraph, cycle: t.List[str], path: t.Optional[t.List[EdgeAttributes]] = None
+) -> t.Generator[t.List[EdgeAttributes]]:
     """
     Given a cycle, find all the edges along it and return these as the new path.
     A path must be provided so that iteration doesn't deviate into non-cycle paths.
@@ -132,9 +139,9 @@ def find_edges_from_root(
 
     If there are two edges between A->B and two edges between C->D:
            __         __
-          /  \       /  \
+          /  \\       /  \
      --> A    B --> C    D -->
-          \__/       \__/
+          \\__/       \\__/
 
     then traversing all the edges gives:
         A -> B -> C -> D

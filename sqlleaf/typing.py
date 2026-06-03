@@ -1,7 +1,8 @@
 import typing as t
+
 from sqlglot import exp
 
-E = t.TypeVar('E', bound=exp.Expr)
+E = t.TypeVar("E", bound=exp.Expr)
 
 """
 Represents a source and a target object of an SQL query.

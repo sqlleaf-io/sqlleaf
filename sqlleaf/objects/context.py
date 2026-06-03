@@ -1,17 +1,18 @@
 from __future__ import annotations
+
 import logging
 import typing as t
-from dataclasses import dataclass, InitVar
+from dataclasses import InitVar, dataclass
 
 import networkx as nx
 from sqlglot import exp
 from sqlglot.optimizer import Scope, traverse_scope
 
-from sqlleaf import util, mappings
+from sqlleaf import mappings, util
 
 if t.TYPE_CHECKING:
-    from sqlleaf.objects.query_types import Query
     from sqlleaf.objects.node_types import NodeAttributes
+    from sqlleaf.objects.query_types import Query
 
 logger = logging.getLogger("sqlleaf")
 
@@ -45,7 +46,7 @@ class ScopePositions:
             if node_id in scopes:
                 logger.debug(f"Found scope expr ({node.__class__.__name__}): {node.sql()}")
 
-                if not expr_ids_to_positions:   # Root node
+                if not expr_ids_to_positions:  # Root node
                     expr_ids_to_positions[node_id] = (0, 0)
                     heights_to_widths[0] = 0
                 else:
@@ -95,6 +96,7 @@ class GeneratorContext:
         """
         Determine the expression's data type. If it's missing, use an ancestor's data type.
         """
+
         def is_missing_type(x: exp.Expr) -> bool:
             return not (x.type or x.is_type(exp.DataType.build("UNKNOWN")))
 
@@ -129,5 +131,5 @@ class PositionContext:
     # The depth of a subquery, e.g. WITH cte AS ( SELECT 'a' ) SELECT 'a' -> The first a=1, second a=0
     query_depth: int = 0
 
-    # The width of a subquery, e.g. SELECT 4 + (SELECT 5) + (SELECT 6 + (SELECT 7)) -> depth(4)=0, depth(5)=1, depth(6)=1, depth(7)=2
+    # The width of a subquery, e.g. SELECT 4 + (SELECT 5) + (SELECT 6) -> depth(4)=0, depth(5)=1, depth(6)=1
     query_width: int = 0

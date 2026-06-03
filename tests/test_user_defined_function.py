@@ -58,10 +58,10 @@ FROM fruit.raw;
 
 """
 -- Different aliasing techniques
-SELECT * 
+SELECT *
 FROM calculation_func(10, 5) AS f(total, multiplied);
-    
-SELECT sum AS total, product AS multiplied 
+
+SELECT sum AS total, product AS multiplied
 FROM calculation_func(10, 5);
 
 """

@@ -9,13 +9,14 @@ from sqlglot import exp
 from sqlleaf import util
 from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
-    StageNode,
     FileNode,
+    StageNode,
 )
 from sqlleaf.objects.query_types import CopyQuery
 from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
 
 logger = logging.getLogger("sqlleaf")
+
 
 class SnowflakeGenerator(BaseGenerator):
     dialect = "snowflake"
@@ -25,7 +26,9 @@ class SnowflakeGenerator(BaseGenerator):
         yield from super().process(expr, gen_ctx, pos_ctx)
 
     @process.register
-    def process_put(self, expr: exp.Put, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+    def process_put(
+        self, expr: exp.Put, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
         """
         PUT 'file:///tmp/data/mydata.csv' @my_int_stage;
         - Creates two nodes: FileNode and StageNode
@@ -42,11 +45,15 @@ class SnowflakeGenerator(BaseGenerator):
         yield EdgeToCreate(file_node, stage_node)
 
     @process.register
-    def process_copy(self, expr: exp.Copy, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+    def process_copy(
+        self, expr: exp.Copy, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
         yield from self.process_column(expr, gen_ctx, pos_ctx)
 
     @process.register
-    def process_column(self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+    def process_column(
+        self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
         """
         If the source is actually a Stage, don't try to create a Column.
         """

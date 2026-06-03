@@ -1,16 +1,16 @@
-from tests.new_fixtures import holder as holder
 import os
 import sys
 
 import pytest
 
 from sqlleaf.exception import SqlLeafException
+from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
-from tests.new_fixtures import is_subset
 from sqlleaf.objects.query_types import InsertQuery, SequenceQuery
+from tests.new_fixtures import is_subset
 
 DIALECT = "postgres"
 
@@ -191,14 +191,14 @@ def test__table_inherits_with_merge(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ['column[a.type]', 'column[b.type]'],
-        ['column[a.type]', 'column[b.type]'],
-        ['column[a.type]', 'column[fruit.x.type]'],
-        ['column[a.type]', 'column[fruit.y.type]'],
-        ['column[a.kind]', 'column[b.kind]'],
-        ['column[a.kind]', 'column[b.kind]'],
-        ['column[b.color]', 'column[c.color]'],
-        ['column[b.color]', 'column[c.color]']
+        ["column[a.type]", "column[b.type]"],
+        ["column[a.type]", "column[b.type]"],
+        ["column[a.type]", "column[fruit.x.type]"],
+        ["column[a.type]", "column[fruit.y.type]"],
+        ["column[a.kind]", "column[b.kind]"],
+        ["column[a.kind]", "column[b.kind]"],
+        ["column[b.color]", "column[c.color]"],
+        ["column[b.color]", "column[c.color]"],
     ]
     assert len(h.nodes) == 8
     assert len(h.edges) == 8
@@ -258,9 +258,7 @@ def test__update_and_select_inherited(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [
-        ["column[fruit.orange.price]", "column[fruit.apple.price]"]
-    ]
+    assert h.paths == [["column[fruit.orange.price]", "column[fruit.apple.price]"]]
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
 
@@ -278,9 +276,7 @@ def test__cte_only(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [
-        ["column[fruit.parent.name]", "column[cte.name]", "column[fruit.output.name]"]
-    ]
+    assert h.paths == [["column[fruit.parent.name]", "column[cte.name]", "column[fruit.output.name]"]]
     assert len(h.nodes) == 3
     assert len(h.edges) == 2
 

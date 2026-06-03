@@ -7,14 +7,18 @@ from dataclasses import replace
 from sqlglot import exp
 from sqlglot.optimizer import Scope
 
-from sqlleaf import util, exception
+from sqlleaf import exception, util
 from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
-    PivotNode, UnpivotNode, NodeAttributes, FileColumnNode,
+    FileColumnNode,
+    NodeAttributes,
+    PivotNode,
+    UnpivotNode,
 )
 from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
 
 logger = logging.getLogger("sqlleaf")
+
 
 class RedshiftGenerator(BaseGenerator):
     dialect = "redshift"
@@ -24,7 +28,9 @@ class RedshiftGenerator(BaseGenerator):
         yield from super().process(expr, gen_ctx, pos_ctx)
 
     @process.register
-    def process_unpivot(self, expr: exp.Pivot, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+    def process_unpivot(
+        self, expr: exp.Pivot, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
         """
         SELECT * FROM ... UNPIVOT ( ... )
         """
@@ -60,9 +66,10 @@ class RedshiftGenerator(BaseGenerator):
 
             yield from self.do_grandparents([pivot_value], unpivot_node, gen_ctx, pos_ctx)
 
-
     @process.register
-    def process_pivot(self, expr: exp.Pivot, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+    def process_pivot(
+        self, expr: exp.Pivot, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
         """
         SELECT * FROM (SELECT  ...) PIVOT ( ... )
         """
@@ -85,13 +92,16 @@ class RedshiftGenerator(BaseGenerator):
         grandparents = [pivot_expr]
         yield from self.do_grandparents(grandparents, pivot_node, gen_ctx, pos_ctx)
 
-
     @process.register
-    def process_column(self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+    def process_column(
+        self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
         scope = t.cast(Scope, gen_ctx.scope)
         pivot = _get_pivot_expr(scope)
-        if (pivot and pivot.alias_or_name == expr.table and
-            not isinstance(gen_ctx.child_node, UnpivotNode)  # Prevent infinite recursion
+        if (
+            pivot
+            and pivot.alias_or_name == expr.table
+            and not isinstance(gen_ctx.child_node, UnpivotNode)  # Prevent infinite recursion
         ):
             gen_ctx = replace(gen_ctx, expr=pivot)
             if pivot.unpivot:
@@ -102,7 +112,9 @@ class RedshiftGenerator(BaseGenerator):
             yield from super().process(expr, gen_ctx, pos_ctx)
 
     @process.register
-    def process_location(self, expr: exp.LocationProperty, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+    def process_location(
+        self, expr: exp.LocationProperty, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
         """
         CREATE EXTERNAL TABLE ... LOCATION
         """
@@ -148,9 +160,6 @@ def _get_pivot_mapping(expr: exp.Pivot) -> dict:
     for i, agg in enumerate(expr.expressions):
         agg_cols = list(agg.find_all(exp.Column))
         for col_index in range(i, len(pivot_columns), pivot_aggs_count):
-            pivot_column_mapping[pivot_columns[col_index].name] = {
-                'column': agg_cols,
-                'expression': agg
-            }
+            pivot_column_mapping[pivot_columns[col_index].name] = {"column": agg_cols, "expression": agg}
 
     return pivot_column_mapping

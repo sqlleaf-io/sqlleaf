@@ -2,23 +2,31 @@ from __future__ import annotations
 
 import logging
 import typing as t
-from dataclasses import replace, dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum, auto
 
 import networkx as nx
 from sqlglot import exp
 from sqlglot.optimizer import Scope, build_scope
 
-
 if t.TYPE_CHECKING:
     pass
 
-from sqlleaf import util, exception, mappings
-from sqlleaf.typing import E
+from sqlleaf import exception, mappings, util
 from sqlleaf.objects.context import GeneratorContext, PositionContext
-from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, StageNode, ColumnNode, TableType, StreamNode, ProgramNode, FileColumnNode
-from sqlleaf.objects.query_types import Query, UpdateQuery, CopyQuery, PutQuery, TableQuery, UnloadQuery
+from sqlleaf.objects.node_types import (
+    ColumnNode,
+    EdgeAttributes,
+    FileColumnNode,
+    NodeAttributes,
+    ProgramNode,
+    StageNode,
+    StreamNode,
+    TableType,
+)
+from sqlleaf.objects.query_types import CopyQuery, PutQuery, Query, TableQuery, UnloadQuery, UpdateQuery
 from sqlleaf.processors.dialects.base import BaseGenerator
+from sqlleaf.typing import E
 
 logger = logging.getLogger("sqlleaf")
 
@@ -88,7 +96,12 @@ def generate_lineage_for_columns(
         if default_node:
             constraint_expr = default_node.get_column_constraint_expression()
             if constraint_expr and constraint_expr.this:
-                constraint_ctx = replace(gen_ctx, expr=constraint_expr.this, new_data_type=child_node.data_type if child_node else None, child_node=child_node)
+                constraint_ctx = replace(
+                    gen_ctx,
+                    expr=constraint_expr.this,
+                    new_data_type=child_node.data_type if child_node else None,
+                    child_node=child_node,
+                )
                 # Walk only the expression
                 walk_expressions_and_build_graph(generator=generator, gen_ctx=constraint_ctx, pos_ctx=pos_ctx)
 
@@ -104,6 +117,7 @@ class TargetObjectType(StrEnum):
     """
     The types of objects that represent a 'target' in an SQL statement.
     """
+
     TABLE = auto()
     FILE = auto()
     STREAM = auto()
@@ -112,9 +126,10 @@ class TargetObjectType(StrEnum):
 
 TargetNodeType = ColumnNode | FileColumnNode | StreamNode | ProgramNode | StageNode
 
-def _iter_child_nodes(gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> (
-    t.Generator[t.Tuple[TargetNodeType | None, ColumnNode | None]]
-):
+
+def _iter_child_nodes(
+    gen_ctx: GeneratorContext, pos_ctx: PositionContext
+) -> t.Generator[t.Tuple[TargetNodeType | None, ColumnNode | None]]:
     """
     Iterate over every column of a table that was either selected in a query or has a default expression.
     """
@@ -233,7 +248,11 @@ def determine_object_type(gen_ctx: GeneratorContext):
     return target_type, columns_from_object
 
 
-def get_column_defs(table_with_columns: exp.Table | exp.Literal | exp.Identifier | exp.Schema | exp.Select | exp.Values, query: Query, object_mapping: mappings.ObjectMapping) -> t.List[exp.ColumnDef]:
+def get_column_defs(
+    table_with_columns: exp.Table | exp.Literal | exp.Identifier | exp.Schema | exp.Select | exp.Values,
+    query: Query,
+    object_mapping: mappings.ObjectMapping,
+) -> t.List[exp.ColumnDef]:
     """
     Most of the time, the sources and target are tables.
     However, with COPY/UNLOAD, they can be files or streams.
@@ -257,7 +276,11 @@ def get_column_defs(table_with_columns: exp.Table | exp.Literal | exp.Identifier
 
 
 def walk_query_and_build_graph(
-    generator: BaseGenerator, child_node: TargetNodeType, scope: Scope, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    generator: BaseGenerator,
+    child_node: TargetNodeType,
+    scope: Scope,
+    gen_ctx: GeneratorContext,
+    pos_ctx: PositionContext,
 ) -> None:
     """
     Walk over each query (and its subqueries) to collect the expressions for each column.
@@ -357,7 +380,8 @@ def walk_expressions_and_build_graph(
                 nodes_created.append(parent_node)
             """
             Considering Postgres inheritance operates 'behind the scenes' outside of the query's syntax), we are
-            justified in implementing this behaviour in our own way: by mapping each inherited column to the query's columns.
+            justified in implementing this behaviour in our own way: by mapping each inherited column to the
+            query's columns.
             """
             inherited_columns_of_parent = find_inherited_columns_for_parent(
                 column_node=parent_node, generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx
@@ -399,7 +423,9 @@ def find_inherited_columns_for_parent(
             if parent_table.args.get("only", False):
                 inherited_columns = []
             else:
-                inherited_columns = find_inherited_columns(column_node=column_node, generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
+                inherited_columns = find_inherited_columns(
+                    column_node=column_node, generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx
+                )
                 logger.debug(f"Including inherited columns as sources: {[c.friendly_name for c in inherited_columns]}")
 
     return inherited_columns
@@ -417,7 +443,9 @@ def find_inherited_columns_for_child(
 
     # Only return inherited columns for UPDATE
     if isinstance(gen_ctx.query, UpdateQuery) and not gen_ctx.query.only:
-        inherited_columns = find_inherited_columns(column_node=column_node, generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
+        inherited_columns = find_inherited_columns(
+            column_node=column_node, generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx
+        )
         logger.debug(f"Including inherited columns as targets: {[c.friendly_name for c in inherited_columns]}")
 
     return inherited_columns
@@ -484,7 +512,8 @@ def add_node_if_not_exists(node_attrs: NodeAttributes | None, graph: nx.MultiDiG
     """
     Add a node to the graph if it doesn't already exist.
 
-    We need to re-use the existing node attributes so that the edge attribute objects don't refer to different-but-same-named node attributes.
+    We need to re-use the existing node attributes so that the edge attribute objects don't refer to
+    different-but-same-named node attributes.
     """
     if not node_attrs:
         return None
@@ -592,7 +621,9 @@ def get_column_index(column: exp.Column | int, expr: exp.Expr):
 #     return False
 
 
-def check_for_trigger(table: exp.Table | exp.Literal | exp.Identifier | exp.Schema, object_mapping: mappings.ObjectMapping) -> bool:
+def check_for_trigger(
+    table: exp.Table | exp.Literal | exp.Identifier | exp.Schema, object_mapping: mappings.ObjectMapping
+) -> bool:
     """
     Check if a trigger overrides the query's behaviour.
     """
@@ -601,7 +632,10 @@ def check_for_trigger(table: exp.Table | exp.Literal | exp.Identifier | exp.Sche
 
     if trigger := object_mapping.find_query(kind="trigger", table=table):
         if getattr(trigger, "timing", None) == "INSTEAD OF":
-            logger.debug("Skipping lineage for all columns of table '%s' since trigger '%s' overrides it." % (exp.table_name(table), getattr(trigger, "name", "")))
+            logger.debug(
+                "Skipping lineage for all columns of table '%s' since trigger '%s' overrides it."
+                % (exp.table_name(table), getattr(trigger, "name", ""))
+            )
             # TODO: Use the trigger's function as the lineage
             # func = trigger.execute
             return True

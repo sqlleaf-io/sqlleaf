@@ -1,13 +1,14 @@
 from __future__ import annotations
-from enum import StrEnum, auto
+
 import logging
 import typing as t
+from enum import StrEnum, auto
 
 from sqlglot import exp
-from sqlglot.optimizer.scope import ScopeType, Scope
+from sqlglot.optimizer.scope import Scope, ScopeType
 
-from sqlleaf import util, exception
-from sqlleaf.objects.context import PositionContext, GeneratorContext
+from sqlleaf import exception, util
+from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.query_types import Query
 
 logger = logging.getLogger("sqlleaf")
@@ -27,15 +28,15 @@ def _function_name(expr: exp.Expr, dialect: str) -> str:
         # Some classes can't be converted to SQL using this method (e.g. CONCAT() in Postgres)
         name = expr.__class__().sql()
 
-    first_bracket = name.find('(')
+    first_bracket = name.find("(")
     if first_bracket == -1:
         return name
 
-    last_bracket = name.rfind(')')
+    last_bracket = name.rfind(")")
     if last_bracket == -1:
         return name
 
-    return name[:first_bracket] + name[last_bracket + 1:]
+    return name[:first_bracket] + name[last_bracket + 1 :]
 
 
 class TableType(StrEnum):
@@ -124,7 +125,11 @@ class LiteralNode(NodeAttributes):
     def full_name(self):
         name = self.name.replace("'", '"')
         return self.wrap(
-            f"{name} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{name} type={self.data_type} "
+            f"query_depth={self.ctx.query_depth} "
+            f"query_width={self.ctx.query_width} "
+            f"statement={self.ctx.statement_index} select={self.ctx.select_index} "
+            f"func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
@@ -160,14 +165,15 @@ class ColumnNode(NodeAttributes):
         self.parent_kind: str = ""
         self.parent_subkind: str = ""
         self.source_scope: TableOrScopeType | None = None
-        self.has_child_scope: bool = False    # Whether the query's source is inside an inner scope that still need to be resolved
+        self.has_child_scope: bool = (
+            False  # Whether the query's source is inside an inner scope that still need to be resolved
+        )
 
         self.set_table_properties(catalog, schema, table, gen_ctx)
 
         # TODO: new algorithm
         # if table_type == "cte":
         #     self.member = gen_ctx.node.recursive_cte_member_kind
-
 
     @property
     def id(self):
@@ -231,7 +237,7 @@ class ColumnNode(NodeAttributes):
             source = scope.sources.get(table)
             if not source:
                 # Nested 'rows_from' queries have their aliases in 'references'
-                self.source_scope = dict(scope.references).get(table)   # tyy: ignore[invalid-assignment]
+                self.source_scope = dict(scope.references).get(table)  # tyy: ignore[invalid-assignment]
                 self.parent_kind = TableType.DERIVED_TABLE
                 return
 
@@ -300,7 +306,9 @@ class ColumnNode(NodeAttributes):
         """
         types = (exp.DefaultColumnConstraint, exp.ComputedColumnConstraint)
         expr = t.cast(exp.ColumnDef, self.expr)
-        constraints = [c.kind for c in expr.constraints if isinstance(c, exp.ColumnConstraint) and isinstance(c.kind, types)]
+        constraints = [
+            c.kind for c in expr.constraints if isinstance(c, exp.ColumnConstraint) and isinstance(c.kind, types)
+        ]
         return t.cast(exp.ColumnConstraintKind, constraints[0]) if constraints else None
 
     def get_name(self):
@@ -406,7 +414,10 @@ class FunctionNode(NodeAttributes):
     def full_name(self):
         name = f"{self.name}".upper()
         return self.wrap(
-            f"{name} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{name} type={self.data_type} "
+            f"query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} "
+            f"statement={self.ctx.statement_index} select={self.ctx.select_index} "
+            f"func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
@@ -440,7 +451,10 @@ class UserDefinedFunctionNode(NodeAttributes):
     @property
     def full_name(self):
         return self.wrap(
-            f"{self.get_name()} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{self.get_name()} type={self.data_type} "
+            f"query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} "
+            f"statement={self.ctx.statement_index} select={self.ctx.select_index} "
+            f"func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
@@ -493,7 +507,7 @@ class VariableNode(NodeAttributes):
             kind="variable",
             data_type=gen_ctx.data_type,
             expr=gen_ctx.expr,
-            name='todo',
+            name="todo",
             pos_ctx=pos_ctx,
         )
 
@@ -537,7 +551,9 @@ class NullNode(NodeAttributes):
     @property
     def full_name(self):
         return self.wrap(
-            f"{self.name} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{self.name} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} "
+            f"statement={self.ctx.statement_index} select={self.ctx.select_index} "
+            f"func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
     @property
@@ -631,7 +647,9 @@ class IntervalNode(NodeAttributes):
     @property
     def full_name(self):
         return self.wrap(
-            f"{self.name} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} statement={self.ctx.statement_index} select={self.ctx.select_index} func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
+            f"{self.name} type={self.data_type} query_depth={self.ctx.query_depth} query_width={self.ctx.query_width} "
+            f"statement={self.ctx.statement_index} select={self.ctx.select_index} "
+            f"func_depth={self.ctx.function_depth} func_arg={self.ctx.function_arg_index}"
         )
 
 
@@ -689,20 +707,13 @@ class ProgramNode(NodeAttributes):
         program = expr.args["params"][0].sql()
         name, args = (program + " ").split(" ", maxsplit=1)
         super().__init__(
-            kind="program",
-            data_type=exp.DataType.build("UNKNOWN"),
-            expr=gen_ctx.expr,
-            pos_ctx=pos_ctx,
-            name=name
+            kind="program", data_type=exp.DataType.build("UNKNOWN"), expr=gen_ctx.expr, pos_ctx=pos_ctx, name=name
         )
         self.program_args = args.strip()
 
     @property
     def full_name(self):
         return self.wrap(f"{self.name} args='{self.program_args}'")
-
-
-
 
 
 class EdgeAttributes:
@@ -718,9 +729,13 @@ class EdgeAttributes:
         self.child = child
         self.query = query
 
-        # These positions help unique identify syntax inside a set of SQL statements
-        self.select_idx = select_idx  # The position of this column inside a set of selected columns (e.g. SELECT 'a', 'b', 'c')
-        self.path_idx = path_idx  # <TODO: can I rely on the query hash instead?> The position of this edge inside a set of identical edges (e.g. two edges between nodes A->B). This can occur if the same query is used across multiple files.
+        # The position of this column inside a set of selected columns (e.g. SELECT 'a', 'b', 'c')
+        self.select_idx = select_idx
+
+        # The position of this edge inside a set of identical edges (e.g. two edges between nodes A->B).
+        # This can occur if the same query is used across multiple files.
+        # <TODO: can I rely on the query hash instead?>
+        self.path_idx = path_idx
 
         self.path_id: str | None = None
         self.path_hop: int | None = None

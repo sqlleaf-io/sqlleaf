@@ -1,8 +1,9 @@
-from tests.new_fixtures import holder as holder
 import os
 import sys
 
 import pytest
+
+from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -26,4 +27,6 @@ def test__system_tables_postgres(holder):
         ["literal[99]", "column[fruit.a.size]"],
     ]
     assert len(h.nodes) == 10
-    assert h.queries[2].statement_transformed.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
+    assert (
+        h.queries[2].statement_transformed.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
+    )

@@ -1,12 +1,13 @@
 from __future__ import annotations
+
 import logging
 import typing as t
 
 import sqlglot
-from sqlglot import exp, TokenType
+from sqlglot import TokenType, exp
 
-from sqlleaf import util, mappings, exception
-from sqlleaf.typing import TargetExprType, SourceExprType
+from sqlleaf import exception, mappings, util
+from sqlleaf.typing import SourceExprType, TargetExprType
 
 logger = logging.getLogger("sqlleaf")
 
@@ -44,7 +45,7 @@ class Query:
 
         logger.debug(f"Created Query: {self.__class__}")
 
-    def get_source(self)-> SourceExprType:
+    def get_source(self) -> SourceExprType:
         return self.source
 
     def get_target(self) -> TargetExprType:
@@ -55,7 +56,9 @@ class Query:
         For functions that only accept tables.
         """
         if not isinstance(self.target, exp.Table):
-            raise exception.SqlLeafException(message=f"Expected the target object to be a table but it is a {type(self.target)}")
+            raise exception.SqlLeafException(
+                message=f"Expected the target object to be a table but it is a {type(self.target)}"
+            )
         return self.target
 
     def get_statement_index(self) -> str:
@@ -94,7 +97,7 @@ class Query:
         """
         Convert the Query back to its original statement.
 
-        This is needed for CTAS/View queries after they transform into Inserts in order to have their lineage calculated.
+        This is needed for CTAS/View queries after they transform into Inserts.
         This is the inverse of functions like set_as_insert()
         """
         self.set_statement(statement=self.statement_original)
@@ -183,7 +186,14 @@ class SelectQuery(Query):
 
 
 class InsertQuery(Query):
-    def __init__(self, expr: exp.Insert, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int, table: exp.Table | None = None):
+    def __init__(
+        self,
+        expr: exp.Insert,
+        dialect: str,
+        object_mapping: mappings.ObjectMapping,
+        statement_index: int,
+        table: exp.Table | None = None,
+    ):
         if not table:
             table = util.get_table(expr)
         super().__init__(
@@ -199,7 +209,14 @@ class InsertQuery(Query):
 
 
 class UpdateQuery(Query):
-    def __init__(self, expr: exp.Update, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int, table: exp.Table | None = None):
+    def __init__(
+        self,
+        expr: exp.Update,
+        dialect: str,
+        object_mapping: mappings.ObjectMapping,
+        statement_index: int,
+        table: exp.Table | None = None,
+    ):
         if not table:
             table = util.get_table(expr)
         super().__init__(
@@ -285,7 +302,9 @@ class ViewQuery(Query):
 
 
 class TableQuery(Query):
-    def __init__(self, statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
+    def __init__(
+        self, statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+    ):
         super().__init__(
             kind="table",
             statement=statement,
@@ -521,7 +540,6 @@ class CopyQuery(Query):
 
         return source, target
 
-
     def configure_stage(self, expr: exp.Copy):
         """
         Normalize (uppercase) the name if we are a Snowflake stage.
@@ -561,17 +579,22 @@ class UnloadQuery(Query):
         """
         # Syntax: "UNLOAD ('SELECT ...') TO ..."
         expected_tokens = [TokenType.L_PAREN, TokenType.STRING, TokenType.R_PAREN, TokenType.VAR, TokenType.STRING]
-        actual_tokens = sqlglot.tokenize(statement.expression.name, dialect='redshift')
+        actual_tokens = sqlglot.tokenize(statement.expression.name, dialect="redshift")
 
         # Basic validation - ensure the token types match
         for i in range(len(expected_tokens)):
             if expected_tokens[i] != actual_tokens[i].token_type:
                 # This may be incorrect! Use the parser instead once available.
-                raise exception.SqlLeafException(message=f"Invalid syntax for UNLOAD expression: {statement.sql(dialect="redshift")}")
+                raise exception.SqlLeafException(
+                    message=f"Invalid syntax for UNLOAD expression: {statement.sql(dialect='redshift')}"
+                )
 
-        select_expr = sqlglot.parse_one(actual_tokens[1].text, dialect='redshift')
+        select_expr = sqlglot.parse_one(actual_tokens[1].text, dialect="redshift")
         if not isinstance(select_expr, exp.Select):
-            raise exception.SqlLeafException(message=f"Invalid expression inside UNLOAD. Expected SELECT but got: {select_expr.sql(dialect="redshift")}")
+            raise exception.SqlLeafException(
+                message=f"Invalid expression inside UNLOAD. Expected SELECT "
+                f"but got: {select_expr.sql(dialect='redshift')}"
+            )
 
         to_location = actual_tokens[4].text
         return select_expr, t.cast(exp.Literal, exp.convert(to_location))

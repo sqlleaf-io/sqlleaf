@@ -1,6 +1,5 @@
 import pytest
 
-
 # @pytest.hookimpl(tryfirst=True)
 # def pytest_assertrepr_compare(config, op, left, right):
 #     """Bypasses PyCharm's 75-character terminal layout rules entirely."""
@@ -40,6 +39,7 @@ def pytest_assertrepr_compare(op, left, right):
 
         # We can dynamically use Python's difflib to show a neat line-by-line comparison
         import difflib
+
         diff = list(difflib.ndiff(right, left))
         explanation.extend(diff)
 
@@ -60,7 +60,9 @@ def pytest_assertrepr_compare(op, left, right):
 
         if not right:
             # Print the list in a nice way for copying into tests
-            diff_no_markers = ["["] + ["\t'" + line.removeprefix("+ ").removeprefix("- ") + "'," for line in diff] + ["]"]
+            diff_no_markers = (
+                ["["] + ["\t'" + line.removeprefix("+ ").removeprefix("- ") + "'," for line in diff] + ["]"]
+            )
             explanation.extend(diff_no_markers)
 
         return explanation

@@ -1,6 +1,7 @@
-from tests.new_fixtures import holder as holder
 import os
 import sys
+
+from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -23,7 +24,7 @@ def test__merge_simple_update_and_insert(holder):
 
     assert h.paths == [
         ["column[fruit.raw.name]", "column[fruit.processed.name]"],
-        ["column[fruit.raw.kind]", "column[fruit.processed.label]"]
+        ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
     ]
     assert len(h.nodes) == 4
     assert len(h.queries) == 1
@@ -50,11 +51,13 @@ def test__merge_using_select(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert sorted(h.paths) == sorted([
-        ["column[fruit.raw.name]", "column[fruit.processed.name]"],
-        ["column[fruit.raw.kind]", "column[fruit.processed.kind]"],
-        ["column[fruit.raw.name]", "column[fruit.processed.label]"],
-    ])
+    assert sorted(h.paths) == sorted(
+        [
+            ["column[fruit.raw.name]", "column[fruit.processed.name]"],
+            ["column[fruit.raw.kind]", "column[fruit.processed.kind]"],
+            ["column[fruit.raw.name]", "column[fruit.processed.label]"],
+        ]
+    )
 
 
 # TODO: test two merge queries that have an identical inner query

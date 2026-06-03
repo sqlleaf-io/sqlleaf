@@ -1,6 +1,7 @@
-from tests.new_fixtures import holder as holder
 import os
 import sys
+
+from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 

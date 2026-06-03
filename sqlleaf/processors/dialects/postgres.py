@@ -6,29 +6,37 @@ from dataclasses import replace
 
 from sqlglot import exp
 
-from sqlleaf import util, exception
+from sqlleaf import exception, util
 from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
-    ColumnNode, SequenceNode, StreamNode, FileColumnNode,
+    ColumnNode,
+    FileColumnNode,
+    SequenceNode,
+    StreamNode,
 )
 from sqlleaf.objects.query_types import CopyQuery
 from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
 
 logger = logging.getLogger("sqlleaf")
 
+
 class PostgresGenerator(BaseGenerator):
     dialect = "postgres"
 
     @util.singledispatchmethodlogger
     def process(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
-        if isinstance(gen_ctx.query, CopyQuery) and isinstance(gen_ctx.query.get_source(), (exp.Literal, exp.Identifier)):
+        if isinstance(gen_ctx.query, CopyQuery) and isinstance(
+            gen_ctx.query.get_source(), (exp.Literal, exp.Identifier)
+        ):
             # Push all the non-column sources through process_copy for now (until we can do it inside the ColumnNode)
             yield from self.process_copy(expr, gen_ctx, pos_ctx)
         else:
             yield from super().process(expr, gen_ctx, pos_ctx)
 
     @process.register
-    def process_table(self, expr: exp.Table, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+    def process_table(
+        self, expr: exp.Table, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
         """
         Process a table or a table function.
         This is a bit awkward as we have the sequence: Table -> ColumnDef -> Table
@@ -59,7 +67,9 @@ class PostgresGenerator(BaseGenerator):
             yield from super().process(expr, gen_ctx, pos_ctx)
 
     @process.register
-    def process_anonymous(self, expr: exp.Anonymous, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+    def process_anonymous(
+        self, expr: exp.Anonymous, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
         """
         Either user-defined functions or sequence functions.
 
@@ -98,7 +108,9 @@ class PostgresGenerator(BaseGenerator):
             yield from super().process(expr, gen_ctx, pos_ctx)
 
     @process.register
-    def process_column_def(self, expr: exp.ColumnDef, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+    def process_column_def(
+        self, expr: exp.ColumnDef, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
         gen_ctx = replace(gen_ctx, new_data_type=expr.kind)
 
         if isinstance(expr.parent, exp.TableAlias):
@@ -126,7 +138,9 @@ class PostgresGenerator(BaseGenerator):
             yield from self.do_grandparents([table_function.this], parent, gen_ctx, pos_ctx)
 
     @process.register
-    def process_copy(self, expr: exp.Copy, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+    def process_copy(
+        self, expr: exp.Copy, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
         """
         COPY x FROM/TO y
         """

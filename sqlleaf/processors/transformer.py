@@ -1,15 +1,25 @@
-import typing as t
-import logging
 import copy
+import logging
+import typing as t
 
 import sqlglot
 from sqlglot import exp
-from sqlglot.optimizer import optimize, qualify, RULES
+from sqlglot.optimizer import RULES, optimize, qualify
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, mappings, util
+from sqlleaf.objects.query_types import (
+    CopyQuery,
+    CTASQuery,
+    DeleteQuery,
+    InsertQuery,
+    MergeQuery,
+    Query,
+    TableQuery,
+    UnloadQuery,
+    UpdateQuery,
+)
 from sqlleaf.typing import E
-from sqlleaf.objects.query_types import CopyQuery, UpdateQuery, InsertQuery, MergeQuery, Query, CTASQuery, TableQuery, DeleteQuery, UnloadQuery
 
 logger = logging.getLogger("sqlleaf")
 
@@ -76,7 +86,9 @@ def transform_query(query: Query, object_mapping: mappings.ObjectMapping) -> Non
 
     elif isinstance(query, CTASQuery) and isinstance(statement, exp.Create):
         if statement.expression:
-            statement_converted = _convert_outer_values_to_select(statement.expression, statement, object_mapping, query)
+            statement_converted = _convert_outer_values_to_select(
+                statement.expression, statement, object_mapping, query
+            )
             if isinstance(statement_converted, exp.Create):
                 statement = statement_converted
 
@@ -155,12 +167,16 @@ def _process_inner_ctes(
                 cte_expr.this.replace(values_expr)
 
         # Rename the columns and replace the INSERT with the SELECT
-        _rename_returning_columns(expr=cte_expr, query=query, object_mapping=object_mapping, child_table=cte_expr.find(exp.Table))
+        _rename_returning_columns(
+            expr=cte_expr, query=query, object_mapping=object_mapping, child_table=cte_expr.find(exp.Table)
+        )
 
     return statement
 
 
-def _convert_cte_values_to_select(expression: exp.Values, statement: exp.CTE, object_mapping: mappings.ObjectMapping, query: Query) -> exp.CTE | exp.Insert | exp.Create:
+def _convert_cte_values_to_select(
+    expression: exp.Values, statement: exp.CTE, object_mapping: mappings.ObjectMapping, query: Query
+) -> exp.CTE | exp.Insert | exp.Create:
     """
     Transform the query:
         WITH cte (age, name) AS (
@@ -183,7 +199,13 @@ def _convert_cte_values_to_select(expression: exp.Values, statement: exp.CTE, ob
     return _values_to_select_union(columns, expression, statement, object_mapping, query)
 
 
-def _values_to_select_union(columns: t.List[str], expression: exp.Values, statement: exp.CTE | exp.Insert | exp.Create, object_mapping: mappings.ObjectMapping, query: Query) -> exp.CTE | exp.Insert | exp.Create:
+def _values_to_select_union(
+    columns: t.List[str],
+    expression: exp.Values,
+    statement: exp.CTE | exp.Insert | exp.Create,
+    object_mapping: mappings.ObjectMapping,
+    query: Query,
+) -> exp.CTE | exp.Insert | exp.Create:
     """
     Convert a VALUES(x, y) to a SELECT x UNION ALL SELECT y
     """
@@ -229,7 +251,9 @@ def _values_to_select_union(columns: t.List[str], expression: exp.Values, statem
     return statement
 
 
-def _convert_outer_values_to_select(expression: exp.Values, statement: exp.Insert | exp.Create, object_mapping: mappings.ObjectMapping, query: Query) -> exp.Insert | exp.Create | exp.CTE:
+def _convert_outer_values_to_select(
+    expression: exp.Values, statement: exp.Insert | exp.Create, object_mapping: mappings.ObjectMapping, query: Query
+) -> exp.Insert | exp.Create | exp.CTE:
     """
     Transform the query:
         INSERT INTO x (name) VALUES (a), (b)
@@ -245,7 +269,9 @@ def _convert_outer_values_to_select(expression: exp.Values, statement: exp.Inser
     return _values_to_select_union(columns, expression, statement, object_mapping, query)
 
 
-def _convert_defaults_to_values(statement: exp.Insert, object_mapping: mappings.ObjectMapping, query: Query) -> exp.Insert:
+def _convert_defaults_to_values(
+    statement: exp.Insert, object_mapping: mappings.ObjectMapping, query: Query
+) -> exp.Insert:
     """
     Transform the query:
         INSERT INTO x DEFAULT VALUES
@@ -300,12 +326,14 @@ def _convert_defaults_to_values(statement: exp.Insert, object_mapping: mappings.
 
 def _convert_update_to_insert(statement: exp.Update, query: Query) -> exp.Insert:
     """
-    Taken from function extract_select_from_update() at datahub/metadata-ingestion/src/datahub/sql_parsing/sqlglotlineage.py
+    Taken from extract_select_from_update() at datahub/metadata-ingestion/src/datahub/sql_parsing/sqlglotlineage.py
 
     This transforms an UPDATE statement into an INSERT statement so that it can be processed by the lineage functions.
     """
     _UPDATE_FROM_TABLE_ARGS_TO_MOVE = {"joins", "laterals", "pivot"}
-    _UPDATE_ARGS_NOT_SUPPORTED_BY_SELECT: t.Set[str] = set(exp.Update.arg_types.keys()) - set(exp.Select.arg_types.keys())
+    _UPDATE_ARGS_NOT_SUPPORTED_BY_SELECT: t.Set[str] = set(exp.Update.arg_types.keys()) - set(
+        exp.Select.arg_types.keys()
+    )
 
     if where := statement.args.get("where", None):
         # WHERE statements aren't relevant to lineage
@@ -395,11 +423,7 @@ def _convert_on_conflict_to_update(
         return statement
 
     parent_insert_expr = None
-    if (
-        statement.parent
-        and isinstance(statement.parent, (exp.Insert, exp.Create))
-        and statement.parent.expression
-    ):
+    if statement.parent and isinstance(statement.parent, (exp.Insert, exp.Create)) and statement.parent.expression:
         if isinstance(statement.parent.expression, exp.Values):
             converted = _convert_outer_values_to_select(
                 statement.parent.expression, statement.parent, object_mapping, query
@@ -414,11 +438,7 @@ def _convert_on_conflict_to_update(
     update_expr.set("expressions", statement.expressions)
 
     parent_table = None
-    if (
-        statement.parent
-        and isinstance(statement.parent, (exp.Insert, exp.Create))
-        and statement.parent.expression
-    ):
+    if statement.parent and isinstance(statement.parent, (exp.Insert, exp.Create)) and statement.parent.expression:
         parent_table = statement.parent.expression.args.get("from_", None)
         if parent_table:
             update_expr = update_expr.from_(parent_table.this)
@@ -432,9 +452,7 @@ def _convert_on_conflict_to_update(
                 else:
                     # Set it to the unaliased expression
                     select_expr = [
-                        alias_expr
-                        for alias_expr in parent_insert_expr.selects
-                        if alias_expr.alias == col.name
+                        alias_expr for alias_expr in parent_insert_expr.selects if alias_expr.alias == col.name
                     ][0]
                     new_expr = select_expr.unalias().copy()
 
@@ -446,7 +464,9 @@ def _convert_on_conflict_to_update(
     return update_expr
 
 
-def _add_information_from_merge(statement: exp.Insert | exp.Update, query: InsertQuery | UpdateQuery) -> exp.Insert | exp.Update:
+def _add_information_from_merge(
+    statement: exp.Insert | exp.Update, query: InsertQuery | UpdateQuery
+) -> exp.Insert | exp.Update:
     """
     Transform any nested statements (INSERT or UPDATE) into fully qualified queries.
 
@@ -523,7 +543,7 @@ def _add_information_from_merge(statement: exp.Insert | exp.Update, query: Inser
         insert_expr = exp.insert(
             expression=new_select,
             columns=[col.this for col in statement.this.expressions],
-            into=query.get_target(),    # ty: ignore[invalid-argument-type]
+            into=query.get_target(),  # ty: ignore[invalid-argument-type]
             dialect=query.dialect,
             returning=returning,
         )
@@ -537,7 +557,11 @@ def _add_information_from_merge(statement: exp.Insert | exp.Update, query: Inser
     return statement
 
 
-def _convert_copy_to_insert(statement: exp.Copy, object_mapping: mappings.ObjectMapping, query: CopyQuery,) -> exp.Insert:
+def _convert_copy_to_insert(
+    statement: exp.Copy,
+    object_mapping: mappings.ObjectMapping,
+    query: CopyQuery,
+) -> exp.Insert:
     """
     Convert the COPY statement into an INSERT statement.
 
@@ -593,7 +617,10 @@ def _convert_copy_to_insert(statement: exp.Copy, object_mapping: mappings.Object
     if dialect == "snowflake" and query.is_target_a_stage:
         # Any object that is referenced as a source table needs to be added to the table mapping
         # for the lineage functions to work - such as this Stage
-        col_defs = [exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(data_type)) for name, data_type in table_columns.items()]
+        col_defs = [
+            exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(data_type))
+            for name, data_type in table_columns.items()
+        ]
 
         child_object_query = object_mapping.find_query(kind="stage", table=child_object)
         if child_object_query:
@@ -604,7 +631,9 @@ def _convert_copy_to_insert(statement: exp.Copy, object_mapping: mappings.Object
     return insert_expr
 
 
-def _convert_unload_to_insert(statement: exp.Select, object_mapping: mappings.ObjectMapping, query: UnloadQuery) -> exp.Insert:
+def _convert_unload_to_insert(
+    statement: exp.Select, object_mapping: mappings.ObjectMapping, query: UnloadQuery
+) -> exp.Insert:
     """
     Convert the UNLOAD statement into an INSERT statement.
 
@@ -667,7 +696,7 @@ def _apply_optimizations(
     statement: exp.Expr, query: Query, object_mapping: mappings.ObjectMapping, add_column_names: bool = True
 ) -> exp.Expr:
     """
-    1. We pass infer_schema=True to source unqualified columns from the source table (if missing from the `schema` param)
+    1. We pass infer_schema=True to source unqualified columns from the source table (if missing from `schema` param)
         e.g. so that
             INSERT INTO my.other
             SELECT name
@@ -708,7 +737,9 @@ def _apply_optimizations(
     return statement
 
 
-def _rename_returning_columns(expr: exp.CTE, query: Query, object_mapping: mappings.ObjectMapping, child_table: exp.Table) -> exp.CTE:
+def _rename_returning_columns(
+    expr: exp.CTE, query: Query, object_mapping: mappings.ObjectMapping, child_table: exp.Table
+) -> exp.CTE:
     """
     Given an (INSERT .. RETURNING *) statement, expand the star to the table's column names
     and add the correct column aliases.
@@ -779,7 +810,11 @@ def _add_column_names_to_insert(statement: exp.Insert, query: Query, object_mapp
         return
 
     # sqlglot throws a parse error on named columns for Snowflake: INSERT INTO @"my_eXt_sTaGe" (NAME, AGE) SELECT ...
-    if query.dialect == "snowflake" and isinstance(query, CopyQuery) and (query.is_source_a_stage or query.is_target_a_stage):
+    if (
+        query.dialect == "snowflake"
+        and isinstance(query, CopyQuery)
+        and (query.is_source_a_stage or query.is_target_a_stage)
+    ):
         return
 
     if isinstance(query, (CopyQuery, UnloadQuery)):

@@ -1,15 +1,17 @@
 from __future__ import annotations
+
 import logging
 import typing as t
 
 import networkx as nx
+
 if t.TYPE_CHECKING:
     pass
 
 from sqlleaf.objects.node_types import NodeAttributes
 
-
 logger = logging.getLogger("sqlleaf")
+
 
 class IncludeNodesArgs(t.TypedDict, total=False):
     include_literals: bool
@@ -56,8 +58,8 @@ def update_column_data_types(graph: nx.MultiDiGraph):
     - Update the target column if its type is UNKNOWN by looking at the source column and its functions
     - Check if the source->target type conversion is compatible
 
-    This is important for resolving column types of views, as multiple queries may have connected multiple views together whose
-    types are by default UNKNOWN and therefore need resolution.
+    This is important for resolving column types of views, as multiple queries may have connected multiple
+    views together whose types are by default UNKNOWN and therefore need resolution.
     """
     # TODO: Use sqlglot.expressions.DataType.is_type() as a first check
     #  if arg.is_type(*exp.DataType.TEXT_TYPES):

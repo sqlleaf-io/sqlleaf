@@ -1,8 +1,9 @@
-from tests.new_fixtures import holder as holder
 import os
 import sys
 
 import pytest
+
+from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -20,7 +21,7 @@ def test__view_simple(holder, case):
 
     assert h.paths == [["literal[-1]", "column[one.number]"]]
     subkind = f" subkind={case.lower()}" if case else ""
-    assert f'column[one.number type=INT kind=view{subkind}]' in h.nodes_full
+    assert f"column[one.number type=INT kind=view{subkind}]" in h.nodes_full
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
 
@@ -37,7 +38,14 @@ def test__views_and_ctas_with_every_hierarchy(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[a.b.ab]", "column[ctas.one]", "column[vie.tab.one]", "function[ABS]", "column[tab.vie.two]", "column[sch.tab.vie.three]"]
+        [
+            "column[a.b.ab]",
+            "column[ctas.one]",
+            "column[vie.tab.one]",
+            "function[ABS]",
+            "column[tab.vie.two]",
+            "column[sch.tab.vie.three]",
+        ]
     ]
     assert len(h.nodes) == 6
     assert len(h.edges) == 5
@@ -63,9 +71,6 @@ def test__view_named_columns(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.paths == [
-        ['column[fruit.raw.name]', 'column[v.col1]'],
-        ['column[fruit.raw.kind]', 'column[v.col2]']
-    ]
+    assert h.paths == [["column[fruit.raw.name]", "column[v.col1]"], ["column[fruit.raw.kind]", "column[v.col2]"]]
     assert len(h.nodes) == 4
     assert len(h.edges) == 2

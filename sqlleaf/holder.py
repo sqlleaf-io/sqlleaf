@@ -1,16 +1,26 @@
-import logging
 import json
+import logging
 import typing as t
 
 import networkx as nx
 from sqlglot import exp
 
-from sqlleaf import mappings, util, path, types
+from sqlleaf import mappings, path, types, util
 from sqlleaf.mappings import ObjectMapping
-from sqlleaf.objects.query_types import Query, InsertQuery, UpdateQuery, ViewQuery, CopyQuery, PutQuery, CTASQuery, TableQuery, UnloadQuery
-from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes, GraphAttributes
+from sqlleaf.objects.node_types import EdgeAttributes, GraphAttributes, NodeAttributes
+from sqlleaf.objects.query_types import (
+    CopyQuery,
+    CTASQuery,
+    InsertQuery,
+    PutQuery,
+    Query,
+    TableQuery,
+    UnloadQuery,
+    UpdateQuery,
+    ViewQuery,
+)
 from sqlleaf.path import LineagePath
-from sqlleaf.processors import collector, transformer, generator
+from sqlleaf.processors import collector, generator, transformer
 
 logger = logging.getLogger("sqlleaf")
 
@@ -65,8 +75,9 @@ class Lineage:
             if self.graph.has_node(n):
                 old_node_attrs = self.graph.nodes[n]["attrs"]
 
-                # The incoming graph's edges must have their NodeAttributes updated to match the existing graph's NodeAttributes.
-                # This is because different graphs with identical Nodes will have different NodeAttributes Python objects.
+                # The incoming graph's edges must have their NodeAttributes updated to
+                # match the existing graph's NodeAttributes.
+                # This is because different graphs with identical Nodes will have different NodeAttributes objects.
                 for par, chi, edge_data in subgraph.edges(data=True):
                     # Overwrite the new edge's Node to be the old Node
                     if edge_data["attrs"].parent.full_name == n:
@@ -89,13 +100,8 @@ class Lineage:
         nodes = [data["attrs"] for n, data in self.graph.nodes(data=True)]
         # TODO: sort on selected index?
         nodes = sorted(
-            nodes, key=lambda e: (
-                getattr(e, "catalog", ""),
-                getattr(e, "schema", ""),
-                getattr(e, "table", ""),
-                e.name
-            )
-       )
+            nodes, key=lambda e: (getattr(e, "catalog", ""), getattr(e, "schema", ""), getattr(e, "table", ""), e.name)
+        )
         return nodes
 
     def get_queries(self) -> t.List[Query]:
@@ -178,7 +184,9 @@ class Lineage:
 
         # TODO: this may not be needed since the NodeAttributes are nodes
         for i, root in enumerate(root_columns):
-            for depth, edge_attrs in util.find_edges_downward(g, root):  # TODO: fetch edges in order of function argument index
+            for depth, edge_attrs in util.find_edges_downward(
+                g, root
+            ):  # TODO: fetch edges in order of function argument index
                 # Swap the parent and child
                 parent_name = edge_attrs.child.full_name
                 child_name = edge_attrs.parent.full_name
@@ -229,6 +237,7 @@ class Lineage:
         if self.object_mapping is None:
             self.object_mapping = mappings.ObjectMapping(dialect=dialect)
         return self.object_mapping
+
 
 def new_graph() -> nx.MultiDiGraph:
     """
