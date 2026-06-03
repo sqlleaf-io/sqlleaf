@@ -412,6 +412,7 @@ class SequenceQuery(Query):
             statement_index=statement_index,
             child_object=statement.this,
         )
+        self.property = util.find_property(statement)
 
 
 class TriggerQuery(Query):

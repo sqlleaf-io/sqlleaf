@@ -87,10 +87,12 @@ class PostgresGenerator(BaseGenerator):
 
             # Ensure the sequence exists
             seq_table = exp.table_(table=seq_name_expr.name, db=schema)
-            if not gen_ctx.object_mapping.find_query(kind="sequence", table=seq_table):
+            seq_query = gen_ctx.object_mapping.find_query(kind="sequence", table=seq_table)
+            if not seq_query:
                 logger.warning(f"Sequence '{full_name}' not found.")
 
-            parent = SequenceNode(name=seq_name_expr.name, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
+            subkind = seq_query.property if seq_query else ""
+            parent = SequenceNode(name=seq_name_expr.name, gen_ctx=gen_ctx, pos_ctx=pos_ctx, subkind=subkind)
             yield EdgeToCreate(parent, gen_ctx.child_node)
         else:
             yield from super().process(expr, gen_ctx, pos_ctx)

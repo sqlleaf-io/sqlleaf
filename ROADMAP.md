@@ -60,6 +60,7 @@ CREATE VIEW
 
 CREATE SEQUENCE
 - [x] Include functions
+- [x] TEMPORARY
 
 CREATE RULE
 - not supported by sqlglot

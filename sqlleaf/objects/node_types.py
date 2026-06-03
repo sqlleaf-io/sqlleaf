@@ -546,7 +546,7 @@ class NullNode(NodeAttributes):
 
 
 class SequenceNode(NodeAttributes):
-    def __init__(self, name: str, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
+    def __init__(self, name: str, gen_ctx: GeneratorContext, pos_ctx: PositionContext, subkind: str = ""):
         super().__init__(
             kind="sequence",
             data_type=exp.DataType.build("INT"),
@@ -554,6 +554,14 @@ class SequenceNode(NodeAttributes):
             name=name,
             pos_ctx=pos_ctx,
         )
+        self.subkind = subkind
+
+    @property
+    def full_name(self):
+        parts = [f"{self.name} type={self.data_type}"]
+        if self.subkind:
+            parts.append(f"kind={self.subkind}")
+        return self.wrap(" ".join(parts))
 
 
 class WindowNode(NodeAttributes):
