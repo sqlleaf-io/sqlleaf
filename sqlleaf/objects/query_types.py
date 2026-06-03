@@ -612,3 +612,6 @@ class PutQuery(Query):
         # TODO: fix types below
         self.source = expr.name
         self.target = expr.args["target"].name
+
+
+Q = t.TypeVar("Q", bound=Query)

@@ -19,7 +19,7 @@ from sqlleaf.objects.query_types import (
     MergeQuery,
     ProcedureQuery,
     PutQuery,
-    Query,
+    Q,
     SelectQuery,
     SequenceQuery,
     StageQuery,
@@ -124,7 +124,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         # Convert the statement to uppercase if the dialect supports it
         stmt = normalize_identifiers(stmt, dialect=dialect, store_original_column_identifiers=True)
 
-        query: t.Optional[Query] = processors[kind](
+        query: t.Optional[Q] = processors[kind](
             statement=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=index
         )
         if query:
@@ -165,7 +165,7 @@ def _determine_query_kind(statement: exp.Expr, dialect: str) -> t.Tuple[exp.Expr
     return statement, kind
 
 
-def _collect_writable_cte_queries(parent_query: Query, dialect: str, object_mapping: mappings.ObjectMapping):
+def _collect_writable_cte_queries(parent_query: Q, dialect: str, object_mapping: mappings.ObjectMapping):
     """
     Transform any writable CTE statements into a form.
 
@@ -439,7 +439,7 @@ def _get_properties_to_include(options: t.List[str]) -> t.Dict:
 
 def _process_unnamed(
     statement: exp.Expr, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
-) -> Query | None:
+) -> Q | None:
     """
     Process an unnamed statement - one not inside a 'CREATE <name>' statement.
     """
@@ -496,11 +496,11 @@ def _process_unnamed(
 
 def _process_tables(
     statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
-) -> Query | None:
+) -> Q | None:
     """
     Process a 'CREATE TABLE' statement.
     """
-    query: Query | None = None
+    query: Q | None = None
     if statement.kind == "TABLE":
         # CREATE TABLE ...
         query = TableQuery(
@@ -523,7 +523,7 @@ def _process_tables(
 
 def _process_views_and_ctas(
     statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
-) -> Query:
+) -> Q:
     """
     Convert a series of `CREATE VIEW/TABLE AS ...` SQL DDL statements into sqlglot's MappingSchema
     to extract the table and column details.
@@ -611,7 +611,7 @@ def _determine_column_defs(statement: exp.Create, object_mapping: mappings.Objec
 
 def _process_functions(
     statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
-) -> Query:
+) -> Q:
     """
     Process a "CREATE FUNCTION" statement.
     """
@@ -661,7 +661,7 @@ def _process_functions(
 
 def _process_triggers(
     statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
-) -> Query:
+) -> Q:
     """
     Process a "CREATE TRIGGER" statement.
     """
@@ -672,7 +672,7 @@ def _process_triggers(
 
 def _process_stored_procedures(
     statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
-) -> Query:
+) -> Q:
     """
     Process a "CREATE PROCEDURE" statement.
     """
@@ -692,7 +692,7 @@ def _process_stored_procedures(
 
 def _process_stage(
     statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
-) -> Query:
+) -> Q:
     query = StageQuery(statement, dialect, statement_index)
     object_mapping.add_query(kind="stage", query=query, dialect=dialect)
     return query
@@ -700,6 +700,6 @@ def _process_stage(
 
 def _process_unload(
     statement: exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
-) -> Query:
+) -> Q:
     query = UnloadQuery(statement, dialect, object_mapping, statement_index)
     return query

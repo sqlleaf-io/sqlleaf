@@ -6,7 +6,7 @@ from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
 
 from sqlleaf import exception
-from sqlleaf.objects.query_types import Query
+from sqlleaf.objects.query_types import Q
 
 ColumnMapping = t.Union[t.Dict, str, t.List]
 
@@ -32,7 +32,7 @@ class ObjectMapping(MappingSchema):
     def add_query(
         self,
         kind: str,
-        query: Query,
+        query: Q,
         column_mapping: t.Optional[ColumnMapping] = None,
         dialect: DialectType = None,
         normalize: t.Optional[bool] = None,
@@ -113,7 +113,7 @@ class ObjectMapping(MappingSchema):
         kind: str,
         table: exp.Table,
         raise_on_missing: bool = True,
-    ) -> Query | None:
+    ) -> Q | None:
         """
         Returns the Query for a given object kind and exp.Table.
 
@@ -155,7 +155,7 @@ class ObjectMapping(MappingSchema):
     def supported_table_args(self) -> t.Tuple[str, ...]:
         return exp.TABLE_PARTS
 
-    def get_table_or_stage(self, table: exp.Table, raise_on_missing: bool = True) -> Query | None:
+    def get_table_or_stage(self, table: exp.Table, raise_on_missing: bool = True) -> Q | None:
         """
         Get the 'CREATE' query for a table or stage.
         """

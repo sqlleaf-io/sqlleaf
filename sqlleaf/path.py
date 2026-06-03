@@ -6,7 +6,7 @@ import typing as t
 import networkx as nx
 
 from sqlleaf import exception, util
-from sqlleaf.objects.node_types import EdgeAttributes, NodeAttributes
+from sqlleaf.objects.node_types import EdgeAttributes, N
 
 logger = logging.getLogger("sqlleaf")
 
@@ -21,7 +21,7 @@ class LineagePath:
             edge.path_id = self.path_id
             edge.path_hop = i
 
-    def node_hops(self) -> t.List[NodeAttributes]:
+    def node_hops(self) -> t.List[N]:
         """
         Return the list of nodes in this path.
         """

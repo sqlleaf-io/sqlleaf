@@ -1,6 +1,7 @@
 import typing as t
 
 from sqlglot import exp
+from sqlglot.optimizer import Scope
 
 E = t.TypeVar("E", bound=exp.Expr)
 
@@ -14,3 +15,5 @@ For example,
 
 TargetExprType = exp.Table | exp.Literal | exp.Identifier | exp.Schema
 SourceExprType = exp.Table | exp.Literal | exp.Identifier | exp.Select | exp.Values | exp.Schema
+
+TableOrScopeType = exp.Table | Scope

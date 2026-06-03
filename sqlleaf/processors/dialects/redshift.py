@@ -11,7 +11,6 @@ from sqlleaf import exception, util
 from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
     FileColumnNode,
-    NodeAttributes,
     PivotNode,
     UnpivotNode,
 )
@@ -119,7 +118,7 @@ class RedshiftGenerator(BaseGenerator):
         CREATE EXTERNAL TABLE ... LOCATION
         """
         location = expr.this
-        child_node = t.cast(NodeAttributes, gen_ctx.child_node)
+        child_node = gen_ctx.child_node
 
         # Create: column[name kind=file format=text type=INT path=s3://my-bucket/a/b/c]
         file_format = gen_ctx.query.statement_transformed.args["properties"].find(exp.FileFormatProperty).this

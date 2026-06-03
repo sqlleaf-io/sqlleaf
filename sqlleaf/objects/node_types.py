@@ -9,11 +9,10 @@ from sqlglot.optimizer.scope import Scope, ScopeType
 
 from sqlleaf import exception, util
 from sqlleaf.objects.context import GeneratorContext, PositionContext
-from sqlleaf.objects.query_types import Query
+from sqlleaf.objects.query_types import Q
+from sqlleaf.typing import TableOrScopeType
 
 logger = logging.getLogger("sqlleaf")
-
-TableOrScopeType = exp.Table | Scope
 
 
 def _function_name(expr: exp.Expr, dialect: str) -> str:
@@ -721,7 +720,7 @@ class EdgeAttributes:
         self,
         parent: NodeAttributes,
         child: NodeAttributes,
-        query: Query,
+        query: Q,
         select_idx: int,
         path_idx: int,
     ):
@@ -780,7 +779,10 @@ class EdgeAttributes:
 
 class GraphAttributes:
     def __init__(self):
-        self.queries: t.List[Query] = []
+        self.queries: t.List[Q] = []
 
-    def add_query(self, query: Query):
+    def add_query(self, query: Q):
         self.queries.append(query)
+
+
+N = t.TypeVar("N", bound=NodeAttributes)

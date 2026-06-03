@@ -15,7 +15,7 @@ from sqlleaf.objects.node_types import (
     IntervalNode,
     JsonPathNode,
     LiteralNode,
-    NodeAttributes,
+    N,
     NullNode,
     StarNode,
     UserDefinedFunctionNode,
@@ -23,15 +23,15 @@ from sqlleaf.objects.node_types import (
     VarNode,
     WindowNode,
 )
-from sqlleaf.objects.query_types import ProcedureQuery, Query, UserDefinedFunctionQuery
+from sqlleaf.objects.query_types import ProcedureQuery, Q, UserDefinedFunctionQuery
 
 logger = logging.getLogger("sqlleaf")
 
 
 @dataclass(frozen=True)
-class EdgeToCreate:
-    parent: NodeAttributes | None
-    child: NodeAttributes | None
+class EdgeToCreate[N]:
+    parent: N | None
+    child: N | None
 
 
 class BaseGenerator:
@@ -59,7 +59,7 @@ class BaseGenerator:
     def do_grandparents(
         self,
         grandparents: t.List[exp.Expr],
-        parent: t.Optional[NodeAttributes],
+        parent: t.Optional[N],
         gen_ctx: GeneratorContext,
         pos_ctx: PositionContext,
     ) -> t.Iterator[EdgeToCreate]:
@@ -369,7 +369,7 @@ class BaseGenerator:
         return self.process(p_ctx.expr, gen_ctx=p_ctx, pos_ctx=child_ctx)
 
 
-def is_node_a_placeholder(expr: exp.Column, query: Query) -> bool:
+def is_node_a_placeholder(expr: exp.Column, query: Q) -> bool:
     """
     Check if a Column is actually a Placeholder.
 

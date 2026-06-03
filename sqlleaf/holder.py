@@ -7,13 +7,13 @@ from sqlglot import exp
 
 from sqlleaf import mappings, path, types, util
 from sqlleaf.mappings import ObjectMapping
-from sqlleaf.objects.node_types import EdgeAttributes, GraphAttributes, NodeAttributes
+from sqlleaf.objects.node_types import EdgeAttributes, GraphAttributes, N
 from sqlleaf.objects.query_types import (
     CopyQuery,
     CTASQuery,
     InsertQuery,
     PutQuery,
-    Query,
+    Q,
     TableQuery,
     UnloadQuery,
     UpdateQuery,
@@ -96,7 +96,7 @@ class Lineage:
             logger.debug(f"Edge: {edge.parent.friendly_name} -> {edge.child.friendly_name}")
         return edges
 
-    def get_nodes(self) -> t.List[NodeAttributes]:
+    def get_nodes(self) -> t.List[N]:
         nodes = [data["attrs"] for n, data in self.graph.nodes(data=True)]
         # TODO: sort on selected index?
         nodes = sorted(
@@ -104,7 +104,7 @@ class Lineage:
         )
         return nodes
 
-    def get_queries(self) -> t.List[Query]:
+    def get_queries(self) -> t.List[Q]:
         """
         Get the queries from each of the subgraphs.
         """
@@ -246,7 +246,7 @@ def new_graph() -> nx.MultiDiGraph:
     return nx.MultiDiGraph(attrs=GraphAttributes())
 
 
-def query_has_lineage(query: Query) -> bool:
+def query_has_lineage(query: Q) -> bool:
     """
     Check if a query has lineage within its expressions.
     """

@@ -8,12 +8,13 @@ import networkx as nx
 if t.TYPE_CHECKING:
     pass
 
-from sqlleaf.objects.node_types import NodeAttributes
+from sqlleaf.objects.node_types import N
 
 logger = logging.getLogger("sqlleaf")
 
 
 class IncludeNodesArgs(t.TypedDict, total=False):
+    # These are placeholders and currently not implemented.
     include_literals: bool
     include_functions: bool
     include_nulls: bool
@@ -68,8 +69,8 @@ def update_column_data_types(graph: nx.MultiDiGraph):
 
 
 def ensure_correct_data_types(
-    parent_attrs: NodeAttributes,
-    child_attrs: NodeAttributes,
+    parent_attrs: N,
+    child_attrs: N,
     last_function_type: str,
     dialect: str,
 ):

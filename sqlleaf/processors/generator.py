@@ -18,21 +18,21 @@ from sqlleaf.objects.node_types import (
     ColumnNode,
     EdgeAttributes,
     FileColumnNode,
-    NodeAttributes,
+    N,
     ProgramNode,
     StageNode,
     StreamNode,
     TableType,
 )
-from sqlleaf.objects.query_types import CopyQuery, PutQuery, Query, TableQuery, UnloadQuery, UpdateQuery
+from sqlleaf.objects.query_types import CopyQuery, PutQuery, Q, TableQuery, UnloadQuery, UpdateQuery
 from sqlleaf.processors.dialects.base import BaseGenerator
-from sqlleaf.typing import E
+from sqlleaf.typing import E, TableOrScopeType
 
 logger = logging.getLogger("sqlleaf")
 
 
 def generate_lineage_for_query(
-    query: Query,
+    query: Q,
     graph: nx.MultiDiGraph,
     object_mapping: mappings.ObjectMapping,
 ) -> nx.MultiDiGraph:
@@ -54,6 +54,7 @@ def generate_lineage_for_query(
         object_mapping=object_mapping,
         query=query,
         expr=statement,
+        child_node=child_object,
         scope=None,
     )
     generator = BaseGenerator.from_dialect(query.dialect)
@@ -175,7 +176,7 @@ def _iter_child_nodes(
             case TargetObjectType.TABLE:
                 # expr is likely exp.Literal or exp.Identifier but target_type is TABLE
                 # This could happen if COPY/UNLOAD mapping is not perfectly aligned
-                # Fallback to a basic NodeAttributes or handle as error
+                # Fallback to a basic N or handle as error
                 raise exception.SqlLeafException(f"Expected exp.Table for TABLE target type, but got {type(expr)}")
 
             case TargetObjectType.STREAM:
@@ -250,7 +251,7 @@ def determine_object_type(gen_ctx: GeneratorContext):
 
 def get_column_defs(
     table_with_columns: exp.Table | exp.Literal | exp.Identifier | exp.Schema | exp.Select | exp.Values,
-    query: Query,
+    query: Q,
     object_mapping: mappings.ObjectMapping,
 ) -> t.List[exp.ColumnDef]:
     """
@@ -357,7 +358,7 @@ def walk_expressions_and_build_graph(
     generator: BaseGenerator,
     gen_ctx: GeneratorContext,
     pos_ctx: PositionContext,
-) -> t.List[NodeAttributes]:
+) -> t.List[N]:
     """
     Collect the leaves of an expression so that we can get the full set of data sources and function arguments
     for a particular column.
@@ -403,7 +404,7 @@ def walk_expressions_and_build_graph(
 
 
 def find_inherited_columns_for_parent(
-    column_node: NodeAttributes, generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    column_node: N, generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: PositionContext
 ) -> t.List[ColumnNode]:
     """
     Find the inherited columns for a particular column, but only for the form 'SELECT FROM ONLY <table>'
@@ -432,7 +433,7 @@ def find_inherited_columns_for_parent(
 
 
 def find_inherited_columns_for_child(
-    column_node: NodeAttributes | None, generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    column_node: N | None, generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: PositionContext
 ) -> t.List[ColumnNode]:
     """
     Find the inherited columns for a particular column, but only for the form 'MERGE|UPDATE ONLY <table>'
@@ -479,10 +480,10 @@ def find_inherited_columns(
 
 
 def add_nodes_with_edge_to_graph(
-    parent_node: NodeAttributes | None,
-    child_node: NodeAttributes | None,
+    parent_node: N | None,
+    child_node: N | None,
     graph: nx.MultiDiGraph,
-    query: Query,
+    query: Q,
     pos_ctx: PositionContext,
 ):
     """
@@ -508,7 +509,7 @@ def add_nodes_with_edge_to_graph(
         logger.debug("Skipping edge creation as both nodes already exist.")
 
 
-def add_node_if_not_exists(node_attrs: NodeAttributes | None, graph: nx.MultiDiGraph) -> NodeAttributes | None:
+def add_node_if_not_exists(node_attrs: N | None, graph: nx.MultiDiGraph) -> N | None:
     """
     Add a node to the graph if it doesn't already exist.
 
@@ -565,9 +566,6 @@ def get_expression_for_column(column: exp.Column | int, expr: E) -> E:
         else:
             select = expr
     return t.cast(E, select)
-
-
-TableOrScopeType = exp.Table | Scope
 
 
 @dataclass(frozen=True)

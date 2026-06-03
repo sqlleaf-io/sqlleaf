@@ -9,14 +9,13 @@ from sqlglot import exp
 from sqlglot.optimizer import Scope, traverse_scope
 
 from sqlleaf import mappings, util
+from sqlleaf.typing import TableOrScopeType, TargetExprType
 
 if t.TYPE_CHECKING:
-    from sqlleaf.objects.node_types import NodeAttributes
-    from sqlleaf.objects.query_types import Query
+    from sqlleaf.objects.node_types import N
+    from sqlleaf.objects.query_types import Q
 
 logger = logging.getLogger("sqlleaf")
-
-TableOrScopeType = exp.Table | Scope | None
 
 
 class ScopePositions:
@@ -65,15 +64,15 @@ class ScopePositions:
 
 
 @dataclass(frozen=True)
-class GeneratorContext:
+class GeneratorContext[Q, N]:
     graph: nx.MultiDiGraph
     object_mapping: mappings.ObjectMapping
-    query: Query
+    query: Q
     expr: exp.Expr
     scope: TableOrScopeType
+    child_node: N
     scope_positions: ScopePositions = ScopePositions()
     data_type: exp.DataType | None = None
-    child_node: NodeAttributes | None = None
     # Override the data_type if needed
     new_data_type: InitVar[exp.DataType | None] = None
 
@@ -87,7 +86,7 @@ class GeneratorContext:
         object.__setattr__(self, "data_type", expr_type)
         object.__setattr__(self, "expr", unwrapped_expr)
 
-    def get_child_node(self) -> NodeAttributes:
+    def get_child_node(self) -> TargetExprType:
         assert self.child_node is not None
         return self.child_node
 

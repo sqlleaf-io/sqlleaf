@@ -14,7 +14,7 @@ from sqlleaf.objects.query_types import (
     DeleteQuery,
     InsertQuery,
     MergeQuery,
-    Query,
+    Q,
     TableQuery,
     UnloadQuery,
     UpdateQuery,
@@ -30,7 +30,7 @@ a single query type to work over.
 """
 
 
-def transform_query(query: Query, object_mapping: mappings.ObjectMapping) -> None:
+def transform_query(query: Q, object_mapping: mappings.ObjectMapping) -> None:
     """
     Transform a query's expression according to rules specific to its type.
     """
@@ -146,7 +146,7 @@ def _add_aliases_to_pseudocolumns(statement: exp.Expr) -> None:
 
 
 def _process_inner_ctes(
-    statement: exp.Insert | exp.Merge | exp.Update | exp.Delete, object_mapping: mappings.ObjectMapping, query: Query
+    statement: exp.Insert | exp.Merge | exp.Update | exp.Delete, object_mapping: mappings.ObjectMapping, query: Q
 ) -> exp.Insert | exp.Merge | exp.Update | exp.Delete:
     """
     Transform any inner CTE statements.
@@ -175,7 +175,7 @@ def _process_inner_ctes(
 
 
 def _convert_cte_values_to_select(
-    expression: exp.Values, statement: exp.CTE, object_mapping: mappings.ObjectMapping, query: Query
+    expression: exp.Values, statement: exp.CTE, object_mapping: mappings.ObjectMapping, query: Q
 ) -> exp.CTE | exp.Insert | exp.Create:
     """
     Transform the query:
@@ -204,7 +204,7 @@ def _values_to_select_union(
     expression: exp.Values,
     statement: exp.CTE | exp.Insert | exp.Create,
     object_mapping: mappings.ObjectMapping,
-    query: Query,
+    query: Q,
 ) -> exp.CTE | exp.Insert | exp.Create:
     """
     Convert a VALUES(x, y) to a SELECT x UNION ALL SELECT y
@@ -252,7 +252,7 @@ def _values_to_select_union(
 
 
 def _convert_outer_values_to_select(
-    expression: exp.Values, statement: exp.Insert | exp.Create, object_mapping: mappings.ObjectMapping, query: Query
+    expression: exp.Values, statement: exp.Insert | exp.Create, object_mapping: mappings.ObjectMapping, query: Q
 ) -> exp.Insert | exp.Create | exp.CTE:
     """
     Transform the query:
@@ -269,9 +269,7 @@ def _convert_outer_values_to_select(
     return _values_to_select_union(columns, expression, statement, object_mapping, query)
 
 
-def _convert_defaults_to_values(
-    statement: exp.Insert, object_mapping: mappings.ObjectMapping, query: Query
-) -> exp.Insert:
+def _convert_defaults_to_values(statement: exp.Insert, object_mapping: mappings.ObjectMapping, query: Q) -> exp.Insert:
     """
     Transform the query:
         INSERT INTO x DEFAULT VALUES
@@ -324,7 +322,7 @@ def _convert_defaults_to_values(
     return statement
 
 
-def _convert_update_to_insert(statement: exp.Update, query: Query) -> exp.Insert:
+def _convert_update_to_insert(statement: exp.Update, query: Q) -> exp.Insert:
     """
     Taken from extract_select_from_update() at datahub/metadata-ingestion/src/datahub/sql_parsing/sqlglotlineage.py
 
@@ -680,7 +678,7 @@ def _validate_values(statement: exp.Insert) -> exp.Insert:
     return statement
 
 
-def _validate_syntax(statement: exp.Expr, query: Query):
+def _validate_syntax(statement: exp.Expr, query: Q):
     """
     Ensure that the transformed query is parseable.
     """
@@ -693,7 +691,7 @@ def _validate_syntax(statement: exp.Expr, query: Query):
 
 
 def _apply_optimizations(
-    statement: exp.Expr, query: Query, object_mapping: mappings.ObjectMapping, add_column_names: bool = True
+    statement: exp.Expr, query: Q, object_mapping: mappings.ObjectMapping, add_column_names: bool = True
 ) -> exp.Expr:
     """
     1. We pass infer_schema=True to source unqualified columns from the source table (if missing from `schema` param)
@@ -738,7 +736,7 @@ def _apply_optimizations(
 
 
 def _rename_returning_columns(
-    expr: exp.CTE, query: Query, object_mapping: mappings.ObjectMapping, child_table: exp.Table
+    expr: exp.CTE, query: Q, object_mapping: mappings.ObjectMapping, child_table: exp.Table
 ) -> exp.CTE:
     """
     Given an (INSERT .. RETURNING *) statement, expand the star to the table's column names
@@ -793,7 +791,7 @@ def _rename_returning_columns(
     return expr
 
 
-def _add_column_names_to_insert(statement: exp.Insert, query: Query, object_mapping: mappings.ObjectMapping):
+def _add_column_names_to_insert(statement: exp.Insert, query: Q, object_mapping: mappings.ObjectMapping):
     """
     Add aliases to SELECTs that are missing them by looking at the corresponding INSERT column.
     This prevents sqlglot from assigning its own generated names as aliases.
