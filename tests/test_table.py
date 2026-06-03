@@ -1,3 +1,4 @@
+from tests.new_fixtures import holder as holder
 import os
 import sys
 
@@ -8,7 +9,7 @@ from sqlleaf.exception import SqlLeafException
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
-from tests.new_fixtures import is_subset, holder
+from tests.new_fixtures import is_subset
 from sqlleaf.objects.query_types import InsertQuery, SequenceQuery
 
 DIALECT = "postgres"

@@ -1,3 +1,4 @@
+from tests.new_fixtures import holder as holder
 import os
 import sys
 
