@@ -25,6 +25,10 @@ The following types of queries and nodes need to be created.
   - [ ] MATERIALIZED VIEW
 - [ ] System tables (pg_class, pg_attribute)
 
+CREATE DATABASE
+
+CREATE SCHEMA
+
 CREATE TABLE
   - [x] AS
     - [x] Named columns
@@ -171,23 +175,47 @@ DO
 CREATE SCHEMA
   - [ ] EXTERNAL
 
+CREATE DATABASE
+
 CREATE TABLE
-  - [ ] EXTERNAL
-    - [ ] Regular
-    - [ ] CTAS
+  - [x] EXTERNAL
+  - [ ] Regular
+  - [x] AS
+  - [x] TEMPORARY
+  - [x] CREATE TABLE my_db@my_catalog.public.t (col INT);
+
+CREATE VIEW
+  - [x] Regular
+  - [x] EXTERNAL
+  - [x] PROTECTED [unsupported]
+
+CREATE FUNCTION
+
+CREATE MATERIALIZED VIEW
+
+CREATE TEMPLATE
+
+PREPARE
+
+EXECUTE
 
 SELECT
   - [x] PIVOT
   - [o] UNPIVOT
+  - [x] INTO
+  - [x] EXCLUDE
+  - [ ] Correlated subqueries
 
 INSERT
   - [ ] Multi-row
 
 UNLOAD
-  - not supported by sqlglot
+ [x] not supported by sqlglot
 
 Types:
 - SUPER
+
+COPY
 
 ### Snowflake
 - CREATE STAGE

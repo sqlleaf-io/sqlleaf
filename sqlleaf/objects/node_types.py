@@ -102,15 +102,15 @@ class NodeAttributes:
         return self.wrap(name, with_positions=with_positions)
 
     @property
-    def full_name(self)-> str:
+    def full_name(self) -> str:
         return self._build_name(self.fields(), with_positions=self.with_positions)
 
     @property
-    def friendly_name(self)-> str:
+    def friendly_name(self) -> str:
         return self._build_name(self.friendly_fields())
 
     @property
-    def id(self)-> str:
+    def id(self) -> str:
         # TODO: add correct fields
         fields_dict = self.fields()
         fields = [
@@ -189,7 +189,6 @@ class ColumnNode(NodeAttributes):
         # if table_type == "cte":
         #     self.member = gen_ctx.node.recursive_cte_member_kind
 
-
     def to_dict(self):
         d = super().to_dict()
         d.update(
@@ -201,7 +200,7 @@ class ColumnNode(NodeAttributes):
         )
         return d
 
-    def rename_table(self, source: exp.Table | exp.Values, dialect: str)-> None:
+    def rename_table(self, source: exp.Table | exp.Values, dialect: str) -> None:
         """
         Change the column's source table to be its fully qualified name, not its alias,
         so that the ColumnNode is provided complete information.
@@ -297,8 +296,9 @@ class ColumnNode(NodeAttributes):
             self.parent_kind = TableType.TABLE
         else:
             self.parent_kind = TableType(query.kind)
-            if query.property:
-                self.parent_subkind = TableSubtype(query.property)
+
+        if query.property:
+            self.parent_subkind = TableSubtype(query.property)
 
     def get_column_constraint_expression(self) -> exp.ColumnConstraintKind | None:
         """
@@ -366,7 +366,6 @@ class FileColumnNode(NodeAttributes):
         )
         self.file_format = file_format
         self.file_path = file_path
-
 
     def to_dict(self):
         d = super().to_dict()

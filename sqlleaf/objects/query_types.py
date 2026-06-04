@@ -257,7 +257,7 @@ class CTASQuery(Query):
             if with_data := props.find(exp.WithDataProperty):
                 self.with_data: bool = not with_data.args["no"]
 
-        self.property: str = util.find_property(statement)
+        self.property: str = _find_property(statement, self.child_object, dialect)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs + self.system_column_defs if include_system else self.column_defs
@@ -288,7 +288,7 @@ class ViewQuery(Query):
         self.column_defs: t.List[exp.ColumnDef] = columns
         self.inherited_by: t.List[TableQuery] = []
 
-        self.property: str = util.find_property(statement)
+        self.property: str = _find_property(statement, self.child_object, dialect)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs
@@ -317,7 +317,7 @@ class TableQuery(Query):
         self.inherits: t.List[TableQuery] = []
         self.inherited_by: t.List[TableQuery] = []
 
-        self.property: str = util.find_property(statement)
+        self.property: str = _find_property(statement, self.child_object, dialect)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs + self.system_column_defs if include_system else self.column_defs
@@ -431,7 +431,7 @@ class SequenceQuery(Query):
             statement_index=statement_index,
             child_object=statement.this,
         )
-        self.property = util.find_property(statement)
+        self.property = _find_property(statement, self.child_object, dialect)
 
 
 class TriggerQuery(Query):
@@ -475,7 +475,7 @@ class StageQuery(Query):
         self.get_target().this.set("this", "@" + stage_name)
         self.get_target().this.set("quoted", False)
 
-        self.property = util.find_property(statement)
+        self.property = _find_property(statement, self.child_object, dialect)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs
@@ -615,3 +615,17 @@ class PutQuery(Query):
 
 
 Q = t.TypeVar("Q", bound=Query)
+
+
+def _find_property(statement: exp.Create, child_object: TargetExprType, dialect: str) -> str:
+    """
+    Get the table/view's property (e.g. TEMPORARY, EXTERNAL, RECURSIVE)
+    """
+    if dialect == "redshift" and isinstance(child_object, exp.Table) and child_object.name.startswith("#"):
+        return "temporary"
+
+    properties = (exp.TemporaryProperty, exp.ExternalProperty, exp.MaterializedProperty)
+    prop = ""
+    if props := statement.args["properties"]:
+        prop = str(props.find(properties) or "").lower()
+    return prop

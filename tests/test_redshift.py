@@ -1,7 +1,7 @@
 import os
 import sys
 
-from sqlleaf.objects.query_types import UnloadQuery
+from sqlleaf.objects.query_types import TableQuery, UnloadQuery
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -109,6 +109,50 @@ def test__unload(holder):
     assert isinstance(h.queries[1], UnloadQuery)
 
 
+def test__view(holder):
+    sql = """
+    CREATE TABLE source(name VARCHAR, amount INT);
+
+    CREATE VIEW my_view AS SELECT name, amount FROM source;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[source.name]", "column[my_view.name]"],
+        ["column[source.amount]", "column[my_view.amount]"],
+    ]
+    assert h.nodes_full == [
+        "column[name=amount table=my_view type=INT kind=view]",
+        "column[name=name table=my_view type=VARCHAR kind=view]",
+        "column[name=amount table=source type=INT kind=table]",
+        "column[name=name table=source type=VARCHAR kind=table]",
+    ]
+    assert len(h.edges) == 2
+
+
+# Not supported:
+# - CREATE EXTERNAL PROTECTED VIEW
+# Parser error:
+# - CREATE EXTERNAL VIEW IF NOT EXISTS AS
+def test__view_external(holder):
+    sql = """
+    CREATE EXTERNAL VIEW fruit.ext_view
+    AS SELECT name, age FROM fruit.raw;
+    """
+
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.name]", "column[fruit.ext_view.name]"],
+        ["column[fruit.raw.age]", "column[fruit.ext_view.age]"],
+    ]
+    assert "column[name=name table=ext_view schema=fruit type=VARCHAR kind=view subkind=external]" in h.nodes_full
+    assert "column[name=age table=ext_view schema=fruit type=INT kind=view subkind=external]" in h.nodes_full
+
+    assert len(h.nodes) == 4
+    assert len(h.edges) == 2
+
+
 def test__table_external(holder):
     sql = """
     CREATE EXTERNAL TABLE fruit.ext (
@@ -173,3 +217,83 @@ def test__select_unpivot(holder):
 # TODO: -- Multiple UNPIVOTs
 #  UNPIVOT (amount FOR name IN (...))
 #  UNPIVOT (rating FOR category IN (...));
+
+
+def test__table_temporary(holder):
+    sql = """
+    CREATE TABLE #banana (name VARCHAR);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == []
+    assert [TableQuery] == list(map(type, h.queries))
+    assert h.queries[0].property == "temporary"
+
+
+def test__ctas_temporary(holder):
+    sql = """
+    CREATE TABLE #banana AS SELECT name, age FROM fruit.raw;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.name]", "column[#banana.name]"],
+        ["column[fruit.raw.age]", "column[#banana.age]"],
+    ]
+    assert "column[name=age table=#banana type=INT kind=table subkind=temporary]" in h.nodes_full
+    assert "column[name=name table=#banana type=VARCHAR kind=table subkind=temporary]" in h.nodes_full
+
+    assert len(h.nodes) == 4
+    assert len(h.edges) == 2
+
+
+def test__insert_with_cte(holder):
+    sql = """
+    INSERT INTO fruit.processed (name, age)
+    (WITH cte AS (SELECT name, age FROM fruit.raw) SELECT * FROM cte ORDER BY 1 LIMIT 10);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.name]", "column[cte.name]", "column[fruit.processed.name]"],
+        ["column[fruit.raw.age]", "column[cte.age]", "column[fruit.processed.age]"],
+    ]
+    assert len(h.nodes) == 6
+    assert len(h.edges) == 4
+
+
+def test__exclude(holder):
+    sql = """
+    CREATE TABLE source (name VARCHAR, kind VARCHAR, age INT);
+    CREATE TABLE target (name VARCHAR, kind VARCHAR);
+
+    INSERT INTO target
+    SELECT * EXCLUDE age FROM source;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [["column[source.name]", "column[target.name]"], ["column[source.kind]", "column[target.kind]"]]
+    assert len(h.nodes) == 4
+    assert len(h.edges) == 2
+
+
+def test__select_into(holder):
+    sql = """
+    CREATE TABLE source (name VARCHAR, age INT);
+    CREATE TABLE target (name VARCHAR, age INT);
+
+    SELECT name, age INTO target FROM source;
+    SELECT name, age INTO TEMPORARY other FROM source;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[source.name]", "column[other.name]"],
+        ["column[source.name]", "column[target.name]"],
+        ["column[source.age]", "column[other.age]"],
+        ["column[source.age]", "column[target.age]"],
+    ]
+    assert "column[name=age table=source type=INT kind=table]" in h.nodes_full
+    assert "column[name=age table=other type=INT kind=table subkind=temporary]" in h.nodes_full
+    assert len(h.nodes) == 6
+    assert len(h.edges) == 4

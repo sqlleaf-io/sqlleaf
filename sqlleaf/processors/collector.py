@@ -154,11 +154,14 @@ def _determine_query_kind(statement: exp.Expr, dialect: str) -> t.Tuple[exp.Expr
         else:
             kind = (statement.kind or "").lower()
     elif statement.key == "select" and "into" in statement.args:
-        # TODO: this is dialect-dependent! mysql converts, but postgres does not
         # sqlglot rewrites 'SELECT INTO' to 'CREATE TABLE AS' during parse()
         # but it's not shown until we produce it with sql(), so we re-parse it
-        statement = sqlglot.parse_one(statement.sql(dialect=""), dialect=dialect)
-        kind = "ctas"
+        if dialect not in ["redshift", "postgres"]:
+            statement = sqlglot.parse_one(statement.sql(dialect=dialect), dialect=dialect)
+            kind = "ctas"
+        else:
+            message = f"Expression 'SELECT INTO' has not been implemented yet for dialect: {dialect}"
+            raise exception.SqlLeafException(message=message)
     else:
         kind = statement.key.lower()
 
@@ -501,6 +504,7 @@ def _process_tables(
     Process a 'CREATE TABLE' statement.
     """
     query: Q | None = None
+
     if statement.kind == "TABLE":
         # CREATE TABLE ...
         query = TableQuery(

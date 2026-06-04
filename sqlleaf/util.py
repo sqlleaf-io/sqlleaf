@@ -239,17 +239,6 @@ def get_cycles(graph: nx.MultiDiGraph):
         yield cycle, errors
 
 
-def find_property(statement: exp.Create) -> str:
-    """
-    Get the table/view's property (e.g. TEMPORARY, EXTERNAL, RECURSIVE)
-    """
-    properties = (exp.TemporaryProperty, exp.ExternalProperty, exp.MaterializedProperty)
-    property = ""
-    if props := statement.args["properties"]:
-        property = str(props.find(properties) or "").lower()
-    return property
-
-
 def get_file_format(file_path: str) -> str:
     file_format = "".join(Path(file_path).suffixes)
     file_format = file_format[1:] if file_format else "UNKNOWN"
