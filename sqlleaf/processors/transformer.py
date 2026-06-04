@@ -840,26 +840,25 @@ def _add_column_names_to_insert(statement: exp.Insert, query: Q, object_mapping:
         schema = exp.Schema(this=child_table, expressions=[exp.to_identifier(c) for c in insert_columns])
         statement.set("this", schema)
 
-    else:
-        unknown_columns = [col for col in insert_columns if col not in table_columns]
-        if unknown_columns:
-            raise exception.SqlLeafException(
-                message=f"Unknown columns used in SELECT: {list(unknown_columns)}",
-                table=str(exp.table_name(child_table)),
-            )
+    unknown_columns = [col for col in insert_columns if col not in table_columns]
+    if unknown_columns:
+        raise exception.SqlLeafException(
+            message=f"Unknown columns used in SELECT: {list(unknown_columns)}",
+            table=str(exp.table_name(child_table)),
+        )
 
-        if "*" in selects:
-            raise exception.SqlLeafException(
-                message="Statement has unresolved star column",
-                table=str(exp.table_name(child_table)),
-            )
+    if "*" in selects:
+        raise exception.SqlLeafException(
+            message="Statement has unresolved star column",
+            table=str(exp.table_name(child_table)),
+        )
 
-        if len(insert_columns) != len(statement.selects):
-            message = "Mismatched column count: number of column names (%s) does not match selected columns (%s)" % (
-                len(insert_columns),
-                len(statement.selects),
-            )
-            raise exception.SqlGlotException(message=message, table=child_table)
+    if len(insert_columns) != len(statement.selects):
+        message = "Mismatched column count: number of column names (%s) does not match selected columns (%s)" % (
+            len(insert_columns),
+            len(statement.selects),
+        )
+        raise exception.SqlGlotException(message=message, table=child_table)
 
     aliases = [s.alias_or_name for s in statement.selects]
     if aliases != insert_columns:
