@@ -69,17 +69,16 @@ def test_copy_columns_to_stream(holder):
     ]
 
 
-# TODO: bug in age, name column ordering
-# def test_copy_select_column_names_to_stream(holder):
-#     sql = f"""
-#     {simple_table}
-#     COPY (SELECT age, name FROM fruit.simple WHERE age > 10) TO STDOUT;
-#     """
-#     h = holder(sql=sql, dialect=DIALECT)
-#     assert h.paths == [
-#         ["column[fruit.simple.name]", "stream[stdout]"],
-#         ["column[fruit.simple.age]", "stream[stdout]"],
-#     ]
+def test_copy_select_column_names_to_stream(holder):
+    sql = f"""
+    {simple_table}
+    COPY (SELECT age, name FROM fruit.simple WHERE age > 10) TO STDOUT;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+    assert h.paths == [
+        ["column[fruit.simple.age]", "stream[stdout]"],
+        ["column[fruit.simple.name]", "stream[stdout]"],
+    ]
 
 
 # def test_copy_select_star_to_stream(holder):

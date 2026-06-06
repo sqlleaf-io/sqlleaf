@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import typing as t
 from dataclasses import dataclass, replace
-from enum import StrEnum, auto
 
 import networkx as nx
 from sqlglot import exp
@@ -13,18 +12,15 @@ if t.TYPE_CHECKING:
     pass
 
 from sqlleaf import exception, mappings, util
+from sqlleaf.helpers import TargetNodeType, iter_child_nodes
 from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
     ColumnNode,
     EdgeAttributes,
-    FileColumnNode,
     N,
-    ProgramNode,
-    StageNode,
-    StreamNode,
     TableType,
 )
-from sqlleaf.objects.query_types import CopyQuery, PutQuery, Q, TableQuery, UnloadQuery, UpdateQuery
+from sqlleaf.objects.query_types import PutQuery, Q, TableQuery, UpdateQuery
 from sqlleaf.processors.dialects.base import BaseGenerator
 from sqlleaf.typing import E, TableOrScopeType
 
@@ -85,7 +81,7 @@ def generate_lineage_for_columns(
 
     # Process the selected columns
     columns_processed = 0
-    for selected_node, default_node in _iter_child_nodes(gen_ctx, pos_ctx):
+    for selected_node, default_node in iter_child_nodes(gen_ctx, pos_ctx):
         child_node: TargetNodeType | None = selected_node or default_node
         if not child_node:
             break
@@ -114,168 +110,6 @@ def generate_lineage_for_columns(
         raise exception.SqlLeafException("Expected to process columns but count was 0. Review underlying logic.")
 
 
-class TargetObjectType(StrEnum):
-    """
-    The types of objects that represent a 'target' in an SQL statement.
-    """
-
-    TABLE = auto()
-    FILE = auto()
-    STREAM = auto()
-    PROGRAM = auto()
-
-
-TargetNodeType = ColumnNode | FileColumnNode | StreamNode | ProgramNode | StageNode
-
-
-def _iter_child_nodes(
-    gen_ctx: GeneratorContext, pos_ctx: PositionContext
-) -> t.Generator[t.Tuple[TargetNodeType | None, ColumnNode | None]]:
-    """
-    Iterate over every column of a table that was either selected in a query or has a default expression.
-    """
-
-    # Both COPY and UNLOAD can have SELECTs as their sources, which have arbitrary
-    # columns that vary in length due to their sourcing from any table.
-    query = gen_ctx.query
-    expr = query.get_target()
-    target_type, target_columns = determine_object_type(gen_ctx)
-
-    select_idx = 0
-
-    # Iterate over every column and yield it if it is referenced in the query.
-    for col_def in target_columns:
-        selected_node = None
-        default_node = None
-        process_defaults = False
-        gen_ctx = replace(gen_ctx, expr=col_def)
-        pos_ctx = replace(pos_ctx, select_index=select_idx)
-
-        match target_type:
-            case TargetObjectType.FILE:
-                file_format = util.get_file_format(expr.name)
-                child_node = FileColumnNode(
-                    column=col_def.name,
-                    file_format=file_format,
-                    file_path=expr.name,
-                    gen_ctx=gen_ctx,
-                    pos_ctx=pos_ctx,
-                )
-
-            case TargetObjectType.TABLE if isinstance(expr, exp.Table):
-                child_node = ColumnNode(
-                    catalog=expr.catalog,
-                    schema=expr.db,
-                    table=expr.name,
-                    column=col_def.name,
-                    gen_ctx=gen_ctx,
-                    pos_ctx=pos_ctx,
-                )
-                process_defaults = True
-
-            case TargetObjectType.TABLE:
-                # expr is likely exp.Literal or exp.Identifier but target_type is TABLE
-                # This could happen if COPY/UNLOAD mapping is not perfectly aligned
-                # Fallback to a basic N or handle as error
-                raise exception.SqlLeafException(f"Expected exp.Table for TABLE target type, but got {type(expr)}")
-
-            case TargetObjectType.STREAM:
-                # Use the ColumnDef as the expr so that correct columns
-                # are selected during walk()
-                child_node = StreamNode(
-                    name=expr.name,
-                    gen_ctx=gen_ctx,
-                    pos_ctx=pos_ctx,
-                )
-
-            case TargetObjectType.PROGRAM:
-                # Use the ColumnDef as the expr so that correct columns
-                # are selected during walk()
-                child_node = ProgramNode(
-                    gen_ctx=gen_ctx,
-                    pos_ctx=pos_ctx,
-                )
-
-        if col_def.name in query.get_selected_column_names() or isinstance(query, TableQuery):
-            # Check if the column is selected.
-            # A 'CREATE TABLE' has no SELECT, so include all columns if this case.
-            selected_node = child_node
-
-        if process_defaults and isinstance(child_node, ColumnNode) and child_node.get_column_constraint_expression():
-            default_node = child_node
-            # TODO: unset all index positions, set 'default=true' as position
-
-        if selected_node or default_node:
-            yield selected_node, default_node
-
-        if selected_node:
-            select_idx += 1
-
-
-def determine_object_type(gen_ctx: GeneratorContext):
-    """
-    Given a target object, figure out all its columns.
-
-    This is straightforward if source isn't a JOIN: we just use the source object's columns.
-    But if it is a JOIN, we use the selected columns rather than the source's columns.
-    """
-    query = gen_ctx.query
-    object_mapping = gen_ctx.object_mapping
-    expr = query.get_target()
-
-    if isinstance(expr, exp.Literal):
-        # Use the parent table's columns as the child columns
-        # Assumes this is a COPY | UNLOAD
-        target_type = TargetObjectType.FILE
-        table_with_columns = query.get_source()
-
-    elif isinstance(expr, exp.Identifier):
-        table_with_columns = query.get_source()
-        if expr.name in ["stdin", "stdout"]:
-            target_type = TargetObjectType.STREAM
-        elif expr.name in ["program"]:
-            target_type = TargetObjectType.PROGRAM
-        else:
-            raise exception.SqlLeafException(f"Unknown child column name in COPY: {expr.name}")
-
-    elif isinstance(expr, exp.Table):
-        target_type = TargetObjectType.TABLE
-        table_with_columns = query.get_target_as_table()
-
-    else:
-        raise exception.SqlLeafException(f"Unknown child column type in COPY: {expr}")
-
-    columns_from_object = get_column_defs(table_with_columns, query, object_mapping)
-    return target_type, columns_from_object
-
-
-def get_column_defs(
-    table_with_columns: exp.Table | exp.Literal | exp.Identifier | exp.Schema | exp.Select | exp.Values,
-    query: Q,
-    object_mapping: mappings.ObjectMapping,
-) -> t.List[exp.ColumnDef]:
-    """
-    Most of the time, the sources and target are tables.
-    However, with COPY/UNLOAD, they can be files or streams.
-
-    If the target is not a table and the source is a SELECT,
-    there may be a JOIN with many tables as the source.
-    """
-    if isinstance(query, (CopyQuery, UnloadQuery)):
-        if isinstance(query.get_source(), exp.Select):
-            columns = query.get_selected_column_names()
-            return [util.str_to_column_def(col) for col in columns]
-
-    if not isinstance(table_with_columns, exp.Table):
-        return []
-
-    table_query = object_mapping.get_table_or_stage(table_with_columns)
-    if not table_query:
-        return []
-
-    return table_query.get_column_defs()
-
-
 def walk_query_and_build_graph(
     generator: BaseGenerator,
     child_node: TargetNodeType,
@@ -288,18 +122,12 @@ def walk_query_and_build_graph(
     For any expression subtrees found, invoke an 'expression walker' to process them.
     """
     gen_ctx = replace(gen_ctx, scope=scope, child_node=child_node)
-    query = gen_ctx.query
 
     for scope_traversal in walk_query_scope(
         column=t.cast(t.Union[exp.Column, int], child_node.expr),
         scope=scope,
     ):
         logger.debug("----")
-        if isinstance(query, CopyQuery) and query.is_target_a_stage:
-            # Set the column to be a StageNode (if applicable) since we now have the lineage from using the dummy column
-            gen_ctx = replace(gen_ctx, expr=query.get_target().this)
-            child_node = StageNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx)
-
         logger.debug(f"Processing node expr: {scope_traversal.expression}, Id: {id(scope_traversal)}")
         logger.debug(f"Child node: {child_node.full_name}")
 
@@ -347,7 +175,7 @@ def walk_query_scope(column: exp.Column | int, scope: Scope) -> t.Generator[Scop
         # Create the node for this step in the lineage chain
         select = get_expression_for_column(column, scope.expression)
         st = ScopeTraversal(
-            expression=select,
+            expression=select.unalias(),
             scope=scope,
         )
         yield st
@@ -666,7 +494,7 @@ def check_for_external_table(generator: BaseGenerator, gen_ctx: GeneratorContext
     if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external":
         location_expr = query.statement.args["properties"].find(exp.LocationProperty)
 
-        for child_node, _ in _iter_child_nodes(gen_ctx, pos_ctx):
+        for child_node, _ in iter_child_nodes(gen_ctx, pos_ctx):
             if child_node:
                 gen_ctx = replace(gen_ctx, expr=location_expr, child_node=child_node)
                 pos_ctx = replace(pos_ctx, select_index=child_node.ctx.select_index)

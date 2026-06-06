@@ -389,6 +389,48 @@ class FileColumnNode(NodeAttributes):
         return {"path": self.file_path}
 
 
+class StageColumnNode(NodeAttributes):
+    def __init__(
+        self,
+        column: str,
+        stage: exp.Var,
+        gen_ctx: GeneratorContext,
+        pos_ctx: PositionContext,
+    ):
+        if str(stage).startswith("@"):
+            if not str(stage).startswith('@"'):
+                # Set to uppercase only if not double-quoted
+                stage.set("this", str(stage).upper())
+
+        super().__init__(
+            kind="column",
+            name=column,
+            data_type=gen_ctx.data_type,
+            expr=gen_ctx.expr,
+            pos_ctx=pos_ctx,
+        )
+        self.stage = stage.name.removeprefix("@").replace('"', "")
+
+    def to_dict(self):
+        d = super().to_dict()
+        d.update(
+            {
+                "stage": self.stage,
+            }
+        )
+        return d
+
+    def fields(self) -> dict[str, str]:
+        return {
+            "type": self.data_type,
+            "kind": "stage",
+            "stage": self.stage,
+        }
+
+    def friendly_fields(self) -> dict[str, str]:
+        return {"stage": self.stage}
+
+
 class FunctionNode(NodeAttributes):
     def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
         expr = t.cast(t.Union[exp.Binary, exp.Func], gen_ctx.expr)

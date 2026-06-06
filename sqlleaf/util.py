@@ -148,13 +148,12 @@ def column_def_to_column(column_def: exp.ColumnDef, parent_table: t.Optional[exp
         table: exp.Table = column_def.parent.this
     else:
         table = column_def.parent
-        assert isinstance(table, exp.Table)
 
     col = exp.column(
         column_def.name,
-        table=table.name,
-        db=table.db or None,
-        catalog=table.catalog or None,
+        table=table.name if table else None,
+        db=table.db if table else None,
+        catalog=table.catalog if table else None,
     )
     col.type = column_def.kind
     return col

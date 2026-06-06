@@ -10,6 +10,7 @@ from sqlleaf import util
 from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
     FileNode,
+    StageColumnNode,
     StageNode,
 )
 from sqlleaf.objects.query_types import CopyQuery
@@ -60,8 +61,12 @@ class SnowflakeGenerator(BaseGenerator):
         query = gen_ctx.query
         if isinstance(query, CopyQuery) and query.is_source_a_stage:
             stage_name: exp.Var = query.get_source().this
-            stage_ctx = replace(gen_ctx, expr=stage_name)
-            parent = StageNode(gen_ctx=stage_ctx, pos_ctx=pos_ctx)
+            parent = StageColumnNode(
+                column=expr.name,
+                stage=stage_name,
+                gen_ctx=gen_ctx,
+                pos_ctx=pos_ctx,
+            )
             yield EdgeToCreate(parent, gen_ctx.child_node)
         else:
             yield from super().process_column(expr, gen_ctx, pos_ctx)

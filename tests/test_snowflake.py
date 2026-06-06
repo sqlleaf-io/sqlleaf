@@ -14,17 +14,69 @@ DIALECT = "snowflake"
 
 cases = [
     # Snowflake converts to uppercase unless double-quoted
-    (
-        '"my_eXt_sTaGe"',
-        "my_eXt_sTaGe",
-    ),
+    ('"my_eXt_sTaGe"', "my_eXt_sTaGe"),  # fmt: skip
     ("my_eXt_sTaGe", "MY_EXT_STAGE"),
 ]
 
 
-# TODO: support COPY INTO @stage FROM table
 @pytest.mark.parametrize("case", cases)
-def test___copy_stage(holder, case):
+def test___copy_from_stage(holder, case):
+    old, new = case
+    sql = f"""
+    CREATE TABLE incoming.zone (name VARCHAR, age INT);
+
+    CREATE STAGE {old}
+      URL='s3://load/files/'
+      STORAGE_INTEGRATION = myint;
+
+    COPY INTO incoming.zone
+    FROM @{old}
+    FILE_FORMAT = ( TYPE = 'CSV', FIELD_DELIMITER = ',', SKIP_HEADER = 1 );
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        [f"column[NAME stage={new}]", "column[INCOMING.ZONE.NAME]"],
+        [f"column[AGE stage={new}]", "column[INCOMING.ZONE.AGE]"],
+    ]
+    assert h.nodes_full == [
+        f"column[AGE type=INT kind=stage stage={new}]",
+        f"column[NAME type=VARCHAR kind=stage stage={new}]",
+        "column[name=AGE table=ZONE schema=INCOMING type=INT kind=table]",
+        "column[name=NAME table=ZONE schema=INCOMING type=VARCHAR kind=table]",
+    ]
+
+
+@pytest.mark.parametrize("case", cases)
+def test___copy_to_stage(holder, case):
+    old, new = case
+    sql = f"""
+    CREATE TABLE outgoing.zone (name VARCHAR, age INT);
+
+    CREATE STAGE {old}
+      URL='s3://load/files/'
+      STORAGE_INTEGRATION = myint;
+
+    COPY INTO @{old}
+    FROM outgoing.zone
+    FILE_FORMAT = ( TYPE = 'CSV', FIELD_DELIMITER = ',', SKIP_HEADER = 1 );
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[OUTGOING.ZONE.NAME]", f"column[NAME stage={new}]"],
+        ["column[OUTGOING.ZONE.AGE]", f"column[AGE stage={new}]"],
+    ]
+    assert h.nodes_full == [
+        f"column[AGE type=INT kind=stage stage={new}]",
+        f"column[NAME type=VARCHAR kind=stage stage={new}]",
+        "column[name=AGE table=ZONE schema=OUTGOING type=INT kind=table]",
+        "column[name=NAME table=ZONE schema=OUTGOING type=VARCHAR kind=table]",
+    ]
+
+
+@pytest.mark.parametrize("case", cases)
+def test___copy_to_and_from_stage(holder, case):
     old, new = case
     sql = f"""
     CREATE TABLE incoming.zone (name VARCHAR, age INT);
@@ -45,22 +97,25 @@ def test___copy_stage(holder, case):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [TableQuery, TableQuery, StageQuery, CopyQuery, CopyQuery] == list(map(type, h.queries))
-    # TODO: this is buggy - it should not be many:many. Needs more design thought
-    #  to be compatible with single nodes PUT file[] -> stage[]
-    #  e.g. maybe file[] -> stage[my_stage] -> N x column[my_stage_col1 kind=stage] ->
-    #  But what happens if a table loads into a stage as well? Where do all its edges go?
-    assert h.paths == [
-        ["column[OUTGOING.ZONE.NAME]", f"stage[{new}]", "column[INCOMING.ZONE.AGE]"],
-        ["column[OUTGOING.ZONE.NAME]", f"stage[{new}]", "column[INCOMING.ZONE.NAME]"],
-        ["column[OUTGOING.ZONE.AGE]", f"stage[{new}]", "column[INCOMING.ZONE.AGE]"],
-        ["column[OUTGOING.ZONE.AGE]", f"stage[{new}]", "column[INCOMING.ZONE.NAME]"],
+    assert h.nodes_full == [
+        f"column[AGE type=INT kind=stage stage={new}]",
+        f"column[NAME type=VARCHAR kind=stage stage={new}]",
+        "column[name=AGE table=ZONE schema=INCOMING type=INT kind=table]",
+        "column[name=NAME table=ZONE schema=INCOMING type=VARCHAR kind=table]",
+        "column[name=AGE table=ZONE schema=OUTGOING type=INT kind=table]",
+        "column[name=NAME table=ZONE schema=OUTGOING type=VARCHAR kind=table]",
     ]
+    assert h.paths == [
+        ["column[OUTGOING.ZONE.NAME]", f"column[NAME stage={new}]", "column[INCOMING.ZONE.NAME]"],
+        ["column[OUTGOING.ZONE.AGE]", f"column[AGE stage={new}]", "column[INCOMING.ZONE.AGE]"],
+    ]
+    # TODO: full names should include the stage's s3 file path
 
 
 def test___put_stage(holder):
     sql = """
     CREATE STAGE my_int_stage
-      URL='s3://load/files/';
+    URL='s3://load/files/';
 
     PUT 'file:///tmp/data/mydata.csv' @my_int_stage;
     """
@@ -68,3 +123,4 @@ def test___put_stage(holder):
 
     assert [StageQuery, PutQuery] == list(map(type, h.queries))
     assert h.paths == [["file[/tmp/data/mydata.csv]", "stage[MY_INT_STAGE]"]]
+    # TODO: this needs to be: column[? type=file] -> column[? type=stage]

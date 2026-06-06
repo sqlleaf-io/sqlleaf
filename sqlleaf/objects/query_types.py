@@ -483,20 +483,13 @@ class StageQuery(Query):
 
 class CopyQuery(Query):
     def __init__(self, expr: exp.Copy, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
-        self.named_columns: t.List[str] = []
-
         # TODO: move these variables/types to SourceExpr/TargetExpr
         self.is_source_a_stage = False
         self.is_target_a_stage = False
 
         self.source, self.target = self.process(expr, dialect)
-        # self.source = source
-        # self.target = target
-
-        # if not isinstance(expr.this.unnest(), exp.Values):
-        #     child_object = self.target
-        # else:
-        #     child_object = self.target
+        if dialect == "snowflake":
+            self.configure_stage(self.source, self.target)
 
         super().__init__(
             kind="copy",
@@ -523,8 +516,6 @@ class CopyQuery(Query):
                 source = expr.args["this"]
                 target = expr.args["files"][0]
                 if isinstance(source, exp.Schema):
-                    # Named columns were provided
-                    # self.named_columns = [e.name for e in self.source.expressions]
                     source = source.this
 
         elif dialect == "snowflake":
@@ -535,19 +526,13 @@ class CopyQuery(Query):
         source = source.unnest()
         target = target.unnest()
 
-        if dialect == "snowflake":
-            self.configure_stage(expr)
-
         return source, target
 
-    def configure_stage(self, expr: exp.Copy):
+    def configure_stage(self, source: SourceExprType, target: TargetExprType):
         """
         Normalize (uppercase) the name if we are a Snowflake stage.
         sqlglot only normalizes columns - see comments in `sqlglot.optimizer.normalize_identifiers()`
         """
-        source = expr.args["files"][0]
-        target = expr.args["this"]
-
         if str(source).startswith("@"):
             self.is_source_a_stage = True
             if not str(source).startswith('@"'):
@@ -570,7 +555,22 @@ class UnloadQuery(Query):
             statement_index=statement_index,
             child_object=to_location_expr,
         )
-        self.source = select_expr
+        self.select = select_expr
+        print()
+
+    """
+    There is a design problem here with the transformations.
+    If a COPY/UNLOAD are transformed into an INSERT, they still reference
+    their old sources and targets (from the COPY/UNLOAD expression).
+    This means that after the columns are expanded (in UNLOAD 'SELECT * FROM'),
+    the old '*' is still referenced as the source.
+    We need to ensure that the get_source() and get_target() are operated on
+    the correct expression (statement_original vs statement_transformed).
+    """
+
+    @property
+    def source(self):
+        return self.statement
 
     def _parse_expression(self, statement: exp.Command) -> t.Tuple[exp.Select, exp.Literal]:
         """

@@ -8,6 +8,7 @@ from sqlglot.optimizer import RULES, optimize, qualify
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, mappings, util
+from sqlleaf.helpers import get_target_object_for_query
 from sqlleaf.objects.query_types import (
     CopyQuery,
     CTASQuery,
@@ -29,12 +30,16 @@ We transform all queries into `INSERT .. SELECT` where possible so that we have
 a single query type to work over.
 """
 
+# TODO: add _validate_syntax() decorator to each validator, but only for dev
+# TODO: ensure columns have valid types after all transformations (only top-level SELECT for now)
+
 
 def transform_query(query: Q, object_mapping: mappings.ObjectMapping) -> None:
     """
     Transform a query's expression according to rules specific to its type.
     """
-    logger.debug(f"Transforming - Query: {query.__class__.__name__}, Statement: {query.statement.__class__.__name__}")
+    logger.debug(f"Query: {query.statement.sql()}")
+    logger.debug(f"Transforming: {query.__class__.__name__} - {query.statement.__class__}")
     statement = util.copy_expression(query.statement)
 
     statement = _convert_table_to_select(statement)
@@ -101,7 +106,6 @@ def transform_query(query: Q, object_mapping: mappings.ObjectMapping) -> None:
     # Qualify columns, add aliases and optimize the expressions
     statement = _apply_optimizations(statement, query, object_mapping)
 
-    # TODO: add this after each transform (expensive, only for debug)
     _validate_syntax(statement, query)
 
     old = query.statement.sql(dialect=query.dialect)
@@ -574,35 +578,20 @@ def _convert_copy_to_insert(
     """
     dialect = query.dialect
 
-    # TODO: remove the below; these should be in CopyQuery already
-    # Assume the stage is a source
-    child_object = statement.this.find(exp.Table)
-    parent_table = statement.args["files"][0]
-
-    source_table = child_object
-
-    if dialect == "snowflake":
-        if query.is_target_a_stage:
-            source_table = parent_table
-
-    column_names = query.named_columns  # TODO: replace with get_selected_column_names() ?
-    table_columns = {}
-    if not column_names:
-        table_query = object_mapping.find_query(kind="table", table=source_table)
-        if table_query:
-            table_columns = table_query.get_column_names_with_types()
-            column_names = tuple(table_columns.keys())
+    target_object = get_target_object_for_query(query, object_mapping)
+    column_names = [col.name for col in target_object.columns]
+    columns = [util.column_def_to_column(c.copy()) for c in target_object.columns]
+    for c in columns:
+        c.set("catalog", "")
+        c.set("schema", "")
+        c.set("table", "")
 
     # Transform to a SELECT
     src = query.get_source()
     if isinstance(src, exp.Select):
         select = src
     else:
-        select = exp.select(*(column_names), dialect=dialect).from_(src)
-
-    # The columns are needed in the select, but not in the insert
-    if query.is_target_a_stage:
-        column_names = []
+        select = exp.select(*columns, dialect=dialect).from_(src)
 
     # Convert the Copy to an Insert
     insert_expr = exp.insert(
@@ -611,21 +600,6 @@ def _convert_copy_to_insert(
         columns=column_names,
         dialect=dialect,
     )
-
-    if dialect == "snowflake" and query.is_target_a_stage:
-        # Any object that is referenced as a source table needs to be added to the table mapping
-        # for the lineage functions to work - such as this Stage
-        col_defs = [
-            exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(data_type))
-            for name, data_type in table_columns.items()
-        ]
-
-        child_object_query = object_mapping.find_query(kind="stage", table=child_object)
-        if child_object_query:
-            # child_object_query can be any Query type, we hope it has column_defs
-            setattr(child_object_query, "column_defs", col_defs)
-
-    # We don't worry about `self.is_source_a_stage` here as that is handled in the process_column() later
     return insert_expr
 
 
@@ -638,31 +612,14 @@ def _convert_unload_to_insert(
     UNLOAD ('SELECT * FROM fruit.raw') TO 's3://object-path/name-prefix'
         -> INSERT INTO 's3://object-path/name-prefix' SELECT * FROM fruit.raw
     """
-    dialect = query.dialect
-
-    # Convert the Unload to an Insert
     table = exp.table_(query.get_target().name)
     insert_expr = exp.insert(
         expression=statement,
         into=table,
-        dialect=dialect,
+        dialect=query.dialect,
     )
 
     return insert_expr
-
-
-RULES_OVERRIDE = [
-    r
-    for r in RULES
-    if getattr(r, "__name__", None)
-    not in [
-        "eliminate_ctes",  # Preserve CTEs
-        "merge_subqueries",  # Preserve CTEs
-        "qualify",  # We qualify when we need to
-        "quote_identifiers",  # Preserve identifiers
-        "eliminate_subqueries",  # Preserve subqueries
-    ]
-]
 
 
 def _validate_values(statement: exp.Insert) -> exp.Insert:
@@ -690,9 +647,25 @@ def _validate_syntax(statement: exp.Expr, query: Q):
             pass
 
 
+EXCLUDE_OPTIMIZER_RULES = [
+    "eliminate_ctes",  # Preserve CTEs
+    "merge_subqueries",  # Preserve CTEs
+    "qualify",  # We qualify when we need to
+    "quote_identifiers",  # Preserve identifiers
+    "eliminate_subqueries",  # Preserve subqueries
+]
+
+
+def _optimizer_rules(exclude_rules: t.List[str]):
+    """
+    Return a list of sqlglot.optimizer rules to use.
+    """
+    return [r for r in RULES if getattr(r, "__name__", None) not in exclude_rules]
+
+
 def _apply_optimizations(
-    statement: exp.Expr, query: Q, object_mapping: mappings.ObjectMapping, add_column_names: bool = True
-) -> exp.Expr:
+    statement: E, query: Q, object_mapping: mappings.ObjectMapping, add_column_names: bool = True
+) -> E:
     """
     1. We pass infer_schema=True to source unqualified columns from the source table (if missing from `schema` param)
         e.g. so that
@@ -703,14 +676,21 @@ def _apply_optimizations(
             my.table.name -> my.other.name
     """
     validate_columns = True
+    rules = EXCLUDE_OPTIMIZER_RULES[:]
 
-    # Check if we should validate the columns exist for each table
+    # Do not validate the columns if the source is a non-table
     if isinstance(query, CopyQuery):
         src, src_name = query.get_source(), query.get_source().name
-        if isinstance(src, exp.Identifier) and src_name in ["stdin", "stdout"]:
-            validate_columns = False
-        elif isinstance(src, exp.Literal):
-            validate_columns = False
+        if query.dialect == "postgres":
+            if isinstance(src, exp.Identifier) and src_name in ["stdin", "stdout"]:
+                validate_columns = False
+            elif isinstance(src, exp.Literal):
+                validate_columns = False
+        elif query.dialect == "snowflake":
+            if query.is_source_a_stage:
+                # Prevent overwriting types with UNKNOWN (sqlglot can't resolve Stage sources)
+                rules += ["annotate_types"]
+                validate_columns = False
 
     qualify.qualify(
         statement,
@@ -727,7 +707,9 @@ def _apply_optimizations(
         _add_column_names_to_insert(statement, query, object_mapping)
 
     # Selectively apply sqlglot's optimization rules.
-    statement = optimize(expression=statement, dialect=query.dialect, schema=object_mapping, rules=RULES_OVERRIDE)
+    statement = optimize(
+        expression=statement, dialect=query.dialect, schema=object_mapping, rules=_optimizer_rules(rules)
+    )
 
     # We don't want to merge the CTEs as they provide useful info to the user
     # so we skip merge_ctes() and call the function below directly instead
