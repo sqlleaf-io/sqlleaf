@@ -89,4 +89,6 @@ def test__ctas_values(holder, expr):
 """
 CREATE TABLE my_new_table AS
 VALUES (1, 'Alice'), (2, 'Bob');
+
+-> column1 | column2
 """

@@ -661,6 +661,12 @@ def test__cte_insert_and_update_inside_select(holder):
 #         ],
 #     ]
 
+# TODO
+# Recursive CTE with multiple anchor members — e.g. SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT n+1 FROM cte
+# Recursive CTE referencing itself multiple times — SELECT a.n + b.n FROM cte a, cte b
+# CTE used in multiple places — WITH cte AS (...) INSERT INTO x SELECT FROM cte JOIN cte
+# CTE with UNION inside — a CTE whose body is a UNION (not recursive)
+
 
 def test__cte_materialized(holder):
     sql = """

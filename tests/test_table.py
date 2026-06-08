@@ -275,6 +275,23 @@ def test__cte_only(holder):
     assert len(h.edges) == 2
 
 
+def test__update_only_inherited(holder):
+    sql = """
+    CREATE TABLE fruit.parent_table (price NUMERIC, quantity INT);
+    CREATE TABLE fruit.child_table () INHERITS (fruit.parent_table);
+    CREATE TABLE fruit.source_table (price NUMERIC);
+
+    UPDATE ONLY fruit.parent_table
+    SET price = s.price
+    FROM (SELECT price FROM fruit.source_table) AS s;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [["column[fruit.source_table.price]", "column[fruit.parent_table.price]"]]
+    assert len(h.nodes) == 2
+    assert len(h.edges) == 1
+
+
 def test__simple_sequence(holder):
     sql = """
     CREATE SEQUENCE serial START 101;

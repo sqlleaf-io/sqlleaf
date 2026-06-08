@@ -10,6 +10,127 @@ from sqlleaf.objects.query_types import InsertQuery, UpdateQuery
 DIALECT = "postgres"
 
 
+def test__merge_only_update(holder):
+    sql = """
+    MERGE INTO fruit.processed AS t
+    USING fruit.raw AS s
+    ON t.kind = s.kind
+    WHEN MATCHED THEN
+        UPDATE SET name = s.name;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.name]", "column[fruit.processed.name]"],
+    ]
+    assert len(h.nodes) == 2
+    assert len(h.queries) == 1
+    assert [UpdateQuery] == list(map(type, h.queries[0].child_queries))
+    assert (
+        h.queries[0].child_queries[0].statement_transformed.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed AS t (name) SELECT s.name AS name FROM fruit.raw AS s"
+    )
+
+
+def test__merge_only_insert(holder):
+    sql = """
+    MERGE INTO fruit.processed AS t
+    USING fruit.raw AS s
+    ON t.kind = s.kind
+    WHEN NOT MATCHED THEN
+        INSERT (label) VALUES (s.kind);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
+    ]
+    assert len(h.nodes) == 2
+    assert len(h.queries) == 1
+    assert [InsertQuery] == list(map(type, h.queries[0].child_queries))
+    assert (
+        h.queries[0].child_queries[0].statement_transformed.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed AS t (label) SELECT s.kind AS label FROM fruit.raw AS s"
+    )
+
+
+def test__merge_with_function(holder):
+    sql = """
+    MERGE INTO fruit.processed AS t
+    USING fruit.raw AS s
+    ON t.kind = s.kind
+    WHEN MATCHED THEN
+        UPDATE SET name = LOWER(s.name);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.name]", "function[LOWER]", "column[fruit.processed.name]"],
+    ]
+    assert len(h.nodes) == 3
+    assert len(h.queries) == 1
+    assert [UpdateQuery] == list(map(type, h.queries[0].child_queries))
+    assert (
+        h.queries[0].child_queries[0].statement_transformed.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed AS t (name) SELECT LOWER(s.name) AS name FROM fruit.raw AS s"
+    )
+
+
+def test__merge_two_identical_insert_clauses(holder):
+    sql = """
+    MERGE INTO fruit.processed AS t
+    USING fruit.raw AS s
+    ON t.kind = s.kind
+    WHEN NOT MATCHED THEN
+        INSERT (label) VALUES (s.kind)
+    WHEN NOT MATCHED THEN
+        INSERT (label) VALUES (s.kind);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
+        ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
+    ]
+    assert len(h.nodes) == 2
+    assert len(h.queries) == 1
+    assert [InsertQuery, InsertQuery] == list(map(type, h.queries[0].child_queries))
+    assert (
+        h.queries[0].child_queries[0].statement_transformed.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed AS t (label) SELECT s.kind AS label FROM fruit.raw AS s"
+    )
+    assert (
+        h.queries[0].child_queries[1].statement_transformed.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed AS t (label) SELECT s.kind AS label FROM fruit.raw AS s"
+    )
+
+
+def test__merge_with_values_in_insert(holder):
+    sql = """
+    MERGE INTO fruit.processed AS t
+    USING fruit.raw AS s
+    ON t.kind = s.kind
+    WHEN NOT MATCHED THEN
+        INSERT (label, name) VALUES (s.kind, 'apple');
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        [
+            'literal["apple"]',
+            "column[fruit.processed.name]",
+        ],
+        ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
+    ]
+    assert len(h.nodes) == 4
+    assert len(h.queries) == 1
+    assert [InsertQuery] == list(map(type, h.queries[0].child_queries))
+    assert (
+        h.queries[0].child_queries[0].statement_transformed.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed AS t (label, name) SELECT s.kind AS label, 'apple' AS name FROM fruit.raw AS s"
+    )
+
+
 def test__merge_simple_update_and_insert(holder):
     sql = """
     MERGE INTO fruit.processed AS t
