@@ -2,14 +2,25 @@ from __future__ import annotations
 
 import logging
 import typing as t
+from dataclasses import dataclass
 
 import sqlglot
 from sqlglot import TokenType, exp
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.typing import SourceExprType, TargetExprType
+from sqlleaf.typing import SourceExprType, TargetExprType, TargetObjectType
 
 logger = logging.getLogger("sqlleaf")
+
+
+# TODO: put this in every Node class?
+@dataclass(frozen=True)
+class TargetObject:
+    type: TargetObjectType
+    # This is not the *actual* target: it's just what was used to derive the columns,
+    # as the source will need to act as the target if the target isn't a table.
+    object: TargetExprType | SourceExprType
+    columns: t.List[exp.ColumnDef]
 
 
 class Query:
@@ -18,12 +29,13 @@ class Query:
         kind: str,
         dialect: str,
         statement: exp.Expr,
-        child_object: TargetExprType,
+        target_object: TargetExprType,
         statement_index: int,
+        object_mapping: mappings.ObjectMapping,
     ):
         self.kind = kind
         self.dialect = dialect
-        self.child_object = child_object  # The target table
+        self.target_object = target_object  # The target table
         self.parent_query = None
         self.child_queries = []
         self.column_defs: t.List[exp.ColumnDef] = []
@@ -34,32 +46,107 @@ class Query:
             expr.pop_comments()
 
         self.statement_index = statement_index  # The position of this query within a list of queries
-        self.statement_original = statement
-        self.statement_transformed: exp.Expr
-
-        self.statement = statement
-        self.set_statement(self.statement_original)
+        self.set_original_statement(statement)
 
         self.source: SourceExprType
-        self.target: TargetExprType = child_object
 
         logger.debug(f"Created Query: {self.__class__}")
+
+    @property
+    def statement(self):
+        return self._statement
+
+    def get_target_object(self, object_mapping: mappings.ObjectMapping) -> TargetObject:
+        """
+        Given a query, figure out its target object, including its columns.
+
+        This is straightforward if source isn't a JOIN: we just use the source object's columns.
+        But if it is a JOIN, we use the selected columns rather than the source's columns.
+        """
+        expr = self.get_target()
+
+        if isinstance(expr, exp.Literal):
+            # Use the parent table's columns as the child columns
+            # Assumes this is a COPY | UNLOAD
+            target_type = TargetObjectType.FILE
+            object_with_columns = self.get_source()
+
+        elif isinstance(expr, exp.Identifier):
+            object_with_columns = self.get_source()
+
+            if expr.name in ["stdin", "stdout"]:
+                target_type = TargetObjectType.STREAM
+            elif expr.name in ["program"]:
+                target_type = TargetObjectType.PROGRAM
+            else:
+                raise exception.SqlLeafException(f"Unknown child column name in COPY: {expr.name}")
+
+        elif isinstance(expr, exp.Table) and self.dialect == "snowflake":
+            if isinstance(expr.this, exp.Var):
+                target_type = TargetObjectType.STAGE
+                # TODO: this assumes the source is a table!
+                object_with_columns = self.get_source()
+            else:
+                target_type = TargetObjectType.TABLE
+                object_with_columns = self.get_target()
+
+        elif isinstance(expr, exp.Table):
+            target_type = TargetObjectType.TABLE
+            object_with_columns = self.get_target_as_table()
+
+        else:
+            raise exception.SqlLeafException(f"Unknown child column type in COPY: {expr}")
+
+        return TargetObject(
+            type=target_type,
+            object=object_with_columns,
+            columns=self._get_column_defs(object_with_columns, object_mapping),
+        )
+
+    def _get_column_defs(
+        self,
+        target: SourceExprType | TargetExprType,
+        object_mapping: mappings.ObjectMapping,
+    ) -> t.List[exp.ColumnDef]:
+        """
+        Most of the time, the sources and target are tables.
+        However, with COPY/UNLOAD, they can be files or streams.
+
+        If the target is not a table and the source is a SELECT,
+        there may be a JOIN with many tables as the source.
+        """
+        if isinstance(self, (CopyQuery, UnloadQuery)):
+            source = self.get_source()
+            if isinstance(source, exp.Select):
+                return [
+                    exp.ColumnDef(this=exp.to_identifier(col.unalias().name), kind=col.unalias().type)
+                    for col in source.expressions
+                ]
+
+        if not isinstance(target, exp.Table):
+            return []
+
+        table_query = object_mapping.get_table_or_stage(target)
+        if not table_query:
+            return []
+
+        return table_query.get_column_defs()
 
     def get_source(self) -> SourceExprType:
         return self.source
 
     def get_target(self) -> TargetExprType:
-        return self.target
+        return self.target_object
 
     def get_target_as_table(self) -> exp.Table:
         """
         For functions that only accept tables.
         """
-        if not isinstance(self.target, exp.Table):
+        if not isinstance(self.target_object, exp.Table):
             raise exception.SqlLeafException(
                 message=f"Expected the target object to be a table but it is a {type(self.target)}"
             )
-        return self.target
+        return self.target_object
 
     def get_statement_index(self) -> str:
         """
@@ -71,8 +158,13 @@ class Query:
         else:
             return str(self.statement_index)
 
-    def set_statement(self, statement: exp.Expr):
-        self.statement = statement
+    def set_transformed_statement(self, statement: exp.Expr):
+        self.statement_transformed = statement
+        self._statement = statement
+
+    def set_original_statement(self, statement: exp.Expr):
+        self.statement_original = statement
+        self._statement = statement
 
     def get_ctes(self) -> t.List:
         return []
@@ -100,7 +192,7 @@ class Query:
         This is needed for CTAS/View queries after they transform into Inserts.
         This is the inverse of functions like set_as_insert()
         """
-        self.set_statement(statement=self.statement_original)
+        self.set_original_statement(statement=self.statement_original)
 
     def add_child_query(self, child_query):
         child_query.parent_query = self
@@ -148,7 +240,8 @@ class DeleteQuery(Query):
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=expr.this,
+            target_object=expr.this,
+            object_mapping=object_mapping,
         )
 
     def get_ctes(self):
@@ -164,7 +257,8 @@ class MergeQuery(Query):
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=expr.this,
+            target_object=expr.this,
+            object_mapping=object_mapping,
         )
 
     def get_ctes(self):
@@ -178,7 +272,8 @@ class SelectQuery(Query):
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=util.get_table(expr),
+            target_object=util.get_table(expr),
+            object_mapping=object_mapping,
         )
 
     def get_ctes(self):
@@ -201,7 +296,8 @@ class InsertQuery(Query):
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=table,
+            target_object=table,
+            object_mapping=object_mapping,
         )
 
     def get_ctes(self):
@@ -224,7 +320,8 @@ class UpdateQuery(Query):
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=table,
+            target_object=table,
+            object_mapping=object_mapping,
         )
         self.only = table.args.get("only", False) if table else False  # Not available inside a MERGE
 
@@ -238,6 +335,7 @@ class CTASQuery(Query):
         self,
         statement: exp.Create,
         dialect: str,
+        object_mapping: mappings.ObjectMapping,
         columns: t.List[exp.ColumnDef],
         statement_index: int,
     ):
@@ -246,7 +344,8 @@ class CTASQuery(Query):
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=util.get_table(statement),
+            target_object=util.get_table(statement),
+            object_mapping=object_mapping,
         )
         self.column_defs: t.List[exp.ColumnDef] = columns
         self.system_column_defs: t.List[exp.ColumnDef] = []
@@ -257,7 +356,7 @@ class CTASQuery(Query):
             if with_data := props.find(exp.WithDataProperty):
                 self.with_data: bool = not with_data.args["no"]
 
-        self.property: str = _find_property(statement, self.child_object, dialect)
+        self.property: str = _find_property(statement, self.get_target(), dialect)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs + self.system_column_defs if include_system else self.column_defs
@@ -275,6 +374,7 @@ class ViewQuery(Query):
         self,
         statement: exp.Create,
         dialect: str,
+        object_mapping: mappings.ObjectMapping,
         columns: t.List[exp.ColumnDef],
         statement_index: int,
     ):
@@ -283,12 +383,13 @@ class ViewQuery(Query):
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=util.get_table(statement),
+            target_object=util.get_table(statement),
+            object_mapping=object_mapping,
         )
         self.column_defs: t.List[exp.ColumnDef] = columns
         self.inherited_by: t.List[TableQuery] = []
 
-        self.property: str = _find_property(statement, self.child_object, dialect)
+        self.property: str = _find_property(statement, self.get_target(), dialect)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs
@@ -310,14 +411,15 @@ class TableQuery(Query):
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=util.get_table(statement.this),
+            target_object=util.get_table(statement.this),
+            object_mapping=object_mapping,
         )
         self.column_defs: t.List[exp.ColumnDef] = []
         self.system_column_defs: t.List[exp.ColumnDef] = []
         self.inherits: t.List[TableQuery] = []
         self.inherited_by: t.List[TableQuery] = []
 
-        self.property: str = _find_property(statement, self.child_object, dialect)
+        self.property: str = _find_property(statement, self.get_target(), dialect)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs + self.system_column_defs if include_system else self.column_defs
@@ -335,14 +437,21 @@ class ProcedureQuery(Query):
     Holds metadata related to stored procedures.
     """
 
-    def __init__(self, statement: exp.Create, dialect: str, statement_index: int):
+    def __init__(
+        self,
+        statement: exp.Create,
+        dialect: str,
+        object_mapping: mappings.ObjectMapping,
+        statement_index: int,
+    ):
         table = util.get_table(statement)
         super().__init__(
             kind="procedure",
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=table,
+            target_object=table,
+            object_mapping=object_mapping,
         )
         self.schema = table.db
         self.procedure = table.name
@@ -353,8 +462,6 @@ class ProcedureQuery(Query):
         self.args = [  # e.g. {'name': 'v_session_id', 'type': 'VARCHAR'}
             {"name": str(col.this), "type": str(col.kind)} for col in statement.this.find_all(exp.ColumnDef)
         ]
-
-        self.set_statement(statement)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs
@@ -395,6 +502,7 @@ class UserDefinedFunctionQuery(Query):
         returns_null,
         language,
         statement,
+        object_mapping: mappings.ObjectMapping,
         statement_index: int,
     ):
         super().__init__(
@@ -402,7 +510,8 @@ class UserDefinedFunctionQuery(Query):
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=statement.this.this,
+            target_object=statement.this.this,
+            object_mapping=object_mapping,
         )
         self.schema = schema
         self.function = function
@@ -423,19 +532,32 @@ class UserDefinedFunctionQuery(Query):
 
 
 class SequenceQuery(Query):
-    def __init__(self, statement: exp.Create, dialect: str, statement_index: int):
+    def __init__(
+        self,
+        statement: exp.Create,
+        dialect: str,
+        object_mapping: mappings.ObjectMapping,
+        statement_index: int,
+    ):
         super().__init__(
             kind="sequence",
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=statement.this,
+            target_object=statement.this,
+            object_mapping=object_mapping,
         )
-        self.property = _find_property(statement, self.child_object, dialect)
+        self.property = _find_property(statement, self.get_target(), dialect)
 
 
 class TriggerQuery(Query):
-    def __init__(self, statement: exp.Create, dialect: str, statement_index: int):
+    def __init__(
+        self,
+        statement: exp.Create,
+        dialect: str,
+        object_mapping: mappings.ObjectMapping,
+        statement_index: int,
+    ):
         """
         Example:
             CREATE TRIGGER before_fruit_insert
@@ -449,7 +571,8 @@ class TriggerQuery(Query):
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=properties.args["table"],
+            target_object=properties.args["table"],
+            object_mapping=object_mapping,
         )
         self.name = statement.name  # before_fruit_insert
         self.table = properties.args["table"]  # Table(fruit.processed)
@@ -460,13 +583,20 @@ class TriggerQuery(Query):
 
 
 class StageQuery(Query):
-    def __init__(self, statement: exp.Create, dialect: str, statement_index: int):
+    def __init__(
+        self,
+        statement: exp.Create,
+        dialect: str,
+        object_mapping: mappings.ObjectMapping,
+        statement_index: int,
+    ):
         super().__init__(
             kind="stage",
             statement=statement,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=util.get_table(statement),
+            target_object=util.get_table(statement),
+            object_mapping=object_mapping,
         )
         self.column_defs: t.List[exp.ColumnDef] = []
         # Needed due to a bug in sqlglot. Never access the table name via print()!
@@ -475,7 +605,7 @@ class StageQuery(Query):
         self.get_target().this.set("this", "@" + stage_name)
         self.get_target().this.set("quoted", False)
 
-        self.property = _find_property(statement, self.child_object, dialect)
+        self.property = _find_property(statement, self.get_target(), dialect)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs
@@ -487,7 +617,7 @@ class CopyQuery(Query):
         self.is_source_a_stage = False
         self.is_target_a_stage = False
 
-        self.source, self.target = self.process(expr, dialect)
+        self.source, self.target = self.get_source_and_target(expr, dialect)
         if dialect == "snowflake":
             self.configure_stage(self.source, self.target)
 
@@ -496,10 +626,21 @@ class CopyQuery(Query):
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=self.target,
+            target_object=self.target,
+            object_mapping=object_mapping,
         )
 
-    def process(self, expr: exp.Copy, dialect: str) -> t.Tuple[SourceExprType, TargetExprType]:
+    def get_source(self):
+        # Temp: hacky
+        if isinstance(self.statement, exp.Insert):
+            return self.statement.expression  # Transformed
+        else:
+            return self.source  # Original
+
+    def get_original_source(self):
+        return self.source
+
+    def get_source_and_target(self, expr: exp.Copy, dialect: str) -> t.Tuple[SourceExprType, TargetExprType]:
         """
         Determine the source and target expressions of the query.
         """
@@ -553,24 +694,17 @@ class UnloadQuery(Query):
             statement=select_expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=to_location_expr,
+            target_object=to_location_expr,
+            object_mapping=object_mapping,
         )
-        self.select = select_expr
-        print()
+        self.source = select_expr
 
-    """
-    There is a design problem here with the transformations.
-    If a COPY/UNLOAD are transformed into an INSERT, they still reference
-    their old sources and targets (from the COPY/UNLOAD expression).
-    This means that after the columns are expanded (in UNLOAD 'SELECT * FROM'),
-    the old '*' is still referenced as the source.
-    We need to ensure that the get_source() and get_target() are operated on
-    the correct expression (statement_original vs statement_transformed).
-    """
-
-    @property
-    def source(self):
-        return self.statement
+    def get_source(self):
+        # Temp: hacky
+        if isinstance(self.statement, exp.Insert):
+            return self.statement.expression  # Transformed
+        else:
+            return self.source  # Original
 
     def _parse_expression(self, statement: exp.Command) -> t.Tuple[exp.Select, exp.Literal]:
         """
@@ -602,16 +736,18 @@ class UnloadQuery(Query):
 
 class PutQuery(Query):
     def __init__(self, expr: exp.Put, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
+        # TODO: fix types below
+        self.source = expr.name
+        self.target = expr.args["target"].name
+
         super().__init__(
             kind="put",
             statement=expr,
             dialect=dialect,
             statement_index=statement_index,
-            child_object=expr.this,
+            target_object=expr.this,
+            object_mapping=object_mapping,
         )
-        # TODO: fix types below
-        self.source = expr.name
-        self.target = expr.args["target"].name
 
 
 Q = t.TypeVar("Q", bound=Query)

@@ -271,7 +271,7 @@ def _collect_merge_children(parent_query: MergeQuery, object_mapping: mappings.O
                 statement_index=i,
                 table=merge.get_target_as_table(),
             )
-            insert_query.child_object = merge.child_object
+            insert_query.target_object = merge.target_object
             merge.add_child_query(insert_query)
 
 
@@ -519,7 +519,9 @@ def _process_tables(
             dialect=dialect,
         )
     elif statement.kind == "SEQUENCE":
-        query = SequenceQuery(statement=statement, dialect=dialect, statement_index=statement_index)
+        query = SequenceQuery(
+            statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
         object_mapping.add_query(kind="sequence", query=query, dialect=dialect)
 
     return query
@@ -562,10 +564,22 @@ def _process_views_and_ctas(
 
     if stmt.kind == "VIEW":
         # CREATE VIEW ...
-        query = ViewQuery(statement=stmt, dialect=dialect, columns=col_defs, statement_index=statement_index)
+        query = ViewQuery(
+            statement=stmt,
+            dialect=dialect,
+            object_mapping=object_mapping,
+            columns=col_defs,
+            statement_index=statement_index,
+        )
     elif stmt.kind == "TABLE":
         # CREATE TABLE AS ...
-        query = CTASQuery(statement=stmt, dialect=dialect, columns=col_defs, statement_index=statement_index)
+        query = CTASQuery(
+            statement=stmt,
+            dialect=dialect,
+            object_mapping=object_mapping,
+            columns=col_defs,
+            statement_index=statement_index,
+        )
         query.system_column_defs = _system_columns(dialect=dialect)
     else:
         raise exception.SqlLeafException(message=f"Unhandled situation for query: {stmt.kind}")
@@ -599,11 +613,7 @@ def _determine_column_defs(statement: exp.Create, object_mapping: mappings.Objec
     """
     Look up the columns for 'y' in 'INSERT INTO x TABLE y'
     """
-    source = statement.args.get("source", None)
-    if source:
-        table_q = t.cast(TableQuery, object_mapping.find_query(kind="table", table=t.cast(exp.Table, source)))
-        col_defs = table_q.get_column_defs(include_system=False)
-    elif isinstance(statement.expression, exp.Values):
+    if isinstance(statement.expression, exp.Values):
         columns = [stmt.name for stmt in statement.this.expressions]
         types = [val.type for val in statement.expression.expressions[0].expressions]
         col_defs = [exp.ColumnDef(this=col_name, kind=col_type) for col_name, col_type in zip(columns, types)]
@@ -651,6 +661,7 @@ def _process_functions(
         return_expr=return_expr,
         returns_null=returns_null,
         language=language,
+        object_mapping=object_mapping,
         statement_index=statement_index,
     )
     object_mapping.add_query(kind="udf", query=query, dialect=dialect)
@@ -669,7 +680,7 @@ def _process_triggers(
     """
     Process a "CREATE TRIGGER" statement.
     """
-    query = TriggerQuery(statement, dialect, statement_index)
+    query = TriggerQuery(statement, dialect, object_mapping, statement_index)
     object_mapping.add_query(kind="trigger", query=query, dialect=dialect)
     return query
 
@@ -680,7 +691,9 @@ def _process_stored_procedures(
     """
     Process a "CREATE PROCEDURE" statement.
     """
-    query = ProcedureQuery(statement=statement, dialect=dialect, statement_index=statement_index)
+    query = ProcedureQuery(
+        statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+    )
     object_mapping.add_query(kind="procedure", query=query, dialect=dialect)
     # TODO: find a way to get each SP's text from a query that has multiple SPs defined in it.
     #  sqlglot will parse the 2 SPs, but does not provide the original, raw text. This is imperfect
@@ -697,7 +710,7 @@ def _process_stored_procedures(
 def _process_stage(
     statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
 ) -> Q:
-    query = StageQuery(statement, dialect, statement_index)
+    query = StageQuery(statement, dialect, object_mapping=object_mapping, statement_index=statement_index)
     object_mapping.add_query(kind="stage", query=query, dialect=dialect)
     return query
 

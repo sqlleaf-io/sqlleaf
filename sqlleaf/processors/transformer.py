@@ -8,7 +8,6 @@ from sqlglot.optimizer import RULES, optimize, qualify
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.helpers import get_target_object_for_query
 from sqlleaf.objects.query_types import (
     CopyQuery,
     CTASQuery,
@@ -66,7 +65,7 @@ def transform_query(query: Q, object_mapping: mappings.ObjectMapping) -> None:
         statement = _process_inner_ctes(statement, object_mapping, query)
 
         # We must keep the Insert expression for child queries (e.g. ON CONFLICT)
-        query.set_statement(statement)
+        query.set_transformed_statement(statement)
 
     elif isinstance(query, UpdateQuery) and isinstance(statement, (exp.OnConflict, exp.Update)):
         statement = _convert_on_conflict_to_update(statement, object_mapping, query)
@@ -115,8 +114,7 @@ def transform_query(query: Q, object_mapping: mappings.ObjectMapping) -> None:
     else:
         logger.debug(f"Transformed {type(statement).__name__}: {new}")
 
-    query.statement_transformed = statement
-    query.set_statement(statement)
+    query.set_transformed_statement(statement)
 
 
 def _convert_table_to_select(statement: E) -> E:
@@ -578,7 +576,7 @@ def _convert_copy_to_insert(
     """
     dialect = query.dialect
 
-    target_object = get_target_object_for_query(query, object_mapping)
+    target_object = query.get_target_object(object_mapping)
     column_names = [col.name for col in target_object.columns]
     columns = [util.column_def_to_column(c.copy()) for c in target_object.columns]
     for c in columns:
@@ -676,7 +674,7 @@ def _apply_optimizations(
             my.table.name -> my.other.name
     """
     validate_columns = True
-    rules = EXCLUDE_OPTIMIZER_RULES[:]
+    exclude_rules = EXCLUDE_OPTIMIZER_RULES[:]
 
     # Do not validate the columns if the source is a non-table
     if isinstance(query, CopyQuery):
@@ -688,9 +686,11 @@ def _apply_optimizations(
                 validate_columns = False
         elif query.dialect == "snowflake":
             if query.is_source_a_stage:
-                # Prevent overwriting types with UNKNOWN (sqlglot can't resolve Stage sources)
-                rules += ["annotate_types"]
                 validate_columns = False
+
+    if not validate_columns:
+        # Prevent overwriting known types to 'UNKNOWN' (sqlglot can't resolve non-table sources)
+        exclude_rules += ["annotate_types"]
 
     qualify.qualify(
         statement,
@@ -708,7 +708,7 @@ def _apply_optimizations(
 
     # Selectively apply sqlglot's optimization rules.
     statement = optimize(
-        expression=statement, dialect=query.dialect, schema=object_mapping, rules=_optimizer_rules(rules)
+        expression=statement, dialect=query.dialect, schema=object_mapping, rules=_optimizer_rules(exclude_rules)
     )
 
     # We don't want to merge the CTEs as they provide useful info to the user

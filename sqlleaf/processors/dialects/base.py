@@ -11,19 +11,25 @@ from sqlleaf import exception, util
 from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
     ColumnNode,
+    FileColumnNode,
     FunctionNode,
     IntervalNode,
     JsonPathNode,
     LiteralNode,
     N,
     NullNode,
+    ProgramNode,
+    StageColumnNode,
     StarNode,
+    StreamNode,
+    TargetNodeType,
     UserDefinedFunctionNode,
     VariableNode,
     VarNode,
     WindowNode,
 )
-from sqlleaf.objects.query_types import ProcedureQuery, Q, UserDefinedFunctionQuery
+from sqlleaf.objects.query_types import ProcedureQuery, Q, TableQuery, UserDefinedFunctionQuery
+from sqlleaf.typing import TargetObjectType
 
 logger = logging.getLogger("sqlleaf")
 
@@ -367,6 +373,97 @@ class BaseGenerator:
         child_ctx = replace(pos_ctx, query_depth=height, query_width=width)
         p_ctx = replace(gen_ctx, expr=expr.selects[0], scope=subquery_scope)
         return self.process(p_ctx.expr, gen_ctx=p_ctx, pos_ctx=child_ctx)
+
+    def iter_child_nodes(
+        self, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Generator[t.Tuple[TargetNodeType | None, ColumnNode | None]]:
+        """
+        Iterate over every column of a table that was either selected in a query or has a default expression.
+        """
+
+        # Both COPY and UNLOAD can have SELECTs as their sources, which have arbitrary
+        # columns that vary in length due to their sourcing from any table.
+        object_mapping = gen_ctx.object_mapping
+        query = gen_ctx.query
+        expr = query.get_target()
+        target_object = query.get_target_object(object_mapping)
+
+        select_idx = 0
+
+        # Iterate over every column and yield it if it is referenced in the query.
+        for col_def in target_object.columns:
+            selected_node = None
+            default_node = None
+            process_defaults = False
+            gen_ctx = replace(gen_ctx, expr=col_def)
+            pos_ctx = replace(pos_ctx, select_index=select_idx)
+
+            match target_object.type:
+                case TargetObjectType.FILE:
+                    file_format = util.get_file_format(expr.name)
+                    child_node = FileColumnNode(
+                        column=col_def.name,
+                        file_format=file_format,
+                        file_path=expr.name,
+                        gen_ctx=gen_ctx,
+                        pos_ctx=pos_ctx,
+                    )
+
+                case TargetObjectType.STAGE:
+                    child_node = StageColumnNode(
+                        column=col_def.name,
+                        stage=expr.this,
+                        gen_ctx=gen_ctx,
+                        pos_ctx=pos_ctx,
+                    )
+                    process_defaults = False
+
+                case TargetObjectType.TABLE:
+                    child_node = ColumnNode(
+                        catalog=expr.catalog,
+                        schema=expr.db,
+                        table=expr.name,
+                        column=col_def.name,
+                        gen_ctx=gen_ctx,
+                        pos_ctx=pos_ctx,
+                    )
+                    process_defaults = True
+
+                case TargetObjectType.STREAM:
+                    # Use the ColumnDef as the expr so that correct columns
+                    # are selected during walk()
+                    child_node = StreamNode(
+                        name=expr.name,
+                        gen_ctx=gen_ctx,
+                        pos_ctx=pos_ctx,
+                    )
+
+                case TargetObjectType.PROGRAM:
+                    # Use the ColumnDef as the expr so that correct columns
+                    # are selected during walk()
+                    child_node = ProgramNode(
+                        gen_ctx=gen_ctx,
+                        pos_ctx=pos_ctx,
+                    )
+
+            if col_def.name in query.get_selected_column_names() or isinstance(query, TableQuery):
+                # Check if the column is selected.
+                # A 'CREATE TABLE' has no SELECT, so include all columns if this case.
+                selected_node = child_node
+
+            if (
+                process_defaults
+                and isinstance(child_node, ColumnNode)
+                and child_node.get_column_constraint_expression()
+            ):
+                default_node = child_node
+                # TODO: unset all index positions, set 'default=true' as position
+
+            if selected_node or default_node:
+                yield selected_node, default_node
+
+            if selected_node:
+                select_idx += 1
 
 
 def is_node_a_placeholder(expr: exp.Column, query: Q) -> bool:

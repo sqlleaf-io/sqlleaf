@@ -60,7 +60,7 @@ class SnowflakeGenerator(BaseGenerator):
         """
         query = gen_ctx.query
         if isinstance(query, CopyQuery) and query.is_source_a_stage:
-            stage_name: exp.Var = query.get_source().this
+            stage_name: exp.Var = query.get_original_source().this
             parent = StageColumnNode(
                 column=expr.name,
                 stage=stage_name,

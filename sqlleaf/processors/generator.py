@@ -12,13 +12,13 @@ if t.TYPE_CHECKING:
     pass
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.helpers import TargetNodeType, iter_child_nodes
 from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
     ColumnNode,
     EdgeAttributes,
     N,
     TableType,
+    TargetNodeType,
 )
 from sqlleaf.objects.query_types import PutQuery, Q, TableQuery, UpdateQuery
 from sqlleaf.processors.dialects.base import BaseGenerator
@@ -39,7 +39,7 @@ def generate_lineage_for_query(
     over sqlglot's abstract syntax tree (AST) to determine the set of nodes
     and transformations used along the path to reach the table's columns.
     """
-    child_object = query.child_object
+    target_object = query.get_target()
     statement = query.statement
 
     logger.info(f"Getting lineage for query: {statement.sql(dialect=query.dialect)}")
@@ -50,7 +50,7 @@ def generate_lineage_for_query(
         object_mapping=object_mapping,
         query=query,
         expr=statement,
-        child_node=child_object,
+        child_node=target_object,
         scope=None,
     )
     generator = BaseGenerator.from_dialect(query.dialect)
@@ -58,7 +58,7 @@ def generate_lineage_for_query(
     if check_for_put(generator, gen_ctx, pos_ctx):
         return graph
 
-    if check_for_trigger(child_object, object_mapping):
+    if check_for_trigger(target_object, object_mapping):
         return graph
 
     if check_for_external_table(generator, gen_ctx, pos_ctx):
@@ -81,7 +81,7 @@ def generate_lineage_for_columns(
 
     # Process the selected columns
     columns_processed = 0
-    for selected_node, default_node in iter_child_nodes(gen_ctx, pos_ctx):
+    for selected_node, default_node in generator.iter_child_nodes(gen_ctx, pos_ctx):
         child_node: TargetNodeType | None = selected_node or default_node
         if not child_node:
             break
@@ -494,7 +494,7 @@ def check_for_external_table(generator: BaseGenerator, gen_ctx: GeneratorContext
     if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external":
         location_expr = query.statement.args["properties"].find(exp.LocationProperty)
 
-        for child_node, _ in iter_child_nodes(gen_ctx, pos_ctx):
+        for child_node, _ in generator.iter_child_nodes(gen_ctx, pos_ctx):
             if child_node:
                 gen_ctx = replace(gen_ctx, expr=location_expr, child_node=child_node)
                 pos_ctx = replace(pos_ctx, select_index=child_node.ctx.select_index)

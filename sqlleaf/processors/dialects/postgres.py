@@ -26,7 +26,7 @@ class PostgresGenerator(BaseGenerator):
     @util.singledispatchmethodlogger
     def process(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         if isinstance(gen_ctx.query, CopyQuery) and isinstance(
-            gen_ctx.query.get_source(), (exp.Literal, exp.Identifier)
+            gen_ctx.query.get_original_source(), (exp.Literal, exp.Identifier)
         ):
             # Push all the non-column sources through process_copy for now (until we can do it inside the ColumnNode)
             yield from self.process_copy(expr, gen_ctx, pos_ctx)
@@ -144,7 +144,7 @@ class PostgresGenerator(BaseGenerator):
         """
         COPY x FROM/TO y
         """
-        source = gen_ctx.query.get_source()
+        source = gen_ctx.query.get_original_source()
 
         # This logic only processes the query, not the expression
         if source.name in ["stdin", "stdout"]:

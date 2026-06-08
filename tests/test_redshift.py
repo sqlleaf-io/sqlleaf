@@ -100,8 +100,8 @@ def test__unload(holder):
         ["column[source.amount]", "column[amount path=s3://object-path/name-prefix]"],
     ]
     assert h.nodes_full == [
-        "column[amount type=UNKNOWN kind=file format=UNKNOWN path=s3://object-path/name-prefix]",
-        "column[name type=UNKNOWN kind=file format=UNKNOWN path=s3://object-path/name-prefix]",
+        "column[amount type=INT kind=file format=UNKNOWN path=s3://object-path/name-prefix]",
+        "column[name type=VARCHAR kind=file format=UNKNOWN path=s3://object-path/name-prefix]",
         "column[name=amount table=source type=INT kind=table]",
         "column[name=name table=source type=VARCHAR kind=table]",
     ]

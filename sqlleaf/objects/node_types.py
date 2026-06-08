@@ -397,11 +397,6 @@ class StageColumnNode(NodeAttributes):
         gen_ctx: GeneratorContext,
         pos_ctx: PositionContext,
     ):
-        if str(stage).startswith("@"):
-            if not str(stage).startswith('@"'):
-                # Set to uppercase only if not double-quoted
-                stage.set("this", str(stage).upper())
-
         super().__init__(
             kind="column",
             name=column,
@@ -813,3 +808,4 @@ class GraphAttributes:
 
 
 N = t.TypeVar("N", bound=NodeAttributes)
+TargetNodeType = ColumnNode | FileColumnNode | StageColumnNode | StreamNode | ProgramNode
