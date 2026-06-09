@@ -607,43 +607,6 @@ class WindowNode(NodeAttributes):
         return {"type": self.data_type}
 
 
-class StageNode(NodeAttributes):
-    def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
-        expr = t.cast(exp.Var, gen_ctx.expr)
-
-        if str(expr).startswith("@"):
-            if not str(expr).startswith('@"'):
-                # Set to uppercase only if not double-quoted
-                expr.set("this", str(expr).upper())
-
-        super().__init__(
-            kind="stage",
-            data_type=None,
-            expr=expr,
-            name=expr.name.removeprefix("@").replace('"', ""),
-            pos_ctx=pos_ctx,
-        )
-
-    def fields(self) -> dict[str, str]:
-        return {}
-
-
-class FileNode(NodeAttributes):
-    def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
-        expr = t.cast(exp.Literal, gen_ctx.expr)
-        filename = expr.this.removeprefix("file://")
-        super().__init__(
-            kind="file",
-            data_type=None,
-            expr=gen_ctx.expr,
-            name=filename,
-            pos_ctx=pos_ctx,
-        )
-
-    def fields(self) -> dict[str, str]:
-        return {}
-
-
 class IntervalNode(NodeAttributes):
     def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
         expr = t.cast(exp.Interval, gen_ctx.expr)

@@ -9,9 +9,8 @@ from sqlglot import exp
 from sqlleaf import util
 from sqlleaf.objects.context import GeneratorContext, PositionContext
 from sqlleaf.objects.node_types import (
-    FileNode,
+    FileColumnNode,
     StageColumnNode,
-    StageNode,
 )
 from sqlleaf.objects.query_types import CopyQuery
 from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
@@ -32,16 +31,36 @@ class SnowflakeGenerator(BaseGenerator):
     ) -> t.Iterator[EdgeToCreate]:
         """
         PUT 'file:///tmp/data/mydata.csv' @my_int_stage;
-        - Creates two nodes: FileNode and StageNode
+        - Creates two nodes: FileColumnNode and StageColumnNode
         """
         # This steps outside the 'process_node_objects()' main method, as
         # adding logic inside the default functions is too messy.
         # We may need to return to this later.
-        file_ctx = replace(gen_ctx, expr=expr.args["this"])
-        stage_ctx = replace(gen_ctx, expr=expr.args["target"])
+        file_expr = expr.args["this"]
+        stage_expr = expr.args["target"]
 
-        file_node = FileNode(gen_ctx=file_ctx, pos_ctx=pos_ctx)
-        stage_node = StageNode(gen_ctx=stage_ctx, pos_ctx=pos_ctx)
+        file_path = file_expr.this.removeprefix("file://")
+        file_format = util.get_file_format(file_path)
+
+        file_ctx = replace(gen_ctx, expr=file_expr)
+        stage_ctx = replace(gen_ctx, expr=stage_expr)
+
+        if str(stage_expr).startswith("@") and not str(stage_expr).startswith('@"'):
+            stage_expr.set("this", str(stage_expr).upper())
+
+        file_node = FileColumnNode(
+            column="?",
+            file_format=file_format,
+            file_path=file_path,
+            gen_ctx=file_ctx,
+            pos_ctx=pos_ctx,
+        )
+        stage_node = StageColumnNode(
+            column="?",
+            stage=stage_expr,
+            gen_ctx=stage_ctx,
+            pos_ctx=pos_ctx,
+        )
 
         yield EdgeToCreate(file_node, stage_node)
 
