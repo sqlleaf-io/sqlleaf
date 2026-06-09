@@ -285,7 +285,9 @@ def _replace_default_with_value(expression: exp.Expr, column_name: str, table_co
             expression.replace(exp.Null())
 
 
-def _convert_insert_defaults_to_values(statement: exp.Insert, object_mapping: mappings.ObjectMapping, query: Q) -> exp.Insert:
+def _convert_insert_defaults_to_values(
+    statement: exp.Insert, object_mapping: mappings.ObjectMapping, query: Q
+) -> exp.Insert:
     """
     Transform the query:
         INSERT INTO x DEFAULT VALUES
@@ -333,7 +335,9 @@ def _convert_insert_defaults_to_values(statement: exp.Insert, object_mapping: ma
     return statement
 
 
-def _convert_update_defaults_to_values(statement: exp.Update, object_mapping: mappings.ObjectMapping, query: Q) -> exp.Update:
+def _convert_update_defaults_to_values(
+    statement: exp.Update, object_mapping: mappings.ObjectMapping, query: Q
+) -> exp.Update:
     """
     Transform the query:
         UPDATE x SET a = DEFAULT

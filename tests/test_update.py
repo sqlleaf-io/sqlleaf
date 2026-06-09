@@ -147,3 +147,25 @@ def test__update_self_join(holder):
     assert h.nodes_full == ["column[name=age table=processed schema=fruit type=INT kind=table]"]
     assert len(h.edges) == 1
     assert [UpdateQuery] == list(map(type, h.queries))
+
+
+def test__update_with_values(holder):
+    sql = """
+    UPDATE fruit.processed p
+    SET name = v.new_name, age = v.new_age
+    FROM (
+        VALUES ('apple', 10), ('banana', 20)
+    ) AS v(new_name, new_age);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ['literal["apple"]', "column[v.new_name]", "column[fruit.processed.name]"],
+        ['literal["banana"]', "column[v.new_name]", "column[fruit.processed.name]"],
+        ["literal[10]", "column[v.new_age]", "column[fruit.processed.age]"],
+        ["literal[20]", "column[v.new_age]", "column[fruit.processed.age]"],
+    ]
+    assert "column[name=new_age table=v type=INT kind=derived_table]" in h.nodes_full
+    assert "column[name=new_name table=v type=VARCHAR kind=derived_table]" in h.nodes_full
+    assert len(h.nodes_full) == 8
+    assert len(h.edges) == 6
