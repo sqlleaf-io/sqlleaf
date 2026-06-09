@@ -124,10 +124,12 @@ def test__update_with_default(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == []
+    assert h.paths == [
+        ["literal[3]", "column[source.age]"],
+        ["literal[3]", "column[source.age]"],
+    ]
     assert len(h.nodes_full) == 2
-    assert len(h.edges) == 1
-    assert [UpdateQuery] == list(map(type, h.queries))
+    assert len(h.edges) == 2
 
 
 def test__update_self_join(holder):

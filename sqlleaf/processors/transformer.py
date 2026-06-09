@@ -53,7 +53,7 @@ def transform_query(query: Q, object_mapping: mappings.ObjectMapping) -> None:
     # TODO: Unpack dict for common args
 
     if isinstance(query, InsertQuery) and isinstance(statement, exp.Insert):
-        statement = _convert_defaults_to_values(statement, object_mapping, query)
+        statement = _convert_insert_defaults_to_values(statement, object_mapping, query)
         if statement.expression:
             statement_converted = _convert_outer_values_to_select(
                 statement.expression, statement, object_mapping, query
@@ -72,6 +72,7 @@ def transform_query(query: Q, object_mapping: mappings.ObjectMapping) -> None:
         if isinstance(statement, (exp.Insert, exp.Update)):
             statement = _add_information_from_merge(statement, query)
         if isinstance(statement, exp.Update):
+            statement = _convert_update_defaults_to_values(statement, object_mapping, query)
             statement = _convert_update_to_insert(statement, query)
         if isinstance(statement, (exp.Insert, exp.Merge, exp.Update, exp.Delete)):
             statement = _process_inner_ctes(statement, object_mapping, query)
@@ -271,7 +272,20 @@ def _convert_outer_values_to_select(
     return _values_to_select_union(columns, expression, statement, object_mapping, query)
 
 
-def _convert_defaults_to_values(statement: exp.Insert, object_mapping: mappings.ObjectMapping, query: Q) -> exp.Insert:
+def _replace_default_with_value(expression: exp.Expr, column_name: str, table_columns: t.List[exp.ColumnDef]) -> None:
+    """
+    Replace a 'DEFAULT' expression with the column's default value or NULL.
+    """
+    col_def = [col for col in table_columns if col.name == column_name]
+    if col_def:
+        col_def = col_def[0]
+        if default_expr := col_def.find(exp.DefaultColumnConstraint):
+            expression.replace(default_expr.this)
+        else:
+            expression.replace(exp.Null())
+
+
+def _convert_insert_defaults_to_values(statement: exp.Insert, object_mapping: mappings.ObjectMapping, query: Q) -> exp.Insert:
     """
     Transform the query:
         INSERT INTO x DEFAULT VALUES
@@ -314,12 +328,33 @@ def _convert_defaults_to_values(statement: exp.Insert, object_mapping: mappings.
             for i, tuple_expr in enumerate(value_expr.expressions):
                 if isinstance(tuple_expr, exp.Var) and tuple_expr.name.upper() == "DEFAULT":
                     # Replace 'DEFAULT' with the associated column's default expression
-                    col_def = [col for col in table_columns if col.name == named_columns[i].name][0]
-                    if col_def:
-                        if default_expr := col_def.find(exp.DefaultColumnConstraint):
-                            tuple_expr.replace(default_expr.this)
-                        else:
-                            tuple_expr.replace(exp.Null())
+                    _replace_default_with_value(tuple_expr, named_columns[i].name, table_columns)
+
+    return statement
+
+
+def _convert_update_defaults_to_values(statement: exp.Update, object_mapping: mappings.ObjectMapping, query: Q) -> exp.Update:
+    """
+    Transform the query:
+        UPDATE x SET a = DEFAULT
+    into:
+        UPDATE x SET a = 42
+    according to the table's default column values.
+    """
+    child_table = query.get_target_as_table()
+    table_query = object_mapping.find_query(kind="table", table=child_table)
+    if not table_query:
+        return statement
+
+    table_columns = table_query.get_column_defs()
+
+    for expr in statement.expressions:
+        if isinstance(expr, exp.EQ) and isinstance(expr.left, exp.Column):
+            if (isinstance(expr.right, exp.Var) and expr.right.name.upper() == "DEFAULT") or (
+                isinstance(expr.right, exp.Column) and expr.right.name.upper() == "DEFAULT"
+            ):
+                # Replace 'DEFAULT' with the associated column's default expression
+                _replace_default_with_value(expr.right, expr.left.name, table_columns)
 
     return statement
 
