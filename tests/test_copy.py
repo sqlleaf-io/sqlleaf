@@ -83,16 +83,16 @@ def test_copy_select_column_names_to_stream(holder):
     assert len(h.edges) == 2
 
 
-# def test_copy_select_star_to_stream(holder):
-#     sql = f"""
-#     {simple_table}
-#     COPY (SELECT * FROM fruit.simple WHERE age > 10) TO STDOUT;
-#     """
-#     h = holder(sql=sql, dialect=DIALECT)
-#     assert h.paths == [
-#         ["column[fruit.simple.name]", "stream[stdout]"],
-#         ["column[fruit.simple.age]", "stream[stdout]"],
-#     ]
+def test_copy_select_star_to_stream(holder):
+    sql = f"""
+    {simple_table}
+    COPY (SELECT * FROM fruit.simple WHERE age > 10) TO STDOUT;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+    assert h.paths == [
+        ["column[fruit.simple.name]", "stream[stdout]"],
+        ["column[fruit.simple.age]", "stream[stdout]"],
+    ]
 
 
 def test_copy_values_to_stream(holder):
@@ -158,7 +158,6 @@ def test_copy_into_table_from_file_named_columns(holder):
     assert len(h.edges) == 2
 
 
-# TODO
 def test_copy_into_file_from_table(holder):
     sql = f"""
     {simple_table}
@@ -178,7 +177,6 @@ def test_copy_into_file_from_table(holder):
     assert len(h.edges) == 2
 
 
-# TODO
 def test_copy_into_file_from_table_named_columns(holder):
     sql = f"""
     {simple_table}
@@ -198,24 +196,6 @@ def test_copy_into_file_from_table_named_columns(holder):
     assert len(h.edges) == 2
 
 
-def test_copy_select_star_to_stream(holder):
-    sql = f"""
-    {simple_table}
-    COPY (SELECT * FROM fruit.simple WHERE age > 10) TO STDOUT;
-    """
-    h = holder(sql=sql, dialect=DIALECT)
-    assert h.paths == [
-        ["column[fruit.simple.name]", "stream[stdout]"],
-        ["column[fruit.simple.age]", "stream[stdout]"],
-    ]
-    assert h.nodes_full == [
-        "stream[stdout]",
-        "column[name=age table=simple schema=fruit type=INT kind=table]",
-        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
-    ]
-    assert len(h.edges) == 2
-
-
 def test_copy_select_column_names_to_file(holder):
     sql = f"""
     {simple_table}
@@ -223,14 +203,8 @@ def test_copy_select_column_names_to_file(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-        [
-            "column[fruit.simple.age]",
-            "column[age path=/tmp/data.csv]",
-        ],
-        [
-            "column[fruit.simple.name]",
-            "column[name path=/tmp/data.csv]",
-        ],
+        ["column[fruit.simple.age]", "column[age path=/tmp/data.csv]"],
+        ["column[fruit.simple.name]", "column[name path=/tmp/data.csv]"],
     ]
     assert h.nodes_full == [
         "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
@@ -241,21 +215,61 @@ def test_copy_select_column_names_to_file(holder):
     assert len(h.edges) == 2
 
 
-# def test_copy_select_column_aliases_to_file(holder):
-#     sql = f"""
-#     {simple_table}
-#     COPY (SELECT age AS a, name AS b FROM fruit.simple WHERE age > 10) TO '/tmp/data.csv';
-#     """
-#     h = holder(sql=sql, dialect=DIALECT)
-#     assert h.paths == [
-#         ["column[fruit.simple.name]", "stream[stdout]"],
-#         ["column[fruit.simple.age]", "stream[stdout]"],
-#     ]
-#     assert h.nodes_full == []
-#     assert len(h.edges) == 2
+def test_copy_select_column_aliases_to_file(holder):
+    sql = f"""
+    {simple_table}
+    COPY (
+        SELECT age AS a, age, name AS b FROM fruit.simple WHERE age > 10
+    ) TO '/tmp/data.csv';
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+    assert h.paths == [
+        ["column[fruit.simple.age]", "column[a path=/tmp/data.csv]"],
+        ["column[fruit.simple.age]", "column[age path=/tmp/data.csv]"],
+        ["column[fruit.simple.name]", "column[b path=/tmp/data.csv]"],
+    ]
+    assert h.nodes_full == [
+        "column[a type=INT kind=file format=csv path=/tmp/data.csv]",
+        "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
+        "column[b type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
+        "column[name=age table=simple schema=fruit type=INT kind=table]",
+        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+    ]
+    assert len(h.edges) == 3
+
+    expected_query = (
+        "INSERT INTO '/tmp/data.csv' (a, age, b) "
+        "SELECT simple.age AS a, simple.age AS age, simple.name AS b "
+        "FROM fruit.simple AS simple "
+        "WHERE simple.age > 10"
+    )
+    assert h.queries[1].statement_transformed.sql(dialect=DIALECT) == expected_query
 
 
-# TODO: COPY a SELECT with a join from 2 tables
+def test_copy_select_join_to_stream(holder):
+    extra_table = "CREATE TABLE fruit.extra (name VARCHAR, color VARCHAR);"
+    sql = f"""
+    {simple_table}
+    {extra_table}
+    COPY (
+        SELECT s.name, s.age, e.color
+        FROM fruit.simple AS s
+        JOIN fruit.extra AS e ON s.name = e.name
+    ) TO STDOUT;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+    assert h.paths == [
+        ["column[fruit.simple.name]", "stream[stdout]"],
+        ["column[fruit.simple.age]", "stream[stdout]"],
+        ["column[fruit.extra.color]", "stream[stdout]"],
+    ]
+    assert h.nodes_full == [
+        "stream[stdout]",
+        "column[name=color table=extra schema=fruit type=VARCHAR kind=table]",
+        "column[name=age table=simple schema=fruit type=INT kind=table]",
+        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+    ]
+    assert len(h.edges) == 3
 
 
 def test_copy_into_program_from_table(holder):
@@ -274,3 +288,6 @@ def test_copy_into_program_from_table(holder):
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
+
+
+# TODO: COPY FROM PROGRAM

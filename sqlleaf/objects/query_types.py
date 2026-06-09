@@ -97,10 +97,11 @@ class Query:
         else:
             raise exception.SqlLeafException(f"Unknown child column type in COPY: {expr}")
 
+        column_defs = self._get_column_defs(object_with_columns, object_mapping)
         return TargetObject(
             type=target_type,
             object=object_with_columns,
-            columns=self._get_column_defs(object_with_columns, object_mapping),
+            columns=column_defs,
         )
 
     def _get_column_defs(
@@ -118,8 +119,9 @@ class Query:
         if isinstance(self, (CopyQuery, UnloadQuery)):
             source = self.get_source()
             if isinstance(source, exp.Select):
+                # TODO: this can't handle functions
                 return [
-                    exp.ColumnDef(this=exp.to_identifier(col.unalias().name), kind=col.unalias().type)
+                    exp.ColumnDef(this=exp.to_identifier(col.alias_or_name), kind=col.unalias().type)
                     for col in source.expressions
                 ]
 
@@ -222,6 +224,7 @@ class Query:
     def get_selected_column_names(self) -> t.List[str]:
         if isinstance(self.statement.expression, exp.Values):
             return [s.name for s in self.statement.this.expressions]
+        return [s.alias_or_name for s in self.statement.selects]
         return self.statement.named_selects
 
     def to_dict(self):
