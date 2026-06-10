@@ -384,14 +384,25 @@ def _convert_update_to_insert(statement: exp.Update, query: Q) -> exp.Insert:
     alias_names = []
     new_expressions = []
     for expr in statement.expressions:
-        if isinstance(expr, exp.EQ) and isinstance(expr.left, exp.Column):
-            alias_names.append(expr.left.this)
-            new_expressions.append(
-                exp.Alias(
-                    this=expr.right,
-                    alias=expr.left.this,
+        if isinstance(expr, exp.EQ):
+            if isinstance(expr.left, exp.Tuple):
+                # UPDATE x SET (a,b) = (1,2)
+                column_names = expr.left.expressions
+                column_values = expr.right.expressions
+            elif isinstance(expr.left, exp.Column):
+                # UPDATE x SET a = 1
+                column_names = [expr.left]
+                column_values = [expr.right]
+
+            new_columns = zip(column_names, column_values)
+            for name_expr, value_expr in new_columns:
+                alias_names.append(name_expr.this)
+                new_expressions.append(
+                    exp.Alias(
+                        this=value_expr,
+                        alias=name_expr.this,
+                    )
                 )
-            )
         else:
             # If we don't know how to convert it, just leave it as-is. If this causes issues,
             # they'll get caught later.
