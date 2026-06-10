@@ -17,7 +17,18 @@ def test__json_one_selector(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.nodes == ["jsonpath[.fruits]", "column[fruit.processed.name]", "column[fruit.raw.jsonblob]"]
+    assert h.paths == [
+        [
+            "column[fruit.raw.jsonblob]",
+            "jsonpath[.fruits]",
+            "column[fruit.processed.name]",
+        ]
+    ]
+    assert h.nodes_full == [
+        "jsonpath[.fruits depth=1]",
+        "column[name=name table=processed schema=fruit type=VARCHAR kind=table]",
+        "column[name=jsonblob table=raw schema=fruit type=JSONB kind=table]",
+    ]
 
 
 def test__json_two_selectors(holder):
@@ -28,4 +39,9 @@ def test__json_two_selectors(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.nodes == ["jsonpath[.fruits.apple]", "column[fruit.processed.name]", "column[fruit.raw.jsonblob]"]
+    assert h.paths == [["column[fruit.raw.jsonblob]", "jsonpath[.fruits.apple]", "column[fruit.processed.name]"]]
+    assert h.nodes_full == [
+        "jsonpath[.fruits.apple depth=2]",
+        "column[name=name table=processed schema=fruit type=VARCHAR kind=table]",
+        "column[name=jsonblob table=raw schema=fruit type=JSONB kind=table]",
+    ]
