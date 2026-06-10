@@ -169,3 +169,59 @@ def test__update_with_values(holder):
     assert "column[name=new_name table=v type=VARCHAR kind=derived_table]" in h.nodes_full
     assert len(h.nodes_full) == 8
     assert len(h.edges) == 6
+
+
+# def test__update_with_subquery_in_from(holder):
+#     sql = """
+#     UPDATE fruit.processed p
+#     SET age = s.max_age
+#     FROM (
+#         SELECT MAX(age) as max_age, kind
+#         FROM fruit.raw
+#         GROUP BY kind
+#     ) s
+#     WHERE p.kind = s.kind;
+#     """
+#     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+#
+#     assert h.paths == [
+#         ["column[fruit.raw.age]", "function[MAX]", "column[s.max_age]", "column[fruit.processed.age]"]
+#     ]
+#     assert [UpdateQuery] == list(map(type, h.queries))
+
+
+def test__update_inheritance_only(holder):
+    sql = """
+    CREATE TABLE fruit.parent (price NUMERIC);
+    CREATE TABLE fruit.child () INHERITS (fruit.parent);
+
+    UPDATE ONLY fruit.parent
+    SET price = 10;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [["literal[10]", "column[fruit.parent.price]"]]
+
+
+def test__update_tuple_assignment(holder):
+    sql = """
+    UPDATE fruit.processed
+    SET (name, age) = ('apple', 10);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ['literal["apple"]', "column[fruit.processed.name]"],
+        ["literal[10]", "column[fruit.processed.age]"],
+    ]
+
+
+# def test__update_subquery_tuple_assignment(holder):
+#     sql = """
+#     UPDATE fruit.processed
+#     SET (name, age) = (SELECT name, age FROM fruit.raw WHERE id = 1);
+#     """
+#     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+#
+#     assert ["column[fruit.raw.name]", "column[fruit.processed.name]"] in h.paths
+#     assert ["column[fruit.raw.age]", "column[fruit.processed.age]"] in h.paths
