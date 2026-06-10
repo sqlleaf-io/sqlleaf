@@ -1,4 +1,4 @@
-import copy
+import functools
 import logging
 import typing as t
 
@@ -29,7 +29,6 @@ We transform all queries into `INSERT .. SELECT` where possible so that we have
 a single query type to work over.
 """
 
-# TODO: add _validate_syntax() decorator to each validator, but only for dev
 # TODO: ensure columns have valid types after all transformations (only top-level SELECT for now)
 
 
@@ -41,7 +40,7 @@ def transform_query(query: Q, object_mapping: mappings.ObjectMapping) -> None:
     logger.debug(f"Transforming: {query.__class__.__name__} - {query.statement.__class__}")
     statement = util.copy_expression(query.statement)
 
-    statement = _convert_table_to_select(statement)
+    statement = _convert_table_to_select(statement=statement, query=query, object_mapping=object_mapping)
 
     # Remove any FILTER or WHERE clauses
     for filter_expr in statement.find_all(exp.Filter):
@@ -53,46 +52,48 @@ def transform_query(query: Q, object_mapping: mappings.ObjectMapping) -> None:
     # TODO: Unpack dict for common args
 
     if isinstance(query, InsertQuery) and isinstance(statement, exp.Insert):
-        statement = _convert_insert_defaults_to_values(statement, object_mapping, query)
+        statement = _convert_insert_defaults_to_values(statement=statement, query=query, object_mapping=object_mapping)
         if statement.expression:
             statement_converted = _convert_outer_values_to_select(
-                statement.expression, statement, object_mapping, query
+                statement.expression, statement=statement, query=query, object_mapping=object_mapping
             )
             if isinstance(statement_converted, exp.Insert):
                 statement = statement_converted
 
-        statement = _add_information_from_merge(statement, query)
-        statement = _process_inner_ctes(statement, object_mapping, query)
+        statement = _add_information_from_merge(statement=statement, query=query, object_mapping=object_mapping)
+        statement = _process_inner_ctes(statement=statement, query=query, object_mapping=object_mapping)
 
         # We must keep the Insert expression for child queries (e.g. ON CONFLICT)
         query.set_transformed_statement(statement)
 
     elif isinstance(query, UpdateQuery) and isinstance(statement, (exp.OnConflict, exp.Update)):
-        statement = _convert_on_conflict_to_update(statement, object_mapping, query)
+        statement = _convert_on_conflict_to_update(statement=statement, query=query, object_mapping=object_mapping)
         if isinstance(statement, (exp.Insert, exp.Update)):
-            statement = _add_information_from_merge(statement, query)
+            statement = _add_information_from_merge(statement=statement, query=query, object_mapping=object_mapping)
         if isinstance(statement, exp.Update):
-            statement = _convert_update_defaults_to_values(statement, object_mapping, query)
-            statement = _convert_update_to_insert(statement, query)
+            statement = _convert_update_defaults_to_values(
+                statement=statement, query=query, object_mapping=object_mapping
+            )
+            statement = _convert_update_to_insert(statement=statement, query=query, object_mapping=object_mapping)
         if isinstance(statement, (exp.Insert, exp.Merge, exp.Update, exp.Delete)):
-            statement = _process_inner_ctes(statement, object_mapping, query)
+            statement = _process_inner_ctes(statement=statement, query=query, object_mapping=object_mapping)
 
     elif isinstance(query, MergeQuery) and isinstance(statement, exp.Merge):
-        statement = _process_inner_ctes(statement, object_mapping, query)
+        statement = _process_inner_ctes(statement=statement, query=query, object_mapping=object_mapping)
 
     elif isinstance(query, DeleteQuery) and isinstance(statement, exp.Delete):
-        statement = _process_inner_ctes(statement, object_mapping, query)
+        statement = _process_inner_ctes(statement=statement, query=query, object_mapping=object_mapping)
 
     elif isinstance(query, CopyQuery) and isinstance(statement, exp.Copy):
-        statement = _convert_copy_to_insert(statement, object_mapping, query)
+        statement = _convert_copy_to_insert(statement=statement, query=query, object_mapping=object_mapping)
 
     elif isinstance(query, UnloadQuery) and isinstance(statement, exp.Select):
-        statement = _convert_unload_to_insert(statement, object_mapping, query)
+        statement = _convert_unload_to_insert(statement=statement, query=query, object_mapping=object_mapping)
 
     elif isinstance(query, CTASQuery) and isinstance(statement, exp.Create):
         if statement.expression:
             statement_converted = _convert_outer_values_to_select(
-                statement.expression, statement, object_mapping, query
+                statement.expression, statement=statement, query=query, object_mapping=object_mapping
             )
             if isinstance(statement_converted, exp.Create):
                 statement = statement_converted
@@ -101,12 +102,18 @@ def transform_query(query: Q, object_mapping: mappings.ObjectMapping) -> None:
         pass
 
     if isinstance(statement, exp.Insert):
-        _validate_values(statement)
+        _validate_values(statement=statement, query=query, object_mapping=object_mapping)
 
     # Qualify columns, add aliases and optimize the expressions
-    statement = _apply_optimizations(statement, query, object_mapping)
+    statement = _apply_optimizations(statement=statement, query=query, object_mapping=object_mapping)
 
-    _validate_syntax(statement, query)
+    # Validate syntax manually here as the last step
+    try:
+        sqlglot.parse_one(statement.sql(dialect=query.dialect), dialect=query.dialect)
+    except sqlglot.errors.ParseError:
+        if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external":
+            # Bug in sqlglot: parsing the output for CREATE EXTERNAL TABLE WITH (FORMAT=TEXTFILE) breaks the parser
+            pass
 
     old = query.statement.sql(dialect=query.dialect)
     new = statement.sql(dialect=query.dialect)
@@ -118,7 +125,43 @@ def transform_query(query: Q, object_mapping: mappings.ObjectMapping) -> None:
     query.set_transformed_statement(statement)
 
 
-def _convert_table_to_select(statement: E) -> E:
+def _validate_syntax(func):
+    """
+    Ensure that the transformed query is parseable.
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs) -> E:
+        statement = kwargs.pop("statement")
+        query = kwargs.pop("query")
+        object_mapping = kwargs.pop("object_mapping")
+
+        result = func(statement=statement, query=query, object_mapping=object_mapping, *args, **kwargs)
+
+        if result is None:
+            return result
+
+        try:
+            sqlglot.parse_one(result.sql(dialect=query.dialect), dialect=query.dialect)
+        except sqlglot.errors.ParseError:
+            if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external":
+                # Bug in sqlglot: parsing the output for CREATE EXTERNAL TABLE WITH (FORMAT=TEXTFILE) breaks the parser
+                pass
+
+        return result
+
+    return wrapper
+
+
+class Transformer:
+    def __init__(self, statement: E, query: Q, object_mapping: mappings.ObjectMapping):
+        self.statement = statement
+        self.query = query
+        self.object_mapping = object_mapping
+
+
+@_validate_syntax
+def _convert_table_to_select(statement: E, query: Q, object_mapping: mappings.ObjectMapping) -> E:
     """
     Convert the statement "TABLE x" to "SELECT * FROM x"
     """
@@ -129,7 +172,8 @@ def _convert_table_to_select(statement: E) -> E:
     return statement
 
 
-def _add_aliases_to_pseudocolumns(statement: exp.Expr) -> None:
+@_validate_syntax
+def _add_aliases_to_pseudocolumns(statement: exp.Expr, query: Q, object_mapping: mappings.ObjectMapping) -> None:
     """
     Given a query:
         SELECT xmax FROM fruit.raw
@@ -148,8 +192,9 @@ def _add_aliases_to_pseudocolumns(statement: exp.Expr) -> None:
             pseudo.set("table", exp.to_identifier(from_table_alias))
 
 
+@_validate_syntax
 def _process_inner_ctes(
-    statement: exp.Insert | exp.Merge | exp.Update | exp.Delete, object_mapping: mappings.ObjectMapping, query: Q
+    statement: exp.Insert | exp.Merge | exp.Update | exp.Delete, query: Q, object_mapping: mappings.ObjectMapping
 ) -> exp.Insert | exp.Merge | exp.Update | exp.Delete:
     """
     Transform any inner CTE statements.
@@ -158,7 +203,7 @@ def _process_inner_ctes(
         if isinstance(cte_expr.this, exp.Update):
             # Replace the inner UPDATE with an INSERT first.
             # The inner query is different from the child query, which is its own separate copy.
-            inner_expr = _convert_update_to_insert(statement=cte_expr.this, query=query)
+            inner_expr = _convert_update_to_insert(statement=cte_expr.this, query=query, object_mapping=object_mapping)
             cte_expr.this.replace(inner_expr)
 
         elif cte_expr.this.is_star:
@@ -166,19 +211,22 @@ def _process_inner_ctes(
             from_ = cte_expr.this.args["from_"].this
 
             if isinstance(from_, exp.Values):
-                values_expr = _convert_cte_values_to_select(from_, cte_expr, object_mapping, query)
+                values_expr = _convert_cte_values_to_select(
+                    expression=from_, statement=cte_expr, query=query, object_mapping=object_mapping
+                )
                 cte_expr.this.replace(values_expr)
 
         # Rename the columns and replace the INSERT with the SELECT
         _rename_returning_columns(
-            expr=cte_expr, query=query, object_mapping=object_mapping, child_table=cte_expr.find(exp.Table)
+            statement=cte_expr, query=query, object_mapping=object_mapping, child_table=cte_expr.find(exp.Table)
         )
 
     return statement
 
 
+@_validate_syntax
 def _convert_cte_values_to_select(
-    expression: exp.Values, statement: exp.CTE, object_mapping: mappings.ObjectMapping, query: Q
+    expression: exp.Values, statement: exp.CTE, query: Q, object_mapping: mappings.ObjectMapping
 ) -> exp.CTE | exp.Insert | exp.Create:
     """
     Transform the query:
@@ -199,15 +247,16 @@ def _convert_cte_values_to_select(
         # Try and get the columns from the top-level insert
         columns = [e.name for e in statement.root().this.expressions]
 
-    return _values_to_select_union(columns, expression, statement, object_mapping, query)
+    return _values_to_select_union(columns, expression, statement=statement, query=query, object_mapping=object_mapping)
 
 
+@_validate_syntax
 def _values_to_select_union(
     columns: t.List[str],
     expression: exp.Values,
     statement: exp.CTE | exp.Insert | exp.Create,
-    object_mapping: mappings.ObjectMapping,
     query: Q,
+    object_mapping: mappings.ObjectMapping,
 ) -> exp.CTE | exp.Insert | exp.Create:
     """
     Convert a VALUES(x, y) to a SELECT x UNION ALL SELECT y
@@ -254,8 +303,9 @@ def _values_to_select_union(
     return statement
 
 
+@_validate_syntax
 def _convert_outer_values_to_select(
-    expression: exp.Values, statement: exp.Insert | exp.Create, object_mapping: mappings.ObjectMapping, query: Q
+    expression: exp.Values, statement: exp.Insert | exp.Create, query: Q, object_mapping: mappings.ObjectMapping
 ) -> exp.Insert | exp.Create | exp.CTE:
     """
     Transform the query:
@@ -269,10 +319,16 @@ def _convert_outer_values_to_select(
 
     columns = [e.name for e in statement.this.expressions]
 
-    return _values_to_select_union(columns, expression, statement, object_mapping, query)
+    return _values_to_select_union(columns, expression, statement=statement, query=query, object_mapping=object_mapping)
 
 
-def _replace_default_with_value(expression: exp.Expr, column_name: str, table_columns: t.List[exp.ColumnDef]) -> None:
+def _replace_default_with_value(
+    expression: exp.Expr,
+    column_name: str,
+    table_columns: t.List[exp.ColumnDef],
+    query: Q,
+    object_mapping: mappings.ObjectMapping,
+) -> None:
     """
     Replace a 'DEFAULT' expression with the column's default value or NULL.
     """
@@ -285,8 +341,9 @@ def _replace_default_with_value(expression: exp.Expr, column_name: str, table_co
             expression.replace(exp.Null())
 
 
+@_validate_syntax
 def _convert_insert_defaults_to_values(
-    statement: exp.Insert, object_mapping: mappings.ObjectMapping, query: Q
+    statement: exp.Insert, query: Q, object_mapping: mappings.ObjectMapping
 ) -> exp.Insert:
     """
     Transform the query:
@@ -330,13 +387,19 @@ def _convert_insert_defaults_to_values(
             for i, tuple_expr in enumerate(value_expr.expressions):
                 if isinstance(tuple_expr, exp.Var) and tuple_expr.name.upper() == "DEFAULT":
                     # Replace 'DEFAULT' with the associated column's default expression
-                    _replace_default_with_value(tuple_expr, named_columns[i].name, table_columns)
-
+                    _replace_default_with_value(
+                        expression=tuple_expr,
+                        column_name=named_columns[i].name,
+                        table_columns=table_columns,
+                        query=query,
+                        object_mapping=object_mapping,
+                    )
     return statement
 
 
+@_validate_syntax
 def _convert_update_defaults_to_values(
-    statement: exp.Update, object_mapping: mappings.ObjectMapping, query: Q
+    statement: exp.Update, query: Q, object_mapping: mappings.ObjectMapping
 ) -> exp.Update:
     """
     Transform the query:
@@ -358,12 +421,19 @@ def _convert_update_defaults_to_values(
                 isinstance(expr.right, exp.Column) and expr.right.name.upper() == "DEFAULT"
             ):
                 # Replace 'DEFAULT' with the associated column's default expression
-                _replace_default_with_value(expr.right, expr.left.name, table_columns)
+                _replace_default_with_value(
+                    expression=expr.right,
+                    column_name=expr.left.name,
+                    table_columns=table_columns,
+                    query=query,
+                    object_mapping=object_mapping,
+                )
 
     return statement
 
 
-def _convert_update_to_insert(statement: exp.Update, query: Q) -> exp.Insert:
+@_validate_syntax
+def _convert_update_to_insert(statement: exp.Update, query: Q, object_mapping: mappings.ObjectMapping) -> exp.Insert:
     """
     Taken from extract_select_from_update() at datahub/metadata-ingestion/src/datahub/sql_parsing/sqlglotlineage.py
 
@@ -428,13 +498,11 @@ def _convert_update_to_insert(statement: exp.Update, query: Q) -> exp.Insert:
     if with_:
         with_.pop()
 
-    select_statement = exp.Select(
-        **{
-            **{k: v for k, v in statement.args.items() if k not in _UPDATE_ARGS_NOT_SUPPORTED_BY_SELECT},
-            **extra_args,
-            "expressions": new_expressions,
-        }
-    )
+    select_statement = exp.Select(**{
+        **{k: v for k, v in statement.args.items() if k not in _UPDATE_ARGS_NOT_SUPPORTED_BY_SELECT},
+        **extra_args,
+        "expressions": new_expressions,
+    })
 
     into_table = util.get_table(statement)
     if not from_table:
@@ -456,8 +524,9 @@ def _convert_update_to_insert(statement: exp.Update, query: Q) -> exp.Insert:
     return insert_expr
 
 
+@_validate_syntax
 def _convert_on_conflict_to_update(
-    statement: exp.OnConflict | exp.Update, object_mapping: mappings.ObjectMapping, query: UpdateQuery
+    statement: exp.OnConflict | exp.Update, query: UpdateQuery, object_mapping: mappings.ObjectMapping
 ) -> exp.Update:
     """
     Convert the 'DO UPDATE' in:
@@ -476,7 +545,10 @@ def _convert_on_conflict_to_update(
     if statement.parent and isinstance(statement.parent, (exp.Insert, exp.Create)) and statement.parent.expression:
         if isinstance(statement.parent.expression, exp.Values):
             converted = _convert_outer_values_to_select(
-                statement.parent.expression, statement.parent, object_mapping, query
+                expression=statement.parent.expression,
+                statement=statement.parent,
+                query=query,
+                object_mapping=object_mapping,
             )
             if isinstance(converted, (exp.Insert, exp.Create)):
                 parent_insert_expr = converted
@@ -514,8 +586,9 @@ def _convert_on_conflict_to_update(
     return update_expr
 
 
+@_validate_syntax
 def _add_information_from_merge(
-    statement: exp.Insert | exp.Update, query: InsertQuery | UpdateQuery
+    statement: exp.Insert | exp.Update, query: InsertQuery | UpdateQuery, object_mapping: mappings.ObjectMapping
 ) -> exp.Insert | exp.Update:
     """
     Transform any nested statements (INSERT or UPDATE) into fully qualified queries.
@@ -607,10 +680,11 @@ def _add_information_from_merge(
     return statement
 
 
+@_validate_syntax
 def _convert_copy_to_insert(
     statement: exp.Copy,
-    object_mapping: mappings.ObjectMapping,
     query: CopyQuery,
+    object_mapping: mappings.ObjectMapping,
 ) -> exp.Insert:
     """
     Convert the COPY statement into an INSERT statement.
@@ -651,8 +725,9 @@ def _convert_copy_to_insert(
     return insert_expr
 
 
+@_validate_syntax
 def _convert_unload_to_insert(
-    statement: exp.Select, object_mapping: mappings.ObjectMapping, query: UnloadQuery
+    statement: exp.Select, query: UnloadQuery, object_mapping: mappings.ObjectMapping
 ) -> exp.Insert:
     """
     Convert the UNLOAD statement into an INSERT statement.
@@ -670,7 +745,8 @@ def _convert_unload_to_insert(
     return insert_expr
 
 
-def _validate_values(statement: exp.Insert) -> exp.Insert:
+@_validate_syntax
+def _validate_values(statement: exp.Insert, query: Q, object_mapping: mappings.ObjectMapping) -> exp.Insert:
     """
     Perform some basic validation of the query. This needs a better place, long-term.
     """
@@ -681,18 +757,6 @@ def _validate_values(statement: exp.Insert) -> exp.Insert:
                 raise exception.SqlLeafException(message=message)
 
     return statement
-
-
-def _validate_syntax(statement: exp.Expr, query: Q):
-    """
-    Ensure that the transformed query is parseable.
-    """
-    try:
-        sqlglot.parse_one(statement.sql(dialect=query.dialect), dialect=query.dialect)
-    except sqlglot.errors.ParseError:
-        if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external":
-            # Bug in sqlglot: parsing the output for CREATE EXTERNAL TABLE WITH (FORMAT=TEXTFILE) breaks the parser
-            pass
 
 
 EXCLUDE_OPTIMIZER_RULES = [
@@ -711,6 +775,7 @@ def _optimizer_rules(exclude_rules: t.List[str]):
     return [r for r in RULES if getattr(r, "__name__", None) not in exclude_rules]
 
 
+@_validate_syntax
 def _apply_optimizations(
     statement: E, query: Q, object_mapping: mappings.ObjectMapping, add_column_names: bool = True
 ) -> E:
@@ -751,10 +816,10 @@ def _apply_optimizations(
         validate_qualify_columns=validate_columns,
         quote_identifiers=False,
     )
-    _add_aliases_to_pseudocolumns(statement)
+    _add_aliases_to_pseudocolumns(statement=statement, query=query, object_mapping=object_mapping)
 
     if add_column_names and isinstance(statement, exp.Insert):
-        _add_column_names_to_insert(statement, query, object_mapping)
+        _add_column_names_to_insert(statement=statement, query=query, object_mapping=object_mapping)
 
     # Selectively apply sqlglot's optimization rules.
     statement = optimize(
@@ -767,8 +832,9 @@ def _apply_optimizations(
     return statement
 
 
+@_validate_syntax
 def _rename_returning_columns(
-    expr: exp.CTE, query: Q, object_mapping: mappings.ObjectMapping, child_table: exp.Table
+    statement: exp.CTE, query: Q, object_mapping: mappings.ObjectMapping, child_table: exp.Table
 ) -> exp.CTE:
     """
     Given an (INSERT .. RETURNING *) statement, expand the star to the table's column names
@@ -789,9 +855,9 @@ def _rename_returning_columns(
     INSERT RETURNING * returns all columns from target
     DELETE RETURNING * returns all columns from target
     """
-    returning_expr: exp.Returning = expr.this.args.get("returning", None)
+    returning_expr: exp.Returning = statement.this.args.get("returning", None)
     if not returning_expr:
-        return expr
+        return statement
 
     for col_expr in returning_expr.expressions:
         if not isinstance(col_expr, (exp.Alias, exp.Column, exp.Star)):
@@ -810,19 +876,22 @@ def _rename_returning_columns(
                     # optimize() needs Star(), not Column(Star())
                     col.replace(col.this)
 
-    if isinstance(expr.this, exp.Merge):
-        using = expr.this.args["using"]
-        on = expr.this.args["on"]
+    if isinstance(statement.this, exp.Merge):
+        using = statement.this.args["using"]
+        on = statement.this.args["on"]
         new_select = exp.select(*returning_expr.expressions).from_(child_table).join(using, on=on)
     else:
         new_select = exp.select(*returning_expr.expressions).from_(child_table)
 
-    new_select = _apply_optimizations(new_select, query, object_mapping, add_column_names=False)
+    new_select = _apply_optimizations(
+        statement=new_select, query=query, object_mapping=object_mapping, add_column_names=False
+    )
 
-    expr.set("this", new_select)
-    return expr
+    statement.set("this", new_select)
+    return statement
 
 
+@_validate_syntax
 def _add_column_names_to_insert(statement: exp.Insert, query: Q, object_mapping: mappings.ObjectMapping):
     """
     Add aliases to SELECTs that are missing them by looking at the corresponding INSERT column.
@@ -905,87 +974,87 @@ def _add_column_names_to_insert(statement: exp.Insert, query: Q, object_mapping:
         statement.selects[i] = statement.selects[i].as_(ins)
 
 
-def clean_stored_procedure_text(text: str) -> str:
-    """
-    Extract the queries from inside a stored procedure by removing any
-    syntax/keywords that cannot be parsed by sqlglot.
-
-    Parameters:
-        text: text containing a stored procedure
-    """
-    logger.debug("Cleaning stored procedure text.")
-    lines = text.splitlines()
-
-    # Transform the procedure's text
-    lines = remove_lines_before_begin(lines)
-    lines = remove_lines_after_unsupported_syntax(lines)
-    lines = remove_raise_statements(lines)
-
-    return "\n".join(lines)
-
-
-def remove_lines_before_begin(lines: t.List[str], comment=False) -> t.List[str]:
-    """
-    Remove every line until 'BEGIN', inclusive.
-
-    Parameters:
-        lines: list of strings representing a stored procedure
-        comment: whether to comment out the matching lines instead of removing them
-    """
-    stripped_lines = [line.lower().strip() for line in lines]
-
-    # Only process procedures that contain 'begin'
-    if "begin" not in stripped_lines:
-        return lines
-
-    new_lines = copy.copy(lines)
-
-    # Comment out every line until we reach 'begin'
-    for i, line in enumerate(lines):
-        text = line.lower().strip()
-        if not text.startswith("--"):
-            if comment:
-                line = "-- " + line
-            else:
-                line = ""
-
-        # Only overwrite/strip new lines
-        new_lines[i] = line
-        if text == "begin":
-            break
-
-    return new_lines
-
-
-def remove_lines_after_unsupported_syntax(lines: t.List[str]) -> t.List[str]:
-    """
-    Remove every line on and after unsupported syntax (e.g. 'EXCEPTION', 'RETURN').
-
-    Parameters:
-        lines: list of strings representing a stored procedure
-    """
-    new_lines = []
-
-    for i, line in enumerate(lines):
-        if line.lower().strip().startswith(("exception", "return ")):
-            break
-        new_lines.append(line)
-
-    return new_lines
-
-
-def remove_raise_statements(lines: t.List[str]) -> t.List[str]:
-    """
-    Remove every line starting with 'RAISE'.
-
-    Parameters:
-        lines: list of strings representing a stored procedure
-    """
-    new_lines = []
-
-    for i, line in enumerate(lines):
-        if line.lower().strip().startswith("raise "):
-            continue
-        new_lines.append(line)
-
-    return new_lines
+# def clean_stored_procedure_text(text: str) -> str:
+#     """
+#     Extract the queries from inside a stored procedure by removing any
+#     syntax/keywords that cannot be parsed by sqlglot.
+#
+#     Parameters:
+#         text: text containing a stored procedure
+#     """
+#     logger.debug("Cleaning stored procedure text.")
+#     lines = text.splitlines()
+#
+#     # Transform the procedure's text
+#     lines = remove_lines_before_begin(lines)
+#     lines = remove_lines_after_unsupported_syntax(lines)
+#     lines = remove_raise_statements(lines)
+#
+#     return "\n".join(lines)
+#
+#
+# def remove_lines_before_begin(lines: t.List[str], comment=False) -> t.List[str]:
+#     """
+#     Remove every line until 'BEGIN', inclusive.
+#
+#     Parameters:
+#         lines: list of strings representing a stored procedure
+#         comment: whether to comment out the matching lines instead of removing them
+#     """
+#     stripped_lines = [line.lower().strip() for line in lines]
+#
+#     # Only process procedures that contain 'begin'
+#     if "begin" not in stripped_lines:
+#         return lines
+#
+#     new_lines = copy.copy(lines)
+#
+#     # Comment out every line until we reach 'begin'
+#     for i, line in enumerate(lines):
+#         text = line.lower().strip()
+#         if not text.startswith("--"):
+#             if comment:
+#                 line = "-- " + line
+#             else:
+#                 line = ""
+#
+#         # Only overwrite/strip new lines
+#         new_lines[i] = line
+#         if text == "begin":
+#             break
+#
+#     return new_lines
+#
+#
+# def remove_lines_after_unsupported_syntax(lines: t.List[str]) -> t.List[str]:
+#     """
+#     Remove every line on and after unsupported syntax (e.g. 'EXCEPTION', 'RETURN').
+#
+#     Parameters:
+#         lines: list of strings representing a stored procedure
+#     """
+#     new_lines = []
+#
+#     for i, line in enumerate(lines):
+#         if line.lower().strip().startswith(("exception", "return ")):
+#             break
+#         new_lines.append(line)
+#
+#     return new_lines
+#
+#
+# def remove_raise_statements(lines: t.List[str]) -> t.List[str]:
+#     """
+#     Remove every line starting with 'RAISE'.
+#
+#     Parameters:
+#         lines: list of strings representing a stored procedure
+#     """
+#     new_lines = []
+#
+#     for i, line in enumerate(lines):
+#         if line.lower().strip().startswith("raise "):
+#             continue
+#         new_lines.append(line)
+#
+#     return new_lines

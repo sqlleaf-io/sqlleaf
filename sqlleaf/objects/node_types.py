@@ -191,13 +191,11 @@ class ColumnNode(NodeAttributes):
 
     def to_dict(self):
         d = super().to_dict()
-        d.update(
-            {
-                "catalog": self.catalog,
-                "schema": self.schema,
-                "table": self.table,
-            }
-        )
+        d.update({
+            "catalog": self.catalog,
+            "schema": self.schema,
+            "table": self.table,
+        })
         return d
 
     def rename_table(self, source: exp.Table | exp.Values, dialect: str) -> None:
@@ -369,12 +367,10 @@ class FileColumnNode(NodeAttributes):
 
     def to_dict(self):
         d = super().to_dict()
-        d.update(
-            {
-                "format": self.file_format,
-                "path": self.file_path,
-            }
-        )
+        d.update({
+            "format": self.file_format,
+            "path": self.file_path,
+        })
         return d
 
     def fields(self) -> dict[str, str]:
@@ -408,11 +404,9 @@ class StageColumnNode(NodeAttributes):
 
     def to_dict(self):
         d = super().to_dict()
-        d.update(
-            {
-                "stage": self.stage,
-            }
-        )
+        d.update({
+            "stage": self.stage,
+        })
         return d
 
     def fields(self) -> dict[str, str]:
@@ -728,18 +722,16 @@ class EdgeAttributes:
     def id(self):
         # TODO: get the correct prefix from the parent queries
         prefix = "todo_sp_or_udf"
-        edge_id = ":".join(
-            [
-                str(s)
-                for s in [
-                    prefix,
-                    self.parent.full_name,
-                    self.child.full_name,
-                    self.select_idx,
-                    self.path_idx,
-                ]
+        edge_id = ":".join([
+            str(s)
+            for s in [
+                prefix,
+                self.parent.full_name,
+                self.child.full_name,
+                self.select_idx,
+                self.path_idx,
             ]
-        )
+        ])
         return "edge:" + util.short_sha256_hash(edge_id)
 
     def to_dict(self):
