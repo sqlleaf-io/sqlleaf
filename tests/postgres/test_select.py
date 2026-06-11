@@ -290,6 +290,12 @@ def test__select_window_function(holder):
         ["window[RANK]", "column[fruit.processed.age]"],
         ["window[ROW_NUMBER]", "column[fruit.processed.amount]"],
     ]
+    assert h.nodes_full == [
+        "window[RANK type=BIGINT]",
+        "window[ROW_NUMBER type=BIGINT]",
+        "column[name=age table=processed schema=fruit type=INT kind=table]",
+        "column[name=amount table=processed schema=fruit type=INT kind=table]",
+    ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
 
