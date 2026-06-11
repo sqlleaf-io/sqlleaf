@@ -205,10 +205,10 @@ CREATE DATASHARE
 
 CREATE TABLE
   - [x] EXTERNAL
-  - [ ] Regular
+  - [x] Regular
   - [x] AS
   - [x] TEMPORARY
-  - [x] CREATE TABLE my_db@my_catalog.public.t (col INT);
+  - [ ] CREATE TABLE my_db@my_catalog.public.t (col INT);
 
 CREATE VIEW
   - [x] Regular
@@ -223,8 +223,8 @@ CREATE PROCEDURE
  - [ ] Regular
 
 CREATE MODEL
- - [ ] Regular
- - [ ] EXTERNAL
+ - [x] Regular [unsupported]
+ - [x] EXTERNAL [unsupported]
 
 CREATE MATERIALIZED VIEW
 

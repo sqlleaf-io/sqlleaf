@@ -72,9 +72,9 @@ def get_query_processors():
 
 @dataclass(frozen=True)
 class CollectQueryResult:
-    queries: t.List = field(default_factory=list)
-    unknown: t.Dict = field(default_factory=dict)
-    unsupported: t.List = field(default_factory=list)
+    queries: t.List = field(default_factory=list)  # Successfully collected queries
+    unknown: t.Dict = field(default_factory=dict)  # Unsupported by sqlleaf (no handler)
+    unsupported: t.List = field(default_factory=list)  # Unsupported by sqlglot (no grammar)
 
 
 def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapping) -> CollectQueryResult:
@@ -110,7 +110,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
                 continue
 
         # Remove duplicate queries
-        sql_text = stmt.sql()
+        sql_text = stmt.sql(dialect=dialect)
         _id = util.short_sha256_hash(sql_text)
         if _id in queries:
             logger.debug(f"Skipping duplicate query: {sql_text}")
