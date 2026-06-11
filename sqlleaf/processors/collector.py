@@ -25,6 +25,7 @@ from sqlleaf.objects.query_types import (
     StageQuery,
     TableQuery,
     TriggerQuery,
+    TypeQuery,
     UnloadQuery,
     UpdateQuery,
     UserDefinedFunctionQuery,
@@ -65,6 +66,7 @@ def get_query_processors():
         "stage": _process_stage,
         "copy": _process_unnamed,
         "put": _process_unnamed,
+        "type": _process_type,
     }
 
 
@@ -719,4 +721,12 @@ def _process_unload(
     statement: exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
 ) -> Q:
     query = UnloadQuery(statement, dialect, object_mapping, statement_index)
+    return query
+
+
+def _process_type(
+    statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+) -> Q:
+    query = TypeQuery(statement, dialect, object_mapping, statement_index)
+    object_mapping.add_query(kind="type", query=query, dialect=dialect)
     return query

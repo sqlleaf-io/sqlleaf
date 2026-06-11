@@ -9,7 +9,7 @@ from tests.new_fixtures import holder as holder
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 
-from sqlleaf.objects.query_types import InsertQuery, SequenceQuery
+from sqlleaf.objects.query_types import InsertQuery, SequenceQuery, TypeQuery
 
 DIALECT = "postgres"
 
@@ -223,7 +223,7 @@ def test__table_foreign(holder):
     assert len(h.queries) == 0
 
 
-# Not supported by sqlglot (both): 'Falling back to Command'
+# Not supported by sqlglot: 'Falling back to Command'
 def test__table_of_type(holder):
     sql = """
     CREATE TYPE person_type AS (
@@ -237,7 +237,7 @@ def test__table_of_type(holder):
     );
     """
     h = holder(sql=sql, dialect=DIALECT)
-    assert len(h.queries) == 0
+    assert [TypeQuery] == list(map(type, h.queries))
 
 
 def test__update_and_select_inherited(holder):
