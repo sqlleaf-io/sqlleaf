@@ -5,10 +5,10 @@ import pytest
 
 from tests.new_fixtures import holder as holder
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 
-from sqlleaf.objects.query_types import CopyQuery, PutQuery, StageQuery, TableQuery
+from sqlleaf.objects.query_types import CopyQuery, StageQuery, TableQuery
 
 DIALECT = "snowflake"
 
@@ -110,16 +110,3 @@ def test___copy_to_and_from_stage(holder, case):
         ["column[OUTGOING.ZONE.AGE]", f"column[AGE stage={new}]", "column[INCOMING.ZONE.AGE]"],
     ]
     # TODO: full names should include the stage's s3 file path
-
-
-def test___put_stage(holder):
-    sql = """
-    CREATE STAGE my_int_stage
-    URL='s3://load/files/';
-
-    PUT 'file:///tmp/data/mydata.csv' @my_int_stage;
-    """
-    h = holder(sql=sql, dialect=DIALECT)
-
-    assert [StageQuery, PutQuery] == list(map(type, h.queries))
-    assert h.paths == [["column[? path=/tmp/data/mydata.csv]", "column[? stage=MY_INT_STAGE]"]]

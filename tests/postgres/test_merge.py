@@ -3,7 +3,7 @@ import sys
 
 from tests.new_fixtures import holder as holder
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from sqlleaf.objects.query_types import InsertQuery, UpdateQuery
 

@@ -6,7 +6,7 @@ import pytest
 from sqlleaf.objects.query_types import InsertQuery, TableQuery
 from tests.new_fixtures import holder as holder
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 import sqlglot
 

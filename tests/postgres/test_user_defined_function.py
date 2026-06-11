@@ -6,7 +6,7 @@ https://github.com/tobymao/sqlglot/blob/main/tests/dialects/test_postgres.py
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 DIALECT = "postgres"
 

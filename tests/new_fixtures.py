@@ -5,7 +5,7 @@ import pytest
 
 from sqlleaf.objects.query_types import TableQuery
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 import logging
 
