@@ -28,6 +28,9 @@ The following types of queries and nodes need to be created.
 CREATE DATABASE
 
 CREATE SCHEMA
+- [ ] Regular
+- [ ] Atomic subcommands
+
 
 CREATE TABLE
   - [x] AS
@@ -108,6 +111,8 @@ UPDATE
 - [x] Regular
 - [x] RETURNING
 - [ ] FROM
+- [x] VALUES
+- [x] DEFAULT
 
 DELETE
 - [x] RETURNING
@@ -172,10 +177,31 @@ DO
 
 
 ### Redshift
+COPY
+- [ ] S3
+- [ ] EMR
+- [ ] SSH
+- [ ] DynamoDB
+- [ ] S3
+
 CREATE SCHEMA
-  - [ ] EXTERNAL
+ - [ ] Regular
+ - [ ] EXTERNAL
+   - DATA CATALOG
+   - HIVE METASTORE
+   - KAFKA
+   - KINESIS
+   - MSK
+   - MYSQL
+   - POSTGRES
+   - REDSHIFT
+ - [ ] DATABASE .. SCHEMA ..
+ - [ ] CREATE EXTERNAL DATABASE IF NOT EXISTS
 
 CREATE DATABASE
+ - [ ] Regular
+
+CREATE DATASHARE
 
 CREATE TABLE
   - [x] EXTERNAL
@@ -190,6 +216,15 @@ CREATE VIEW
   - [x] PROTECTED [unsupported]
 
 CREATE FUNCTION
+ - [ ] Regular
+ - [ ] EXTERNAL
+
+CREATE PROCEDURE
+ - [ ] Regular
+
+CREATE MODEL
+ - [ ] Regular
+ - [ ] EXTERNAL
 
 CREATE MATERIALIZED VIEW
 
@@ -209,13 +244,18 @@ SELECT
 INSERT
   - [ ] Multi-row
 
+MERGE
+- [ ] Regular
+
 UNLOAD
- [x] not supported by sqlglot
+ - [x] Custom parsing (not supported by sqlglot)
+
+UPDATE
+- [ ] Regular
 
 Types:
 - SUPER
 
-COPY
 
 ### Snowflake
 - CREATE STAGE
