@@ -45,3 +45,47 @@ def test__json_two_selectors(holder):
         "column[name=name table=processed schema=fruit type=VARCHAR kind=table]",
         "column[name=jsonblob table=raw schema=fruit type=JSONB kind=table]",
     ]
+
+
+# TODO: support subscripting
+def test__json_subscript_nested(holder):
+    sql = """
+    CREATE TABLE source (data jsonb);
+    CREATE TABLE target (email text);
+
+    INSERT INTO target
+    SELECT data['user']['email'] AS email
+    FROM source;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        [
+            "column[source.data]",
+            # "jsonpath[.user.email]",
+            "column[target.email]",
+        ]
+    ]
+    assert h.nodes_full == [
+        # "jsonpath[.user.email depth=2]",
+        "column[name=data table=source type=JSONB kind=table]",
+        "column[name=email table=target type=TEXT kind=table]",
+    ]
+
+
+# TODO: support subscripting
+#   UPDATE target SET data['status'] = '"shipped"';
+#   ->
+#   INSERT INTO target (data) SELECT '{"status": "shipped"}'
+# def test__json_subscript_update(holder):
+#     sql = """
+#     CREATE TABLE target (data jsonb);
+#
+#     UPDATE target SET data['status'] = '"shipped"';
+#     """
+#     h = holder(sql=sql, dialect=DIALECT)
+#
+#     assert h.paths == [['literal["shipped"]', "column[target.data]"]]
+
+
+# FIELDS

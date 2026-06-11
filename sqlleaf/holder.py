@@ -22,6 +22,7 @@ from sqlleaf.objects.query_types import (
 from sqlleaf.path import LineagePath
 from sqlleaf.processors import collector, generator, transformer
 
+logging.getLogger("sqlglot").setLevel(logging.WARNING)
 logger = logging.getLogger("sqlleaf")
 
 QUERIES_WITH_LINEAGE = (InsertQuery, UpdateQuery, ViewQuery, CTASQuery, PutQuery, CopyQuery, TableQuery, UnloadQuery)

@@ -172,13 +172,11 @@ def test__merge_using_select(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert sorted(h.paths) == sorted(
-        [
-            ["column[fruit.raw.name]", "column[fruit.processed.name]"],
-            ["column[fruit.raw.kind]", "column[fruit.processed.kind]"],
-            ["column[fruit.raw.name]", "column[fruit.processed.label]"],
-        ]
-    )
+    assert h.paths == [
+        ["column[fruit.raw.name]", "column[fruit.processed.label]"],
+        ["column[fruit.raw.name]", "column[fruit.processed.name]"],
+        ["column[fruit.raw.kind]", "column[fruit.processed.kind]"],
+    ]
 
 
 # TODO: test two merge queries that have an identical inner query

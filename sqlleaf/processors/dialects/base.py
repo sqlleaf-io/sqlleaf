@@ -351,6 +351,17 @@ class BaseGenerator:
             yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
 
     @process.register
+    def process_bracket(
+        self, expr: exp.Bracket, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
+        """
+        Array/JSON subscripting: my_arr[0] or data['user']
+        """
+        inner = util.unwrap_expression(expr.this)
+        gen_ctx = replace(gen_ctx, expr=inner)
+        yield from self.process(inner, gen_ctx, pos_ctx)
+
+    @process.register
     def process_subquery(
         self, expr: exp.Subquery, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:

@@ -36,7 +36,7 @@ def transform_query(query: Q, object_mapping: mappings.ObjectMapping) -> None:
     """
     Transform a query's expression according to rules specific to its type.
     """
-    logger.debug(f"Query: {query.statement.sql()}")
+    logger.debug(f"Query: {query.statement.sql(dialect=query.dialect)}")
     logger.debug(f"Transforming: {query.__class__.__name__} - {query.statement.__class__}")
     statement = util.copy_expression(query.statement)
 
