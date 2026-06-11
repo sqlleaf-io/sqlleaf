@@ -29,6 +29,7 @@ class LineageHolderDummy:
         self._all_edges = self.lineage.get_edges()
         self._all_paths = list(self.lineage.get_paths())
         self._all_queries = self.lineage.get_queries()
+        self._collected_queries = self.lineage.collected_queries
 
     @property
     def nodes(self):
@@ -67,6 +68,10 @@ class LineageHolderDummy:
         for path in self._all_paths:
             paths.append([hop.full_name for hop in path.node_hops()])
         return paths
+
+    @property
+    def collected_queries(self):
+        return self._collected_queries
 
 
 @pytest.fixture(scope="function")

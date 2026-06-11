@@ -21,6 +21,7 @@ from sqlleaf.objects.query_types import (
 )
 from sqlleaf.path import LineagePath
 from sqlleaf.processors import collector, generator, transformer
+from sqlleaf.processors.collector import CollectQueryResult
 
 logging.getLogger("sqlglot").setLevel(logging.WARNING)
 logger = logging.getLogger("sqlleaf")
@@ -38,16 +39,16 @@ class Lineage:
         self.subgraphs: t.List[nx.MultiDiGraph] = []  # The subgraphs that make up the main graph
         self.paths: t.Dict[str, t.List[LineagePath]] = {}  # The paths throughout the graph
         self.object_mapping: ObjectMapping | None = None
+        self.collected_queries: CollectQueryResult | None = None
 
     def generate(self, sql: str, dialect: str, **opts: t.Unpack[types.IncludeNodesArgs]):
         """
         Generate lineage for one or more SQL statements.
         """
         object_mapping = self.init_mapping(dialect=dialect)
+        self.collected_queries = collector.collect_queries(sql, dialect, object_mapping)
 
-        result = collector.collect_queries(sql, dialect, object_mapping)
-
-        for parent_query in result.queries:
+        for parent_query in self.collected_queries.queries:
             # A parent query is a top-level query, possibly containing others
             graph = new_graph()
             queries = parent_query.get_all_queries()

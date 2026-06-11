@@ -22,7 +22,13 @@ def test__table_types(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert "column[name=age table=new schema=fruit type=INT kind=table subkind=temporary]" in h.nodes_full
+    assert h.paths == [["literal[1]", "column[fruit.new.age]"]]
+    assert h.nodes_full == [
+        "literal[1 type=INT query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]",
+        "column[name=age table=new schema=fruit type=INT kind=table subkind=temporary]",
+    ]
+    assert len(h.nodes) == 2
+    assert len(h.edges) == 1
 
 
 def test__table_like_table(holder):
@@ -221,6 +227,7 @@ def test__table_foreign(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert len(h.queries) == 0
+    assert len(h.collected_queries.unsupported) == 1
 
 
 # Not supported by sqlglot: 'Falling back to Command'
@@ -238,6 +245,7 @@ def test__table_of_type(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert [TypeQuery] == list(map(type, h.queries))
+    assert len(h.collected_queries.unsupported) == 1
 
 
 def test__update_and_select_inherited(holder):
