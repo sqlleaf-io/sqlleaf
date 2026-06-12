@@ -178,11 +178,14 @@ DO
 
 ### Redshift
 COPY
-- [ ] S3
-- [ ] EMR
-- [ ] SSH
-- [ ] DynamoDB
-- [ ] S3
+  - [ ] FROM
+    - [ ] S3
+    - [ ] EMR
+    - [ ] SSH
+    - [ ] DynamoDB
+    - [ ] S3
+  - [ ] JOB
+  - [ ] USING TEMPLATE
 
 CREATE SCHEMA
  - [ ] Regular

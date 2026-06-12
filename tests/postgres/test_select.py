@@ -251,10 +251,7 @@ tests = [
     ("-10", "literal"),
     ("10", "literal"),
     ("TRUE", "literal"),
-    (
-        "NULL",
-        "null",
-    ),
+    ("NULL", "null"),
     ("LOCALTIME()", "function"),
     ("MY.FUNC()", "udf"),
 ]
@@ -269,9 +266,10 @@ def test__select_value_twice(holder, case):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
+    name = value.removesuffix("()")
     assert h.paths == [
-        [f"{kind}[{value.removesuffix('()')}]", "column[fruit.processed.name]"],
-        [f"{kind}[{value.removesuffix('()')}]", "column[fruit.processed.age]"],
+        [f"{kind}[{name}]", "column[fruit.processed.name]"],
+        [f"{kind}[{name}]", "column[fruit.processed.age]"],
     ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
@@ -380,7 +378,7 @@ def test__select_rows_from(holder):
     ]
     assert "column[name=age table=x type=UNKNOWN kind=derived_table]" in h.nodes_full
     assert "column[name=a table=y type=INT kind=derived_table]" in h.nodes_full
-    # TODO: duplicate nodes (literals and udfs)
+    # TODO: bug - duplicate nodes (literals and udfs)
     # assert len(h.nodes) == 17     # Correct
 
     assert len(h.nodes) == 19
@@ -430,7 +428,7 @@ def test__select_union(holder, op):
     assert len(h.edges) == 3
 
 
-def test__select_table(holder):
+def test__select_table_as_table(holder):
     sql = """
     CREATE TABLE t1(name1 VARCHAR, name2 VARCHAR);
     CREATE TABLE t2(name1 VARCHAR, name2 VARCHAR, name3 VARCHAR);
@@ -446,3 +444,4 @@ def test__select_table(holder):
     assert len(h.edges) == 2
     assert len(h.queries) == 3
     assert [TableQuery, TableQuery, InsertQuery] == list(map(type, h.queries))
+    assert len(h.collected_queries.unsupported) == 2
