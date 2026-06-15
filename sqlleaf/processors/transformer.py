@@ -18,6 +18,7 @@ from sqlleaf.objects.query_types import (
     TableQuery,
     UnloadQuery,
     UpdateQuery,
+    UserDefinedFunctionQuery,
 )
 from sqlleaf.typing import E
 
@@ -36,9 +37,37 @@ def transform_query(query: Q, object_mapping: mappings.ObjectMapping) -> None:
     """
     Transform a query's expression according to rules specific to its type.
     """
-    logger.debug(f"Query: {query.statement.sql(dialect=query.dialect)}")
-    logger.debug(f"Transforming: {query.__class__.__name__} - {query.statement.__class__}")
-    statement = util.copy_expression(query.statement)
+    statement_to_transform = util.copy_expression(query.statement_original)
+    statement_to_substitute = util.copy_expression(query.statement_original)
+
+    transformed = _transform_statement(statement_to_transform, query, object_mapping)
+    query.set_transformed_statement(transformed)
+
+    statement_substituted = _get_substituted_statement(statement_to_substitute, query, object_mapping)
+    if statement_substituted:
+        substituted = _transform_statement(statement_substituted, query, object_mapping)
+        query.set_substituted_statement(substituted)
+
+
+def _get_substituted_statement(
+    statement: exp.Expr, query: Q, object_mapping: mappings.ObjectMapping
+) -> exp.Expr | None:
+    """
+    Transform a statement by substituting all its UDF references with each UDF's underlying return expression.
+
+    Returns a statement only if a UDF was substituted.
+    """
+    # TODO
+    return None
+
+
+def _transform_statement(statement: E, query: Q, object_mapping: mappings.ObjectMapping) -> exp.Expr:
+    """
+    Perform a series of transformations against an SQL statement.
+    """
+    logger.debug("----")
+    logger.debug(f"Query: {statement.sql(dialect=query.dialect)}")
+    logger.debug(f"Transforming: {query.__class__.__name__} - {statement.__class__}")
 
     statement = _convert_table_to_select(statement=statement, query=query, object_mapping=object_mapping)
 
@@ -55,16 +84,13 @@ def transform_query(query: Q, object_mapping: mappings.ObjectMapping) -> None:
         statement = _convert_insert_defaults_to_values(statement=statement, query=query, object_mapping=object_mapping)
         if statement.expression:
             statement_converted = _convert_outer_values_to_select(
-                statement.expression, statement=statement, query=query, object_mapping=object_mapping
+                expression=statement.expression, statement=statement, query=query, object_mapping=object_mapping
             )
             if isinstance(statement_converted, exp.Insert):
                 statement = statement_converted
 
         statement = _add_information_from_merge(statement=statement, query=query, object_mapping=object_mapping)
         statement = _process_inner_ctes(statement=statement, query=query, object_mapping=object_mapping)
-
-        # We must keep the Insert expression for child queries (e.g. ON CONFLICT)
-        query.set_transformed_statement(statement)
 
     elif isinstance(query, UpdateQuery) and isinstance(statement, (exp.OnConflict, exp.Update)):
         statement = _convert_on_conflict_to_update(statement=statement, query=query, object_mapping=object_mapping)
@@ -118,11 +144,11 @@ def transform_query(query: Q, object_mapping: mappings.ObjectMapping) -> None:
     old = query.statement.sql(dialect=query.dialect)
     new = statement.sql(dialect=query.dialect)
     if old == new:
-        logger.debug("Transformations applied, but query is unchanged.")
+        logger.debug("No transformations applied.")
     else:
         logger.debug(f"Transformed {type(statement).__name__}: {new}")
 
-    query.set_transformed_statement(statement)
+    return statement
 
 
 def _validate_syntax(func):
@@ -137,6 +163,9 @@ def _validate_syntax(func):
         object_mapping = kwargs.pop("object_mapping")
 
         result = func(statement=statement, query=query, object_mapping=object_mapping, *args, **kwargs)
+
+        if result and (statement.sql(dialect=query.dialect) != result.sql(dialect=query.dialect)):
+            logger.debug(f"Transformed by {func}.")
 
         if result is None:
             return result

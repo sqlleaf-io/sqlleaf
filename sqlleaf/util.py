@@ -173,6 +173,21 @@ def get_table(expr: exp.Expr) -> exp.Table:
     return table
 
 
+def get_udf_name(expr: exp.Anonymous) -> tuple[str, str]:
+    """
+    Get the schema and function name of a UDF (e.g. from SELECT my.func())
+    """
+    if isinstance(expr.parent, (exp.Dot,)):
+        schema = str(expr.parent.left.name)
+        function = str(expr.parent.right.name)
+    else:
+        # A function without a schema
+        schema = ""
+        function = expr.name
+
+    return schema, function
+
+
 def get_function_args(expr: exp.Func):
     function_args = list(expr.args.values())
     function_args = flatten(function_args)
@@ -259,7 +274,8 @@ class SingleDispatchMethodLogger(singledispatchmethod):
             target_type = type(args[0])
             actual_func = self.dispatcher.dispatch(target_type)
 
-            logger.debug(f"Dispatching to: '{getattr(actual_func, '__name__')}' for expr: {type(args[0])}")
+            class_name, func_name = actual_func.__qualname__.rsplit(".", 1)
+            logger.debug(f"Dispatching to: '{func_name}' ({class_name}) for expr: {type(args[0])}")
 
             result = actual_func(obj, *args, **kwargs)
             return result

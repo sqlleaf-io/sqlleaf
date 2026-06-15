@@ -54,7 +54,7 @@ class Lineage:
             queries = parent_query.get_all_queries()
 
             for query in queries:
-                # Transform every query, but only produce lineage for certain ones
+                # Transform and produce lineage only for certain queries
                 if query_has_lineage(query):
                     transformer.transform_query(query, object_mapping)
                     generator.generate_lineage_for_query(query, graph, object_mapping)
@@ -66,6 +66,7 @@ class Lineage:
             self.merge_graph(graph)
             self.graph.graph["attrs"].add_query(parent_query)
             types.update_column_data_types(self.graph)
+            logger.debug("---")
 
     def merge_graph(self, subgraph: nx.MultiDiGraph):
         """

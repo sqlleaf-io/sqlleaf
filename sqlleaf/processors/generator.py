@@ -39,33 +39,40 @@ def generate_lineage_for_query(
     over sqlglot's abstract syntax tree (AST) to determine the set of nodes
     and transformations used along the path to reach the table's columns.
     """
+    statements_to_process = [query.statement]
+    if query.statement_substituted:
+        statements_to_process.append(query.statement_substituted)
+
     target_object = query.get_target()
-    statement = query.statement
 
-    logger.info(f"Getting lineage for query: {statement.sql(dialect=query.dialect)}")
+    for i, statement in enumerate(statements_to_process):
+        logger.debug("----")
+        subs = "SUBSTITUTED " if i > 0 else ""
+        logger.info(f"Getting lineage for {subs}query: {statement.sql(dialect=query.dialect)}")
 
-    pos_ctx = PositionContext(statement_index=query.get_statement_index())
-    gen_ctx = GeneratorContext(
-        graph=graph,
-        object_mapping=object_mapping,
-        query=query,
-        expr=statement,
-        child_node=target_object,
-        scope=None,
-    )
-    generator = BaseGenerator.from_dialect(query.dialect)
+        pos_ctx = PositionContext(statement_index=query.get_statement_index())
+        gen_ctx = GeneratorContext(
+            graph=graph,
+            object_mapping=object_mapping,
+            query=query,
+            expr=statement,
+            child_node=target_object,
+            scope=None,
+        )
+        generator = BaseGenerator.from_dialect(query.dialect)
 
-    if check_for_put(generator, gen_ctx, pos_ctx):
-        return graph
+        if check_for_put(generator, gen_ctx, pos_ctx):
+            return graph
 
-    if check_for_trigger(target_object, object_mapping):
-        return graph
+        if check_for_trigger(target_object, object_mapping):
+            return graph
 
-    if check_for_external_table(generator, gen_ctx, pos_ctx):
-        return graph
+        if check_for_external_table(generator, gen_ctx, pos_ctx):
+            return graph
 
-    generate_lineage_for_columns(generator, gen_ctx, pos_ctx)
-    return gen_ctx.graph
+        generate_lineage_for_columns(generator, gen_ctx, pos_ctx)
+
+    return graph
 
 
 def generate_lineage_for_columns(
@@ -76,7 +83,7 @@ def generate_lineage_for_columns(
     """
     Generate the lineage for a set of columns from a given table.
     """
-    scope = get_scope(statement=gen_ctx.query.statement)
+    scope = get_scope(statement=gen_ctx.expr)
     gen_ctx.scope_positions.calculate(scope)
 
     # Process the selected columns
@@ -127,7 +134,6 @@ def walk_query_and_build_graph(
         column=t.cast(t.Union[exp.Column, int], child_node.expr),
         scope=scope,
     ):
-        logger.debug("----")
         logger.debug(f"Processing node expr: {scope_traversal.expression}, Id: {id(scope_traversal)}")
         logger.debug(f"Child node: {child_node.full_name}")
 

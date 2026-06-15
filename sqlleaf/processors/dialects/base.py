@@ -28,7 +28,7 @@ from sqlleaf.objects.node_types import (
     VarNode,
     WindowNode,
 )
-from sqlleaf.objects.query_types import ProcedureQuery, Q, TableQuery, UserDefinedFunctionQuery
+from sqlleaf.objects.query_types import ProcedureQuery, Q, TableQuery
 from sqlleaf.typing import TargetObjectType
 
 logger = logging.getLogger("sqlleaf")
@@ -177,25 +177,13 @@ class BaseGenerator:
 
         SELECT my.func()
         """
-        if isinstance(expr.parent, (exp.Dot,)):
-            schema = str(expr.parent.left.name)
-            function = str(expr.parent.right.name)
-        else:
-            # A function without a schema
-            schema = ""
-            function = expr.name
+        schema, function = util.get_udf_name(expr)
 
         # Process a UDF
         node_args = list(expr.flatten())
         parent = UserDefinedFunctionNode(schema=schema, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
 
-        table_expr = exp.table_(table=function, db=schema)
-        udf_obj = gen_ctx.object_mapping.find_query(kind="udf", table=table_expr)
-
-        if udf_obj and isinstance(udf_obj, UserDefinedFunctionQuery):
-            if isinstance(udf_obj.return_expr, exp.Literal):
-                # TODO: this may be incorrect - analyse UDFs properly
-                node_args = [udf_obj.return_expr]
+        # TODO: pass the type to the above
 
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
@@ -218,7 +206,9 @@ class BaseGenerator:
     ) -> t.Iterator[EdgeToCreate]:
         """
         SELECT (SELECT 1) AS name
+                ^-------
         """
+        # This is processed by the traversal into the subquery
         yield EdgeToCreate(None, None)
 
     @process.register

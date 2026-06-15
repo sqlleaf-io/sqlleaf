@@ -8,7 +8,7 @@ import sqlglot
 from sqlglot import TokenType, exp
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.typing import SourceExprType, TargetExprType, TargetObjectType
+from sqlleaf.typing import E, SourceExprType, TargetExprType, TargetObjectType
 
 logger = logging.getLogger("sqlleaf")
 
@@ -41,9 +41,13 @@ class Query:
         self.column_defs: t.List[exp.ColumnDef] = []
         self.property = ""
 
-        # Remove comments at initialisation
+        # Remove comments at initialization
         for expr in statement.walk():
             expr.pop_comments()
+
+        self.statement_original: exp.Expr | None = None
+        self.statement_transformed: exp.Expr | None = None
+        self.statement_substituted: exp.Expr | None = None
 
         self.statement_index = statement_index  # The position of this query within a list of queries
         self.set_original_statement(statement)
@@ -53,7 +57,7 @@ class Query:
         logger.debug(f"Created Query: {self.__class__}")
 
     @property
-    def statement(self):
+    def statement(self) -> E:
         return self._statement
 
     def get_target_object(self, object_mapping: mappings.ObjectMapping) -> TargetObject:
@@ -160,13 +164,16 @@ class Query:
         else:
             return str(self.statement_index)
 
-    def set_transformed_statement(self, statement: exp.Expr):
+    def set_transformed_statement(self, statement: exp.Expr) -> None:
         self.statement_transformed = statement
         self._statement = statement
 
-    def set_original_statement(self, statement: exp.Expr):
+    def set_original_statement(self, statement: exp.Expr) -> None:
         self.statement_original = statement
         self._statement = statement
+
+    def set_substituted_statement(self, statement: exp.Expr) -> None:
+        self.statement_substituted = statement
 
     def get_ctes(self) -> t.List:
         return []
@@ -496,18 +503,12 @@ class ProcedureQuery(Query):
 class UserDefinedFunctionQuery(Query):
     def __init__(
         self,
-        schema,
-        function,
         dialect,
-        args,
-        return_type,
-        return_expr,
-        returns_null,
-        language,
-        statement,
+        statement: exp.Create,
         object_mapping: mappings.ObjectMapping,
         statement_index: int,
     ):
+
         super().__init__(
             kind="user_defined_function",
             statement=statement,
@@ -516,13 +517,6 @@ class UserDefinedFunctionQuery(Query):
             target_object=statement.this.this,
             object_mapping=object_mapping,
         )
-        self.schema = schema
-        self.function = function
-        self.return_type = return_type
-        self.return_expr = return_expr
-        self.returns_null = returns_null
-        self.language = language
-        self.args = args
 
         # TODO: support 'default'
         self.args = [  # e.g. {'name': 'v_session_id', 'type': 'VARCHAR'}
@@ -531,7 +525,7 @@ class UserDefinedFunctionQuery(Query):
 
     @property
     def name(self):
-        return ".".join([var for var in [self.schema, self.function] if var])
+        return ".".join([var for var in [self.schema_name, self.function_name] if var])
 
 
 class SequenceQuery(Query):

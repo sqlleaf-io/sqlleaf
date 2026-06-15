@@ -89,6 +89,7 @@ SELECT
     - [x] WITH (MERGE)
     - [x] WITH (VALUES)
     - [x] WITH MATERIALIZED
+    - [ ] Inside subqueries - SELECT FROM (WITH)
   - [ ] LATERAL
     - sqlglot optimize() creates weird output
   - [ ] ROWS FROM

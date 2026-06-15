@@ -34,9 +34,6 @@ from sqlleaf.objects.query_types import (
 
 logger = logging.getLogger("sqlleaf")
 
-DMLQueryType = InsertQuery | UpdateQuery | MergeQuery | DeleteQuery | SelectQuery
-DMLExprType = exp.Insert | exp.Update | exp.Merge | exp.Delete | exp.Select
-
 # sqlglot is missing pseudocolumns for Postgres
 PSEUDOCOLUMNS = ["ctid", "xmin", "xmax", "cmin", "cmax", "tableoid", "oid"]
 postgres.Postgres.PSEUDOCOLUMNS = {c.upper() for c in PSEUDOCOLUMNS}
@@ -631,38 +628,9 @@ def _process_functions(
     """
     Process a "CREATE FUNCTION" statement.
     """
-    # TODO: Decide if we can process it or not (i.e. lang = SQL)
-    # TODO: use exp.replace_placeholders() to replace placeholders
-
-    udf_expr = statement.this
-    udf_table = statement.this.this
-    columns = [col for col in udf_expr.expressions if isinstance(col, exp.ColumnDef)]
-
-    language = ""
-    returns_null = False
-    return_type = None
-    return_expr = statement.expression.this  # ADD(a, b)
-
-    props = statement.args["properties"].expressions
-    for prop in props:
-        if isinstance(prop, exp.ReturnsProperty):
-            if prop.args["null"]:
-                returns_null = True
-            else:
-                return_type = prop.this
-        elif isinstance(prop, exp.LanguageProperty):
-            language = prop.name
-
     query = UserDefinedFunctionQuery(
         statement=statement,
-        schema=udf_table.db,
-        function=udf_table.name,
         dialect=dialect,
-        args=columns,
-        return_type=return_type,
-        return_expr=return_expr,
-        returns_null=returns_null,
-        language=language,
         object_mapping=object_mapping,
         statement_index=statement_index,
     )

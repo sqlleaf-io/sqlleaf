@@ -75,16 +75,8 @@ class PostgresGenerator(BaseGenerator):
 
         SELECT my.func() or SELECT nextval('my_sequence')
         """
-        if isinstance(expr.parent, (exp.Dot,)):
-            # Postgres UDFs don't support catalogs
-            schema = str(expr.parent.left.name)
-            function = str(expr.parent.right.name)
-            full_name = f"{schema}.{function}"
-        else:
-            # e.g. The PG sequence function nextval('serial') is anonymous
-            schema = ""
-            function = expr.name
-            full_name = function
+        schema, function = util.get_udf_name(expr)
+        full_name = ".".join([schema, function])
 
         # Process a sequence
         if not schema and function in [
@@ -92,6 +84,7 @@ class PostgresGenerator(BaseGenerator):
             "currval",
             "setval",
         ]:
+            # TODO: SequenceNode.from_expression()?
             # 'lastval()' is not supported since it requires tracking state
             seq_name_expr: exp.Literal = expr.args["expressions"][0]
 
