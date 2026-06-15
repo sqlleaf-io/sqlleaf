@@ -7,14 +7,14 @@ from dataclasses import replace
 from sqlglot import exp
 from sqlglot.optimizer import Scope
 
-from sqlleaf import exception, util
-from sqlleaf.objects.context import GeneratorContext, PositionContext
-from sqlleaf.objects.node_types import (
+from sqlleaf import exception
+from sqlleaf.models.context import GeneratorContext, PositionContext
+from sqlleaf.models.node import (
     FileColumnNode,
     PivotNode,
     UnpivotNode,
 )
-from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
+from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
 
 logger = logging.getLogger("sqlleaf")
 
@@ -22,7 +22,7 @@ logger = logging.getLogger("sqlleaf")
 class RedshiftGenerator(BaseGenerator):
     dialect = "redshift"
 
-    @util.singledispatchmethodlogger
+    @singledispatchmethodlogger
     def process(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         yield from super().process(expr, gen_ctx, pos_ctx)
 

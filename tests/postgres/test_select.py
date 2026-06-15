@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-from sqlleaf.objects.query_types import InsertQuery, TableQuery
+from sqlleaf.models.query import InsertQuery, TableQuery
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -378,8 +378,8 @@ def test__select_rows_from(holder):
     ]
     assert "column[name=age table=x type=UNKNOWN kind=derived_table]" in h.nodes_full
     assert "column[name=a table=y type=INT kind=derived_table]" in h.nodes_full
-    # TODO: bug - duplicate nodes (literals and udfs)
-    # assert len(h.nodes) == 17     # Correct
+    # TODO: bug - duplicate node (literals and udfs)
+    # assert len(h.node) == 17     # Correct
 
     assert len(h.nodes) == 19
     assert len(h.edges) == 15

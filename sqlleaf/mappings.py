@@ -1,3 +1,4 @@
+from __future__ import annotations
 import typing as t
 
 from sqlglot import MappingSchema, exp
@@ -6,7 +7,10 @@ from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
 
 from sqlleaf import exception
-from sqlleaf.objects.query_types import Q
+from sqlleaf.models.query import Q
+
+if t.TYPE_CHECKING:
+    from sqlleaf.models.query import SequenceQuery, StageQuery, TableQuery, TriggerQuery, UserDefinedFunctionQuery
 
 ColumnMapping = t.Union[t.Dict, str, t.List]
 
@@ -108,11 +112,26 @@ class ObjectMapping(MappingSchema):
             ensure_data_types=ensure_data_types,
         )
 
+    def lookup_table_query(self, table: exp.Table, raise_on_missing: bool = True) -> TableQuery | None:
+        return self.find_query(kind="table", table=table, raise_on_missing=raise_on_missing)
+
+    def lookup_sequence_query(self, table: exp.Table, raise_on_missing: bool = True) -> SequenceQuery | None:
+        return self.find_query(kind="sequence", table=table, raise_on_missing=raise_on_missing)
+
+    def lookup_stage_query(self, table: exp.Table, raise_on_missing: bool = True) -> StageQuery | None:
+        return self.find_query(kind="stage", table=table, raise_on_missing=raise_on_missing)
+
+    def lookup_trigger_query(self, table: exp.Table, raise_on_missing: bool = True) -> TriggerQuery | None:
+        return self.find_query(kind="trigger", table=table, raise_on_missing=raise_on_missing)
+
+    def lookup_udf_query(self, table: exp.Table, raise_on_missing: bool = True) -> UserDefinedFunctionQuery | None:
+        return self.find_query(kind="udf", table=table, raise_on_missing=raise_on_missing)
+
     def find_query(
         self,
         kind: str,
         table: exp.Table,
-        raise_on_missing: bool = True,
+        raise_on_missing: bool,
     ) -> Q | None:
         """
         Returns the Query for a given object kind and exp.Table.
@@ -160,9 +179,9 @@ class ObjectMapping(MappingSchema):
         Get the 'CREATE' query for a table or stage.
         """
         if str(table).startswith("@"):
-            child_object_query = self.find_query(kind="stage", table=table)
+            child_object_query = self.lookup_stage_query(table=table)
         else:
-            child_object_query = self.find_query(kind="table", table=table)
+            child_object_query = self.lookup_table_query(table=table)
 
         if not child_object_query and raise_on_missing:
             raise exception.SqlLeafException(message="Unknown table", table=str(table))

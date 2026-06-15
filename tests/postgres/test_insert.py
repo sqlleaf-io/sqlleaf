@@ -9,7 +9,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 import sqlglot
 
-from sqlleaf.objects.query_types import InsertQuery
+from sqlleaf.models.query import InsertQuery
 
 DIALECT = "postgres"
 

@@ -8,29 +8,9 @@ import networkx as nx
 if t.TYPE_CHECKING:
     pass
 
-from sqlleaf.objects.node_types import N
+from sqlleaf.models.node import N
 
 logger = logging.getLogger("sqlleaf")
-
-
-class IncludeNodesArgs(t.TypedDict, total=False):
-    # These are placeholders and currently not implemented.
-    include_literals: bool
-    include_functions: bool
-    include_nulls: bool
-    include_vars: bool
-    include_variables: bool
-    include_ctes: bool
-    include_derived_tables: bool
-    include_pivots: bool
-    include_system_tables: bool
-    include_defaults: bool
-    include_udfs: bool
-    include_stars: bool
-    include_sequences: bool
-    include_stages: bool
-    include_windows: bool
-    include_intervals: bool
 
 
 def are_types_compatible(subtyp: str, typ: str, dialect: str) -> bool:
@@ -53,7 +33,7 @@ def are_types_compatible(subtyp: str, typ: str, dialect: str) -> bool:
 
 def update_column_data_types(graph: nx.MultiDiGraph):
     """
-    Update the column types of the nodes in the graph.
+    Update the column types of the node in the graph.
 
     Traverse each edge from the roots and:
     - Update the target column if its type is UNKNOWN by looking at the source column and its functions

@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-from sqlleaf.objects.query_types import TableQuery
+from sqlleaf.models.query.table import TableQuery
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 

@@ -11,7 +11,7 @@ from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.objects.query_types import (
+from sqlleaf.models.query import (
     CopyQuery,
     CTASQuery,
     DeleteQuery,
@@ -41,7 +41,7 @@ postgres.Postgres.EXCLUDES_PSEUDOCOLUMNS_FROM_STAR = True
 
 
 """
-Parses text for SQL statements and collects them into Query objects.
+Parses text for SQL statements and collects them into Query models.
 """
 
 
@@ -294,7 +294,7 @@ def _set_column_defs(query: TableQuery, object_mapping: mappings.ObjectMapping):
             raise exception.SqlLeafException(message=f"Unsupported column expression: {type(expression)}")
 
     if inherited_props := list(statement.find_all(exp.InheritsProperty)):
-        inherited_columns = _collect_inherited_columns(inherited_props, object_mapping, query)
+        inherited_columns = _collect_inherited_columns(inherited_props, query)
         all_columns = inherited_columns + all_columns
 
     # Set the column's 'default' type to the column's own type (it is sometimes missing)
@@ -319,7 +319,7 @@ def _system_columns(dialect: str) -> t.List[exp.ColumnDef]:
 
 
 def _collect_inherited_columns(
-    inherits_properties: t.List[exp.InheritsProperty], object_mapping: mappings.ObjectMapping, query: TableQuery
+    inherits_properties: t.List[exp.InheritsProperty], query: TableQuery
 ) -> t.List[exp.ColumnDef]:
     """
     Search for tables referenced as 'CREATE TABLE b INHERITS (a)' and collect all their columns.
@@ -329,7 +329,7 @@ def _collect_inherited_columns(
 
     for inh_prop in inherits_properties:
         for inh_table in inh_prop.expressions:
-            parent_table_query = t.cast(TableQuery, object_mapping.find_query(kind="table", table=inh_table))
+            parent_table_query = t.cast(TableQuery, query.object_mapping.lookup_table_query(table=inh_table))
             parent_table_query.inherited_by.append(query)
             query.inherits.append(parent_table_query)
 
@@ -362,7 +362,7 @@ def _collect_like_columns(
     properties = _get_properties_to_include(property_names)
 
     # Look up the like-table's columns and determine which properties to transfer
-    parent_table_query = t.cast(TableQuery, object_mapping.find_query(kind="table", table=like_property.this))
+    parent_table_query = t.cast(TableQuery, object_mapping.lookup_table_query(table=like_property.this))
     parent_columns = parent_table_query.get_column_defs()
 
     for parent_col_def in parent_columns:

@@ -1,7 +1,7 @@
 import os
 import sys
 
-from sqlleaf.objects.query_types import TypeQuery
+from sqlleaf.models.query import TypeQuery
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))

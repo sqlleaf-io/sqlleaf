@@ -3,13 +3,14 @@ from __future__ import annotations
 import logging
 import typing as t
 from dataclasses import dataclass, replace
+from functools import singledispatchmethod
 
 from sqlglot import exp
 from sqlglot.optimizer import Scope
 
 from sqlleaf import exception, util
-from sqlleaf.objects.context import GeneratorContext, PositionContext
-from sqlleaf.objects.node_types import (
+from sqlleaf.models.context import GeneratorContext, PositionContext
+from sqlleaf.models.node import (
     ColumnNode,
     FileColumnNode,
     FunctionNode,
@@ -28,10 +29,38 @@ from sqlleaf.objects.node_types import (
     VarNode,
     WindowNode,
 )
-from sqlleaf.objects.query_types import ProcedureQuery, Q, TableQuery
+from sqlleaf.models.query import ProcedureQuery, Q, TableQuery
 from sqlleaf.typing import TargetObjectType
 
 logger = logging.getLogger("sqlleaf")
+
+
+class SingleDispatchMethodLogger(singledispatchmethod):
+    """
+    Override the functools.singledispatchmethod class to print the methods that get called.
+    Used for debugging purposes.
+    """
+
+    def __get__(self, obj: t.Any, cls: t.Any = None) -> t.Any:
+        if obj is None:
+            return self
+
+        # Intercept execution and print the types
+        def wrapper(*args: t.Any, **kwargs: t.Any) -> t.Any:
+            target_type = type(args[0])
+            actual_func = self.dispatcher.dispatch(target_type)
+
+            class_name, func_name = actual_func.__qualname__.rsplit(".", 1)
+            logger.debug(f"Dispatching to: '{func_name}' ({class_name}) for expr: {type(args[0])}")
+
+            result = actual_func(obj, *args, **kwargs)
+            return result
+
+        t.cast(t.Any, wrapper).register = self.register
+        return wrapper
+
+
+singledispatchmethodlogger = SingleDispatchMethodLogger
 
 
 @dataclass(frozen=True)
@@ -45,7 +74,7 @@ class BaseGenerator:
     _dialects = {}
     dialect = ""
 
-    @util.singledispatchmethodlogger
+    @singledispatchmethodlogger
     def process(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         raise exception.SqlLeafException(message=f"Unhandled expression type: {type(expr)}")
 
@@ -384,10 +413,9 @@ class BaseGenerator:
 
         # Both COPY and UNLOAD can have SELECTs as their sources, which have arbitrary
         # columns that vary in length due to their sourcing from any table.
-        object_mapping = gen_ctx.object_mapping
         query = gen_ctx.query
         expr = query.get_target()
-        target_object = query.get_target_object(object_mapping)
+        target_object = query.get_target_object()
 
         select_idx = 0
 

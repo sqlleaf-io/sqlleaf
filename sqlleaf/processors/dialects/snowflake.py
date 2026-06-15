@@ -7,13 +7,13 @@ from dataclasses import replace
 from sqlglot import exp
 
 from sqlleaf import util
-from sqlleaf.objects.context import GeneratorContext, PositionContext
-from sqlleaf.objects.node_types import (
+from sqlleaf.models.context import GeneratorContext, PositionContext
+from sqlleaf.models.node import (
     FileColumnNode,
     StageColumnNode,
 )
-from sqlleaf.objects.query_types import CopyQuery
-from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
+from sqlleaf.models.query.copy import CopyQuery
+from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
 
 logger = logging.getLogger("sqlleaf")
 
@@ -21,7 +21,7 @@ logger = logging.getLogger("sqlleaf")
 class SnowflakeGenerator(BaseGenerator):
     dialect = "snowflake"
 
-    @util.singledispatchmethodlogger
+    @singledispatchmethodlogger
     def process(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         yield from super().process(expr, gen_ctx, pos_ctx)
 
@@ -31,7 +31,7 @@ class SnowflakeGenerator(BaseGenerator):
     ) -> t.Iterator[EdgeToCreate]:
         """
         PUT 'file:///tmp/data/mydata.csv' @my_int_stage;
-        - Creates two nodes: FileColumnNode and StageColumnNode
+        - Creates two node: FileColumnNode and StageColumnNode
         """
         # This steps outside the 'process_node_objects()' main method, as
         # adding logic inside the default functions is too messy.

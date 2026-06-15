@@ -12,17 +12,16 @@ if t.TYPE_CHECKING:
     pass
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.objects.context import GeneratorContext, PositionContext
-from sqlleaf.objects.node_types import (
+from sqlleaf.models.context import GeneratorContext, PositionContext
+from sqlleaf.models.node import (
     ColumnNode,
     EdgeAttributes,
     N,
-    TableType,
     TargetNodeType,
 )
-from sqlleaf.objects.query_types import PutQuery, Q, TableQuery, UpdateQuery
+from sqlleaf.models.query import PutQuery, Q, TableQuery, UpdateQuery
 from sqlleaf.processors.dialects.base import BaseGenerator
-from sqlleaf.typing import E, TableOrScopeType
+from sqlleaf.typing import E, TableOrScopeType, TableType
 
 logger = logging.getLogger("sqlleaf")
 
@@ -30,13 +29,12 @@ logger = logging.getLogger("sqlleaf")
 def generate_lineage_for_query(
     query: Q,
     graph: nx.MultiDiGraph,
-    object_mapping: mappings.ObjectMapping,
 ) -> nx.MultiDiGraph:
     """
     Calculate the lineage for an SQL query.
 
     We collect all the columns from the query's target table, and then iterate
-    over sqlglot's abstract syntax tree (AST) to determine the set of nodes
+    over sqlglot's abstract syntax tree (AST) to determine the set of node
     and transformations used along the path to reach the table's columns.
     """
     statements_to_process = [query.statement]
@@ -53,7 +51,6 @@ def generate_lineage_for_query(
         pos_ctx = PositionContext(statement_index=query.get_statement_index())
         gen_ctx = GeneratorContext(
             graph=graph,
-            object_mapping=object_mapping,
             query=query,
             expr=statement,
             child_node=target_object,
@@ -64,7 +61,7 @@ def generate_lineage_for_query(
         if check_for_put(generator, gen_ctx, pos_ctx):
             return graph
 
-        if check_for_trigger(target_object, object_mapping):
+        if check_for_trigger(target_object, query.object_mapping):
             return graph
 
         if check_for_external_table(generator, gen_ctx, pos_ctx):
@@ -148,7 +145,7 @@ def walk_query_and_build_graph(
 
         nodes = walk_expressions_and_build_graph(generator, gen_ctx, child_ctx)
         if nodes:
-            logger.debug(f"Produced nodes: {[n.full_name for n in nodes]}")
+            logger.debug(f"Produced node: {[n.full_name for n in nodes]}")
 
             for n in nodes:
                 if isinstance(n, ColumnNode) and n.has_child_scope and isinstance(n.source_scope, Scope):
@@ -299,7 +296,7 @@ def find_inherited_columns(
     """
     inherited_column_nodes = []
     table = column_node.as_table()
-    table_query = gen_ctx.object_mapping.find_query(kind="table", table=table)
+    table_query = gen_ctx.query.object_mapping.lookup_table_query(table=table)
 
     # Collect any columns from inherited tables with the same name
     for inh_table in getattr(table_query, "inherited_by", []):
@@ -321,7 +318,7 @@ def add_nodes_with_edge_to_graph(
     pos_ctx: PositionContext,
 ):
     """
-    Add two nodes and an edge between them to the graph.
+    Add two node and an edge between them to the graph.
     """
     p_attrs = add_node_if_not_exists(parent_node, graph)
     c_attrs = add_node_if_not_exists(child_node, graph)
@@ -340,14 +337,14 @@ def add_nodes_with_edge_to_graph(
         graph.add_edge(p_full_name, c_full_name, attrs=edge_attrs)
         logger.debug(f"Added edge between {p_full_name} [{id(p_attrs)}] -> {c_full_name} [{id(c_attrs)}]")
     else:
-        logger.debug("Skipping edge creation as both nodes already exist.")
+        logger.debug("Skipping edge creation as both node already exist.")
 
 
 def add_node_if_not_exists(node_attrs: N | None, graph: nx.MultiDiGraph) -> N | None:
     """
     Add a node to the graph if it doesn't already exist.
 
-    We need to re-use the existing node attributes so that the edge attribute objects don't refer to
+    We need to re-use the existing node attributes so that the edge attribute models don't refer to
     different-but-same-named node attributes.
     """
     if not node_attrs:
@@ -462,7 +459,7 @@ def check_for_trigger(
     if not isinstance(table, exp.Table):
         return False
 
-    if trigger := object_mapping.find_query(kind="trigger", table=table):
+    if trigger := object_mapping.lookup_trigger_query(table=table):
         if getattr(trigger, "timing", None) == "INSTEAD OF":
             logger.debug(
                 "Skipping lineage for all columns of table '%s' since trigger '%s' overrides it."

@@ -100,7 +100,7 @@ def test_copy_values_to_stream(holder):
     {simple_table}
     COPY (VALUES ('apple', 10), ('banana', 20)) TO STDOUT;
     """
-    # No lineage because there are no database objects involved
+    # No lineage because there are no database models involved
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == []
     assert len(h.nodes_full) == 0

@@ -7,15 +7,15 @@ from dataclasses import replace
 from sqlglot import exp
 
 from sqlleaf import exception, util
-from sqlleaf.objects.context import GeneratorContext, PositionContext
-from sqlleaf.objects.node_types import (
+from sqlleaf.models.context import GeneratorContext, PositionContext
+from sqlleaf.models.node import (
     ColumnNode,
     FileColumnNode,
     SequenceNode,
     StreamNode,
 )
-from sqlleaf.objects.query_types import CopyQuery
-from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate
+from sqlleaf.models.query.copy import CopyQuery
+from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
 
 logger = logging.getLogger("sqlleaf")
 
@@ -23,7 +23,7 @@ logger = logging.getLogger("sqlleaf")
 class PostgresGenerator(BaseGenerator):
     dialect = "postgres"
 
-    @util.singledispatchmethodlogger
+    @singledispatchmethodlogger
     def process(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         if isinstance(gen_ctx.query, CopyQuery) and isinstance(
             gen_ctx.query.get_original_source(), (exp.Literal, exp.Identifier)
@@ -90,7 +90,7 @@ class PostgresGenerator(BaseGenerator):
 
             # Ensure the sequence exists
             seq_table = exp.table_(table=seq_name_expr.name, db=schema)
-            seq_query = gen_ctx.object_mapping.find_query(kind="sequence", table=seq_table)
+            seq_query = gen_ctx.query.object_mapping.lookup_sequence_query(table=seq_table)
             if not seq_query:
                 logger.warning(f"Sequence '{full_name}' not found.")
 

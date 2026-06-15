@@ -6,7 +6,7 @@ import typing as t
 import networkx as nx
 
 from sqlleaf import exception, util
-from sqlleaf.objects.node_types import EdgeAttributes, N
+from sqlleaf.models.node import EdgeAttributes, N
 
 logger = logging.getLogger("sqlleaf")
 
@@ -23,7 +23,7 @@ class LineagePath:
 
     def node_hops(self) -> t.List[N]:
         """
-        Return the list of nodes in this path.
+        Return the list of node in this path.
         """
         hops = [self.hops[0].parent]
         for hop in self.hops:
@@ -51,7 +51,7 @@ def find_all_paths(graph: nx.MultiDiGraph) -> t.Generator[LineagePath]:
     Find all the unique paths in the graph.
 
     There are two algorithms depending on the graph's structure:
-    - one for those containing root nodes (a Rooted graph)
+    - one for those containing root node (a Rooted graph)
     - one for those containing only cycles (a Circuit graph)
     """
 
@@ -131,7 +131,7 @@ def find_edges_from_root(
     Find all the complete paths in a graph by traversing the descendants of a node until we find
     a node without any descendants.
 
-    This is the same as the regular find_paths(), but we iterate over all the edges between any two nodes
+    This is the same as the regular find_paths(), but we iterate over all the edges between any two node
     so that we include all paths.
 
     For example, given the graph:
@@ -179,7 +179,7 @@ def _traverse_path_along_edges(
     g: nx.MultiDiGraph, node_src: str, node_dst: str, path: t.Optional[t.List] = None, seen: t.Optional[t.Set] = None
 ) -> t.Generator[t.List[EdgeAttributes]]:
     """
-    Get the list of edges between two nodes, and find the paths for each of them.
+    Get the list of edges between two node, and find the paths for each of them.
     """
     if path is None:
         path = []

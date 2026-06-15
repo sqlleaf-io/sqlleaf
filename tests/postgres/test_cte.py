@@ -8,13 +8,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 import pytest
 
 from sqlleaf.exception import SqlLeafException
-from sqlleaf.objects.query_types import (
-    DeleteQuery,
-    InsertQuery,
-    MergeQuery,
-    SelectQuery,
-    UpdateQuery,
-)
+from sqlleaf.models.query import DeleteQuery, InsertQuery, MergeQuery, SelectQuery, UpdateQuery
 
 DIALECT = "postgres"
 

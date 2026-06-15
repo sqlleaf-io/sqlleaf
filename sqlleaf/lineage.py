@@ -5,10 +5,10 @@ import typing as t
 import networkx as nx
 from sqlglot import exp
 
-from sqlleaf import mappings, path, types, util
+from sqlleaf import mappings, path, typing, util
 from sqlleaf.mappings import ObjectMapping
-from sqlleaf.objects.node_types import EdgeAttributes, GraphAttributes, N
-from sqlleaf.objects.query_types import (
+from sqlleaf.models.node import EdgeAttributes, GraphAttributes, N
+from sqlleaf.models.query import (
     CopyQuery,
     CTASQuery,
     InsertQuery,
@@ -21,7 +21,6 @@ from sqlleaf.objects.query_types import (
 )
 from sqlleaf.path import LineagePath
 from sqlleaf.processors import collector, generator, transformer
-from sqlleaf.processors.collector import CollectQueryResult
 
 logging.getLogger("sqlglot").setLevel(logging.WARNING)
 logger = logging.getLogger("sqlleaf")
@@ -39,9 +38,9 @@ class Lineage:
         self.subgraphs: t.List[nx.MultiDiGraph] = []  # The subgraphs that make up the main graph
         self.paths: t.Dict[str, t.List[LineagePath]] = {}  # The paths throughout the graph
         self.object_mapping: ObjectMapping | None = None
-        self.collected_queries: CollectQueryResult | None = None
+        self.collected_queries: collector.CollectQueryResult | None = None
 
-    def generate(self, sql: str, dialect: str, **opts: t.Unpack[types.IncludeNodesArgs]):
+    def generate(self, sql: str, dialect: str, **opts: t.Unpack[typing.IncludeNodesArgs]):
         """
         Generate lineage for one or more SQL statements.
         """
@@ -56,8 +55,8 @@ class Lineage:
             for query in queries:
                 # Transform and produce lineage only for certain queries
                 if query_has_lineage(query):
-                    transformer.transform_query(query, object_mapping)
-                    generator.generate_lineage_for_query(query, graph, object_mapping)
+                    transformer.transform_query(query)
+                    generator.generate_lineage_for_query(query, graph)
                 query.set_to_original()
 
             graph.graph["attrs"].add_query(parent_query)
@@ -65,7 +64,7 @@ class Lineage:
             # Associate the query with the graph even if it has no lineage
             self.merge_graph(graph)
             self.graph.graph["attrs"].add_query(parent_query)
-            types.update_column_data_types(self.graph)
+            # types.update_column_data_types(self.graph)
             logger.debug("---")
 
     def merge_graph(self, subgraph: nx.MultiDiGraph):
@@ -80,7 +79,7 @@ class Lineage:
 
                 # The incoming graph's edges must have their NodeAttributes updated to
                 # match the existing graph's NodeAttributes.
-                # This is because different graphs with identical Nodes will have different NodeAttributes objects.
+                # This is because different graphs with identical Nodes will have different NodeAttributes models.
                 for par, chi, edge_data in subgraph.edges(data=True):
                     # Overwrite the new edge's Node to be the old Node
                     if edge_data["attrs"].parent.full_name == n:
@@ -151,7 +150,7 @@ class Lineage:
         print(
             json.dumps(
                 {
-                    "nodes": _nodes,
+                    "node": _nodes,
                     "edges": _edges,
                     "queries": _queries,
                     "stored_procedures": _sps,
@@ -185,7 +184,7 @@ class Lineage:
 
         attr = "full_name" if full_name else "friendly_name"
 
-        # TODO: this may not be needed since the NodeAttributes are nodes
+        # TODO: this may not be needed since the NodeAttributes are node
         for i, root in enumerate(root_columns):
             for depth, edge_attrs in util.find_edges_downward(
                 g, root
