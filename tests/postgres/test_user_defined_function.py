@@ -1,67 +1,42 @@
-"""
-Tests taken from:
-https://github.com/tobymao/sqlglot/blob/main/tests/dialects/test_postgres.py
-"""
-
 import os
 import sys
+import typing as t
+
+import pytest
+from sqlglot import exp
+
+from sqlleaf.models.query import UserDefinedFunctionQuery
+from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
+
 DIALECT = "postgres"
 
-tests = [
-    # no schema
-    """
-CREATE FUNCTION a_plus_b(a integer, b integer default 42) RETURNS integer
-    LANGUAGE SQL
-    RETURN 4;
-""",
-    # with schema
-    """
-CREATE FUNCTION my.a_plus_b(a integer, b integer default 42) RETURNS integer
-    LANGUAGE SQL
-    RETURN 4;
-""",
-    # allow null input
-    """
-CREATE FUNCTION my.a_plus_b(a integer, b integer default 42) RETURNS integer
-    LANGUAGE SQL
-    RETURNS NULL ON NULL INPUT
-    RETURN 4;
-""",
-    # return variable
-    """
-CREATE FUNCTION my.a_plus_b(a integer, b integer default 42) RETURNS integer
-    LANGUAGE SQL
-    RETURNS NULL ON NULL INPUT
-    RETURN a;
-""",
-    # return two variables
-    """
-CREATE FUNCTION my.a_plus_b(a integer, b integer default 42) RETURNS integer
-    LANGUAGE SQL
-    RETURNS NULL ON NULL INPUT
-    RETURN a + b;
-""",
-]
 
-q = "INSERT INTO fruit.processed SELECT my.a_plus_b(2,3) as age"
-"""
-INSERT INTO fruit.processed
-SELECT
-    my.func() as name1
-    my.function(name) as name2,
-    my.func(my.func(kind)) as name3
-FROM fruit.raw;
-"""
+def to_sql(expressions: t.List[exp.Expr]) -> t.List[str]:
+    return [e.sql(dialect="postgres") for e in expressions]
 
-"""
--- Different aliasing techniques
-SELECT *
-FROM calculation_func(10, 5) AS f(total, multiplied);
 
-SELECT sum AS total, product AS multiplied
-FROM calculation_func(10, 5);
+def test_hello_udf(holder):
+    sql = """
+    CREATE FUNCTION hello() RETURNS TEXT AS $$
+        SELECT 'Hello';
+    $$ LANGUAGE sql;
 
-"""
+    CREATE TABLE target(name VARCHAR);
+    INSERT INTO target (name) SELECT hello();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    query = h.queries[0]
+    assert isinstance(query, UserDefinedFunctionQuery)
+
+    assert query.function_name == "hello"
+    assert query.schema_name is None
+    assert query.return_type == exp.DataType.build("TEXT")
+    assert query.language == "sql"
+
+    assert h.paths == [["udf[HELLO]", "column[target.name]"]]
+    assert len(h.nodes) == 2
+    assert len(h.edges) == 1

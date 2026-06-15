@@ -636,10 +636,10 @@ def _process_functions(
     )
     object_mapping.add_query(kind="udf", query=query, dialect=dialect)
 
-    if isinstance(statement.expression, exp.Heredoc):
-        # Extract the queries between the $$ .. $$
-        queries = collect_queries(text=statement.expression.this, dialect=dialect, object_mapping=object_mapping)
-        query.add_child_queries(child_queries=queries.queries)
+    # if isinstance(statement.expression, exp.Heredoc):
+    #     # Extract the queries between the $$ .. $$
+    #     queries = collect_queries(text=statement.expression.this, dialect=dialect, object_mapping=object_mapping)
+    #     query.add_child_queries(child_queries=queries.queries)
 
     return query
 

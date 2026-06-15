@@ -9,7 +9,7 @@ from sqlglot import exp
 from sqlglot.optimizer import Scope, traverse_scope
 
 from sqlleaf import util
-from sqlleaf.typing import TableOrScopeType, TargetExprType
+from sqlleaf.typing import TableOrScopeType
 
 logger = logging.getLogger("sqlleaf")
 
