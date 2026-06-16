@@ -150,5 +150,5 @@ class GraphAttributes:
     def __init__(self):
         self.queries: t.List[Q] = []
 
-    def add_query(self, query: Q):
+    def add_query_to_graph(self, query: Q):
         self.queries.append(query)

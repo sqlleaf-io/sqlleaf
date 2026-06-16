@@ -74,22 +74,22 @@ class UserDefinedFunctionQuery(Query):
         language = _extract_language(self.statement)
 
         body_expr = self.statement.args.get("expression")
-        statements = []
+        inner_statements = []
 
-        # if body_expr:
-        #     # Determine the function body and all internal expressions.
-        #     # If the body is a string literal or heredoc (common in PostgreSQL), parse it to extract
-        #     # individual statements. Otherwise, use the expression itself.
-        #     if isinstance(body_expr, (exp.Literal, exp.Heredoc)):
-        #         body_text = body_expr.this.strip()
-        #         try:
-        #             statements = sqlglot.parse(body_text, read="postgres")
-        #         except Exception:
-        #             pass
-        #     elif isinstance(body_expr, exp.Return):
-        #         statements = [body_expr.this]
-        #     else:
-        #         statements = [body_expr]
+        if body_expr:
+            # Determine the function body and all internal expressions.
+            # If the body is a string literal or heredoc (common in PostgreSQL), parse it to extract
+            # individual statements. Otherwise, use the expression itself.
+            if isinstance(body_expr, (exp.Literal, exp.Heredoc)):
+                body_text = body_expr.this.strip()
+                try:
+                    inner_statements = sqlglot.parse(body_text, dialect="postgres")
+                except Exception:
+                    pass
+            elif isinstance(body_expr, exp.Return):
+                inner_statements = [exp.select(body_expr.this)]
+            else:
+                inner_statements = [exp.select(body_expr)]
 
         self.function_name = function_name
         self.return_type = return_type
@@ -98,7 +98,7 @@ class UserDefinedFunctionQuery(Query):
         self.schema_name = schema_name
         self.parameters = input_parameters
         self.return_columns = return_columns
-        self.statements = statements
+        self.inner_statements = inner_statements
 
 
 def get_types() -> dict[str, dict[str, str]]:

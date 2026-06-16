@@ -19,6 +19,7 @@ from sqlleaf.models.query import (
     UnloadQuery,
     UpdateQuery,
 )
+from sqlleaf.processors.transforms.substitute import substitute_udf
 from sqlleaf.typing import E
 
 logger = logging.getLogger("sqlleaf")
@@ -37,25 +38,31 @@ def transform_query(query: Q) -> None:
     Transform a query's expression according to rules specific to its type.
     """
     statement_to_transform = util.copy_expression(query.statement_original)
-    statement_to_substitute = util.copy_expression(query.statement_original)
 
     transformed = _transform_statement(statement_to_transform, query)
     query.set_transformed_statement(transformed)
 
-    statement_substituted = _get_substituted_statement(statement_to_substitute, query)
-    if statement_substituted:
-        substituted = _transform_statement(statement_substituted, query)
+    statement_to_substitute = util.copy_expression(query.statement_transformed)
+
+    subst_statements = _get_substituted_statements(statement_to_substitute, query)
+    if subst_statements:
+        # TODO: a list of transformed inner queries is returned, but right now
+        #  we only care about the last statement. In an upcoming commit, process all
+        #  the transformed statements separately.
+        substituted = subst_statements[0]
+        # substituted = _transform_statement(statement_substituted, query)
         query.set_substituted_statement(substituted)
 
 
-def _get_substituted_statement(statement: exp.Expr, query: Q) -> exp.Expr | None:
+def _get_substituted_statements(statement: exp.Expr, query: Q) -> t.List[exp.Expr]:
     """
     Transform a statement by substituting all its UDF references with each UDF's underlying return expression.
 
     Returns a statement only if a UDF was substituted.
     """
-    # TODO
-    return None
+
+    statements = substitute_udf(statement=statement, query=query)
+    return statements
 
 
 def _transform_statement(statement: E, query: Q) -> exp.Expr:

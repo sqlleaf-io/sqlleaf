@@ -98,7 +98,7 @@ def str_to_column_def(name: str) -> exp.ColumnDef:
     """
     Convert a string into a ColumnDef.
     """
-    return exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build("UNKNOWN"))
+    return exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DType.UNKNOWN.into_expr())
 
 
 def get_table(expr: exp.Expr) -> exp.Table:

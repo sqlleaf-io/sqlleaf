@@ -15,7 +15,7 @@ class ProgramNode(NodeAttributes):
         program = expr.args["params"][0].sql()
         name, args = (program + " ").split(" ", maxsplit=1)
         super().__init__(
-            kind="program", data_type=exp.DataType.build("UNKNOWN"), expr=gen_ctx.expr, pos_ctx=pos_ctx, name=name
+            kind="program", data_type=exp.DType.UNKNOWN.into_expr(), expr=gen_ctx.expr, pos_ctx=pos_ctx, name=name
         )
         self.program_args = args.strip()
 

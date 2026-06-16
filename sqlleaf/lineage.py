@@ -59,11 +59,11 @@ class Lineage:
                     generator.generate_lineage_for_query(query, graph)
                 query.set_to_original()
 
-            graph.graph["attrs"].add_query(parent_query)
+            graph.graph["attrs"].add_query_to_graph(parent_query)
 
             # Associate the query with the graph even if it has no lineage
             self.merge_graph(graph)
-            self.graph.graph["attrs"].add_query(parent_query)
+            self.graph.graph["attrs"].add_query_to_graph(parent_query)
             # types.update_column_data_types(self.graph)
             logger.debug("---")
 

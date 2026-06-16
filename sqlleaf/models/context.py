@@ -92,10 +92,10 @@ class GeneratorContext[Q, N]:
         """
 
         def is_missing_type(x: exp.Expr) -> bool:
-            return not (x.type or x.is_type(exp.DataType.build("UNKNOWN")))
+            return not (x.type or x.is_type(exp.DType.UNKNOWN.into_expr()))
 
         if isinstance(expr, exp.ColumnDef):
-            return expr.kind or exp.DataType.build("UNKNOWN")
+            return expr.kind or exp.DType.UNKNOWN.into_expr()
         elif is_missing_type(expr) and expr.parent:
             # Use an ancestor's type
             parent = expr.parent
@@ -105,7 +105,7 @@ class GeneratorContext[Q, N]:
                 parent = parent.parent
 
             return t.cast(exp.DataType, expr.parent.type)
-        return expr.type or exp.DataType.build("UNKNOWN")
+        return expr.type or exp.DType.UNKNOWN.into_expr()
 
 
 @dataclass(frozen=True)

@@ -45,7 +45,7 @@ def generate_lineage_for_query(
 
     for i, statement in enumerate(statements_to_process):
         logger.debug("----")
-        subs = "SUBSTITUTED " if i > 0 else ""
+        subs = "[SUBSTITUTED] " if i > 0 else ""
         logger.info(f"Getting lineage for {subs}query: {statement.sql(dialect=query.dialect)}")
 
         pos_ctx = PositionContext(statement_index=query.get_statement_index())

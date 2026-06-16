@@ -8,7 +8,7 @@ from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
 
 from sqlleaf import exception
-from sqlleaf.models.query import Q
+from sqlleaf.models.query import CTASQuery, Q, TypeQuery, ViewQuery
 
 if t.TYPE_CHECKING:
     from sqlleaf.models.query import SequenceQuery, StageQuery, TableQuery, TriggerQuery, UserDefinedFunctionQuery
@@ -34,7 +34,27 @@ class ObjectMapping(MappingSchema):
         self.kind_mapping = {}
         self.kind_mapping_trie = {}
 
-    def add_query(
+    def add_sequence_query(self, query: SequenceQuery) -> None:
+        self._add_query(kind="sequence", query=query, dialect=query.dialect)
+
+    def add_stage_query(self, query: StageQuery) -> None:
+        self._add_query(kind="stage", query=query, dialect=query.dialect)
+
+    def add_table_query(
+        self, query: TableQuery | ViewQuery | CTASQuery, column_mapping: t.Optional[ColumnMapping] = None
+    ) -> None:
+        self._add_query(kind="table", query=query, column_mapping=column_mapping, dialect=query.dialect)
+
+    def add_trigger_query(self, query: TriggerQuery) -> None:
+        self._add_query(kind="trigger", query=query, dialect=query.dialect)
+
+    def add_type_query(self, query: TypeQuery) -> None:
+        self._add_query(kind="type", query=query, dialect=query.dialect)
+
+    def add_udf_query(self, query: UserDefinedFunctionQuery) -> None:
+        self._add_query(kind="udf", query=query, dialect=query.dialect)
+
+    def _add_query(
         self,
         kind: str,
         query: Q,
@@ -56,11 +76,6 @@ class ObjectMapping(MappingSchema):
             match_depth: whether to enforce that the table must match the schema's depth or not.
         """
         table = query.get_target_as_table()
-        # if table is None:
-        #     return
-
-        # if not isinstance(table, exp.Table):
-        #     raise exception.SqlLeafException(message=f"Cannot add non-table expression '{table.sql()}' to mapping.")
 
         normalized_table = self._normalize_table(table, dialect=dialect, normalize=normalize)
         parts = self.table_parts(normalized_table)
@@ -68,6 +83,11 @@ class ObjectMapping(MappingSchema):
         if kind not in self.kind_mapping:
             self.kind_mapping[kind] = {}
             self.kind_mapping_trie[kind] = new_trie({})
+
+        if kind == "udf":
+            # Store the UDF with other UDFs of the same name
+            udfs_with_same_name = self.lookup_udf_query(table, raise_on_missing=False) or []
+            query = [query] + udfs_with_same_name
 
         nested_set(self.kind_mapping[kind], tuple(reversed(parts)), query)
         new_trie([parts], self.kind_mapping_trie[kind])
@@ -113,22 +133,28 @@ class ObjectMapping(MappingSchema):
             ensure_data_types=ensure_data_types,
         )
 
-    def lookup_table_query(self, table: exp.Table, raise_on_missing: bool = True) -> TableQuery | None:
-        return self.find_query(kind="table", table=table, raise_on_missing=raise_on_missing)
-
     def lookup_sequence_query(self, table: exp.Table, raise_on_missing: bool = True) -> SequenceQuery | None:
-        return self.find_query(kind="sequence", table=table, raise_on_missing=raise_on_missing)
+        return self._lookup_query(kind="sequence", table=table, raise_on_missing=raise_on_missing)
 
     def lookup_stage_query(self, table: exp.Table, raise_on_missing: bool = True) -> StageQuery | None:
-        return self.find_query(kind="stage", table=table, raise_on_missing=raise_on_missing)
+        return self._lookup_query(kind="stage", table=table, raise_on_missing=raise_on_missing)
+
+    def lookup_table_query(self, table: exp.Table, raise_on_missing: bool = True) -> TableQuery | None:
+        return self._lookup_query(kind="table", table=table, raise_on_missing=raise_on_missing)
 
     def lookup_trigger_query(self, table: exp.Table, raise_on_missing: bool = True) -> TriggerQuery | None:
-        return self.find_query(kind="trigger", table=table, raise_on_missing=raise_on_missing)
+        return self._lookup_query(kind="trigger", table=table, raise_on_missing=raise_on_missing)
 
-    def lookup_udf_query(self, table: exp.Table, raise_on_missing: bool = True) -> UserDefinedFunctionQuery | None:
-        return self.find_query(kind="udf", table=table, raise_on_missing=raise_on_missing)
+    def lookup_type_query(self, table: exp.Table, raise_on_missing: bool = True) -> TypeQuery | None:
+        return self._lookup_query(kind="type", table=table, raise_on_missing=raise_on_missing)
 
-    def find_query(
+    def lookup_udf_query(
+        self, table: exp.Table, raise_on_missing: bool = True
+    ) -> t.List[UserDefinedFunctionQuery] | None:
+        # A UDF can have multiple names but different types, thus we return a list
+        return self._lookup_query(kind="udf", table=table, raise_on_missing=raise_on_missing)
+
+    def _lookup_query(
         self,
         kind: str,
         table: exp.Table,

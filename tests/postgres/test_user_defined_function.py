@@ -2,7 +2,6 @@ import os
 import sys
 import typing as t
 
-import pytest
 from sqlglot import exp
 
 from sqlleaf.models.query import UserDefinedFunctionQuery
@@ -40,3 +39,9 @@ def test_hello_udf(holder):
     assert h.paths == [["udf[HELLO]", "column[target.name]"]]
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
+
+    insert_query = h.queries[2]
+    insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello') AS name"]
+
+    actual_after = [insert_query.statement_substituted]
+    assert to_sql(actual_after) == insert_after

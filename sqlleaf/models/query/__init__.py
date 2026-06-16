@@ -16,6 +16,7 @@ from sqlleaf.models.query.trigger import TriggerQuery as TriggerQuery
 from sqlleaf.models.query.type import TypeQuery as TypeQuery
 from sqlleaf.models.query.unload import UnloadQuery as UnloadQuery
 from sqlleaf.models.query.update import UpdateQuery as UpdateQuery
+from sqlleaf.models.query.user_defined_function import FunctionParam as FunctionParam
 from sqlleaf.models.query.user_defined_function import UserDefinedFunctionQuery as UserDefinedFunctionQuery
 from sqlleaf.models.query.view import ViewQuery as ViewQuery
 

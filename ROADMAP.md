@@ -24,6 +24,9 @@ The following types of queries and nodes need to be created.
   - [x] CTAS
   - [ ] MATERIALIZED VIEW
 - [ ] System tables (pg_class, pg_attribute)
+- [ ] Field accesses
+- [ ] Double field accesses
+        SELECT (on_hand.item).name FROM on_hand WHERE (on_hand.item).price > 9.99;
 
 CREATE DATABASE
 
@@ -125,6 +128,8 @@ INSERT
   - [x] VALUES
     - [x] (DEFAULT, DEFAULT)
     - [x] Multi-row
+    - [ ] (ROW(...)) where params related to a table/type
+        INSERT INTO on_hand VALUES (ROW('fuzzy dice', 42, 1.99));
   - [ ] OVERRIDING {SYSTEM|USER} VALUE
     - not supported by sqlglot
   - [ ] INTO VIEW (automatically updatable views)
