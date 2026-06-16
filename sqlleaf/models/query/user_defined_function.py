@@ -44,7 +44,7 @@ class UserDefinedFunctionQuery(Query):
         Collect the required information from the function DDL into class attributes.
         """
         function_name, schema_name, parameters = _extract_function_info(self.statement)
-        return_type, return_columns, return_kind = _extract_return_info(self.statement)
+        return_type, return_columns, return_kind = _extract_return_info(self.statement, parameters)
 
         # If it's a composite type or table, look up the columns if not already found
         if return_type and not return_columns:
@@ -181,6 +181,12 @@ def _extract_function_info(expression: exp.Create) -> Tuple[str, Optional[str], 
 
                 # Handle special keywords used as parameter names by assigning positional placeholders
                 if param_name.upper() in ("IN", "OUT", "INOUT"):
+                    if param_name.upper() == "OUT":
+                        is_input = False
+                        is_output = True
+                    elif param_name.upper() == "INOUT":
+                        is_input = True
+                        is_output = True
                     param_name = f"${i + 1}"
                 parameters.append(
                     FunctionParam(
@@ -236,11 +242,24 @@ def _is_unnamed_parameter(col_def: exp.ColumnDef) -> bool:
     )
 
 
-def _extract_return_info(expression: exp.Create) -> Tuple[Optional[exp.DataType], List[str], Optional[str]]:
+def _extract_return_info(expression: exp.Create, parameters: List[FunctionParam]) -> Tuple[Optional[exp.DataType], List[str], Optional[str]]:
     """Extracts return type, return columns, and return kind from a CREATE FUNCTION expression."""
     return_type = None
     return_columns = []
     return_kind = None
+
+    # Check for OUT/INOUT parameters that determine the return structure
+    out_params = [p for p in parameters if p.is_output]
+
+    if out_params:
+        if len(out_params) == 1:
+            return_type = out_params[0].type
+            return_kind = "system"
+        else:
+            return_type = get_user_defined_data_type()
+            return_kind = "table"
+            for param in out_params:
+                return_columns.append(param.name)
 
     # Loop through properties to find the RETURNS clause
     for prop in expression.args.get("properties", {}).expressions:

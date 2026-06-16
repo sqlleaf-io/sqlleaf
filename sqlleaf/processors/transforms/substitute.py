@@ -485,7 +485,7 @@ def _build_replacement_exprs(node: exp.Anonymous, query: UserDefinedFunctionQuer
     for stmt in query.inner_statements:
         # Annotate types of the inner UDF query before transformation
         stmt = annotate_types(stmt.copy(), schema=query.object_mapping)
-        replacement_exprs.append(_transform_inner_query(stmt, query, param_map, positional_map))
+        replacement_exprs.append(_transform_inner_query(stmt, param_map, query, positional_map))
 
     return replacement_exprs
 
