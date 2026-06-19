@@ -168,6 +168,7 @@ def find_next_udf_call(
         if not isinstance(node, exp.Anonymous):
             continue
 
+        # TODO: combine this logic with what's in process_anonymous()
         function_name = node.this.lower()
         # Check if the call is qualified (e.g., myschema.myfunc())
         parent = node.parent
@@ -183,16 +184,7 @@ def find_next_udf_call(
         candidates = udf_queries
         if not candidates:
             continue
-        # for candidate in udfs:
-        #     if candidate.name.lower() == node_name:
-        #         # Match schema if defined, otherwise ensure call is unqualified
-        #         if (candidate.schema and node_schema == candidate.schema.lower()) or (
-        #             not candidate.schema and not node_schema
-        #         ):
-        #             candidates.append(candidate)
-        #
-        # if not candidates:
-        #     continue
+
 
         best_match = resolve_overloaded_function(node, candidates)
         if best_match:

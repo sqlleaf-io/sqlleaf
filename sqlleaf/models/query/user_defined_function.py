@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import typing as t
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
 
 import sqlglot
 from sqlglot import exp
@@ -30,10 +30,6 @@ class UserDefinedFunctionQuery(Query):
 
         self.collect()
 
-        # TODO: support 'default'
-        self.args = [  # e.g. {'name': 'v_session_id', 'type': 'VARCHAR'}
-            {"name": str(col.this), "type": str(col.kind)} for col in statement.this.find_all(exp.ColumnDef)
-        ]
 
     @property
     def name(self):
@@ -44,29 +40,7 @@ class UserDefinedFunctionQuery(Query):
         Collect the required information from the function DDL into class attributes.
         """
         function_name, schema_name, parameters = _extract_function_info(self.statement)
-        return_type, return_columns, return_kind = _extract_return_info(self.statement, parameters)
-
-        # If it's a composite type or table, look up the columns if not already found
-        if return_type and not return_columns:
-            # For lookup in get_types/get_tables, we still need the name of the type
-            # But return_type is now an exp.DataType.Type.
-            # We need to find the original type name from the expression.
-            return_type_name = None
-            for prop in self.statement.args.get("properties", {}).expressions:
-                if isinstance(prop, exp.ReturnsProperty) and prop.this:
-                    if not isinstance(prop.this, exp.Schema):
-                        return_type_name = prop.this.sql().lower()
-                    break
-
-            if return_type_name:
-                if return_kind == "custom":
-                    return_columns = list(get_types()[return_type_name].keys())
-                elif return_kind == "table":
-                    return_columns = list(get_tables()[return_type_name].keys())
-
-        # If no return columns from RETURNS TABLE, check for OUT/INOUT parameters
-        if not return_columns:
-            return_columns = [p.name for p in parameters if p.is_output]
+        return_type, return_columns = _extract_return_info(self.statement, parameters, self.object_mapping)
 
         # Filter parameters to only include those that can be passed as input
         input_parameters = [p for p in parameters if p.is_input or p.is_variadic]
@@ -91,41 +65,34 @@ class UserDefinedFunctionQuery(Query):
             else:
                 inner_statements = [exp.select(body_expr)]
 
-        self.function_name = function_name
-        self.return_type = return_type
-        self.return_kind = return_kind
-        self.language = language
-        self.schema_name = schema_name
-        self.parameters = input_parameters
-        self.return_columns = return_columns
-        self.inner_statements = inner_statements
+        self.schema_name: str = schema_name
+        self.function_name: str = function_name
+        self.return_type: exp.DataType = return_type
+        self.language: str = language
+        self.parameters: t.List[FunctionParam] = input_parameters
+        self.return_columns: t.List[exp.ColumnDef] = return_columns
+        self.inner_statements: t.List[exp.Expr] = inner_statements
+
+    def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
+        return self.return_columns
+
+    def get_column_names_with_types(self, include_system: bool = False) -> t.Dict[str, str]:
+        """
+        Used by sqlglot's MappingSchema
+        """
+        columns = {col.name: str(col.kind) for col in self.get_column_defs(include_system=include_system)}
+        return columns
 
 
-def get_types() -> dict[str, dict[str, str]]:
-    """
-    CREATE TYPE person AS (name text, age int);
-    """
-    return {
-        "person": {
-            "name": "TEXT",
-            "age": "INT",
-        }
-    }
-
-
-def get_tables() -> dict[str, dict[str, str]]:
-    """
-    CREATE TABLE people (name TEXT, age INT);
-    """
-    return {
-        "people": {
-            "name": "TEXT",
-            "age": "INT",
-        }
-    }
-
-
-def get_user_defined_data_type() -> exp.DataType:
+def get_user_defined_data_type(kind: t.Optional[str | exp.Identifier | exp.Dot] = None) -> exp.DataType:
+    if kind:
+        if isinstance(kind, str):
+            if "." in kind:
+                parts = kind.split(".")
+                kind = exp.Dot.build([exp.Identifier(this=p, quoted=False) for p in parts])
+            else:
+                kind = exp.Identifier(this=kind, quoted=False)
+        return exp.DataType.build(kind, udt=True, dialect="postgres")
     return exp.DataType.build("USER-DEFINED", dialect="postgres")
 
 
@@ -135,13 +102,13 @@ class FunctionParam:
 
     name: str
     type: exp.DataType
-    default: Optional[exp.Expression] = None
+    default: t.Optional[exp.Expression] = None
     is_input: bool = True
     is_output: bool = False
     is_variadic: bool = False
 
 
-def _extract_function_info(expression: exp.Create) -> Tuple[str, Optional[str], List[FunctionParam]]:
+def _extract_function_info(expression: exp.Create) -> t.Tuple[str, t.Optional[str], t.List[FunctionParam]]:
     """Extracts the name, schema, and parameters from a CREATE FUNCTION expression."""
     target = expression.this
     parameters = []
@@ -172,7 +139,7 @@ def _extract_function_info(expression: exp.Create) -> Tuple[str, Optional[str], 
                             is_variadic = constraint.args.get("variadic")
 
                 # Unnamed parameter logic inside ColumnDef (e.g., VARIADIC numeric[])
-                if param_name.lower() == "variadic":
+                if param_name.upper() == "VARIADIC":
                     is_variadic = True
                     param_name = f"${i + 1}"
                     # The type might be stored in a way that includes the rest of the definition
@@ -205,21 +172,19 @@ def _extract_function_info(expression: exp.Create) -> Tuple[str, Optional[str], 
 
                 type_node = col_def
                 if isinstance(col_def, exp.UserDefinedFunction):
-                    is_variadic = col_def.sql().lower().startswith("variadic")
+                    is_variadic = col_def.sql().upper().startswith("variadic")
                     type_node = col_def.this
 
                 type_sql = type_node.this.lower()
 
                 if type_sql in ("anyelement", "anyarray"):
-                    param_type = get_user_defined_data_type()
-                    # We can't build it directly, but we can set its name
-                    param_type.set("this", exp.Identifier(this=type_sql, quoted=False))
+                    param_type = get_user_defined_data_type(kind=type_sql)
                 else:
                     try:
                         param_type = exp.DataType.build(type_node.this, dialect="postgres")
                     except Exception:
                         # e.g. for tables as parameters - CREATE FUNCTION hello(people), where 'people' is a table
-                        param_type = get_user_defined_data_type()
+                        param_type = get_user_defined_data_type(kind=type_node.this)
 
                 parameters.append(FunctionParam(name=param_name, type=param_type, is_variadic=is_variadic))
     else:
@@ -242,24 +207,26 @@ def _is_unnamed_parameter(col_def: exp.ColumnDef) -> bool:
     )
 
 
-def _extract_return_info(expression: exp.Create, parameters: List[FunctionParam]) -> Tuple[Optional[exp.DataType], List[str], Optional[str]]:
-    """Extracts return type, return columns, and return kind from a CREATE FUNCTION expression."""
+def _extract_return_info(
+    expression: exp.Create, parameters: t.List[FunctionParam], object_mapping: mappings.ObjectMapping
+) -> t.Tuple[t.Optional[exp.DataType], t.List[exp.ColumnDef]]:
+    """Extracts return type and return columns from a CREATE FUNCTION expression."""
     return_type = None
     return_columns = []
-    return_kind = None
 
     # Check for OUT/INOUT parameters that determine the return structure
-    out_params = [p for p in parameters if p.is_output]
+    out_params: t.List[FunctionParam] = [p for p in parameters if p.is_output]
 
     if out_params:
         if len(out_params) == 1:
             return_type = out_params[0].type
-            return_kind = "system"
         else:
             return_type = get_user_defined_data_type()
-            return_kind = "table"
             for param in out_params:
-                return_columns.append(param.name)
+                col_name = param.name
+                if col_name.startswith("$"):
+                    col_name = f"column{col_name[1:]}"
+                return_columns.append(exp.ColumnDef(this=exp.to_identifier(col_name), kind=param.type))
 
     # Loop through properties to find the RETURNS clause
     for prop in expression.args.get("properties", {}).expressions:
@@ -270,33 +237,32 @@ def _extract_return_info(expression: exp.Create, parameters: List[FunctionParam]
             # Check if it's a RETURNS TABLE(...) with multiple columns
             if isinstance(prop.this, exp.Schema):
                 return_type = get_user_defined_data_type()
-                return_kind = "table"
-                # Extract individual column names for table-returning functions
+                # Extract individual column definitions for table-returning functions
                 for col_def in prop.this.expressions:
                     if isinstance(col_def, exp.ColumnDef):
-                        return_columns.append(col_def.this.name)
+                        return_columns.append(col_def)
             else:
                 # Standard return type (e.g., RETURNS TEXT, RETURNS person, RETURNS TABLE_NAME)
                 return_type_sql = prop.this.sql().lower()
                 return_type = prop.this
 
-                # TODO: get types/tables from UDFs
                 if return_type_sql == "void":
-                    return_kind = "void"
                     return_type = exp.DataType.build("NULL")
-                elif return_type_sql in get_types():
-                    return_kind = "custom"
-                elif return_type_sql in get_tables():
-                    return_kind = "table"
                 else:
-                    return_kind = "system"
+                    target_table = exp.to_table(return_type_sql)
+                    found_query = object_mapping.lookup_type_query(target_table, raise_on_missing=False)
+                    if not found_query:
+                        found_query = object_mapping.lookup_table_query(target_table, raise_on_missing=False)
 
-    return return_type, return_columns, return_kind
+                    if found_query:
+                        return_columns = found_query.get_column_defs()
+
+    return return_type, return_columns
 
 
-def _extract_language(expression: exp.Create) -> Optional[str]:
+def _extract_language(expression: exp.Create) -> t.Optional[str]:
     """Extracts the language from a CREATE FUNCTION expression."""
     for prop in expression.args.get("properties", {}).expressions:
         if isinstance(prop, exp.LanguageProperty):
-            return prop.this.sql()
+            return prop.this.sql().lower()
     return None

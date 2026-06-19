@@ -19,7 +19,7 @@ from sqlleaf.models.query import (
     UnloadQuery,
     UpdateQuery,
 )
-from sqlleaf.processors.transforms.substitute import substitute_udf
+from sqlleaf.processors.transforms import resolver, substitute
 from sqlleaf.typing import E
 
 logger = logging.getLogger("sqlleaf")
@@ -49,7 +49,7 @@ def transform_query(query: Q) -> None:
         # TODO: a list of transformed inner queries is returned, but right now
         #  we only care about the last statement. In an upcoming commit, process all
         #  the transformed statements separately.
-        substituted = subst_statements[0]
+        substituted = subst_statements[-1]
         # substituted = _transform_statement(statement_substituted, query)
         query.set_substituted_statement(substituted)
 
@@ -61,8 +61,9 @@ def _get_substituted_statements(statement: exp.Expr, query: Q) -> t.List[exp.Exp
     Returns a statement only if a UDF was substituted.
     """
 
-    statements = substitute_udf(statement=statement, query=query)
+    statements = substitute.substitute_udf(statement=statement, query=query)
     return statements
+
 
 
 def _transform_statement(statement: E, query: Q) -> exp.Expr:
@@ -132,6 +133,13 @@ def _transform_statement(statement: E, query: Q) -> exp.Expr:
     if isinstance(statement, exp.Insert):
         _validate_values(statement=statement, query=query)
 
+    # Add aliases to UDFs
+    _add_aliases_to_udfs(statement=statement, query=query)
+
+    # Replace UDFs if they're referenced in LATERAL
+    # _replace_lateral_udf_references(statement=statement, query=query)
+
+
     # Qualify columns, add aliases and optimize the expressions
     statement = _apply_optimizations(statement=statement, query=query)
 
@@ -163,7 +171,15 @@ def _validate_syntax(func):
         statement = kwargs.pop("statement")
         query = kwargs.pop("query")
 
+        should_log = False
+
+        if should_log:
+            logger.debug(f"Function: {func.__name__}, Input:  {statement.sql(dialect=query.dialect)}")
+
         result = func(statement=statement, query=query, *args, **kwargs)
+
+        if should_log:
+            logger.debug(f"Function: {func.__name__}, Output: {result.sql(dialect=query.dialect)}")
 
         if result and (statement.sql(dialect=query.dialect) != result.sql(dialect=query.dialect)):
             logger.debug(f"Transformed by {func}.")
@@ -181,6 +197,66 @@ def _validate_syntax(func):
         return result
 
     return wrapper
+
+
+@_validate_syntax
+def _replace_lateral_udf_references(statement: E, query: Q) -> E:
+    """
+    Needed for LATERAL queries.
+
+    SELECT .. LATERAL udf()
+    ->
+    SELECT .. LATERAL udf() as udf(property, value)
+    """
+    # Perform transformations here
+    return statement
+
+
+@_validate_syntax
+def _add_alias_to_subquery(statement: E, query: Q) -> E:
+    """
+    Needed for LATERAL queries.
+
+    (SELECT 'goodbye' AS bye)
+    ->
+    (SELECT 'goodbye' AS bye) -> AS bye
+    """
+    return statement
+
+
+@_validate_syntax
+def _add_aliases_to_udfs(statement: exp.Expr, query: Q) -> exp.Expr:
+    """
+    Iterate over the query looking for UDFs and add an alias to them with the same name
+    as the UDF if it doesn't already exist. This prevents sqlglot from adding its own
+    custom aliases (_0, _1, etc).
+    """
+    for node in statement.find_all(exp.Anonymous):
+        call_node, udf_query = resolver.find_next_udf_call(node, query.object_mapping)
+        if not udf_query:
+            continue
+
+        # Get the name of the UDF to use as an alias
+        name = node.this if isinstance(node.this, str) else node.this.name
+
+        # The expression to be aliased
+        to_alias = node
+        if isinstance(node.parent, exp.Dot):
+            to_alias = node.parent
+
+        # If it's a Table's this (e.g. SELECT * FROM MY_UDF())
+        if isinstance(to_alias.parent, exp.Table):
+            table_node = to_alias.parent
+            if not table_node.alias:
+                table_node.set("alias", exp.TableAlias(this=exp.to_identifier(name)))
+            continue
+
+        # If it's in a SELECT list and not already aliased
+        if isinstance(to_alias.parent, exp.Select) and to_alias in to_alias.parent.expressions:
+            # Wrap the expression in an Alias
+            to_alias.replace(exp.alias_(to_alias.copy(), name))
+
+    return statement
 
 
 class Transformer:
@@ -219,6 +295,8 @@ def _add_aliases_to_pseudocolumns(statement: exp.Expr, query: Q) -> None:
         if pseudo.parent_select and pseudo.parent_select.args.get("from_"):
             from_table_alias = pseudo.parent_select.args["from_"].alias_or_name
             pseudo.set("table", exp.to_identifier(from_table_alias))
+
+    return statement
 
 
 @_validate_syntax
@@ -816,6 +894,8 @@ def _apply_optimizations(statement: E, query: Q, add_column_names: bool = True) 
         # Prevent overwriting known types to 'UNKNOWN' (sqlglot can't resolve non-table sources)
         exclude_rules += ["annotate_types"]
 
+    # TODO: override sqlglot's function that generates table aliases (e.g. _0, _1, etc) into one that handles UDFs (by assigning the alias as the table name)
+
     qualify.qualify(
         statement,
         schema=query.object_mapping,
@@ -836,7 +916,7 @@ def _apply_optimizations(statement: E, query: Q, add_column_names: bool = True) 
     )
 
     # We don't want to merge the CTEs as they provide useful info to the user
-    # so we skip merge_ctes() and call the function below directly instead
+    # so we skip merge_ctes() and call its sibling function below directly instead
     statement = merge_derived_tables(statement)
     return statement
 
@@ -897,7 +977,7 @@ def _rename_returning_columns(statement: exp.CTE, query: Q, child_table: exp.Tab
 
 
 @_validate_syntax
-def _add_column_names_to_insert(statement: exp.Insert, query: Q):
+def _add_column_names_to_insert(statement: exp.Insert, query: Q)-> exp.Insert:
     """
     Add aliases to SELECTs that are missing them by looking at the corresponding INSERT column.
     This prevents sqlglot from assigning its own generated names as aliases.
@@ -911,7 +991,7 @@ def _add_column_names_to_insert(statement: exp.Insert, query: Q):
         INSERT INTO my.apple (a,b) SELECT name as a, age as b FROM my.pear
     """
     if not isinstance(statement, exp.Insert) or not statement.selects:
-        return
+        return statement
 
     # sqlglot throws a parse error on named columns for Snowflake: INSERT INTO @"my_eXt_sTaGe" (NAME, AGE) SELECT ...
     if (
@@ -919,17 +999,19 @@ def _add_column_names_to_insert(statement: exp.Insert, query: Q):
         and isinstance(query, CopyQuery)
         and (query.is_source_a_stage or query.is_target_a_stage)
     ):
-        return
+        return statement
 
     if isinstance(query, (CopyQuery, UnloadQuery)):
         # The aliases and column names aleady exist from a previous transformation
-        return
+        return statement
 
+    # TODO: get the column definitions from the underlying query.TargetObject?
     child_table = query.get_target_as_table()
     selects = statement.selects
     table_query = query.object_mapping.get_table_or_stage(child_table)
     if not table_query:
-        return
+        raise exception.SqlLeafException(message=f"Unknown target table: {str(exp.table_name(child_table))}")
+
     table_columns = [c.name for c in table_query.get_column_defs(include_system=True)]
     insert_columns = []
 
@@ -941,7 +1023,7 @@ def _add_column_names_to_insert(statement: exp.Insert, query: Q):
         insert_columns = [s for s in statement.this.alias_column_names]
 
     if not insert_columns:
-        # Add the column names from the mapping to the query
+        # Add the column names from the mapping to the INSERT's column names
         insert_columns = list(table_columns)[: len(selects)]
         schema = exp.Schema(this=child_table, expressions=[exp.to_identifier(c) for c in insert_columns])
         statement.set("this", schema)
@@ -953,9 +1035,9 @@ def _add_column_names_to_insert(statement: exp.Insert, query: Q):
             table=str(exp.table_name(child_table)),
         )
 
-    if "*" in selects:
+    if exp.Star() in selects:
         raise exception.SqlLeafException(
-            message="Statement has unresolved star column",
+            message=f"Statement has unresolved star column: {statement.sql(dialect=query.dialect)}",
             table=str(exp.table_name(child_table)),
         )
 
@@ -978,6 +1060,7 @@ def _add_column_names_to_insert(statement: exp.Insert, query: Q):
         # Overwrite the aliases because sqlglot may have added incorrect ones
         statement.selects[i] = statement.selects[i].as_(ins)
 
+    return statement
 
 # def clean_stored_procedure_text(text: str) -> str:
 #     """

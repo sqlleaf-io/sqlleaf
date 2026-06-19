@@ -1,3 +1,4 @@
+import logging
 import typing as t
 
 from sqlglot import exp
@@ -7,6 +8,8 @@ from sqlleaf.exception import SqlLeafException
 from sqlleaf.models.query import FunctionParam, Q, UserDefinedFunctionQuery
 from sqlleaf.processors.transforms.resolver import find_next_udf_call
 from sqlleaf.typing import E
+
+logger = logging.getLogger("sqlleaf")
 
 
 def _find_arg(args: t.List[exp.Expr], param: FunctionParam, index: int) -> t.Optional[exp.Expr]:
@@ -84,10 +87,18 @@ def _transform_arguments(
     positional_map = {}
     args = node.expressions
 
+    logger.debug(f"Transforming arguments for UDF: {query.name}")
+
     for i, param in enumerate(query.parameters):
         arg_expr = _find_arg(args, param, i) or param.default
 
         if arg_expr:
+            # Normalize people.* to people
+            if isinstance(arg_expr, exp.Column) and arg_expr.this.name == "*":
+                arg_expr = exp.column(arg_expr.table)
+            elif isinstance(arg_expr, exp.TableColumn):
+                arg_expr = exp.column(arg_expr.this)
+
             # If the parameter is a table type and the argument is a ROW expression without a cast,
             # we need to add the cast to the expected type.
             if (
@@ -97,10 +108,7 @@ def _transform_arguments(
             ):
                 arg_expr = exp.Cast(
                     this=arg_expr,
-                    to=exp.DataType(
-                        this=exp.DataType.Type.USERDEFINED,
-                        kind=exp.Identifier(this=param.name.replace("$", "p"), quoted=False),
-                    ),
+                    to=param.type.copy(),
                 )
 
             param_map[param.name.lower()] = arg_expr
@@ -192,33 +200,6 @@ def _substitute_parameter_node(
         _replace_dot_reference(node, param_map, positional_map)
 
 
-def _ensure_from_clauses(expression: exp.Expr, param_map: t.Dict[str, exp.Expr]) -> exp.Expr:
-    """
-    Ensures SELECT statements have appropriate FROM clauses when using table-derived columns.
-
-    Example:
-        Before: `SELECT p.name` (where p is a table-type argument)
-        After: `SELECT p.name FROM p`
-    """
-    for select in expression.find_all(exp.Select):
-        if not select.args.get("from"):
-            # Check if any Dot nodes now refer to a table name we can use
-            for dot in select.find_all(exp.Dot):
-                table_name = None
-                if isinstance(dot.this, exp.Identifier):
-                    table_name = dot.this.name
-                elif isinstance(dot.this, exp.Paren) and isinstance(dot.this.this, exp.Cast):
-                    data_type = dot.this.this.args.get("to")
-                    if isinstance(data_type, exp.DataType):
-                        table_name = data_type.sql().lower()
-
-                if table_name and _is_table_from_params(table_name, param_map):
-                    # Add FROM table_name to this SELECT
-                    select.from_(table_name, copy=False)
-                    break
-    return expression
-
-
 def _is_table_from_params(table_name: str, param_map: t.Dict[str, exp.Expr]) -> bool:
     """
     Checks if a table name corresponds to one of the provided arguments.
@@ -227,10 +208,7 @@ def _is_table_from_params(table_name: str, param_map: t.Dict[str, exp.Expr]) -> 
         `_is_table_from_params("people", {"$1": people})` -> `True`
     """
     for arg in param_map.values():
-        if isinstance(arg, exp.Column):
-            if arg.table == table_name or (not arg.table and arg.this.name == table_name):
-                return True
-        elif isinstance(arg, exp.Table) and arg.name == table_name:
+        if isinstance(arg, exp.Table) and arg.name == table_name:
             return True
         elif isinstance(arg, exp.Cast):
             data_type = arg.args.get("to")
@@ -255,10 +233,9 @@ def _replace_dot_reference(
         param_map.get(left.this.name.lower())
         if isinstance(left, exp.Column) and not left.table
         else positional_map.get(left.this.name)
-        if isinstance(left, exp.Parameter)
+        if isinstance(left, (exp.Parameter, exp.Placeholder))
         else None
     )
-
     if not sub:
         return
 
@@ -266,6 +243,8 @@ def _replace_dot_reference(
     table_name = (
         sub.table or (sub.this.name if isinstance(sub.this, exp.Identifier) else None)
         if isinstance(sub, exp.Column)
+        else sub.this.name
+        if isinstance(sub, exp.TableColumn)
         else sub.name
         if isinstance(sub, exp.Table)
         else None
@@ -295,15 +274,17 @@ def _transform_row_to_subquery(
         return None
 
     type_name = data_type.sql().lower()
-    table = exp.table_(table=type_name)
-    table_query = query.object_mapping.lookup_table_query(table=table, raise_on_missing=False)
-    if not table_query:
-        raise SqlLeafException(message=f"Unknown table in cast to ROW(): {type_name}")
+    table = exp.to_table(type_name)
+    object_query = query.object_mapping.lookup_table_query(table=table, raise_on_missing=False)
+    if not object_query:
+        object_query = query.object_mapping.lookup_type_query(table=table, raise_on_missing=False)
+        if not object_query:
+            raise SqlLeafException(message=f"Unknown table or type in cast to ROW(): {type_name}")
 
     row_expr = node.this
 
     # Ensure column count matches
-    columns = table_query.get_column_defs()
+    columns = object_query.get_column_defs()
     if len(row_expr.expressions) != len(columns):
         return None
 
@@ -325,13 +306,13 @@ def _transform_row_to_subquery(
     return None
 
 
-def _create_subquery_with_alias(replacement_expr: exp.Expr, query: UserDefinedFunctionQuery) -> exp.Subquery:
-    """Creates a Subquery with a table alias 't' and the UDF's return columns."""
+def _create_subquery_with_alias(replacement_expr: exp.Expr, query: UserDefinedFunctionQuery, alias: str = "t") -> exp.Subquery:
+    """Creates a Subquery with a table alias and the UDF's return columns."""
     return exp.Subquery(
         this=replacement_expr,
         alias=exp.TableAlias(
-            this=exp.Identifier(this="t", quoted=False),
-            columns=[exp.Identifier(this=c, quoted=False) for c in query.return_columns],
+            this=exp.Identifier(this=alias, quoted=False),
+            columns=[c.this if isinstance(c, exp.ColumnDef) else exp.to_identifier(c) for c in query.return_columns],
         ),
     )
 
@@ -375,7 +356,13 @@ def _transform_udf_to_subquery_if_table_reference(
         where hello() returns (name, age)
     """
     if query.return_columns:
-        replacement_expr = _create_subquery_with_alias(replacement_expr, query)
+        alias = node.alias
+        if not alias and isinstance(node.parent, exp.Table):
+            alias = node.parent.alias
+        if not alias:
+            alias = "t"
+
+        replacement_expr = _create_subquery_with_alias(replacement_expr, query, alias=alias)
     else:
         if isinstance(replacement_expr, (exp.Select, exp.Values)):
             replacement_expr = exp.Paren(this=replacement_expr)
@@ -453,11 +440,21 @@ def _transform_inner_query(
     """
     Performs replacement and transformations over a UDF's inner query.
     """
-    # 1. Substitute parameter references
+    logger.debug(f"Transforming inner query: {stmt.sql()}")
     replacement_expr = _substitute_parameters(stmt, query, param_map, positional_map)
+    logger.debug(f"Query after parameter substitution: {replacement_expr.sql()}")
 
-    # 2. Perform additional transformations
     # Handle ROW(...)::table_name replacement (composite/table type casting)
+    replacement_expr = _transform_row_function_to_subquery(replacement_expr, query)
+
+    new_expr = replacement_expr
+    return new_expr
+
+
+def _transform_row_function_to_subquery(replacement_expr: exp.Expr, query: UserDefinedFunctionQuery) -> exp.Expr:
+    """Transform a ROW() function into a subquery."""
+    transformed = False
+
     for subnode in replacement_expr.walk():
         if isinstance(subnode, exp.Cast):
             row_expr = subnode.this
@@ -466,12 +463,13 @@ def _transform_inner_query(
                 # already been handled or needs to be preserved.
                 if not isinstance(subnode.parent, exp.Paren) or not isinstance(subnode.parent.parent, exp.Dot):
                     if subnode is not replacement_expr:
-                        new_expr = _transform_row_to_subquery(subnode, replacement_expr)
+                        new_expr = _transform_row_to_subquery(subnode, replacement_expr, query)
                         if new_expr:
+                            transformed = True
                             replacement_expr = new_expr
-
-    new_expr = _ensure_from_clauses(replacement_expr, param_map)
-    return new_expr
+    if transformed:
+        logger.debug(f"Replaced ROW() to subquery: {replacement_expr.sql(dialect="postgres")}")
+    return replacement_expr
 
 
 def _build_replacement_exprs(node: exp.Anonymous, query: UserDefinedFunctionQuery) -> t.List[exp.Expr]:
@@ -492,15 +490,20 @@ def _build_replacement_exprs(node: exp.Anonymous, query: UserDefinedFunctionQuer
 
 def _apply_replacement(target_node: exp.Expr, replacement_expr: exp.Expr, query: UserDefinedFunctionQuery) -> None:
     """Applies the replacement of a UDF call node with its body logic."""
+    logger.debug(f"Applying replacement for UDF: {query.name}")
     dot_node = _get_dot_node(target_node)
 
     if isinstance(target_node.parent, exp.Lateral):
+        logger.debug("Applying LATERAL replacement")
         _create_lateral_replacement(target_node, replacement_expr, query)
     elif isinstance(target_node.parent, exp.Table):
+        logger.debug("Applying Table reference replacement")
         _transform_udf_to_subquery_if_table_reference(target_node, replacement_expr, query)
     elif bool(query.return_columns and dot_node):  # A field
+        logger.debug(f"Applying Field access replacement for field: {dot_node.expression.name}")
         _transform_field_access_to_subquery(dot_node, replacement_expr, query)
     else:
+        logger.debug("Applying Scalar call replacement")
         _replace_scalar_call(target_node, replacement_expr)
 
 
@@ -522,6 +525,9 @@ def substitute_udf(statement: E, query: Q) -> t.List[exp.Expr]:
         if not to_replace:
             break
 
+        logger.debug(f"Found UDF call to substitute: {matched_udf.name}")
+
+        param_map, _ = _transform_arguments(to_replace, matched_udf)
         result = [expression]
 
         target_node = _get_target_node(to_replace)
@@ -543,7 +549,11 @@ def substitute_udf(statement: E, query: Q) -> t.List[exp.Expr]:
                         break
 
                 # Apply the substitution recursively
-                final_results.extend(substitute_udf(new_expression, query))
+                substituted_branches = substitute_udf(new_expression, query)
+                if not substituted_branches:
+                    final_results.append(new_expression)
+                else:
+                    final_results.extend(substituted_branches)
             return final_results
 
         # Single statement: apply replacement and continue finding next UDF calls

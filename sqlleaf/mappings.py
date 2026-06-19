@@ -51,8 +51,8 @@ class ObjectMapping(MappingSchema):
     def add_type_query(self, query: TypeQuery) -> None:
         self._add_query(kind="type", query=query, dialect=query.dialect)
 
-    def add_udf_query(self, query: UserDefinedFunctionQuery) -> None:
-        self._add_query(kind="udf", query=query, dialect=query.dialect)
+    def add_udf_query(self, query: UserDefinedFunctionQuery, column_mapping: t.Optional[ColumnMapping] = None) -> None:
+        self._add_query(kind="udf", query=query, column_mapping=column_mapping, dialect=query.dialect)
 
     def _add_query(
         self,
@@ -92,8 +92,10 @@ class ObjectMapping(MappingSchema):
         nested_set(self.kind_mapping[kind], tuple(reversed(parts)), query)
         new_trie([parts], self.kind_mapping_trie[kind])
 
-        if kind == "table" and column_mapping is not None:
-            # Track the table's columns
+        if kind in ["table", "udf"] and column_mapping is not None:
+            # Track the table's columns. UDFs are supported by sqlglot when qualifying columns
+            # TODO: there is a bug here where multiple UDFs with the same name that have different return columns
+            #  will have their column names overwritten (non-merged)
             self._add_columns_for_table(
                 table=table,
                 column_mapping=column_mapping,

@@ -67,6 +67,35 @@ class PostgresGenerator(BaseGenerator):
             yield from super().process(expr, gen_ctx, pos_ctx)
 
     @process.register
+    def process_table_column(
+        self, expr: exp.TableColumn, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
+        """
+        SELECT my.func(people)
+                       ^------- A table
+        """
+        table_name = expr.this.name
+        table = exp.table_(table=table_name)
+        # We need to find the query that defines this table to get its columns
+        table_query = gen_ctx.query.object_mapping.lookup_table_query(table=table, raise_on_missing=False)
+        if table_query:
+            target_table = table_query.get_target()
+            for col_def in table_query.get_column_defs():
+                parent = ColumnNode(
+                    catalog=target_table.catalog,
+                    schema=target_table.db,
+                    table=target_table.name,
+                    column=col_def.name,
+                    gen_ctx=gen_ctx,
+                    pos_ctx=pos_ctx,
+                )
+                yield EdgeToCreate(parent, gen_ctx.child_node)
+        else:
+            logger.debug(f"Skipping expression: {type(expr)} {str(expr)}")
+            yield EdgeToCreate(None, None)
+
+
+    @process.register
     def process_anonymous(
         self, expr: exp.Anonymous, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:

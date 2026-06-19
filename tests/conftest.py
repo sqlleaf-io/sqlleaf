@@ -40,7 +40,11 @@ def pytest_assertrepr_compare(op, left, right):
         # We can dynamically use Python's difflib to show a neat line-by-line comparison
         import difflib
 
-        diff = list(difflib.ndiff(right, left))
+        # Convert elements to strings for comparison
+        left_str = [str(item) for item in left]
+        right_str = [str(item) for item in right]
+
+        diff = list(difflib.ndiff(right_str, left_str))
         explanation.extend(diff)
 
         if explanation:

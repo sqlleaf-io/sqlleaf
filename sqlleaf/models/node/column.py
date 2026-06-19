@@ -145,6 +145,10 @@ class ColumnNode(NodeAttributes):
                     self.parent_kind = TableType.DERIVED_TABLE
                     return
 
+                elif source.scope_type == ScopeType.UDTF:
+                    self.parent_kind = TableType.UDTF
+                    return
+
         else:
             tokens = [catalog, schema, table]
 
@@ -158,7 +162,7 @@ class ColumnNode(NodeAttributes):
         else:
             self.parent_kind = TableType(query.kind)
 
-        if query.property:
+        if query and query.property:
             self.parent_subkind = TableSubtype(query.property)
 
     def get_column_constraint_expression(self) -> exp.ColumnConstraintKind | None:

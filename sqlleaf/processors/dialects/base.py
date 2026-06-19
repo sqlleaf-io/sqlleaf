@@ -198,6 +198,16 @@ class BaseGenerator:
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
+    def process_variadic(
+        self, expr: exp.Variadic, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
+        """
+        MLEAST(VARIADIC ARRAY[1, 2, 3])
+        """
+        gen_ctx = replace(gen_ctx, expr=expr.this)
+        yield from self.process(expr.this, gen_ctx, pos_ctx)
+
+    @process.register
     def process_anonymous(
         self, expr: exp.Anonymous, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
@@ -209,7 +219,8 @@ class BaseGenerator:
         schema, function = util.get_udf_name(expr)
 
         # Process a UDF
-        node_args = list(expr.flatten())
+        node_args = expr.expressions
+        # node_args = list(expr.flatten())
         parent = UserDefinedFunctionNode(schema=schema, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
 
         # TODO: pass the type to the above
@@ -302,13 +313,14 @@ class BaseGenerator:
 
             # Rename the column's table/schema/catalog to be fully qualified
             if gen_ctx.scope and isinstance(gen_ctx.scope, Scope):
-                source_table = dict(gen_ctx.scope.references)[expr.table]
+                source_table = dict(gen_ctx.scope.references).get(expr.table)
 
-                if not isinstance(source_table, (exp.Table, exp.Values, exp.Subquery)):
-                    raise exception.SqlLeafException(message=f"Unexpected source type: {type(source_table)}")
+                if source_table:
+                    if not isinstance(source_table, (exp.Table, exp.Values, exp.Subquery, exp.Select)):
+                        raise exception.SqlLeafException(message=f"Unexpected source type: {type(source_table)}")
 
-                if not isinstance(source_table, exp.Subquery):
-                    parent.rename_table(source_table, gen_ctx.query.dialect)
+                    if not isinstance(source_table, exp.Subquery):
+                        parent.rename_table(source_table, gen_ctx.query.dialect)
 
             yield EdgeToCreate(parent, gen_ctx.child_node)
 

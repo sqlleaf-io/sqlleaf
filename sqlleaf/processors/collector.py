@@ -629,7 +629,10 @@ def _process_functions(
         object_mapping=object_mapping,
         statement_index=statement_index,
     )
-    object_mapping.add_udf_query(query)
+    object_mapping.add_udf_query(
+        query,
+        column_mapping=query.get_column_names_with_types(include_system=True)
+    )
 
     return query
 

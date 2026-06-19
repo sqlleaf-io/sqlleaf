@@ -39,6 +39,7 @@ class TableType(StrEnum):
     DERIVED_TABLE = auto()
     STAGE = auto()
     FILE = auto()
+    UDTF = auto()   # LATERAL hello() as hello(col1, col2)
 
 
 class TableSubtype(StrEnum):
