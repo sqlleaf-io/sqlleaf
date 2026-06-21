@@ -7,48 +7,29 @@ from sqlglot import TokenType, exp
 
 from sqlleaf import exception, mappings
 from sqlleaf.models.query.base import Query
-from sqlleaf.typing import SourceExprType, TargetExprType
+from sqlleaf.typing import SourceExprType, TargetExprType, TargetInfo, SourceInfo, SqlObjectType
 
 
 class UnloadQuery(Query):
+    KIND = "unload"
+
     def __init__(self, expr: exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
-        select_expr, to_location_expr = self._parse_expression(expr)
+        source, target = self.get_source_and_target(expr)
+
+        source_type = self._determine_expression_type(source, dialect)
+        target_type = self._determine_expression_type(target, dialect)
 
         super().__init__(
-            kind="unload",
-            statement=select_expr,
             dialect=dialect,
+            statement=source,
             statement_index=statement_index,
-            target_object=to_location_expr,
             object_mapping=object_mapping,
+            source_info=SourceInfo(expression=source, type=source_type),
+            target_info=TargetInfo(expression=target, type=target_type),
         )
-        self.source = select_expr
+        self.qualify_and_annotate()
 
-    def get_source(self):
-        # Temp: hacky
-        if isinstance(self.statement, exp.Insert):
-            return self.statement.expression  # Transformed
-        else:
-            return self.source  # Original
-
-    def _get_column_defs(
-        self,
-        target: SourceExprType | TargetExprType,
-    ) -> t.List[exp.ColumnDef]:
-        """
-        TODO: remove this override and use the parent's function.
-         This depends on having self.source set up first though.
-        """
-        source = self.get_source()
-        if isinstance(source, exp.Select):
-            # TODO: this can't handle functions
-            return [
-                exp.ColumnDef(this=exp.to_identifier(col.alias_or_name), kind=col.unalias().type)
-                for col in source.expressions
-            ]
-        return super()._get_column_defs(target)
-
-    def _parse_expression(self, statement: exp.Command) -> t.Tuple[exp.Select, exp.Literal]:
+    def get_source_and_target(self, statement: exp.Command) -> t.Tuple[exp.Select, exp.Literal]:
         """
         Parse an UNLOAD statement for Redshift.
         We parse this ourselves due to missing support in sqlglot.

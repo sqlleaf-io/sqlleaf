@@ -120,11 +120,13 @@ class RedshiftGenerator(BaseGenerator):
         location = expr.this
         child_node = gen_ctx.child_node
 
+        # TODO: change to source/target info
+
         # Create: column[name kind=file format=text type=INT path=s3://my-bucket/a/b/c]
         file_format = gen_ctx.query.statement_transformed.args["properties"].find(exp.FileFormatProperty).this
         column_node = FileColumnNode(
             column=child_node.name,
-            file_format=file_format,
+            #file_format=file_format,
             file_path=location.name,
             gen_ctx=gen_ctx,
             pos_ctx=pos_ctx,

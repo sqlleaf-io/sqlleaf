@@ -8,24 +8,31 @@ from sqlglot import exp
 
 from sqlleaf import mappings
 from sqlleaf.models.query.base import Query
+from sqlleaf.typing import TargetInfo
 
 
 class UserDefinedFunctionQuery(Query):
+    KIND = "udf"
+
     def __init__(
         self,
+        expr: exp.Create,
         dialect,
-        statement: exp.Create,
         object_mapping: mappings.ObjectMapping,
         statement_index: int,
     ):
+        source = None
+        target = expr.this.this
+
+        target_type = self._determine_expression_type(target, dialect)
 
         super().__init__(
-            kind="udf",
-            statement=statement,
             dialect=dialect,
+            statement=expr,
             statement_index=statement_index,
-            target_object=statement.this.this,
             object_mapping=object_mapping,
+            source_info=source,
+            target_info=TargetInfo(expression=target, type=target_type),
         )
 
         self.collect()
@@ -73,15 +80,7 @@ class UserDefinedFunctionQuery(Query):
         self.return_columns: t.List[exp.ColumnDef] = return_columns
         self.inner_statements: t.List[exp.Expr] = inner_statements
 
-    def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
-        return self.return_columns
-
-    def get_column_names_with_types(self, include_system: bool = False) -> t.Dict[str, str]:
-        """
-        Used by sqlglot's MappingSchema
-        """
-        columns = {col.name: str(col.kind) for col in self.get_column_defs(include_system=include_system)}
-        return columns
+        self.column_defs = return_columns
 
 
 def get_user_defined_data_type(kind: t.Optional[str | exp.Identifier | exp.Dot] = None) -> exp.DataType:

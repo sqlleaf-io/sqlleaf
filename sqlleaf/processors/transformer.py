@@ -20,7 +20,7 @@ from sqlleaf.models.query import (
     UpdateQuery,
 )
 from sqlleaf.processors.transforms import resolver, substitute
-from sqlleaf.typing import E
+from sqlleaf.typing import E, SqlObjectType
 
 logger = logging.getLogger("sqlleaf")
 
@@ -37,6 +37,7 @@ def transform_query(query: Q) -> None:
     """
     Transform a query's expression according to rules specific to its type.
     """
+    # TODO: run determine source and target here
     statement_to_transform = util.copy_expression(query.statement_original)
 
     transformed = _transform_statement(statement_to_transform, query)
@@ -475,11 +476,13 @@ def _convert_insert_defaults_to_values(statement: exp.Insert, query: Q) -> exp.I
     if not isinstance(values, exp.Values):
         return statement
 
-    named_columns = [e for e in statement.this.expressions]
+    # named_columns = [e for e in statement.this.expressions]
+    named_columns = query.get_selected_column_names()
 
     if not named_columns:
         # Use the associated column names from the mapping
         named_columns = list(table_columns)[: len(values.expressions[0].expressions)]
+        named_columns = [n.name for n in named_columns]
 
     for value_expr in values.expressions:
         if isinstance(value_expr, exp.Tuple):
@@ -488,7 +491,7 @@ def _convert_insert_defaults_to_values(statement: exp.Insert, query: Q) -> exp.I
                     # Replace 'DEFAULT' with the associated column's default expression
                     _replace_default_with_value(
                         expression=tuple_expr,
-                        column_name=named_columns[i].name,
+                        column_name=named_columns[i],
                         table_columns=table_columns,
                         query=query,
                     )
@@ -732,11 +735,11 @@ def _add_information_from_merge(
 
     if isinstance(statement, exp.Update):
         # Add the missing information to the UPDATE statement
-        target = query.get_target()
+        target = query.get_target_expression()
         if isinstance(target, exp.Table):
             query.only = target.args.get("only", False)  # type: ignore
 
-        update_expr = statement.table(query.get_target()).from_(using).where(on)
+        update_expr = statement.table(query.get_target_expression()).from_(using).where(on)
         update_expr.set("returning", returning)
 
         for cte in new_ctes:
@@ -758,7 +761,7 @@ def _add_information_from_merge(
         insert_expr = exp.insert(
             expression=new_select,
             columns=[col.this for col in statement.this.expressions],
-            into=query.get_target(),  # ty: ignore[invalid-argument-type]
+            into=query.get_target_expression(),  # ty: ignore[invalid-argument-type]
             dialect=query.dialect,
             returning=returning,
         )
@@ -782,34 +785,34 @@ def _convert_copy_to_insert(
 
     COPY INTO <table> FROM @stage
         -> INSERT INTO <table> SELECT * FROM @stage
-        => is_source_a_stage = True
         => produces lineage: @stage -> N table columns
     COPY INTO @stage FROM <table>
         -> INSERT INTO @stage SELECT * FROM <table>
-        => is_target_a_stage = True
         => produces lineage: N table columns -> @stage
     """
     dialect = query.dialect
 
     target_object = query.get_target_object()
     column_names = [col.name for col in target_object.columns]
-    columns = [util.column_def_to_column(c.copy()) for c in target_object.columns]
-    for c in columns:
-        c.set("catalog", "")
-        c.set("schema", "")
-        c.set("table", "")
 
     # Transform to a SELECT
-    src = query.get_source()
+    src = query.source_info.expression
     if isinstance(src, exp.Select):
         select = src
     else:
+        # Add the column names from the target object
+        columns = [util.column_def_to_column(c.copy()) for c in target_object.columns]
+        for c in columns:
+            c.set("catalog", "")
+            c.set("schema", "")
+            c.set("table", "")
+
         select = exp.select(*columns, dialect=dialect).from_(src)
 
     # Convert the Copy to an Insert
     insert_expr = exp.insert(
         expression=select,
-        into=query.get_target(),  # ty: ignore[invalid-argument-type]
+        into=query.get_target_expression(),  # ty: ignore[invalid-argument-type]
         columns=column_names,
         dialect=dialect,
     )
@@ -824,7 +827,7 @@ def _convert_unload_to_insert(statement: exp.Select, query: UnloadQuery) -> exp.
     UNLOAD ('SELECT * FROM fruit.raw') TO 's3://object-path/name-prefix'
         -> INSERT INTO 's3://object-path/name-prefix' SELECT * FROM fruit.raw
     """
-    table = exp.table_(query.get_target().name)
+    table = exp.table_(query.get_target_expression().name)
     insert_expr = exp.insert(
         expression=statement,
         into=table,
@@ -880,14 +883,13 @@ def _apply_optimizations(statement: E, query: Q, add_column_names: bool = True) 
 
     # Do not validate the columns if the source is a non-table
     if isinstance(query, CopyQuery):
-        src, src_name = query.get_source(), query.get_source().name
+        source = query.source_info
+
         if query.dialect == "postgres":
-            if isinstance(src, exp.Identifier) and src_name in ["stdin", "stdout"]:
-                validate_columns = False
-            elif isinstance(src, exp.Literal):
+            if source.type in [SqlObjectType.STREAM, SqlObjectType.FILE]:
                 validate_columns = False
         elif query.dialect == "snowflake":
-            if query.is_source_a_stage:
+            if query.source_info.type == SqlObjectType.STAGE:
                 validate_columns = False
 
     if not validate_columns:
@@ -997,7 +999,7 @@ def _add_column_names_to_insert(statement: exp.Insert, query: Q)-> exp.Insert:
     if (
         query.dialect == "snowflake"
         and isinstance(query, CopyQuery)
-        and (query.is_source_a_stage or query.is_target_a_stage)
+        and (query.source_info.type == SqlObjectType.STAGE or query.source_info.type == SqlObjectType.STAGE)
     ):
         return statement
 

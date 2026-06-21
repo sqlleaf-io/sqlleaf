@@ -5,27 +5,31 @@ import typing as t
 from sqlglot import exp
 
 from sqlleaf import util
-from sqlleaf.models.context import PositionContext
+from sqlleaf.models.context import GeneratorContext, PositionContext
 from sqlleaf.models.query import Q
 
 
 class NodeAttributes:
+    KIND: str = ""
+    WITH_POSITIONS: bool = False
+
     def __init__(
         self,
-        expr: exp.Expr,
-        data_type: exp.DataType | None,
+        gen_ctx: GeneratorContext,
         pos_ctx: PositionContext,
-        name: str,
-        kind: str = "",
-        with_positions: bool = False,
+        name: str | None = None,
+        data_type: exp.DataType | None = None,
     ):
-        self.expr = expr
-        self.data_type = str(data_type) if data_type else ""
-        self._data_type = data_type
-        self.name = name
-        self.kind = kind
-        self.ctx = pos_ctx
-        self.with_positions = with_positions
+        self.expr: exp.Expr = gen_ctx.expr
+        self._data_type: exp.DataType | None = data_type or gen_ctx.data_type
+        self.data_type: str = str(self._data_type) if self._data_type else ""
+
+        # Default name to expression name or provided override
+        self.name: str = name if name is not None else getattr(self.expr, "name", "")
+
+        self.kind: str = self.KIND
+        self.ctx: PositionContext = pos_ctx
+        self.with_positions: bool = self.WITH_POSITIONS
 
     # Allows the class to be used a networkx node
     def __hash__(self) -> int:

@@ -1,42 +1,36 @@
 from __future__ import annotations
 
 import typing as t
+from dataclasses import dataclass
 
 from sqlglot import exp
 
-from sqlleaf import mappings
+from sqlleaf import mappings, exception, util
 from sqlleaf.models.query.base import Query
-from sqlleaf.typing import SourceExprType, TargetExprType
+from sqlleaf.typing import SourceExprType, TargetExprType, SqlObjectType, TargetInfo, SourceInfo
 
 
 class CopyQuery(Query):
-    def __init__(self, expr: exp.Copy, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
-        # TODO: move these variables/types to SourceExpr/TargetExpr
-        self.is_source_a_stage = False
-        self.is_target_a_stage = False
+    KIND = "copy"
 
-        self.source, self.target = self.get_source_and_target(expr, dialect)
+    def __init__(self, expr: exp.Copy, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
+        source, target = self.get_source_and_target(expr, dialect)
         if dialect == "snowflake":
-            self.configure_stage(self.source, self.target)
+            util.rename_if_stage(source, target)
+
+        source_type = self._determine_expression_type(source, dialect)
+        target_type = self._determine_expression_type(target, dialect)
 
         super().__init__(
-            kind="copy",
-            statement=expr,
             dialect=dialect,
+            statement=expr,
             statement_index=statement_index,
-            target_object=self.target,
             object_mapping=object_mapping,
+            source_info=SourceInfo(expression=source, type=source_type),
+            target_info=TargetInfo(expression=target, type=target_type),
         )
+        self.qualify_and_annotate()
 
-    def get_source(self):
-        # Temp: hacky
-        if isinstance(self.statement, exp.Insert):
-            return self.statement.expression  # Transformed
-        else:
-            return self.source  # Original
-
-    def get_original_source(self):
-        return self.source
 
     def get_source_and_target(self, expr: exp.Copy, dialect: str) -> t.Tuple[SourceExprType, TargetExprType]:
         """
@@ -66,35 +60,3 @@ class CopyQuery(Query):
         target = target.unnest()
 
         return source, target
-
-    def _get_column_defs(
-        self,
-        target: SourceExprType | TargetExprType,
-    ) -> t.List[exp.ColumnDef]:
-        """
-        TODO: remove this override and use the parent's function.
-         This depends on having self.source set up first though.
-        """
-        source = self.get_source()
-        if isinstance(source, exp.Select):
-            # TODO: this can't handle functions
-            return [
-                exp.ColumnDef(this=exp.to_identifier(col.alias_or_name), kind=col.unalias().type)
-                for col in source.expressions
-            ]
-        return super()._get_column_defs(target)
-
-    def configure_stage(self, source: SourceExprType, target: TargetExprType):
-        """
-        Normalize (uppercase) the name if we are a Snowflake stage.
-        sqlglot only normalizes columns - see comments in `sqlglot.optimizer.normalize_identifiers()`
-        """
-        if str(source).startswith("@"):
-            self.is_source_a_stage = True
-            if not str(source).startswith('@"'):
-                source.this.set("this", str(source).upper())
-
-        elif str(target).startswith("@"):
-            self.is_target_a_stage = True
-            if not str(target).startswith('@"'):
-                target.this.set("this", str(target).upper())

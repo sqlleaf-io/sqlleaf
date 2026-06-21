@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from sqlglot import exp
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.typing import E, SourceExprType, TargetExprType, TargetObjectType
+from sqlleaf.typing import E, SourceExprType, TargetExprType, SqlObjectType, SourceInfo, TargetInfo
 
 logger = logging.getLogger("sqlleaf")
 
@@ -15,7 +15,7 @@ logger = logging.getLogger("sqlleaf")
 # TODO: put this in every Node class?
 @dataclass(frozen=True)
 class TargetObject:
-    type: TargetObjectType
+    type: SqlObjectType
     # This is not the *actual* target: it's just what was used to derive the columns,
     # as the source will need to act as the target if the target isn't a table.
     object: TargetExprType | SourceExprType
@@ -23,18 +23,20 @@ class TargetObject:
 
 
 class Query:
+    KIND: str = ""
+
     def __init__(
         self,
-        kind: str,
         dialect: str,
         statement: exp.Expr,
-        target_object: TargetExprType,
         statement_index: int,
         object_mapping: mappings.ObjectMapping,
+        source_info: SourceInfo | None = None,
+        target_info: TargetInfo | None = None,
+        kind: str | None = None,
     ):
-        self.kind = kind
+        self.kind = kind or self.KIND
         self.dialect = dialect
-        self.target_object = target_object  # The target table
         self.object_mapping = object_mapping
         self.parent_query = None
         self.child_queries = []
@@ -52,9 +54,71 @@ class Query:
         self.statement_index = statement_index  # The position of this query within a list of queries
         self.set_original_statement(statement)
 
-        self.source: SourceExprType
+        if source_info:
+            self.source_info = source_info
+        if target_info:
+            self.target_info = target_info
 
         logger.debug(f"Created Query: {self.__class__}")
+
+    def _determine_expression_type(self, expr: exp.Expr | t.List[exp.Expr], dialect: str) -> SqlObjectType:
+        if isinstance(expr, exp.Literal):
+            _type = SqlObjectType.FILE
+
+        elif isinstance(expr, exp.Identifier):
+
+            if expr.name in ["stdin", "stdout"]:
+                _type = SqlObjectType.STREAM
+            elif expr.name in ["program"]:
+                _type = SqlObjectType.PROGRAM
+            else:
+                raise exception.SqlLeafException(f"Unknown object type identifier: {expr.name}")
+
+        elif isinstance(expr, exp.Var) and dialect == "snowflake":
+            _type = SqlObjectType.STAGE
+
+        elif isinstance(expr, exp.Table):
+            if isinstance(expr.this, exp.Var) and dialect == "snowflake":
+                _type = SqlObjectType.STAGE
+            else:
+                _type = SqlObjectType.TABLE
+
+        elif isinstance(expr, exp.Select):
+            _type = SqlObjectType.SELECT
+
+        elif isinstance(expr, exp.Values):
+            _type = SqlObjectType.VALUES
+
+        elif isinstance(expr, exp.OnConflict):
+            # temporary; figure out how to handle this case
+            _type = SqlObjectType.SET
+
+        elif isinstance(expr, list) and isinstance(expr[0], exp.EQ):
+            # UPDATE .. SET
+            _type = SqlObjectType.SET
+
+        else:
+            raise exception.SqlLeafException(f"Unknown source/target object type in query: {type(expr)}")
+
+        return _type
+
+    def qualify_and_annotate(self):
+        from sqlglot.optimizer.qualify import qualify
+        from sqlglot.optimizer.annotate_types import annotate_types
+        qualify(
+            self.source_info.expression,
+            schema=self.object_mapping,
+            expand_stars=True,
+            expand_alias_refs=False,
+            qualify_columns=True,
+            infer_schema=False,
+            dialect=self.dialect,
+            isolate_tables=False,
+            validate_qualify_columns=False,
+            quote_identifiers=False,
+        )
+
+        annotate_types(self.source_info.expression, dialect=self.dialect, schema=self.object_mapping)
 
     @property
     def statement(self) -> E:
@@ -67,39 +131,16 @@ class Query:
         This is straightforward if source isn't a JOIN: we just use the source object's columns.
         But if it is a JOIN, we use the selected columns rather than the source's columns.
         """
-        expr = self.get_target()
+        source_expr = self.source_info.expression
+        target_expr = self.target_info.expression
+        target_type = self.target_info.type
 
-        if isinstance(expr, exp.Literal):
-            # Use the parent table's columns as the child columns
-            # Assumes this is a COPY | UNLOAD
-            target_type = TargetObjectType.FILE
-            object_with_columns = self.get_source()
-
-        elif isinstance(expr, exp.Identifier):
-            object_with_columns = self.get_source()
-
-            if expr.name in ["stdin", "stdout"]:
-                target_type = TargetObjectType.STREAM
-            elif expr.name in ["program"]:
-                target_type = TargetObjectType.PROGRAM
-            else:
-                raise exception.SqlLeafException(f"Unknown child column name in COPY: {expr.name}")
-
-        elif isinstance(expr, exp.Table) and self.dialect == "snowflake":
-            if isinstance(expr.this, exp.Var):
-                target_type = TargetObjectType.STAGE
-                # TODO: this assumes the source is a table!
-                object_with_columns = self.get_source()
-            else:
-                target_type = TargetObjectType.TABLE
-                object_with_columns = self.get_target()
-
-        elif isinstance(expr, exp.Table):
-            target_type = TargetObjectType.TABLE
-            object_with_columns = self.get_target_as_table()
-
+        if target_type in [SqlObjectType.FILE, SqlObjectType.PROGRAM, SqlObjectType.STAGE,  SqlObjectType.STREAM]:
+            object_with_columns = source_expr
+        elif target_type == SqlObjectType.TABLE:
+            object_with_columns = target_expr
         else:
-            raise exception.SqlLeafException(f"Unknown child column type in COPY: {expr}")
+            raise exception.SqlLeafException(f"Unhandled target object type: {target_type}")
 
         column_defs = self._get_column_defs(object_with_columns)
         return TargetObject(
@@ -110,7 +151,7 @@ class Query:
 
     def _get_column_defs(
         self,
-        target: SourceExprType | TargetExprType,
+        expr: SourceExprType | TargetExprType,
     ) -> t.List[exp.ColumnDef]:
         """
         Most of the time, the sources and target are tables.
@@ -119,30 +160,35 @@ class Query:
         If the target is not a table and the source is a SELECT,
         there may be a JOIN with many tables as the source.
         """
-        if not isinstance(target, exp.Table):
-            return []
+        if not isinstance(expr, exp.Table):
+            # Fall back to the source
+            source = self.source_info.expression
+            if isinstance(source, exp.Select):
+                # TODO: this can't handle functions
+                return [
+                    exp.ColumnDef(this=exp.to_identifier(col.alias_or_name), kind=col.unalias().type)
+                    for col in source.expressions
+                ]
 
-        table_query = self.object_mapping.get_table_or_stage(target)
+
+        table_query = self.object_mapping.get_table_or_stage(expr)
         if not table_query:
             return []
 
         return table_query.get_column_defs()
 
-    def get_source(self) -> SourceExprType:
-        return self.source
-
-    def get_target(self) -> TargetExprType:
-        return self.target_object
+    def get_target_expression(self) -> TargetExprType:
+        return self.target_info.expression
 
     def get_target_as_table(self) -> exp.Table:
         """
         For functions that only accept tables.
         """
-        if not isinstance(self.target_object, exp.Table):
+        if not isinstance(self.get_target_expression(), exp.Table):
             raise exception.SqlLeafException(
-                message=f"Expected the target object to be a table but it is a {type(self.target)}"
+                message=f"Expected the target object to be a table but it is a {type(self.target_info.type)}"
             )
-        return self.target_object
+        return self.get_target_expression()
 
     def get_statement_index(self) -> str:
         """
@@ -168,17 +214,16 @@ class Query:
     def get_ctes(self) -> t.List:
         return []
 
-    def get_column_defs(self, include_system: bool = False) -> t.List:
-        return []
+    def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
+        return self.column_defs
 
     def get_column_names_with_types(self, include_system: bool = False) -> t.Dict[str, str]:
         """
         Used by sqlglot's MappingSchema
         """
-        # columns = {col.name: str(col.kind) for col in self.get_column_defs(include_system=include_system)}
-        # return columns
-        # TODO: remove from child classes?
-        return {}
+        columns = {col.name: str(col.kind) for col in self.get_column_defs(include_system=include_system)}
+        return columns
+
 
     @property
     def id(self) -> str:
@@ -197,9 +242,6 @@ class Query:
         child_query.parent_query = self
         self.child_queries.append(child_query)
 
-    def add_child_queries(self, child_queries: t.List):
-        for query in child_queries:
-            self.add_child_query(query)
 
     def get_all_queries(self, types: t.Tuple | None = None):
         """
@@ -215,14 +257,10 @@ class Query:
 
         return queries
 
-    def get_root_query(self):
-        return self if not self.parent_query else self.parent_query.get_root_query()
-
     def get_selected_column_names(self) -> t.List[str]:
         if isinstance(self.statement.expression, exp.Values):
             return [s.name for s in self.statement.this.expressions]
         return [s.alias_or_name for s in self.statement.selects]
-        return self.statement.named_selects
 
     def to_dict(self):
         result = {
@@ -231,3 +269,10 @@ class Query:
             "index": self.statement_index,
         }
         return result
+
+
+# why can't I start building logic for every Query type
+# that extracts the Source, Target and the columns?
+# There's so much code that is trying to calculate the right
+# values from the source/target, but there are too many exceptions
+# related to INSERT, COPY, etc

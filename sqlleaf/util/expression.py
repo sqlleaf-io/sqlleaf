@@ -4,7 +4,7 @@ from pathlib import Path
 from sqlglot import exp
 
 from sqlleaf import exception, util
-from sqlleaf.typing import E, TargetExprType
+from sqlleaf.typing import E, TargetExprType, SourceExprType
 
 
 def unwrap_expression(expr: E) -> exp.Expr:
@@ -134,3 +134,23 @@ def get_file_format(file_path: str) -> str:
     file_format = "".join(Path(file_path).suffixes)
     file_format = file_format[1:] if file_format else "UNKNOWN"
     return file_format
+
+
+def rename_if_stage(source: SourceExprType, target: TargetExprType) -> None:
+    """
+    Normalize (uppercase) the name if we are a Snowflake stage.
+    sqlglot only normalizes columns - see comments in `sqlglot.optimizer.normalize_identifiers()`
+    """
+    if str(source).startswith("@"):
+        if not str(source).startswith('@"'):
+            if isinstance(source, exp.Var):
+                source.set("this", str(source).upper())
+            else:
+                source.this.set("this", str(source).upper())
+
+    elif str(target).startswith("@"):
+        if not str(target).startswith('@"'):
+            if isinstance(target, exp.Var):
+                target.set("this", str(target).upper())
+            else:
+                target.this.set("this", str(target).upper())

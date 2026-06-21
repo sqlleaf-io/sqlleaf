@@ -5,22 +5,16 @@ from sqlleaf.models.node import NodeAttributes
 
 
 class UserDefinedFunctionNode(NodeAttributes):
+    KIND = "udf"
+    WITH_POSITIONS = True
+
     def __init__(
         self,
         schema: str,
         gen_ctx: GeneratorContext,
         pos_ctx: PositionContext,
     ):
-        expr = gen_ctx.expr
-
-        super().__init__(
-            kind="udf",
-            data_type=gen_ctx.data_type,
-            expr=expr,
-            name=expr.this,
-            pos_ctx=pos_ctx,
-            with_positions=True,
-        )
+        super().__init__(gen_ctx, pos_ctx, name=gen_ctx.expr.this)
         self.schema = schema
 
     def get_name(self) -> str:

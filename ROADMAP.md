@@ -105,6 +105,7 @@ SELECT
   - [ ] WITH ORDINALITY
   - [ ] WINDOW
   - [x] SELECT FROM ( VALUES ())
+  - [ ] DISTINCT ON
 
 MERGE
 - [x] Regular
@@ -183,6 +184,8 @@ DO
 
 
 ### Redshift
+[ ] ALTER TABLE ... APPEND
+
 COPY
   - [ ] FROM
     - [ ] S3

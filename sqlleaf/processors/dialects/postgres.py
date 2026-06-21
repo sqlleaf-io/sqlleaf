@@ -16,6 +16,7 @@ from sqlleaf.models.node import (
 )
 from sqlleaf.models.query.copy import CopyQuery
 from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
+from sqlleaf.typing import SourceInfo, SqlObjectType
 
 logger = logging.getLogger("sqlleaf")
 
@@ -25,13 +26,7 @@ class PostgresGenerator(BaseGenerator):
 
     @singledispatchmethodlogger
     def process(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
-        if isinstance(gen_ctx.query, CopyQuery) and isinstance(
-            gen_ctx.query.get_original_source(), (exp.Literal, exp.Identifier)
-        ):
-            # Push all the non-column sources through process_copy for now (until we can do it inside the ColumnNode)
-            yield from self.process_copy(expr, gen_ctx, pos_ctx)
-        else:
-            yield from super().process(expr, gen_ctx, pos_ctx)
+        yield from super().process(expr, gen_ctx, pos_ctx)
 
     @process.register
     def process_table(
@@ -79,7 +74,7 @@ class PostgresGenerator(BaseGenerator):
         # We need to find the query that defines this table to get its columns
         table_query = gen_ctx.query.object_mapping.lookup_table_query(table=table, raise_on_missing=False)
         if table_query:
-            target_table = table_query.get_target()
+            target_table = table_query.get_target_expression()
             for col_def in table_query.get_column_defs():
                 parent = ColumnNode(
                     catalog=target_table.catalog,
@@ -160,35 +155,36 @@ class PostgresGenerator(BaseGenerator):
             yield from self.do_grandparents([table_function.this], parent, gen_ctx, pos_ctx)
 
     @process.register
-    def process_copy(
-        self, expr: exp.Copy, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    def process_column(
+        self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
         """
         COPY x FROM/TO y
         """
-        source = gen_ctx.query.get_original_source()
+        source_info: SourceInfo = gen_ctx.query.source_info
+        source_expression = source_info.expression
 
         # This logic only processes the query, not the expression
-        if source.name in ["stdin", "stdout"]:
+        if source_info.type == SqlObjectType.STREAM:
             node = StreamNode(
-                name=source.name,
+                name=source_expression.name,
                 gen_ctx=gen_ctx,
                 pos_ctx=pos_ctx,
             )
             yield EdgeToCreate(node, gen_ctx.child_node)
 
-        elif isinstance(source, exp.Literal):
+        elif source_info.type == SqlObjectType.FILE:
             # A filename. Create a file node.
-            gen_ctx = replace(gen_ctx, expr=source, new_data_type=gen_ctx.get_child_node().get_data_type())
-            file_format = util.get_file_format(source.name)
+            gen_ctx = replace(gen_ctx, expr=source_expression, new_data_type=gen_ctx.get_child_node().get_data_type())
+            file_format = util.get_file_format(source_expression.name)
             node = FileColumnNode(
                 column=gen_ctx.get_child_node().name,
                 file_format=file_format,
-                file_path=source.name,
+                file_path=source_expression.name,
                 gen_ctx=gen_ctx,
                 pos_ctx=pos_ctx,
             )
             yield EdgeToCreate(node, gen_ctx.child_node)
 
         else:
-            raise exception.SqlLeafException(message=f"Unknown source type for COPY: {type(source)}")
+            yield from super().process(expr, gen_ctx, pos_ctx)

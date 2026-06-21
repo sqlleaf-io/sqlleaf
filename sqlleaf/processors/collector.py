@@ -97,6 +97,10 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         if not stmt:
             continue
 
+        # Remove comments at initialization
+        for expr in stmt.walk():
+            expr.pop_comments()
+
         kind = ""
         if isinstance(stmt, exp.Command):
             if dialect == "redshift" and stmt.name == "UNLOAD":
@@ -270,7 +274,7 @@ def _collect_merge_children(parent_query: MergeQuery, object_mapping: mappings.O
                 statement_index=i,
                 table=merge.get_target_as_table(),
             )
-            insert_query.target_object = merge.target_object
+            insert_query.target_info = merge.target_info
             merge.add_child_query(insert_query)
 
 
@@ -334,7 +338,7 @@ def _collect_inherited_columns(
             query.inherits.append(parent_table_query)
 
             # Re-assign the columns to a copy of the correct table
-            expr = query.get_target()
+            expr = query.get_target_expression()
             if expr.parent:
                 schema = util.copy_expression(expr.parent)
                 for parent_col_def in parent_table_query.column_defs:
@@ -507,7 +511,7 @@ def _process_tables(
     if statement.kind == "TABLE":
         # CREATE TABLE ...
         query = TableQuery(
-            statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
         _set_column_defs(query)
         object_mapping.add_table_query(
@@ -516,7 +520,7 @@ def _process_tables(
         )
     elif statement.kind == "SEQUENCE":
         query = SequenceQuery(
-            statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
         object_mapping.add_sequence_query(query=query)
 
@@ -561,7 +565,7 @@ def _process_views_and_ctas(
     if stmt.kind == "VIEW":
         # CREATE VIEW ...
         query = ViewQuery(
-            statement=stmt,
+            expr=stmt,
             dialect=dialect,
             object_mapping=object_mapping,
             columns=col_defs,
@@ -570,7 +574,7 @@ def _process_views_and_ctas(
     elif stmt.kind == "TABLE":
         # CREATE TABLE AS ...
         query = CTASQuery(
-            statement=stmt,
+            expr=stmt,
             dialect=dialect,
             object_mapping=object_mapping,
             columns=col_defs,
@@ -624,7 +628,7 @@ def _process_functions(
     Process a "CREATE FUNCTION" statement.
     """
     query = UserDefinedFunctionQuery(
-        statement=statement,
+        expr=statement,
         dialect=dialect,
         object_mapping=object_mapping,
         statement_index=statement_index,
@@ -655,7 +659,7 @@ def _process_stored_procedures(
     Process a "CREATE PROCEDURE" statement.
     """
     query = ProcedureQuery(
-        statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
     )
     # object_mapping.add_query(kind="procedure", query=query, dialect=dialect)
     # TODO: find a way to get each SP's text from a query that has multiple SPs defined in it.

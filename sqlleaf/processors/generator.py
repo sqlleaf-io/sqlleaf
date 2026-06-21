@@ -41,7 +41,7 @@ def generate_lineage_for_query(
     if query.statement_substituted:
         statements_to_process.append(query.statement_substituted)
 
-    target_object = query.get_target()
+    target_object = query.get_target_expression()
 
     for i, statement in enumerate(statements_to_process):
         logger.debug("----")

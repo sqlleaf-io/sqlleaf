@@ -7,11 +7,7 @@ from sqlleaf.models.node import NodeAttributes
 
 
 class VarNode(NodeAttributes):
+    KIND = "var"
+
     def __init__(self, gen_ctx, pos_ctx: PositionContext):
-        super().__init__(
-            kind="var",
-            data_type=exp.DataType.build("NULL"),
-            expr=gen_ctx.expr,
-            name=gen_ctx.expr.name,
-            pos_ctx=pos_ctx,
-        )
+        super().__init__(gen_ctx, pos_ctx, name=gen_ctx.expr.name, data_type=exp.DataType.build("NULL"))

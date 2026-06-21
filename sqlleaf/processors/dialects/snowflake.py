@@ -14,6 +14,7 @@ from sqlleaf.models.node import (
 )
 from sqlleaf.models.query.copy import CopyQuery
 from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
+from sqlleaf.typing import SqlObjectType
 
 logger = logging.getLogger("sqlleaf")
 
@@ -33,31 +34,24 @@ class SnowflakeGenerator(BaseGenerator):
         PUT 'file:///tmp/data/mydata.csv' @my_int_stage;
         - Creates two node: FileColumnNode and StageColumnNode
         """
-        # This steps outside the 'process_node_objects()' main method, as
-        # adding logic inside the default functions is too messy.
-        # We may need to return to this later.
-        file_expr = expr.args["this"]
-        stage_expr = expr.args["target"]
+        source = gen_ctx.query.source_info.expression
+        target = gen_ctx.query.target_info.expression
 
-        file_path = file_expr.this.removeprefix("file://")
-        file_format = util.get_file_format(file_path)
+        file_format = util.get_file_format(source.name)
 
-        file_ctx = replace(gen_ctx, expr=file_expr)
-        stage_ctx = replace(gen_ctx, expr=stage_expr)
-
-        if str(stage_expr).startswith("@") and not str(stage_expr).startswith('@"'):
-            stage_expr.set("this", str(stage_expr).upper())
+        file_ctx = replace(gen_ctx, expr=source)
+        stage_ctx = replace(gen_ctx, expr=target)
 
         file_node = FileColumnNode(
             column="?",
             file_format=file_format,
-            file_path=file_path,
+            file_path=source.name,
             gen_ctx=file_ctx,
             pos_ctx=pos_ctx,
         )
         stage_node = StageColumnNode(
             column="?",
-            stage=stage_expr,
+            stage=target,
             gen_ctx=stage_ctx,
             pos_ctx=pos_ctx,
         )
@@ -75,11 +69,11 @@ class SnowflakeGenerator(BaseGenerator):
         self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
         """
-        If the source is actually a Stage, don't try to create a Column.
+        If the source is a Stage, create a StageColumnNode.
         """
         query = gen_ctx.query
-        if isinstance(query, CopyQuery) and query.is_source_a_stage:
-            stage_name: exp.Var = query.get_original_source().this
+        if isinstance(query, CopyQuery) and query.source_info.type == SqlObjectType.STAGE:
+            stage_name: exp.Var = query.source_info.expression.this
             parent = StageColumnNode(
                 column=expr.name,
                 stage=stage_name,

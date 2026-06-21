@@ -13,41 +13,31 @@ class ProcedureQuery(Query):
     Holds metadata related to stored procedures.
     """
 
+    KIND = "procedure"
+
     def __init__(
         self,
-        statement: exp.Create,
+        expr: exp.Create,
         dialect: str,
         object_mapping: mappings.ObjectMapping,
         statement_index: int,
     ):
-        table = util.get_table(statement)
+        table = util.get_table(expr)
         super().__init__(
-            kind="procedure",
-            statement=statement,
             dialect=dialect,
+            statement=expr,
             statement_index=statement_index,
-            target_object=table,
             object_mapping=object_mapping,
         )
         self.schema = table.db
         self.procedure = table.name
-        self.signature = str(statement.this)  # e.g. etl.my_proc(v_session_id VARCHAR)
+        self.signature = str(expr.this)  # e.g. etl.my_proc(v_session_id VARCHAR)
 
         # TODO: support 'default'
-        self.column_defs: t.List[exp.ColumnDef] = statement.this.expressions
+        self.column_defs: t.List[exp.ColumnDef] = expr.this.expressions
         self.args = [  # e.g. {'name': 'v_session_id', 'type': 'VARCHAR'}
-            {"name": str(col.this), "type": str(col.kind)} for col in statement.this.find_all(exp.ColumnDef)
+            {"name": str(col.this), "type": str(col.kind)} for col in expr.this.find_all(exp.ColumnDef)
         ]
-
-    def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
-        return self.column_defs
-
-    def get_column_names_with_types(self, include_system: bool = False) -> t.Dict[str, str]:
-        """
-        Used by sqlglot's MappingSchema
-        """
-        columns = {col.name: str(col.kind) for col in self.get_column_defs(include_system=include_system)}
-        return columns
 
     @property
     def id(self):

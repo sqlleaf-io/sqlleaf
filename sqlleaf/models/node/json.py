@@ -9,6 +9,8 @@ from sqlleaf.models.node import NodeAttributes
 
 
 class JsonPathNode(NodeAttributes):
+    KIND = "jsonpath"
+
     def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
         expr = t.cast(exp.JSONExtract, gen_ctx.expr)
 
@@ -16,13 +18,7 @@ class JsonPathNode(NodeAttributes):
         self.selector = "".join([str(s) for s in self.selectors])
         self.selector_depth = len(self.selectors)
 
-        super().__init__(
-            kind="jsonpath",
-            data_type=gen_ctx.data_type,
-            expr=expr,
-            name=self.selector,
-            pos_ctx=pos_ctx,
-        )
+        super().__init__(gen_ctx, pos_ctx, name=self.selector)
 
     def json_selectors(self, expr: exp.JSONExtract):
         """

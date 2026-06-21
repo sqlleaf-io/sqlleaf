@@ -7,13 +7,13 @@ from sqlleaf.models.query.base import Query
 
 
 class SelectQuery(Query):
+    KIND = "select"
+
     def __init__(self, expr: exp.Select, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
         super().__init__(
-            kind="select",
-            statement=expr,
             dialect=dialect,
+            statement=expr,
             statement_index=statement_index,
-            target_object=util.get_table(expr),
             object_mapping=object_mapping,
         )
 

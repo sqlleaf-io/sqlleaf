@@ -20,4 +20,9 @@ def test___put_stage(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [StageQuery, PutQuery] == list(map(type, h.queries))
-    assert h.paths == [["column[? path=/tmp/data/mydata.csv]", "column[? stage=MY_INT_STAGE]"]]
+    assert h.paths == [["column[? path=file:///tmp/data/mydata.csv]", "column[? stage=MY_INT_STAGE]"]]
+    assert h.nodes_full == [
+        'column[? kind=file format=csv path=file:///tmp/data/mydata.csv]',
+        'column[? kind=stage stage=MY_INT_STAGE]'
+    ]
+    assert len(h.edges) == 1

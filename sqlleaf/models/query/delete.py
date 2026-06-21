@@ -7,13 +7,13 @@ from sqlleaf.models.query.base import Query
 
 
 class DeleteQuery(Query):
+    KIND = "delete"
+
     def __init__(self, expr: exp.Delete, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
         super().__init__(
-            kind="delete",
-            statement=expr,
             dialect=dialect,
+            statement=expr,
             statement_index=statement_index,
-            target_object=expr.this,
             object_mapping=object_mapping,
         )
 

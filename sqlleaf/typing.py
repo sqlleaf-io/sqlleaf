@@ -1,4 +1,5 @@
 import typing as t
+from dataclasses import dataclass
 from enum import StrEnum, auto
 
 from sqlglot import exp
@@ -20,16 +21,37 @@ SourceExprType = exp.Table | exp.Literal | exp.Identifier | exp.Select | exp.Val
 TableOrScopeType = exp.Table | Scope
 
 
-class TargetObjectType(StrEnum):
+
+class SqlObjectType(StrEnum):
     """
-    The types of models that represent a 'target' in an SQL statement.
+    The types of models that represent a 'source' or 'target' in an SQL statement.
     """
 
+    # Targets and sources
     FILE = auto()
     PROGRAM = auto()
     STAGE = auto()
     STREAM = auto()
     TABLE = auto()
+    # Sources
+    SELECT = auto()
+    VALUES = auto()
+    SET = auto()  # Temporary
+    TUPLE = auto()  # Temporary
+
+
+
+@dataclass(frozen=True)
+class SourceInfo:
+    expression: SourceExprType
+    type: SqlObjectType
+
+
+@dataclass(frozen=True)
+class TargetInfo:
+    expression: TargetExprType
+    type: SqlObjectType
+    #column_expressions: t.List[exp.Expr]
 
 
 class TableType(StrEnum):

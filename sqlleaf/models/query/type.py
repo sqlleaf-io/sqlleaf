@@ -6,19 +6,27 @@ from sqlglot import exp
 
 from sqlleaf import mappings, util
 from sqlleaf.models.query.base import Query
+from sqlleaf.typing import TargetInfo
 
 
 class TypeQuery(Query):
+    KIND = "type"
+
     def __init__(
         self, statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
     ):
+        source = None
+        target = util.get_table(statement)
+
+        target_type = self._determine_expression_type(target, dialect)
+
         super().__init__(
-            kind="type",
-            statement=statement,
             dialect=dialect,
+            statement=statement,
             statement_index=statement_index,
-            target_object=util.get_table(statement),
             object_mapping=object_mapping,
+            source_info=source,
+            target_info=TargetInfo(expression=target, type=target_type),
         )
         self.column_defs: t.List[exp.ColumnDef] = []
         self._collect()
@@ -32,9 +40,3 @@ class TypeQuery(Query):
             for col_def in expression.expressions:
                 if isinstance(col_def, exp.ColumnDef):
                     self.column_defs.append(col_def)
-
-    def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
-        return self.column_defs
-
-    def get_column_names_with_types(self, include_system: bool = False) -> t.Dict[str, str]:
-        return {col.name: str(col.kind) for col in self.column_defs}

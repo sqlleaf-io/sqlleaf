@@ -16,6 +16,8 @@ logger = logging.getLogger("sqlleaf")
 
 
 class ColumnNode(NodeAttributes):
+    KIND = "column"
+
     def __init__(
         self,
         catalog: str,
@@ -25,15 +27,7 @@ class ColumnNode(NodeAttributes):
         gen_ctx: GeneratorContext,
         pos_ctx: PositionContext,
     ):
-        expr = t.cast(exp.ColumnDef, gen_ctx.expr)
-
-        super().__init__(
-            kind="column",
-            name=column,
-            data_type=gen_ctx.data_type,
-            expr=expr,
-            pos_ctx=pos_ctx,
-        )
+        super().__init__(gen_ctx, pos_ctx, name=column)
         self.catalog = catalog
         self.schema = schema
         self.table = table
@@ -212,6 +206,8 @@ class ColumnNode(NodeAttributes):
 
 
 class FileColumnNode(NodeAttributes):
+    KIND = "column"
+
     def __init__(
         self,
         column: str,
@@ -220,15 +216,7 @@ class FileColumnNode(NodeAttributes):
         gen_ctx: GeneratorContext,
         pos_ctx: PositionContext,
     ):
-        expr = t.cast(exp.ColumnDef, gen_ctx.expr)
-
-        super().__init__(
-            kind="column",
-            name=column,
-            data_type=gen_ctx.data_type,
-            expr=expr,
-            pos_ctx=pos_ctx,
-        )
+        super().__init__(gen_ctx, pos_ctx, name=column)
         self.file_format = file_format
         self.file_path = file_path
 
@@ -253,6 +241,8 @@ class FileColumnNode(NodeAttributes):
 
 
 class StageColumnNode(NodeAttributes):
+    KIND = "column"
+
     def __init__(
         self,
         column: str,
@@ -260,13 +250,7 @@ class StageColumnNode(NodeAttributes):
         gen_ctx: GeneratorContext,
         pos_ctx: PositionContext,
     ):
-        super().__init__(
-            kind="column",
-            name=column,
-            data_type=gen_ctx.data_type,
-            expr=gen_ctx.expr,
-            pos_ctx=pos_ctx,
-        )
+        super().__init__(gen_ctx, pos_ctx, name=column)
         self.stage = stage.name.removeprefix("@").replace('"', "")
 
     def to_dict(self):

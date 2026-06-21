@@ -3,6 +3,7 @@ import sys
 
 import pytest
 
+from sqlleaf.typing import SqlObjectType
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -44,6 +45,10 @@ def test___copy_from_stage(holder, case):
         "column[name=AGE table=ZONE schema=INCOMING type=INT kind=table]",
         "column[name=NAME table=ZONE schema=INCOMING type=VARCHAR kind=table]",
     ]
+    assert len(h.edges) == 2
+    query: CopyQuery = h.queries[2]
+    assert query.source_info.type == SqlObjectType.STAGE
+    assert query.target_info.type == SqlObjectType.TABLE
 
 
 @pytest.mark.parametrize("case", cases)
@@ -72,6 +77,9 @@ def test___copy_to_stage(holder, case):
         "column[name=AGE table=ZONE schema=OUTGOING type=INT kind=table]",
         "column[name=NAME table=ZONE schema=OUTGOING type=VARCHAR kind=table]",
     ]
+    query: CopyQuery = h.queries[2]
+    assert query.source_info.type == SqlObjectType.TABLE
+    assert query.target_info.type == SqlObjectType.STAGE
 
 
 @pytest.mark.parametrize("case", cases)
@@ -108,4 +116,11 @@ def test___copy_to_and_from_stage(holder, case):
         ["column[OUTGOING.ZONE.NAME]", f"column[NAME stage={new}]", "column[INCOMING.ZONE.NAME]"],
         ["column[OUTGOING.ZONE.AGE]", f"column[AGE stage={new}]", "column[INCOMING.ZONE.AGE]"],
     ]
+    query_1: CopyQuery = h.queries[3]
+    assert query_1.source_info.type == SqlObjectType.STAGE
+    assert query_1.target_info.type == SqlObjectType.TABLE
+
+    query_2: CopyQuery = h.queries[4]
+    assert query_2.source_info.type == SqlObjectType.TABLE
+    assert query_2.target_info.type == SqlObjectType.STAGE
     # TODO: full names should include the stage's s3 file path

@@ -30,7 +30,7 @@ from sqlleaf.models.node import (
     WindowNode,
 )
 from sqlleaf.models.query import ProcedureQuery, Q, TableQuery
-from sqlleaf.typing import TargetObjectType
+from sqlleaf.typing import SqlObjectType
 
 logger = logging.getLogger("sqlleaf")
 
@@ -299,36 +299,37 @@ class BaseGenerator:
     def process_column(
         self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
-        if not is_node_a_placeholder(expr=expr, query=gen_ctx.query):
+        if is_node_a_placeholder(expr=expr, query=gen_ctx.query):
             # The actual placeholder is processed elsewhere
+            return
 
-            parent = ColumnNode(
-                catalog=expr.catalog,
-                schema=expr.db,
-                table=expr.table,
-                column=expr.name,
-                gen_ctx=gen_ctx,
-                pos_ctx=pos_ctx,
-            )
+        parent = ColumnNode(
+            catalog=expr.catalog,
+            schema=expr.db,
+            table=expr.table,
+            column=expr.name,
+            gen_ctx=gen_ctx,
+            pos_ctx=pos_ctx,
+        )
 
-            # Rename the column's table/schema/catalog to be fully qualified
-            if gen_ctx.scope and isinstance(gen_ctx.scope, Scope):
-                source_table = dict(gen_ctx.scope.references).get(expr.table)
+        # Rename the column's table/schema/catalog to be fully qualified
+        if gen_ctx.scope and isinstance(gen_ctx.scope, Scope):
+            source_table = dict(gen_ctx.scope.references).get(expr.table)
 
-                if source_table:
-                    if not isinstance(source_table, (exp.Table, exp.Values, exp.Subquery, exp.Select)):
-                        raise exception.SqlLeafException(message=f"Unexpected source type: {type(source_table)}")
+            if source_table:
+                if not isinstance(source_table, (exp.Table, exp.Values, exp.Subquery, exp.Select)):
+                    raise exception.SqlLeafException(message=f"Unexpected source type: {type(source_table)}")
 
-                    if not isinstance(source_table, exp.Subquery):
-                        parent.rename_table(source_table, gen_ctx.query.dialect)
+                if not isinstance(source_table, exp.Subquery):
+                    parent.rename_table(source_table, gen_ctx.query.dialect)
 
-            yield EdgeToCreate(parent, gen_ctx.child_node)
+        yield EdgeToCreate(parent, gen_ctx.child_node)
 
-            if isinstance(parent.source_scope, exp.Table):
-                # Traverse into the table (esp. needed by "ROWS FROM")
-                ex = parent.source_scope
-                gen_ctx = replace(gen_ctx, expr=ex, child_node=parent)
-                yield from self.process(ex, gen_ctx, pos_ctx)
+        if isinstance(parent.source_scope, exp.Table):
+            # Traverse into the table (esp. needed by "ROWS FROM")
+            ex = parent.source_scope
+            gen_ctx = replace(gen_ctx, expr=ex, child_node=parent)
+            yield from self.process(ex, gen_ctx, pos_ctx)
 
     @process.register(exp.JSONExtract)
     @process.register(exp.JSONBExtract)
@@ -426,7 +427,7 @@ class BaseGenerator:
         # Both COPY and UNLOAD can have SELECTs as their sources, which have arbitrary
         # columns that vary in length due to their sourcing from any table.
         query = gen_ctx.query
-        expr = query.get_target()
+        expr = query.get_target_expression()
         target_object = query.get_target_object()
 
         select_idx = 0
@@ -439,8 +440,9 @@ class BaseGenerator:
             gen_ctx = replace(gen_ctx, expr=col_def)
             pos_ctx = replace(pos_ctx, select_index=select_idx)
 
+            logger.debug(f"Iter nodes - found node: {target_object.type}")
             match target_object.type:
-                case TargetObjectType.FILE:
+                case SqlObjectType.FILE:
                     file_format = util.get_file_format(expr.name)
                     child_node = FileColumnNode(
                         column=col_def.name,
@@ -450,7 +452,7 @@ class BaseGenerator:
                         pos_ctx=pos_ctx,
                     )
 
-                case TargetObjectType.STAGE:
+                case SqlObjectType.STAGE:
                     child_node = StageColumnNode(
                         column=col_def.name,
                         stage=expr.this,
@@ -459,7 +461,7 @@ class BaseGenerator:
                     )
                     process_defaults = False
 
-                case TargetObjectType.TABLE:
+                case SqlObjectType.TABLE:
                     child_node = ColumnNode(
                         catalog=expr.catalog,
                         schema=expr.db,
@@ -470,7 +472,7 @@ class BaseGenerator:
                     )
                     process_defaults = True
 
-                case TargetObjectType.STREAM:
+                case SqlObjectType.STREAM:
                     # Use the ColumnDef as the expr so that correct columns
                     # are selected during walk()
                     child_node = StreamNode(
@@ -479,13 +481,17 @@ class BaseGenerator:
                         pos_ctx=pos_ctx,
                     )
 
-                case TargetObjectType.PROGRAM:
+                case SqlObjectType.PROGRAM:
                     # Use the ColumnDef as the expr so that correct columns
                     # are selected during walk()
                     child_node = ProgramNode(
                         gen_ctx=gen_ctx,
                         pos_ctx=pos_ctx,
                     )
+
+                case _:
+                    raise exception.SqlLeafException(f"Unhandled case for type: {target_object.type}")
+
 
             if col_def.name in query.get_selected_column_names() or isinstance(query, TableQuery):
                 # Check if the column is selected.
