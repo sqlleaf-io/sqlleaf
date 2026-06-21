@@ -33,8 +33,8 @@ class SnowflakeGenerator(BaseGenerator):
         PUT 'file:///tmp/data/mydata.csv' @my_int_stage;
         - Creates two node: FileColumnNode and StageColumnNode
         """
-        source = gen_ctx.query.source_info.expression   called from generator; query is the transformed version
-        target = gen_ctx.query.target_info.expression  
+        source = gen_ctx.query.source_info.expression
+        target = gen_ctx.query.target_info.expression
 
         file_format = util.get_file_format(source.name)
 
@@ -71,8 +71,8 @@ class SnowflakeGenerator(BaseGenerator):
         If the source is a Stage, create a StageColumnNode.
         """
         query = gen_ctx.query
-        if hasattr(query, "source_info") and query.source_info.type == SqlObjectType.STAGE:   source_info is copied onto the transformed InsertQuery by _build_transformed_query
-            stage_name: exp.Var = query.source_info.expression.this  
+        if hasattr(query, "source_info") and query.source_info.type == SqlObjectType.STAGE:
+            stage_name: exp.Var = query.source_info.expression.this
             parent = StageColumnNode(
                 column=expr.name,
                 stage=stage_name,

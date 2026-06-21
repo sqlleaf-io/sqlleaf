@@ -293,7 +293,7 @@ def _collect_merge_children(parent_query: MergeQuery, parent_holder: QueryHolder
                 statement_index=i,
                 table=merge.get_target_as_table(),
             )
-            insert_query.target_info = merge.target_info   propagating target_info from the original MergeQuery to its child InsertQuery at collection time
+            insert_query.target_info = merge.target_info
             child_holder = QueryHolder(original=insert_query)
             parent_holder.add_child_holder(child_holder)
 

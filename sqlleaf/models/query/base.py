@@ -103,7 +103,7 @@ class Query:
         from sqlglot.optimizer.qualify import qualify
         from sqlglot.optimizer.annotate_types import annotate_types
         qualify(
-            self.source_info.expression,   source_info is set once at construction and never replaced
+            self.source_info.expression,
             schema=self.object_mapping,
             expand_stars=True,
             expand_alias_refs=False,
@@ -115,7 +115,7 @@ class Query:
             quote_identifiers=False,
         )
 
-        annotate_types(self.source_info.expression, dialect=self.dialect, schema=self.object_mapping)   source_info is set once at construction and never replaced
+        annotate_types(self.source_info.expression, dialect=self.dialect, schema=self.object_mapping)
 
     def get_target_object(self) -> TargetObject:
         """
@@ -124,9 +124,9 @@ class Query:
         This is straightforward if source isn't a JOIN: we just use the source object's columns.
         But if it is a JOIN, we use the selected columns rather than the source's columns.
         """
-        source_expr = self.source_info.expression   source_info/target_info set at construction; caller must be on the correct query version
-        target_expr = self.target_info.expression  
-        target_type = self.target_info.type  
+        source_expr = self.source_info.expression
+        target_expr = self.target_info.expression
+        target_type = self.target_info.type
 
         if target_type in [SqlObjectType.FILE, SqlObjectType.PROGRAM, SqlObjectType.STAGE,  SqlObjectType.STREAM]:
             object_with_columns = source_expr
@@ -155,7 +155,7 @@ class Query:
         """
         if not isinstance(expr, exp.Table):
             # Fall back to the source
-            source = self.source_info.expression   same note as get_target_object
+            source = self.source_info.expression
             if isinstance(source, exp.Select):
                 # TODO: this can't handle functions
                 return [
@@ -171,7 +171,7 @@ class Query:
         return table_query.get_column_defs()
 
     def get_target_expression(self) -> TargetExprType:
-        return self.target_info.expression   caller must be on the correct query version
+        return self.target_info.expression
 
     def get_target_as_table(self) -> exp.Table:
         """
@@ -179,7 +179,7 @@ class Query:
         """
         if not isinstance(self.get_target_expression(), exp.Table):
             raise exception.SqlLeafException(
-                message=f"Expected the target object to be a table but it is a {type(self.target_info.type)}"  
+                message=f"Expected the target object to be a table but it is a {type(self.target_info.type)}"
             )
         return self.get_target_expression()
 

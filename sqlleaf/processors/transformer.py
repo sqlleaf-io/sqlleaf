@@ -852,7 +852,7 @@ def _convert_copy_to_insert(
     column_names = [col.name for col in target_object.columns]
 
     # Transform to a SELECT
-    src = query.source_info.expression   _convert_copy_to_insert operates on the original CopyQuery before transformation
+    src = query.source_info.expression
     if isinstance(src, exp.Select):
         select = src
     else:
@@ -938,8 +938,7 @@ def _apply_optimizations(statement: E, query: Q, add_column_names: bool = True) 
     exclude_rules = EXCLUDE_OPTIMIZER_RULES[:]
 
     # Do not validate the columns if the source is a non-table
-     source_info.type is the source of truth; no isinstance guard needed after Phase 0.4
-    if query.source_info.type in [SqlObjectType.STREAM, SqlObjectType.FILE, SqlObjectType.STAGE, SqlObjectType.PROGRAM]:  
+    if query.source_info.type in [SqlObjectType.STREAM, SqlObjectType.FILE, SqlObjectType.STAGE, SqlObjectType.PROGRAM]:
         validate_columns = False
 
     if not validate_columns:
@@ -1046,9 +1045,8 @@ def _add_column_names_to_insert(statement: exp.Insert, query: Q)-> exp.Insert:
         return statement
 
     # sqlglot throws a parse error on named columns for Snowflake: INSERT INTO @"my_eXt_sTaGe" (NAME, AGE) SELECT ...
-     Use source_info/target_info type checks instead of isinstance guards (Phase 0.4)
     SKIP_COLUMN_RENAME_TYPES = {SqlObjectType.STREAM, SqlObjectType.FILE, SqlObjectType.STAGE, SqlObjectType.PROGRAM}
-    if query.source_info.type in SKIP_COLUMN_RENAME_TYPES or query.target_info.type in SKIP_COLUMN_RENAME_TYPES:  
+    if query.source_info.type in SKIP_COLUMN_RENAME_TYPES or query.target_info.type in SKIP_COLUMN_RENAME_TYPES:
         # The aliases and column names already exist from a previous transformation,
         # or the target is not a table (e.g. S3 file, stage, stream)
         return statement
