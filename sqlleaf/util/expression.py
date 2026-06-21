@@ -154,3 +154,9 @@ def rename_if_stage(source: SourceExprType, target: TargetExprType) -> None:
                 target.set("this", str(target).upper())
             else:
                 target.this.set("this", str(target).upper())
+
+
+def get_selected_column_names(statement: exp.Expr) -> t.List[str]:
+    if isinstance(statement.expression, exp.Values):
+        return [s.name for s in statement.this.expressions]
+    return [s.alias_or_name for s in statement.selects]

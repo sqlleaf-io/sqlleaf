@@ -47,12 +47,9 @@ class Query:
         for expr in statement.walk():
             expr.pop_comments()
 
-        self.statement_original: exp.Expr | None = None
-        self.statement_transformed: exp.Expr | None = None
-        self.statement_substituted: exp.Expr | None = None
+        self.statement_original: exp.Expr = statement
 
         self.statement_index = statement_index  # The position of this query within a list of queries
-        self.set_original_statement(statement)
 
         if source_info:
             self.source_info = source_info
@@ -106,7 +103,7 @@ class Query:
         from sqlglot.optimizer.qualify import qualify
         from sqlglot.optimizer.annotate_types import annotate_types
         qualify(
-            self.source_info.expression,
+            self.source_info.expression,   source_info is set once at construction and never replaced
             schema=self.object_mapping,
             expand_stars=True,
             expand_alias_refs=False,
@@ -118,11 +115,7 @@ class Query:
             quote_identifiers=False,
         )
 
-        annotate_types(self.source_info.expression, dialect=self.dialect, schema=self.object_mapping)
-
-    @property
-    def statement(self) -> E:
-        return self._statement
+        annotate_types(self.source_info.expression, dialect=self.dialect, schema=self.object_mapping)   source_info is set once at construction and never replaced
 
     def get_target_object(self) -> TargetObject:
         """
@@ -131,9 +124,9 @@ class Query:
         This is straightforward if source isn't a JOIN: we just use the source object's columns.
         But if it is a JOIN, we use the selected columns rather than the source's columns.
         """
-        source_expr = self.source_info.expression
-        target_expr = self.target_info.expression
-        target_type = self.target_info.type
+        source_expr = self.source_info.expression   source_info/target_info set at construction; caller must be on the correct query version
+        target_expr = self.target_info.expression  
+        target_type = self.target_info.type  
 
         if target_type in [SqlObjectType.FILE, SqlObjectType.PROGRAM, SqlObjectType.STAGE,  SqlObjectType.STREAM]:
             object_with_columns = source_expr
@@ -162,7 +155,7 @@ class Query:
         """
         if not isinstance(expr, exp.Table):
             # Fall back to the source
-            source = self.source_info.expression
+            source = self.source_info.expression   same note as get_target_object
             if isinstance(source, exp.Select):
                 # TODO: this can't handle functions
                 return [
@@ -178,7 +171,7 @@ class Query:
         return table_query.get_column_defs()
 
     def get_target_expression(self) -> TargetExprType:
-        return self.target_info.expression
+        return self.target_info.expression   caller must be on the correct query version
 
     def get_target_as_table(self) -> exp.Table:
         """
@@ -186,7 +179,7 @@ class Query:
         """
         if not isinstance(self.get_target_expression(), exp.Table):
             raise exception.SqlLeafException(
-                message=f"Expected the target object to be a table but it is a {type(self.target_info.type)}"
+                message=f"Expected the target object to be a table but it is a {type(self.target_info.type)}"  
             )
         return self.get_target_expression()
 
@@ -199,17 +192,6 @@ class Query:
             return index + ":" + str(self.statement_index)
         else:
             return str(self.statement_index)
-
-    def set_transformed_statement(self, statement: exp.Expr) -> None:
-        self.statement_transformed = statement
-        self._statement = statement
-
-    def set_original_statement(self, statement: exp.Expr) -> None:
-        self.statement_original = statement
-        self._statement = statement
-
-    def set_substituted_statement(self, statement: exp.Expr) -> None:
-        self.statement_substituted = statement
 
     def get_ctes(self) -> t.List:
         return []
@@ -226,17 +208,12 @@ class Query:
 
 
     @property
+    def statement(self) -> exp.Expr:
+        return self.statement_original
+
+    @property
     def id(self) -> str:
         return "query:" + util.short_sha256_hash(self.statement_original.sql() + ":" + str(self.statement_index))
-
-    def set_to_original(self):
-        """
-        Convert the Query back to its original statement.
-
-        This is needed for CTAS/View queries after they transform into Inserts.
-        This is the inverse of functions like set_as_insert()
-        """
-        self.set_original_statement(statement=self.statement_original)
 
     def add_child_query(self, child_query):
         child_query.parent_query = self
@@ -256,11 +233,6 @@ class Query:
             queries = [q for q in queries if isinstance(q, types)]
 
         return queries
-
-    def get_selected_column_names(self) -> t.List[str]:
-        if isinstance(self.statement.expression, exp.Values):
-            return [s.name for s in self.statement.this.expressions]
-        return [s.alias_or_name for s in self.statement.selects]
 
     def to_dict(self):
         result = {

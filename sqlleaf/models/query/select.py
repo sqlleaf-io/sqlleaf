@@ -18,4 +18,4 @@ class SelectQuery(Query):
         )
 
     def get_ctes(self):
-        return getattr(self.statement, "ctes", [])
+        return getattr(self.statement_original, "ctes", [])

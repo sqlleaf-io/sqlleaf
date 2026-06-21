@@ -41,5 +41,5 @@ class UpdateQuery(Query):
         self.only = table.args.get("only", False) if table else False  # Not available inside a MERGE
 
     def get_ctes(self):
-        with_ = self.statement.args.get("with_", None)
+        with_ = self.statement_original.args.get("with_", None)
         return with_.expressions if with_ else []

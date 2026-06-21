@@ -5,6 +5,7 @@ from sqlleaf.util.expression import (
     find_property,
     get_file_format,
     get_function_args,
+    get_selected_column_names,
     get_table,
     get_udf_name,
     rename_if_stage,

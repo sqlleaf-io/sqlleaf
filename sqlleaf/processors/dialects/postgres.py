@@ -161,7 +161,7 @@ class PostgresGenerator(BaseGenerator):
         """
         COPY x FROM/TO y
         """
-        source_info: SourceInfo = gen_ctx.query.source_info
+        source_info: SourceInfo = gen_ctx.query.source_info   called from generator; query is the transformed version
         source_expression = source_info.expression
 
         # This logic only processes the query, not the expression
@@ -173,7 +173,7 @@ class PostgresGenerator(BaseGenerator):
             )
             yield EdgeToCreate(node, gen_ctx.child_node)
 
-        elif source_info.type == SqlObjectType.FILE:
+        elif source_info.type == SqlObjectType.FILE:  
             # A filename. Create a file node.
             gen_ctx = replace(gen_ctx, expr=source_expression, new_data_type=gen_ctx.get_child_node().get_data_type())
             file_format = util.get_file_format(source_expression.name)

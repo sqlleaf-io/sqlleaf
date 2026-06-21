@@ -56,6 +56,18 @@ class LineageHolderDummy:
         return new_queries
 
     @property
+    def holders(self):
+        new_holders = []
+        for holder in self.lineage.collected_queries.queries:
+            query = holder.original
+            if not (
+                isinstance(query, TableQuery)
+                and exp.table_name(query.get_target_as_table()).lower() in ["fruit.raw", "fruit.processed"]
+            ):
+                new_holders.append(holder)
+        return new_holders
+
+    @property
     def paths(self):
         paths = []
         for path in self._all_paths:

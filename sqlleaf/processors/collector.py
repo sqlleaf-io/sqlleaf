@@ -20,6 +20,7 @@ from sqlleaf.models.query import (
     ProcedureQuery,
     PutQuery,
     Q,
+    QueryHolder,
     SelectQuery,
     SequenceQuery,
     StageQuery,
@@ -131,7 +132,9 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
             statement=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=index
         )
         if query:
-            queries[_id] = query
+            holder = QueryHolder(original=query)
+            _collect_query_children(query, holder, dialect, object_mapping)
+            queries[_id] = holder
             counts[kind] += 1
 
     found = {k: v for k, v in counts.items() if v > 0}
@@ -171,7 +174,7 @@ def _determine_query_kind(statement: exp.Expr, dialect: str) -> t.Tuple[exp.Expr
     return statement, kind
 
 
-def _collect_writable_cte_queries(parent_query: Q, dialect: str, object_mapping: mappings.ObjectMapping):
+def _collect_writable_cte_queries(parent_query: Q, parent_holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping):
     """
     Transform any writable CTE statements into a form.
 
@@ -199,14 +202,28 @@ def _collect_writable_cte_queries(parent_query: Q, dialect: str, object_mapping:
             continue
 
         # Detach the query in the AST so that certain transformations work later
-        parent_query.add_child_query(query)
+        child_holder = QueryHolder(original=query)
+        parent_holder.add_child_holder(child_holder)
+        _collect_query_children(query, child_holder, dialect, object_mapping)
 
 
-def _collect_insert_children(query: InsertQuery, object_mapping: mappings.ObjectMapping):
+def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping):
+    """
+    Collect any nested child queries for a given query and attach them to the holder.
+    """
+    if isinstance(query, InsertQuery):
+        _collect_insert_children(query, parent_holder, object_mapping)
+    if isinstance(query, MergeQuery):
+        _collect_merge_children(query, parent_holder, object_mapping)
+    if not isinstance(query, (CopyQuery, PutQuery)):
+        _collect_writable_cte_queries(query, parent_holder, dialect, object_mapping)
+
+
+def _collect_insert_children(query: InsertQuery, parent_holder: QueryHolder, object_mapping: mappings.ObjectMapping):
     """
     Collect any additional queries inside an INSERT. For Postgres, this is 'INSERT .. ON CONFLICT DO UPDATE'.
     """
-    on_conflict = query.statement.args["conflict"]
+    on_conflict = query.statement_original.args["conflict"]
 
     if not isinstance(on_conflict, exp.OnConflict) or on_conflict.args["action"].name == "DO NOTHING":
         return
@@ -218,10 +235,11 @@ def _collect_insert_children(query: InsertQuery, object_mapping: mappings.Object
         statement_index=0,
         table=query.get_target_as_table(),
     )
-    query.add_child_query(update_query)
+    child_holder = QueryHolder(original=update_query)
+    parent_holder.add_child_holder(child_holder)
 
 
-def _collect_merge_children(parent_query: MergeQuery, object_mapping: mappings.ObjectMapping):
+def _collect_merge_children(parent_query: MergeQuery, parent_holder: QueryHolder, object_mapping: mappings.ObjectMapping):
     """
     Transform any nested statements (INSERT or UPDATE) into fully qualified queries.
 
@@ -249,7 +267,7 @@ def _collect_merge_children(parent_query: MergeQuery, object_mapping: mappings.O
         FROM fruit.raw s;
     """
     merge = parent_query
-    parent_expr = parent_query.statement
+    parent_expr = parent_query.statement_original
     whens = [when.args["then"] for when in parent_expr.args["whens"].expressions]
 
     for i, when in enumerate(whens):
@@ -264,7 +282,8 @@ def _collect_merge_children(parent_query: MergeQuery, object_mapping: mappings.O
                 statement_index=i,
                 table=merge.get_target_as_table(),
             )
-            parent_query.add_child_query(update_query)
+            child_holder = QueryHolder(original=update_query)
+            parent_holder.add_child_holder(child_holder)
 
         elif isinstance(when_expr, exp.Insert):
             insert_query = InsertQuery(
@@ -274,15 +293,16 @@ def _collect_merge_children(parent_query: MergeQuery, object_mapping: mappings.O
                 statement_index=i,
                 table=merge.get_target_as_table(),
             )
-            insert_query.target_info = merge.target_info
-            merge.add_child_query(insert_query)
+            insert_query.target_info = merge.target_info   propagating target_info from the original MergeQuery to its child InsertQuery at collection time
+            child_holder = QueryHolder(original=insert_query)
+            parent_holder.add_child_holder(child_holder)
 
 
 def _set_column_defs(query: TableQuery):
     """
     Collect all the column definitions for this table.
     """
-    statement = query.statement
+    statement = query.statement_original
     all_columns = []
 
     for expression in statement.this.expressions:
@@ -454,7 +474,6 @@ def _process_unnamed(
         query = InsertQuery(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
-        _collect_insert_children(query, object_mapping)
     elif isinstance(statement, exp.Update):
         query = UpdateQuery(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
@@ -463,7 +482,6 @@ def _process_unnamed(
         query = MergeQuery(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
-        _collect_merge_children(query, object_mapping)
     elif isinstance(statement, exp.Delete):
         query = DeleteQuery(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
@@ -490,12 +508,6 @@ def _process_unnamed(
         query = PutQuery(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
-
-    if not query:
-        return None
-
-    if not isinstance(statement, (exp.Copy, exp.Put)):
-        _collect_writable_cte_queries(query, dialect, object_mapping)
 
     return query
 

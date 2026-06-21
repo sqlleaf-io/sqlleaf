@@ -19,6 +19,7 @@ from sqlleaf.models.query import (
     UnloadQuery,
     UpdateQuery,
 )
+from sqlleaf.models.query.holder import QueryHolder
 from sqlleaf.processors.transforms import resolver, substitute
 from sqlleaf.typing import E, SqlObjectType
 
@@ -33,26 +34,75 @@ a single query type to work over.
 # TODO: ensure columns have valid types after all transformations (only top-level SELECT for now)
 
 
-def transform_query(query: Q) -> None:
+def transform_query(holder: QueryHolder) -> None:
     """
     Transform a query's expression according to rules specific to its type.
+    Writes the results to holder.transformed and holder.substituted.
     """
-    # TODO: run determine source and target here
-    statement_to_transform = util.copy_expression(query.statement_original)
+    original_query = holder.original
+    statement_to_transform = util.copy_expression(original_query.statement_original)
 
-    transformed = _transform_statement(statement_to_transform, query)
-    query.set_transformed_statement(transformed)
+    transformed_statement = _transform_statement(statement_to_transform, original_query)
 
-    statement_to_substitute = util.copy_expression(query.statement_transformed)
+    transformed_query = _build_transformed_query(
+        original_query=original_query,
+        transformed_statement=transformed_statement,
+    )
+    holder.transformed = transformed_query
 
-    subst_statements = _get_substituted_statements(statement_to_substitute, query)
+    # Substitution
+    statement_to_substitute = util.copy_expression(transformed_statement)
+    subst_statements = _get_substituted_statements(statement_to_substitute, original_query)
     if subst_statements:
         # TODO: a list of transformed inner queries is returned, but right now
         #  we only care about the last statement. In an upcoming commit, process all
         #  the transformed statements separately.
-        substituted = subst_statements[-1]
-        # substituted = _transform_statement(statement_substituted, query)
-        query.set_substituted_statement(substituted)
+        substituted_statement = subst_statements[-1]
+        substituted_query = _build_transformed_query(
+            original_query=original_query,
+            transformed_statement=substituted_statement,
+        )
+        holder.substituted = substituted_query
+
+
+def _build_transformed_query(
+    original_query: Q,
+    transformed_statement: exp.Expr,
+) -> Q:
+    """
+    Create a new Query instance whose statement is the transformed expression.
+    The Query subclass is selected based on the statement type.
+    """
+    if isinstance(transformed_statement, exp.Insert):
+        new_query = InsertQuery(
+            expr=transformed_statement,
+            dialect=original_query.dialect,
+            object_mapping=original_query.object_mapping,
+            statement_index=original_query.statement_index,
+        )
+        # CopyQuery special case: preserve source_info/target_info so that
+        # _apply_optimizations can still read the STREAM/FILE/STAGE type.
+        if isinstance(original_query, (CopyQuery, UnloadQuery)):
+            new_query.source_info = original_query.source_info
+            new_query.target_info = original_query.target_info
+        if isinstance(original_query, CopyQuery):
+            # Preserve the original exp.Copy statement so that nodes like
+            # ProgramNode can still read COPY-specific args (e.g. params).
+            new_query.original_copy_statement = original_query.statement_original
+    else:
+        # For statements not converted to INSERT, keep the same Query subclass
+        # but with the new statement.
+        new_query = original_query.__class__.__new__(original_query.__class__)
+        new_query.__dict__.update(original_query.__dict__)
+        new_query.statement_original = transformed_statement
+
+    # Propagate shared metadata
+    new_query.column_defs = original_query.column_defs
+    new_query.parent_query = original_query.parent_query
+    # Store a reference to the original query so that type-based checks in the
+    # generator (e.g. isinstance(query, UpdateQuery)) can inspect the original class.
+    new_query.original_query = original_query
+    return new_query
 
 
 def _get_substituted_statements(statement: exp.Expr, query: Q) -> t.List[exp.Expr]:
@@ -70,6 +120,12 @@ def _get_substituted_statements(statement: exp.Expr, query: Q) -> t.List[exp.Exp
 def _transform_statement(statement: E, query: Q) -> exp.Expr:
     """
     Perform a series of transformations against an SQL statement.
+
+    Phase 0.5 invariant (verified): this function and all helpers it calls
+    (e.g. _convert_copy_to_insert, _apply_optimizations, _add_column_names_to_insert)
+    receive `statement` as an explicit parameter and never re-read it from `query`.
+    The only access to `query.statement_*` inside this function is the debug diff at
+    the end, which reads `query.statement_original` explicitly.
     """
     logger.debug("----")
     logger.debug(f"Query: {statement.sql(dialect=query.dialect)}")
@@ -152,7 +208,7 @@ def _transform_statement(statement: E, query: Q) -> exp.Expr:
             # Bug in sqlglot: parsing the output for CREATE EXTERNAL TABLE WITH (FORMAT=TEXTFILE) breaks the parser
             pass
 
-    old = query.statement.sql(dialect=query.dialect)
+    old = query.statement_original.sql(dialect=query.dialect)
     new = statement.sql(dialect=query.dialect)
     if old == new:
         logger.debug("No transformations applied.")
@@ -477,7 +533,7 @@ def _convert_insert_defaults_to_values(statement: exp.Insert, query: Q) -> exp.I
         return statement
 
     # named_columns = [e for e in statement.this.expressions]
-    named_columns = query.get_selected_column_names()
+    named_columns = util.get_selected_column_names(statement)
 
     if not named_columns:
         # Use the associated column names from the mapping
@@ -796,7 +852,7 @@ def _convert_copy_to_insert(
     column_names = [col.name for col in target_object.columns]
 
     # Transform to a SELECT
-    src = query.source_info.expression
+    src = query.source_info.expression   _convert_copy_to_insert operates on the original CopyQuery before transformation
     if isinstance(src, exp.Select):
         select = src
     else:
@@ -882,15 +938,9 @@ def _apply_optimizations(statement: E, query: Q, add_column_names: bool = True) 
     exclude_rules = EXCLUDE_OPTIMIZER_RULES[:]
 
     # Do not validate the columns if the source is a non-table
-    if isinstance(query, CopyQuery):
-        source = query.source_info
-
-        if query.dialect == "postgres":
-            if source.type in [SqlObjectType.STREAM, SqlObjectType.FILE]:
-                validate_columns = False
-        elif query.dialect == "snowflake":
-            if query.source_info.type == SqlObjectType.STAGE:
-                validate_columns = False
+     source_info.type is the source of truth; no isinstance guard needed after Phase 0.4
+    if query.source_info.type in [SqlObjectType.STREAM, SqlObjectType.FILE, SqlObjectType.STAGE, SqlObjectType.PROGRAM]:  
+        validate_columns = False
 
     if not validate_columns:
         # Prevent overwriting known types to 'UNKNOWN' (sqlglot can't resolve non-table sources)
@@ -996,15 +1046,11 @@ def _add_column_names_to_insert(statement: exp.Insert, query: Q)-> exp.Insert:
         return statement
 
     # sqlglot throws a parse error on named columns for Snowflake: INSERT INTO @"my_eXt_sTaGe" (NAME, AGE) SELECT ...
-    if (
-        query.dialect == "snowflake"
-        and isinstance(query, CopyQuery)
-        and (query.source_info.type == SqlObjectType.STAGE or query.source_info.type == SqlObjectType.STAGE)
-    ):
-        return statement
-
-    if isinstance(query, (CopyQuery, UnloadQuery)):
-        # The aliases and column names aleady exist from a previous transformation
+     Use source_info/target_info type checks instead of isinstance guards (Phase 0.4)
+    SKIP_COLUMN_RENAME_TYPES = {SqlObjectType.STREAM, SqlObjectType.FILE, SqlObjectType.STAGE, SqlObjectType.PROGRAM}
+    if query.source_info.type in SKIP_COLUMN_RENAME_TYPES or query.target_info.type in SKIP_COLUMN_RENAME_TYPES:  
+        # The aliases and column names already exist from a previous transformation,
+        # or the target is not a table (e.g. S3 file, stage, stream)
         return statement
 
     # TODO: get the column definitions from the underlying query.TargetObject?

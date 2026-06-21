@@ -19,7 +19,7 @@ from sqlleaf.models.node import (
     N,
     TargetNodeType,
 )
-from sqlleaf.models.query import PutQuery, Q, TableQuery, UpdateQuery
+from sqlleaf.models.query import PutQuery, Q, QueryHolder, TableQuery, UpdateQuery
 from sqlleaf.processors.dialects.base import BaseGenerator
 from sqlleaf.typing import E, TableOrScopeType, TableType
 
@@ -27,7 +27,7 @@ logger = logging.getLogger("sqlleaf")
 
 
 def generate_lineage_for_query(
-    query: Q,
+    holder: QueryHolder,
     graph: nx.MultiDiGraph,
 ) -> nx.MultiDiGraph:
     """
@@ -37,31 +37,30 @@ def generate_lineage_for_query(
     over sqlglot's abstract syntax tree (AST) to determine the set of node
     and transformations used along the path to reach the table's columns.
     """
-    statements_to_process = [query.statement]
-    if query.statement_substituted:
-        statements_to_process.append(query.statement_substituted)
+    statements_to_process = [(holder.transformed, holder.transformed.statement_original)]
+    if holder.substituted:
+        statements_to_process.append((holder.substituted, holder.substituted.statement_original))
 
-    target_object = query.get_target_expression()
-
-    for i, statement in enumerate(statements_to_process):
+    for i, (active_query, statement) in enumerate(statements_to_process):
         logger.debug("----")
         subs = "[SUBSTITUTED] " if i > 0 else ""
-        logger.info(f"Getting lineage for {subs}query: {statement.sql(dialect=query.dialect)}")
+        logger.info(f"Getting lineage for {subs}query: {statement.sql(dialect=active_query.dialect)}")
 
-        pos_ctx = PositionContext(statement_index=query.get_statement_index())
+        target_object = active_query.get_target_expression()
+        pos_ctx = PositionContext(statement_index=active_query.get_statement_index())
         gen_ctx = GeneratorContext(
             graph=graph,
-            query=query,
+            query=active_query,
             expr=statement,
             child_node=target_object,
             scope=None,
         )
-        generator = BaseGenerator.from_dialect(query.dialect)
+        generator = BaseGenerator.from_dialect(active_query.dialect)
 
         if check_for_put(generator, gen_ctx, pos_ctx):
             return graph
 
-        if check_for_trigger(target_object, query.object_mapping):
+        if check_for_trigger(target_object, active_query.object_mapping):
             return graph
 
         if check_for_external_table(generator, gen_ctx, pos_ctx):
@@ -273,8 +272,13 @@ def find_inherited_columns_for_child(
     if not isinstance(column_node, ColumnNode) or column_node.parent_kind == TableType.CTE:
         return inherited_columns
 
-    # Only return inherited columns for UPDATE
-    if isinstance(gen_ctx.query, UpdateQuery) and not gen_ctx.query.only:
+    # Only return inherited columns for UPDATE.
+    # Cannot use source_info/target_info here: UpdateQuery has no source_info/target_info,
+    # and MERGE's WHEN MATCHED branch produces an UpdateQuery that IS converted to InsertQuery
+    # by _build_transformed_query, so we must fall back to original_query to recover the type.
+    active_query = gen_ctx.query
+    original_query = getattr(active_query, "original_query", active_query)
+    if isinstance(original_query, UpdateQuery) and not getattr(original_query, "only", False):
         inherited_columns = find_inherited_columns(
             column_node=column_node, generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx
         )
@@ -479,7 +483,7 @@ def check_for_put(generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: 
     graph = gen_ctx.graph
 
     if query.dialect == "snowflake" and isinstance(query, PutQuery):
-        expr = query.statement
+        expr = query.statement_original
         # Short-circuit this function; it's not an insert
         for edge in generator.process(expr, gen_ctx, pos_ctx):
             file_node, stage_node = edge.parent, edge.child
@@ -495,7 +499,7 @@ def check_for_external_table(generator: BaseGenerator, gen_ctx: GeneratorContext
     query = gen_ctx.query
 
     if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external":
-        location_expr = query.statement.args["properties"].find(exp.LocationProperty)
+        location_expr = query.statement_original.args["properties"].find(exp.LocationProperty)
 
         for child_node, _ in generator.iter_child_nodes(gen_ctx, pos_ctx):
             if child_node:

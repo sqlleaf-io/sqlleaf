@@ -78,7 +78,7 @@ def test__insert_default_values(holder):
         ["literal[99]", "column[fruit.a.size]"],
     ]
     assert (
-        h.queries[2].statement_transformed.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
+        h.holders[2].transformed.statement_original.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
     )
     assert len(h.nodes) == 12
     assert len(h.edges) == 7
@@ -120,10 +120,10 @@ def test__insert_on_conflict_with_values(holder):
     assert h.paths == [
         ['literal["pear"]', "column[fruit.processed.name]"],
         ["function[CURRENT_TIMESTAMP]", "column[fruit.processed.created_at]"],
-        ['literal["pear"]', "function[LOWER]", "column[fruit.processed.name]"],
         ["function[CURRENT_TIMESTAMP]", "column[fruit.processed.created_at]"],
+        ['literal["pear"]', "function[LOWER]", "column[fruit.processed.name]"],
     ]
-    assert len(h.nodes) == 7
+    assert len(h.nodes) == 6
     assert len(h.edges) == 5
 
 

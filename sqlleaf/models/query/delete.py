@@ -18,6 +18,6 @@ class DeleteQuery(Query):
         )
 
     def get_ctes(self):
-        if "with_" in self.statement.args:
-            return self.statement.args["with_"].expressions
+        if "with_" in self.statement_original.args:
+            return self.statement_original.args["with_"].expressions
         return []

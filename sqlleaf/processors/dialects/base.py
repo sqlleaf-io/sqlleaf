@@ -440,7 +440,7 @@ class BaseGenerator:
             gen_ctx = replace(gen_ctx, expr=col_def)
             pos_ctx = replace(pos_ctx, select_index=select_idx)
 
-            logger.debug(f"Iter nodes - found node: {target_object.type}")
+            # logger.debug(f"Iter nodes - found node: {target_object.type}")
             match target_object.type:
                 case SqlObjectType.FILE:
                     file_format = util.get_file_format(expr.name)
@@ -493,7 +493,7 @@ class BaseGenerator:
                     raise exception.SqlLeafException(f"Unhandled case for type: {target_object.type}")
 
 
-            if col_def.name in query.get_selected_column_names() or isinstance(query, TableQuery):
+            if col_def.name in util.get_selected_column_names(query.statement_original) or isinstance(query, TableQuery):
                 # Check if the column is selected.
                 # A 'CREATE TABLE' has no SELECT, so include all columns if this case.
                 selected_node = child_node

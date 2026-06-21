@@ -46,15 +46,15 @@ class UserDefinedFunctionQuery(Query):
         """
         Collect the required information from the function DDL into class attributes.
         """
-        function_name, schema_name, parameters = _extract_function_info(self.statement)
-        return_type, return_columns = _extract_return_info(self.statement, parameters, self.object_mapping)
+        function_name, schema_name, parameters = _extract_function_info(self.statement_original)
+        return_type, return_columns = _extract_return_info(self.statement_original, parameters, self.object_mapping)
 
         # Filter parameters to only include those that can be passed as input
         input_parameters = [p for p in parameters if p.is_input or p.is_variadic]
 
-        language = _extract_language(self.statement)
+        language = _extract_language(self.statement_original)
 
-        body_expr = self.statement.args.get("expression")
+        body_expr = self.statement_original.args.get("expression")
         inner_statements = []
 
         if body_expr:

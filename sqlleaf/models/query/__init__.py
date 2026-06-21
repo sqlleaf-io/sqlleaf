@@ -1,6 +1,7 @@
 import typing as t
 
 from sqlleaf.models.query.base import Query as Query
+from sqlleaf.models.query.holder import QueryHolder as QueryHolder
 from sqlleaf.models.query.copy import CopyQuery as CopyQuery
 from sqlleaf.models.query.ctas import CTASQuery as CTASQuery
 from sqlleaf.models.query.delete import DeleteQuery as DeleteQuery

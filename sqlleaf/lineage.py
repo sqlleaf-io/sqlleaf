@@ -48,17 +48,18 @@ class Lineage:
         object_mapping = self.init_mapping(dialect=dialect)
         self.collected_queries = collector.collect_queries(sql, dialect, object_mapping)
 
-        for parent_query in self.collected_queries.queries:
-            # A parent query is a top-level query, possibly containing others
+        for parent_holder in self.collected_queries.queries:
+            # A parent holder wraps a top-level query, possibly containing child holders
+            parent_query = parent_holder.original
             graph = new_graph()
-            queries = parent_query.get_all_queries()
+            holders = parent_holder.get_all_holders()
 
-            for query in queries:
+            for holder in holders:
+                query = holder.original
                 # Transform and produce lineage only for certain queries
                 if query_has_lineage(query):
-                    transformer.transform_query(query)
-                    generator.generate_lineage_for_query(query, graph)
-                query.set_to_original()
+                    transformer.transform_query(holder)
+                    generator.generate_lineage_for_query(holder, graph)
 
             graph.graph["attrs"].add_query_to_graph(parent_query)
 
@@ -256,7 +257,7 @@ def query_has_lineage(query: Q) -> bool:
     has_lineage = True
     if not isinstance(query, QUERIES_WITH_LINEAGE):
         has_lineage = False
-    elif isinstance(query, CopyQuery) and query.source_info.type == SqlObjectType.VALUES:
+    elif isinstance(query, CopyQuery) and query.source_info.type == SqlObjectType.VALUES:   query_has_lineage is called before transformation; source_info reflects the original statement
         has_lineage = False
     elif isinstance(query, CTASQuery) and not query.with_data:
         has_lineage = False

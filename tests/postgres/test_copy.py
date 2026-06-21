@@ -281,7 +281,8 @@ def test_copy_select_column_aliases_to_file(holder):
         "FROM fruit.simple AS simple "
         "WHERE simple.age > 10"
     )
-    assert h.queries[1].statement_transformed.sql(dialect=DIALECT) == expected_query
+    copy_holder = h.lineage.collected_queries.queries[1]
+    assert copy_holder.transformed.statement_original.sql(dialect=DIALECT) == expected_query
 
 
 def test_copy_select_join_to_stream(holder):

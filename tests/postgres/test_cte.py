@@ -307,7 +307,7 @@ def test__cte_update_returning_with_old_and_new_aliases(holder):
         ['literal["pear"]', "column[fruit.raw.name]"],
     ]
     assert [UpdateQuery] == list(map(type, h.queries))
-    assert [UpdateQuery] == list(map(type, h.queries[0].child_queries))
+    assert [UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert len(h.nodes) == 5
     assert len(h.edges) == 3
 
@@ -388,7 +388,7 @@ def test__cte_two_updates_inside_update(holder):
         ['literal["tomato"]', "column[fruit.raw.name]"],
     ]
     assert [UpdateQuery] == list(map(type, h.queries))
-    assert [UpdateQuery, UpdateQuery] == list(map(type, h.queries[0].child_queries))
+    assert [UpdateQuery, UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert len(h.nodes) == 6
     assert len(h.edges) == 4
 
@@ -409,7 +409,7 @@ def test__cte_delete_inside_insert(holder):
         ["column[fruit.raw.name]", "column[cte.name]", "column[fruit.processed.name]"],
     ]
     assert [InsertQuery] == list(map(type, h.queries))
-    assert [DeleteQuery] == list(map(type, h.queries[0].child_queries))
+    assert [DeleteQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert len(h.nodes) == 3
     assert len(h.edges) == 2
 
@@ -431,7 +431,7 @@ def test__cte_insert_inside_delete(holder):
         ['literal["hello"]', "column[fruit.raw.name]"],
     ]
     assert [DeleteQuery] == list(map(type, h.queries))
-    assert [InsertQuery] == list(map(type, h.queries[0].child_queries))
+    assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
 
@@ -450,7 +450,7 @@ def test__cte_delete_inside_delete(holder):
 
     assert h.paths == []
     assert [DeleteQuery] == list(map(type, h.queries))
-    assert [DeleteQuery] == list(map(type, h.queries[0].child_queries))
+    assert [DeleteQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert len(h.nodes) == 0
     assert len(h.edges) == 0
 
@@ -476,8 +476,8 @@ def test__cte_merge_inside_select(holder):
         ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
     ]
     assert [SelectQuery] == list(map(type, h.queries))
-    assert [MergeQuery] == list(map(type, h.queries[0].child_queries))
-    assert [UpdateQuery, InsertQuery] == list(map(type, h.queries[0].child_queries[0].child_queries))
+    assert [MergeQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [UpdateQuery, InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders[0].child_holders]))
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
 
@@ -513,7 +513,7 @@ def test__cte_merge_inside_insert(holder):
         ["column[drink.kind2]", "column[cte.kind2]", "column[fruit_drink.kind2]"],
     ]
     assert (
-        h.queries[3].statement_transformed.sql(dialect=DIALECT) == "WITH cte AS ("
+        h.holders[3].transformed.statement_original.sql(dialect=DIALECT) == "WITH cte AS ("
         "SELECT MERGE_ACTION() AS action, t.name AS name, t.kind AS kind, s.name2 AS name2, "
         "s.kind2 AS kind2 FROM fruit AS t JOIN drink AS s ON s.name2 = t.name) "
         "INSERT INTO fruit_drink (action, name, kind, name2, kind2) "
@@ -546,7 +546,7 @@ def test__cte_merge_with_update_and_insert(holder):
     ]
     assert len(h.nodes) == 6
     assert len(h.queries) == 1
-    assert [UpdateQuery, InsertQuery] == list(map(type, h.queries[0].child_queries))
+    assert [UpdateQuery, InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
 
 
 def test__cte_insert_inside_insert(holder):
@@ -566,7 +566,7 @@ def test__cte_insert_inside_insert(holder):
         ['literal["orange"]', "column[fruit.raw.name]", "column[insert_cte.name]", "column[fruit.processed.name]"],
     ]
     assert [InsertQuery] == list(map(type, h.queries))
-    assert [InsertQuery] == list(map(type, h.queries[0].child_queries))
+    assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert len(h.nodes) == 7
     assert len(h.edges) == 5
 
@@ -619,7 +619,7 @@ def test__cte_insert_and_update_inside_select(holder):
 
     assert h.paths == [['literal["orange"]', "column[fruit.raw.name]"], ['literal["banana"]', "column[fruit.raw.name]"]]
     assert [SelectQuery] == list(map(type, h.queries))
-    assert [InsertQuery, UpdateQuery] == list(map(type, h.queries[0].child_queries))
+    assert [InsertQuery, UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert len(h.nodes) == 3
     assert len(h.edges) == 2
 
