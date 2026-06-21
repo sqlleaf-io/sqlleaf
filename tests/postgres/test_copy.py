@@ -291,24 +291,25 @@ def test_copy_select_join_to_stream(holder):
     {simple_table}
     {extra_table}
     COPY (
-        SELECT s.name, s.age, e.color
+        SELECT UPPER(s.name) AS name, s.age, e.color
         FROM fruit.simple AS s
         JOIN fruit.extra AS e ON s.name = e.name
     ) TO STDOUT;
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-        ["column[fruit.simple.name]", "stream[stdout]"],
+        ["column[fruit.simple.name]", "function[UPPER]", "stream[stdout]"],
         ["column[fruit.simple.age]", "stream[stdout]"],
         ["column[fruit.extra.color]", "stream[stdout]"],
     ]
     assert h.nodes_full == [
+        "function[UPPER type=VARCHAR query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]",
         "stream[stdout]",
         "column[name=color table=extra schema=fruit type=VARCHAR kind=table]",
         "column[name=age table=simple schema=fruit type=INT kind=table]",
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
-    assert len(h.edges) == 3
+    assert len(h.edges) == 4
     query: CopyQuery = h.queries[2]
     assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.STREAM
@@ -356,6 +357,4 @@ def test_copy_table_program_from_program(holder):
     assert query.target_info.type == SqlObjectType.TABLE
 
 
-# TODO: COPY FROM PROGRAM
 # TODO: COPY FROM SELECT * FROM UDF()
-# TODO: COPY FROM SELECT with function in list
