@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing as t
+from dataclasses import replace
 
 from sqlglot import exp
 
@@ -10,8 +11,11 @@ from sqlleaf.models.node import NodeAttributes
 
 class ProgramNode(NodeAttributes):
     KIND = "program"
+    WITH_POSITIONS = True
 
     def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
+        pos_ctx = replace(pos_ctx, select_index=0)  # Prevent duplicate nodes
+
         # original_copy_statement cannot be replaced by source_info/target_info here:
         # source_info.expression only holds the stage/file expression, whereas ProgramNode
         # needs the full exp.Copy AST to read query.args["params"] (program name + args).

@@ -325,7 +325,7 @@ def test_copy_into_program_from_table(holder):
         ["column[fruit.simple.age]", "program[gzip]"],
     ]
     assert h.nodes_full == [
-        "program[gzip args='> /tmp/data.csv.gz']",
+        "program[gzip args='> /tmp/data.csv.gz' query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]",
         "column[name=age table=simple schema=fruit type=INT kind=table]",
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
@@ -333,6 +333,27 @@ def test_copy_into_program_from_table(holder):
     query: CopyQuery = h.queries[1]
     assert query.source_info.type == SqlObjectType.TABLE
     assert query.target_info.type == SqlObjectType.PROGRAM
+
+
+def test_copy_table_program_from_program(holder):
+    sql = f"""
+    {simple_table}
+    COPY fruit.simple FROM PROGRAM 'cat /tmp/data.csv';
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+    assert h.paths == [
+        ["program[cat]", "column[fruit.simple.age]"],
+        ["program[cat]", "column[fruit.simple.name]"],
+    ]
+    assert h.nodes_full == [
+        "program[cat args='/tmp/data.csv' query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]",
+        "column[name=age table=simple schema=fruit type=INT kind=table]",
+        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+    ]
+    assert len(h.edges) == 2
+    query: CopyQuery = h.queries[1]
+    assert query.source_info.type == SqlObjectType.PROGRAM
+    assert query.target_info.type == SqlObjectType.TABLE
 
 
 # TODO: COPY FROM PROGRAM

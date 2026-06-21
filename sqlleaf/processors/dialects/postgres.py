@@ -11,6 +11,7 @@ from sqlleaf.models.context import GeneratorContext, PositionContext
 from sqlleaf.models.node import (
     ColumnNode,
     FileColumnNode,
+    ProgramNode,
     SequenceNode,
     StreamNode,
 )
@@ -181,6 +182,13 @@ class PostgresGenerator(BaseGenerator):
                 column=gen_ctx.get_child_node().name,
                 file_format=file_format,
                 file_path=source_expression.name,
+                gen_ctx=gen_ctx,
+                pos_ctx=pos_ctx,
+            )
+            yield EdgeToCreate(node, gen_ctx.child_node)
+
+        elif source_info.type == SqlObjectType.PROGRAM:
+            node = ProgramNode(
                 gen_ctx=gen_ctx,
                 pos_ctx=pos_ctx,
             )
