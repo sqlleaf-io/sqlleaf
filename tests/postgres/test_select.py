@@ -30,13 +30,13 @@ literal_ones = [
 ]
 
 
-@pytest.mark.parametrize("substr", literal_ones)
-def test__select_parens(holder, substr):
+@pytest.mark.parametrize("case", literal_ones)
+def test__select_parens(holder, case):
     sql = f"""
     CREATE TABLE person (age INT);
 
     INSERT INTO person (age)
-    SELECT ({substr})
+    SELECT ({case})
     """
     h = holder(sql=sql, dialect=DIALECT)
 
@@ -57,10 +57,12 @@ def test__select_with_ordinality(holder):
     holder(sql=sql, dialect=DIALECT, with_tables=True)
 
 
-def test__select_values(holder):
-    sql = """
+distinct = ["DISTINCT ON (num)", ""]
+@pytest.mark.parametrize("case", distinct)
+def test__select_values(holder, case):
+    sql = f"""
     INSERT INTO fruit.processed (name, kind)
-    SELECT * FROM (VALUES (1, 'one'), (2, 'two')) AS t (num, letter);
+    SELECT {case} * FROM (VALUES (1, 'one'), (2, 'two')) AS t (num, letter);
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 

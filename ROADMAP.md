@@ -105,7 +105,7 @@ SELECT
   - [ ] WITH ORDINALITY
   - [ ] WINDOW
   - [x] SELECT FROM ( VALUES ())
-  - [ ] DISTINCT ON
+  - [x] DISTINCT ON
 
 MERGE
 - [x] Regular
