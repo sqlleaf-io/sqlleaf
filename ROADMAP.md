@@ -93,8 +93,7 @@ SELECT
     - [x] WITH (VALUES)
     - [x] WITH MATERIALIZED
     - [ ] Inside subqueries - SELECT FROM (WITH)
-  - [ ] LATERAL
-    - sqlglot optimize() creates weird output
+  - [x] LATERAL
   - [ ] ROWS FROM
     - [x] Aliases
     - [ ] No aliases

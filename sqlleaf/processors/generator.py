@@ -153,35 +153,53 @@ def walk_query_and_build_graph(
 
 def walk_query_scope(column: exp.Column | int, scope: Scope) -> t.Generator[ScopeTraversal]:
     """
-    Walk over each query scope (i.e. a SELECT statement) and return the expression linked to the column.
+    Walk over each query scope (i.e. nested or standalone SELECT statement) and return the expression linked to the column.
     """
     # Subqueries, unions, etc are the first layers
     if isinstance(scope.expression, exp.Subquery):
-        for source in scope.subquery_scopes:
+        sources = scope.subquery_scopes
+        for source in sources:
             logger.debug("Yielding from first subquery scope")
             yield from walk_query_scope(
                 column=column,
                 scope=source,
             )
+        if sources:
+            return
     elif isinstance(scope.expression, exp.SetOperation):
         # UNION, EXCEPT, etc
         index = get_column_index(column, scope.expression)
 
-        for s in scope.union_scopes:
+        sources = scope.union_scopes
+        for source in sources:
             logger.debug("Yielding from union scope")
             yield from walk_query_scope(
                 column=index,
-                scope=s,
+                scope=source,
             )
-    else:
-        # Create the node for this step in the lineage chain
-        select = get_expression_for_column(column, scope.expression)
-        st = ScopeTraversal(
-            expression=select.unalias(),
-            scope=scope,
-        )
-        yield st
-        logger.debug("[1] Created Node '%s', Expr: %s, Id: %s", column, select.sql(), id(st))
+        if sources:
+            return
+    elif isinstance(scope.expression, exp.Lateral):
+        # LATERAL ( SELECT )
+        sources = [src for src in scope.sources.values() if isinstance(src, Scope)]
+        for source in sources:
+            if isinstance(source, Scope):
+                logger.debug("Yielding from lateral scope")
+                yield from walk_query_scope(
+                    column=column,
+                    scope=source,
+                )
+        if sources:
+            return
+
+    # Get the associated expression for the column name
+    select = get_expression_for_column(column, scope.expression)
+    st = ScopeTraversal(
+        expression=select.unalias(),
+        scope=scope,
+    )
+    yield st
+    logger.debug("[1] Created Node '%s', Expr: %s, Id: %s", column, select.sql(), id(st))
 
 
 def walk_expressions_and_build_graph(
@@ -387,6 +405,8 @@ def get_expression_for_column(column: exp.Column | int, expr: E) -> E:
     else:
         if isinstance(expr, exp.Values):
             # SELECT FROM (VALUES ())
+            selects = [expr]
+        elif isinstance(expr, exp.Lateral):
             selects = [expr]
         else:
             # Common path

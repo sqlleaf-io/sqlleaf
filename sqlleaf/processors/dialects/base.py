@@ -7,6 +7,7 @@ from functools import singledispatchmethod
 
 from sqlglot import exp
 from sqlglot.optimizer import Scope
+from sqlglot.optimizer.scope import ScopeType
 
 from sqlleaf import exception, util
 from sqlleaf.models.context import GeneratorContext, PositionContext
@@ -314,10 +315,14 @@ class BaseGenerator:
 
         # Rename the column's table/schema/catalog to be fully qualified
         if gen_ctx.scope and isinstance(gen_ctx.scope, Scope):
-            source_table = dict(gen_ctx.scope.references).get(expr.table)
+            # Lateral queries are processed differently
+            if gen_ctx.scope.scope_type == ScopeType.UDTF and isinstance(gen_ctx.scope.expression, exp.Lateral):
+                source_table = dict(gen_ctx.scope.lateral_sources).get(expr.table)
+            else:
+                source_table = dict(gen_ctx.scope.references).get(expr.table)
 
             if source_table:
-                if not isinstance(source_table, (exp.Table, exp.Values, exp.Subquery, exp.Select)):
+                if not isinstance(source_table, (exp.Table, exp.Values, exp.Subquery, exp.Select, exp.Lateral)):
                     raise exception.SqlLeafException(message=f"Unexpected source type: {type(source_table)}")
 
                 if not isinstance(source_table, exp.Subquery):

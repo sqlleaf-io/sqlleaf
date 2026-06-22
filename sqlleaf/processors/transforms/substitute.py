@@ -325,7 +325,7 @@ def _create_lateral_replacement(
 
     Example:
         Before: `SELECT * FROM table1, LATERAL hello()`
-        After: `SELECT * FROM table1, LATERAL (SELECT * FROM (SELECT ...) AS t(name, age))`
+        After: `SELECT * FROM table1, LATERAL (SELECT * FROM (SELECT ...) AS hello(name, age))`
         where hello() returns (name, age)
     """
     if query.return_columns:

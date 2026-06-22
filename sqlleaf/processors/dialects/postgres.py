@@ -15,7 +15,6 @@ from sqlleaf.models.node import (
     SequenceNode,
     StreamNode,
 )
-from sqlleaf.models.query.copy import CopyQuery
 from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
 from sqlleaf.typing import SourceInfo, SqlObjectType
 
@@ -90,6 +89,17 @@ class PostgresGenerator(BaseGenerator):
             logger.debug(f"Skipping expression: {type(expr)} {str(expr)}")
             yield EdgeToCreate(None, None)
 
+    @process.register
+    def process_lateral(
+        self, expr: exp.Lateral, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
+        """
+        Example query: "SELECT .. LATERAL function() AS t(name)"
+        This only handles cases where a function follows LATERAL. If a subquery follows instead,
+        its expressions are walked inside walk_query_scope().
+        """
+        gen_ctx = replace(gen_ctx, expr=expr.this)
+        yield from self.process(expr.this, gen_ctx, pos_ctx)
 
     @process.register
     def process_anonymous(
@@ -117,7 +127,7 @@ class PostgresGenerator(BaseGenerator):
             seq_table = exp.table_(table=seq_name_expr.name, db=schema)
             seq_query = gen_ctx.query.object_mapping.lookup_sequence_query(table=seq_table)
             if not seq_query:
-                logger.warning(f"Sequence '{full_name}' not found.")
+                raise exception.SqlLeafException(f"Sequence '{full_name}' not found.")
 
             subkind = seq_query.property if seq_query else ""
             parent = SequenceNode(name=seq_name_expr.name, gen_ctx=gen_ctx, pos_ctx=pos_ctx, subkind=subkind)
@@ -165,7 +175,6 @@ class PostgresGenerator(BaseGenerator):
         source_info: SourceInfo = gen_ctx.query.source_info
         source_expression = source_info.expression
 
-        # This logic only processes the query, not the expression
         if source_info.type == SqlObjectType.STREAM:
             node = StreamNode(
                 name=source_expression.name,

@@ -203,7 +203,8 @@ def test__select_filter_and_where(holder):
     )
     # Ensure the WHERE is dropped
     assert (
-        h.holders[1].transformed.statement_original.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (age) SELECT 1 AS age"
+        h.holders[1].transformed.statement_original.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed (age) SELECT 1 AS age"  # noqa: E501
     )
 
 
@@ -389,16 +390,73 @@ def test__select_rows_from(holder):
 # TODO: support ROWS FROM without table alias
 
 
-# TODO: test below query
-@pytest.mark.skip(reason="todo")
 def test__select_lateral(holder):
     sql = """
-    SELECT u.name, task.title
-    FROM users u,
-    LATERAL get_tasks_for_user(u.id) AS task(title, due_date);
+    CREATE TABLE fruit.new (name VARCHAR, age INT);
+    INSERT INTO fruit.new (name, age)
+    SELECT
+        lat.name,
+        r.age as age
+    FROM fruit.raw r,
+    LATERAL (SELECT name FROM fruit.processed p WHERE p.name = r.name LIMIT 1) lat;
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
-    assert h.paths == []
+    assert h.paths == [
+        ["column[fruit.processed.name]", "column[lat.name]", "column[fruit.new.name]"],
+        ["column[fruit.raw.age]", "column[fruit.new.age]"],
+    ]
+    assert h.nodes_full == [
+        "column[name=name table=lat type=UNKNOWN kind=udtf]",
+        "column[name=age table=new schema=fruit type=INT kind=table]",
+        "column[name=name table=new schema=fruit type=VARCHAR kind=table]",
+        "column[name=name table=processed schema=fruit type=VARCHAR kind=table]",
+        "column[name=age table=raw schema=fruit type=INT kind=table]",
+    ]
+    assert len(h.edges) == 3
+
+
+def test__select_lateral_table_function(holder):
+    sql = """
+    CREATE TABLE fruit.new (name VARCHAR, age INT);
+    INSERT INTO fruit.new (name, age)
+    SELECT
+        lat.name,
+        r.age as age
+    FROM fruit.raw r,
+    LATERAL unnest(string_to_array(r.name, ',')) AS lat(name);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+    assert h.paths == [
+        [
+            "column[fruit.raw.name]",
+            "function[STRING_TO_ARRAY]",
+            "function[UNNEST]",
+            "column[lat.name]",
+            "column[fruit.new.name]",
+        ],
+        [
+            'literal[","]',
+            "function[STRING_TO_ARRAY]",
+            "function[UNNEST]",
+            "column[lat.name]",
+            "column[fruit.new.name]",
+        ],
+        [
+            "column[fruit.raw.age]",
+            "column[fruit.new.age]",
+        ],
+    ]
+    assert h.nodes_full == [
+        'literal["," type=VARCHAR query_depth=1 query_width=0 statement=1 select=0 func_depth=2 func_arg=1]',
+        "function[STRING_TO_ARRAY type=UNKNOWN query_depth=1 query_width=0 statement=1 select=0 func_depth=1 func_arg=0]",
+        "function[UNNEST type=UNKNOWN query_depth=1 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]",
+        "column[name=name table=lat type=UNKNOWN kind=udtf]",
+        "column[name=age table=new schema=fruit type=INT kind=table]",
+        "column[name=name table=new schema=fruit type=VARCHAR kind=table]",
+        "column[name=age table=raw schema=fruit type=INT kind=table]",
+        "column[name=name table=raw schema=fruit type=VARCHAR kind=table]",
+    ]
+    assert len(h.edges) == 6
 
 
 set_operations = ["EXCEPT", "INTERSECT", "UNION"]
