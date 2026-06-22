@@ -49,7 +49,7 @@ CREATE TABLE
     - [x] EXCLUDING
   - [x] INHERITS
     - [ ] NO INHERIT
-  - [ ] FOREIGN
+  - [x] FOREIGN
     - not supported by sqlglot
     - Include 'tableoid' system column
   - [x] TEMPORARY
@@ -60,6 +60,7 @@ CREATE TABLE
   - [x] Default columns
   - [ ] OF <type>
     - not supported by sqlglot
+  - [x] Empty
 
 CREATE VIEW
   - [x] Regular

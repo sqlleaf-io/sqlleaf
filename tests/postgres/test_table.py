@@ -8,7 +8,7 @@ from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from sqlleaf.models.query import TypeQuery
+from sqlleaf.models.query import TypeQuery, TableQuery
 
 DIALECT = "postgres"
 
@@ -28,6 +28,19 @@ def test__table_types(holder):
     ]
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
+
+
+def test__table_empty(holder):
+    sql = """
+    CREATE TABLE fruit.new ();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == []
+    assert h.nodes_full == []
+    assert len(h.nodes) == 0
+    assert len(h.edges) == 0
+    assert isinstance(h.queries[0], TableQuery)
 
 
 def test__table_like_table(holder):
