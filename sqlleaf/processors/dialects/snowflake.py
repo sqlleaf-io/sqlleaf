@@ -41,6 +41,8 @@ class SnowflakeGenerator(BaseGenerator):
         file_ctx = replace(gen_ctx, expr=source)
         stage_ctx = replace(gen_ctx, expr=target)
 
+        stage_query = gen_ctx.query.object_mapping.get_table_or_stage(table=target, raise_on_missing=False)
+
         file_node = FileColumnNode(
             column="?",
             file_format=file_format,
@@ -53,6 +55,7 @@ class SnowflakeGenerator(BaseGenerator):
             stage=target,
             gen_ctx=stage_ctx,
             pos_ctx=pos_ctx,
+            path=stage_query.path,
         )
 
         yield EdgeToCreate(file_node, stage_node)
@@ -72,12 +75,17 @@ class SnowflakeGenerator(BaseGenerator):
         """
         query = gen_ctx.query
         if hasattr(query, "source_info") and query.source_info.type == SqlObjectType.STAGE:
-            stage_name: exp.Var = query.source_info.expression.this
+            stage_expr = query.source_info.expression
+            stage_name: exp.Var = stage_expr.this
+            stage_query = query.object_mapping.get_table_or_stage(table=stage_expr, raise_on_missing=False)
+            stage_path = stage_query.path
+
             parent = StageColumnNode(
                 column=expr.name,
                 stage=stage_name,
                 gen_ctx=gen_ctx,
                 pos_ctx=pos_ctx,
+                path=stage_path,
             )
             yield EdgeToCreate(parent, gen_ctx.child_node)
         else:

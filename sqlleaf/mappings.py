@@ -203,16 +203,20 @@ class ObjectMapping(MappingSchema):
     def supported_table_args(self) -> t.Tuple[str, ...]:
         return exp.TABLE_PARTS
 
-    def get_table_or_stage(self, table: exp.Table, raise_on_missing: bool = True) -> Q | None:
+    def get_table_or_stage(self, table: exp.Table | exp.Var, raise_on_missing: bool = True) -> Q | None:
         """
         Get the 'CREATE' query for a table or stage.
         """
-        if str(table).startswith("@"):
-            child_object_query = self.lookup_stage_query(table=table)
+        table_expr = table
+        if isinstance(table, exp.Var):
+            table_expr = exp.Table(this=table)
+
+        if str(table_expr).startswith("@"):
+            child_object_query = self.lookup_stage_query(table=table_expr)
         else:
-            child_object_query = self.lookup_table_query(table=table)
+            child_object_query = self.lookup_table_query(table=table_expr)
 
         if not child_object_query and raise_on_missing:
-            raise exception.SqlLeafException(message="Unknown table", table=str(table))
+            raise exception.SqlLeafException(message="Unknown table", table=str(table_expr))
 
         return child_object_query

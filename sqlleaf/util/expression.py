@@ -68,9 +68,20 @@ def find_property(statement: exp.Create, child_object: TargetExprType, dialect: 
 
     properties = (exp.TemporaryProperty, exp.ExternalProperty, exp.MaterializedProperty)
     prop = ""
-    if props := statement.args["properties"]:
+    if props := statement.args.get("properties"):
         prop = str(props.find(properties) or "").lower()
     return prop
+
+
+def find_stage_path(statement: exp.Create) -> str:
+    """
+    Get the URL property for Snowflake stages.
+    """
+    if props := statement.args.get("properties"):
+        for prop in props.expressions:
+            if isinstance(prop, exp.Property) and prop.name.upper() == "URL":
+                return prop.args["value"].this
+    return ""
 
 
 def column_def_to_column(column_def: exp.ColumnDef, parent_table: t.Optional[exp.Table] = None) -> exp.Column:

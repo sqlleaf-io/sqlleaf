@@ -3,6 +3,7 @@ from sqlleaf.util.expression import (
     column_def_to_column,
     copy_expression,
     find_property,
+    find_stage_path,
     get_file_format,
     get_function_args,
     get_selected_column_names,

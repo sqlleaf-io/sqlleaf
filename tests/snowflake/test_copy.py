@@ -36,12 +36,12 @@ def test___copy_from_stage(holder, case):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        [f"column[NAME stage={new}]", "column[INCOMING.ZONE.NAME]"],
-        [f"column[AGE stage={new}]", "column[INCOMING.ZONE.AGE]"],
+        [f"column[NAME stage={new} path=s3://load/files/]", "column[INCOMING.ZONE.NAME]"],
+        [f"column[AGE stage={new} path=s3://load/files/]", "column[INCOMING.ZONE.AGE]"],
     ]
     assert h.nodes_full == [
-        f"column[AGE type=INT kind=stage stage={new}]",
-        f"column[NAME type=VARCHAR kind=stage stage={new}]",
+        f"column[AGE type=INT kind=stage stage={new} path=s3://load/files/]",
+        f"column[NAME type=VARCHAR kind=stage stage={new} path=s3://load/files/]",
         "column[name=AGE table=ZONE schema=INCOMING type=INT kind=table]",
         "column[name=NAME table=ZONE schema=INCOMING type=VARCHAR kind=table]",
     ]
@@ -68,12 +68,12 @@ def test___copy_to_stage(holder, case):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[OUTGOING.ZONE.NAME]", f"column[NAME stage={new}]"],
-        ["column[OUTGOING.ZONE.AGE]", f"column[AGE stage={new}]"],
+        ["column[OUTGOING.ZONE.NAME]", f"column[NAME stage={new} path=s3://load/files/]"],
+        ["column[OUTGOING.ZONE.AGE]", f"column[AGE stage={new} path=s3://load/files/]"],
     ]
     assert h.nodes_full == [
-        f"column[AGE type=INT kind=stage stage={new}]",
-        f"column[NAME type=VARCHAR kind=stage stage={new}]",
+        f"column[AGE type=INT kind=stage stage={new} path=s3://load/files/]",
+        f"column[NAME type=VARCHAR kind=stage stage={new} path=s3://load/files/]",
         "column[name=AGE table=ZONE schema=OUTGOING type=INT kind=table]",
         "column[name=NAME table=ZONE schema=OUTGOING type=VARCHAR kind=table]",
     ]
@@ -105,16 +105,16 @@ def test___copy_to_and_from_stage(holder, case):
 
     assert [TableQuery, TableQuery, StageQuery, CopyQuery, CopyQuery] == list(map(type, h.queries))
     assert h.nodes_full == [
-        f"column[AGE type=INT kind=stage stage={new}]",
-        f"column[NAME type=VARCHAR kind=stage stage={new}]",
+        f"column[AGE type=INT kind=stage stage={new} path=s3://load/files/]",
+        f"column[NAME type=VARCHAR kind=stage stage={new} path=s3://load/files/]",
         "column[name=AGE table=ZONE schema=INCOMING type=INT kind=table]",
         "column[name=NAME table=ZONE schema=INCOMING type=VARCHAR kind=table]",
         "column[name=AGE table=ZONE schema=OUTGOING type=INT kind=table]",
         "column[name=NAME table=ZONE schema=OUTGOING type=VARCHAR kind=table]",
     ]
     assert h.paths == [
-        ["column[OUTGOING.ZONE.NAME]", f"column[NAME stage={new}]", "column[INCOMING.ZONE.NAME]"],
-        ["column[OUTGOING.ZONE.AGE]", f"column[AGE stage={new}]", "column[INCOMING.ZONE.AGE]"],
+        ["column[OUTGOING.ZONE.NAME]", f"column[NAME stage={new} path=s3://load/files/]", "column[INCOMING.ZONE.NAME]"],
+        ["column[OUTGOING.ZONE.AGE]", f"column[AGE stage={new} path=s3://load/files/]", "column[INCOMING.ZONE.AGE]"],
     ]
     query_1: CopyQuery = h.queries[3]
     assert query_1.source_info.type == SqlObjectType.STAGE

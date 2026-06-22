@@ -249,14 +249,17 @@ class StageColumnNode(NodeAttributes):
         stage: exp.Var,
         gen_ctx: GeneratorContext,
         pos_ctx: PositionContext,
+        path: str = "",
     ):
         super().__init__(gen_ctx, pos_ctx, name=column)
         self.stage = stage.name.removeprefix("@").replace('"', "")
+        self.path = path
 
     def to_dict(self):
         d = super().to_dict()
         d.update({
             "stage": self.stage,
+            "path": self.path,
         })
         return d
 
@@ -265,7 +268,11 @@ class StageColumnNode(NodeAttributes):
             "type": self.data_type,
             "kind": "stage",
             "stage": self.stage,
+            "path": self.path,
         }
 
     def friendly_fields(self) -> dict[str, str]:
-        return {"stage": self.stage}
+        return {
+            "stage": self.stage,
+            "path": self.path,
+        }

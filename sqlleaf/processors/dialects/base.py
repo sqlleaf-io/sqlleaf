@@ -458,11 +458,13 @@ class BaseGenerator:
                     )
 
                 case SqlObjectType.STAGE:
+                    stage_query = query.object_mapping.get_table_or_stage(table=expr.this, raise_on_missing=False)
                     child_node = StageColumnNode(
                         column=col_def.name,
                         stage=expr.this,
                         gen_ctx=gen_ctx,
                         pos_ctx=pos_ctx,
+                        path=stage_query.path,
                     )
                     process_defaults = False
 
