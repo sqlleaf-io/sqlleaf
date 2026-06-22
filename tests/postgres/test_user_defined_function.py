@@ -44,7 +44,7 @@ def test_hello_udf(holder):
     insert_query = h.queries[2]
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello') AS name"]
 
-    actual_after = [h.holders[2].substituted.statement_original]
+    actual_after = [h.holders[2].substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -74,7 +74,7 @@ def test_hello_schema_udf(holder):
     insert_query = h.queries[2]
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello') AS name"]
 
-    actual_after = [h.holders[2].substituted.statement_original]
+    actual_after = [h.holders[2].substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -105,10 +105,10 @@ def test_hello_schema_distinction_udf(holder):
     ])
 
     insert1 = h.queries[3]
-    assert to_sql([h.holders[3].substituted.statement_original]) == ["INSERT INTO target (age) SELECT (SELECT 'no_schema') AS age"]
+    assert to_sql([h.holders[3].substituted.statement]) == ["INSERT INTO target (age) SELECT (SELECT 'no_schema') AS age"]
 
     insert2 = h.queries[4]
-    assert to_sql([h.holders[4].substituted.statement_original]) == ["INSERT INTO target (age) SELECT (SELECT 'yes_schema') AS age"]
+    assert to_sql([h.holders[4].substituted.statement]) == ["INSERT INTO target (age) SELECT (SELECT 'yes_schema') AS age"]
 
 
 def test_hello_nested_invocation_udf(holder):
@@ -138,7 +138,7 @@ def test_hello_nested_invocation_udf(holder):
     # expect: INSERT INTO target (age) SELECT (SELECT 'Hello ' || (SELECT 'Hello ' || 'There'))
     insert_after = ["INSERT INTO target (age) SELECT (SELECT 'Hello ' || (SELECT 'Hello ' || 'There')) AS age"]
 
-    actual_after = [h.holders[2].substituted.statement_original]
+    actual_after = [h.holders[2].substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -173,7 +173,7 @@ def test_udf_referencing_another_udf(holder):
     # expect: INSERT INTO target (age) SELECT (SELECT (SELECT MY_UNKNOWN('Hello'))) AS age
     insert_after = ["INSERT INTO target (age) SELECT (SELECT (SELECT MY_UNKNOWN('Hello'))) AS age"]
 
-    actual_after = [h.holders[3].substituted.statement_original]
+    actual_after = [h.holders[3].substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -203,7 +203,7 @@ def test_hello_void_return_udf(holder):
     insert_query = h.queries[2]
     insert_after = ["INSERT INTO target (age) SELECT (SELECT NULL) AS age"]
 
-    actual_after = [h.holders[2].substituted.statement_original]
+    actual_after = [h.holders[2].substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -234,7 +234,7 @@ def test_hello_return_parameter_udf(holder):
     # Expect: INSERT INTO target (age) SELECT (SELECT 'World') AS age;
     insert_after = ["INSERT INTO target (age) SELECT (SELECT 'World') AS age"]
 
-    actual_after = [h.holders[2].substituted.statement_original]
+    actual_after = [h.holders[2].substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -266,7 +266,7 @@ def test_hello_params_udf(holder):
     insert_query = h.queries[2]
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello ' || 'world') AS name"]
 
-    actual_after = [h.holders[2].substituted.statement_original]
+    actual_after = [h.holders[2].substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -298,7 +298,7 @@ def test_hello_positional_params_udf(holder):
     insert_query = h.queries[2]
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello ' || COALESCE('world', 'Guest')) AS name"]
 
-    actual_after = [h.holders[2].substituted.statement_original]
+    actual_after = [h.holders[2].substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -331,7 +331,7 @@ def test_hello_inout_params_udf(holder):
     # $1 is replaced by 'world'
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello ' || 'world') AS name"]
 
-    actual_after = [h.holders[2].substituted.statement_original]
+    actual_after = [h.holders[2].substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -365,13 +365,13 @@ def test_hello_default_params_udf(holder):
     insert_query = h.queries[2]
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello ' || 'World') AS name"]
 
-    actual_after = [h.holders[2].substituted.statement_original]
+    actual_after = [h.holders[2].substituted.statement]
     assert to_sql(actual_after) == insert_after
 
     insert_query_2 = h.queries[3]
     insert_after_2 = ["INSERT INTO target (name) SELECT (SELECT 'Hello ' || 'There') AS name"]
 
-    actual_after = [h.holders[3].substituted.statement_original]
+    actual_after = [h.holders[3].substituted.statement]
     assert to_sql(actual_after) == insert_after_2
 
 # If a function returns more than one column, ensure that its 'returned column names' are the name of the parameter (if provided)
@@ -403,7 +403,7 @@ def test_hello_inout_parameter_udf(holder):
     # Check substitution for the first INSERT
     insert_query_1 = h.queries[2]
     insert_after_1 = ["INSERT INTO target (msg, bye) SELECT hello.username AS msg, hello.column2 AS bye FROM (SELECT 'Hi' || ' ' || 'User', 'Goodbye ' || 'User') AS hello(username, column2)"]
-    actual_after_1 = [h.holders[2].substituted.statement_original]
+    actual_after_1 = [h.holders[2].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -438,7 +438,7 @@ def test_hello_in_out_inout_parameters_udf(holder):
     # Check substitution for the first INSERT
     insert_query_1 = h.queries[2]
     insert_after_1 = ["INSERT INTO target (name1, name2) SELECT hello.middle_name AS name1, hello.last_name AS name2 FROM (SELECT UPPER('There'), LOWER('Hello')) AS hello(middle_name, last_name)"]
-    actual_after_1 = [h.holders[2].substituted.statement_original]
+    actual_after_1 = [h.holders[2].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -467,7 +467,7 @@ def test_hello_table_no_params_udf(holder):
 
     insert_query_1 = h.queries[2]
     insert_after_1 = ["INSERT INTO target (name1, name2) SELECT hello.property AS name1, hello.value AS name2 FROM (SELECT 'prop', 'val') AS hello(property, value)"]
-    actual_after_1 = [h.holders[2].substituted.statement_original]
+    actual_after_1 = [h.holders[2].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -498,7 +498,7 @@ def test_hello_multi_statement_params_udf(holder):
 
     insert_query_1 = h.queries[2]
     insert_after_1 = ["INSERT INTO target (age) SELECT (SELECT 'Hello ' || 'Alice') AS age"]
-    actual_after_1 = [h.holders[2].substituted.statement_original]
+    actual_after_1 = [h.holders[2].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -530,7 +530,7 @@ def test_hello_cte_udf(holder):
 
     insert_query_1 = h.queries[2]
     insert_after_1 = ["INSERT INTO target (age) SELECT (WITH cte AS (SELECT 'Hello ' || 'Alice' AS msg) SELECT msg FROM cte) AS age"]
-    actual_after_1 = [h.holders[2].substituted.statement_original]
+    actual_after_1 = [h.holders[2].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -559,7 +559,7 @@ def test_hello_table_and_values_udf(holder):
 
     insert_query_1 = h.queries[2]
     insert_after_1 = ["INSERT INTO target (name1, name2, age) SELECT hello.property AS name1, hello.value AS name2, 1 AS age FROM (VALUES ('greeting', 'Hello ' || 'John')) AS hello(property, value)"]
-    actual_after_1 = [h.holders[2].substituted.statement_original]
+    actual_after_1 = [h.holders[2].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -596,15 +596,15 @@ def test_hello_table_parameter_udf(holder):
     insert_after = ["INSERT INTO target (age) SELECT (SELECT people.age * 2 AS age) AS age FROM people AS people"]
 
     insert_query_1 = h.queries[3]
-    actual_after_1 = [h.holders[3].substituted.statement_original]
+    actual_after_1 = [h.holders[3].substituted.statement]
     assert to_sql(actual_after_1) == insert_after
 
     insert_query_2 = h.queries[4]
-    actual_after_2 = [h.holders[4].substituted.statement_original]
+    actual_after_2 = [h.holders[4].substituted.statement]
     assert to_sql(actual_after_2) == insert_after
 
     insert_query_alias = h.queries[5]
-    actual_after_alias = [h.holders[5].substituted.statement_original]
+    actual_after_alias = [h.holders[5].substituted.statement]
     assert to_sql(actual_after_alias) == insert_after
 
 
@@ -642,13 +642,13 @@ def test_hello_row_parameter_udf(holder):
     insert_after = ["INSERT INTO target (age) SELECT (SELECT (CAST(ROW(2) AS people)).age * 2 AS age) AS age"]
 
     insert_query_1 = h.queries[3]
-    actual_after_1 = [h.holders[3].substituted.statement_original]
+    actual_after_1 = [h.holders[3].substituted.statement]
     assert to_sql(actual_after_1) == insert_after
 
     insert_after_from = ["INSERT INTO target (age) SELECT (SELECT (CAST(ROW(2) AS people)).age * 2 AS age) AS age FROM people AS people"]
 
     insert_query_from = h.queries[4]
-    actual_after_from = [h.holders[4].substituted.statement_original]
+    actual_after_from = [h.holders[4].substituted.statement]
     assert to_sql(actual_after_from) == insert_after_from
 
 
@@ -690,7 +690,7 @@ def test_hello_row_parameter_udf(holder):
 #     # SELECT * FROM (SELECT 'goodbye' AS bye) CROSS JOIN LATERAL (SELECT * FROM (SELECT 'prop', 'val') AS _t1(property, value)) AS _t2(property, value)
 #     insert_query_1 = h.queries[3]
 #     insert_after_1 = ["INSERT INTO target (name1, name2, name3) SELECT name1, name2, name3 FROM (SELECT 'goodbye' AS bye) AS bye CROSS JOIN LATERAL udf() as udf(property, value)"]
-#     actual_after_1 = [h.holders[3].substituted.statement_original]
+#     actual_after_1 = [h.holders[3].substituted.statement]
 #     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -729,7 +729,7 @@ def test_hello_composite_type_udf(holder):
 
     insert_query_1 = h.queries[3]
     insert_after_1 = ["INSERT INTO target (name, age) SELECT hello.name1 AS name, hello.age1 AS age FROM (SELECT 'John', 50) AS hello(name1, age1)"]
-    actual_after_1 = [h.holders[3].substituted.statement_original]
+    actual_after_1 = [h.holders[3].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -768,7 +768,7 @@ def test_hello_table_return_udf(holder):
 
     insert_query_1 = h.queries[3]
     insert_after_1 = ["INSERT INTO target (name, age) SELECT hello.name AS name, hello.age AS age FROM (SELECT 'Mary', 25) AS hello(name, age)"]
-    actual_after_1 = [h.holders[3].substituted.statement_original]
+    actual_after_1 = [h.holders[3].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -800,7 +800,7 @@ def test_hello_schema_table_return_udf(holder):
 
     insert_query_1 = h.queries[3]
     insert_after_1 = ["INSERT INTO target (name, age) SELECT hello.name AS name, hello.age AS age FROM (SELECT 'Mary', 25) AS hello(name, age)"]
-    actual_after_1 = [h.holders[3].substituted.statement_original]
+    actual_after_1 = [h.holders[3].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -843,7 +843,7 @@ def test_hello_variadic_parameter_udf(holder):
 
     insert_query_1 = h.queries[2]
     insert_after_1 = ["INSERT INTO target (name1) SELECT (SELECT 'Hi' || ' ' || STRING_AGG(unpacked_name, ' and ') FROM UNNEST(ARRAY['Alice', 'Bob', 'Charlie']) AS unpacked_name) AS name1"]
-    actual_after_1 = [h.holders[2].substituted.statement_original]
+    actual_after_1 = [h.holders[2].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -894,22 +894,22 @@ def test_mleast_variadic_parameter_udf(holder):
 
     insert_query_1 = h.queries[2]
     insert_after_1 = ["INSERT INTO target (age) SELECT (SELECT MIN((ARRAY[10, -1, 5, 4.4])[i]) FROM GENERATE_SUBSCRIPTS(ARRAY[10, -1, 5, 4.4], 1) AS g(i)) AS age"]
-    actual_after_1 = [h.holders[2].substituted.statement_original]
+    actual_after_1 = [h.holders[2].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
     insert_query_2 = h.queries[3]
     insert_after_2 = ["INSERT INTO target (age) SELECT (SELECT MIN((ARRAY[10, -1, 5, 4.4])[i]) FROM GENERATE_SUBSCRIPTS(ARRAY[10, -1, 5, 4.4], 1) AS g(i)) AS age"]
-    actual_after_2 = [h.holders[3].substituted.statement_original]
+    actual_after_2 = [h.holders[3].substituted.statement]
     assert to_sql(actual_after_2) == insert_after_2
 
     insert_query_3 = h.queries[4]
     insert_after_3 = ["INSERT INTO target (age) SELECT (SELECT MIN((CAST(ARRAY[] AS DECIMAL[]))[i]) FROM GENERATE_SUBSCRIPTS(CAST(ARRAY[] AS DECIMAL[]), 1) AS g(i)) AS age"]
-    actual_after_3 = [h.holders[4].substituted.statement_original]
+    actual_after_3 = [h.holders[4].substituted.statement]
     assert to_sql(actual_after_3) == insert_after_3
 
     insert_query_4 = h.queries[5]
     insert_after_4 = ["INSERT INTO target (age) WITH data_source AS (SELECT CAST(ARRAY[10, -1, 5, 4.4] AS DECIMAL[]) AS my_array) SELECT (SELECT MIN(data_source.my_array[i]) FROM GENERATE_SUBSCRIPTS(data_source.my_array, 1) AS g(i)) AS age FROM data_source AS data_source"]
-    actual_after_4 = [h.holders[5].substituted.statement_original]
+    actual_after_4 = [h.holders[5].substituted.statement]
     assert to_sql(actual_after_4) == insert_after_4
 
 
@@ -951,27 +951,27 @@ def test_hello_overloading_udf(holder):
 
     insert_query_1 = h.queries[6]
     insert_after_1 = ["INSERT INTO target (name1) SELECT (SELECT 'Hello') AS name1"]
-    actual_after_1 = [h.holders[6].substituted.statement_original]
+    actual_after_1 = [h.holders[6].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
     insert_query_2 = h.queries[7]
     insert_after_2 = ["INSERT INTO target (name1) SELECT (SELECT 'Hello INT') AS name1"]
-    actual_after_2= [h.holders[7].substituted.statement_original]
+    actual_after_2= [h.holders[7].substituted.statement]
     assert to_sql(actual_after_2) == insert_after_2
 
     insert_query_3 = h.queries[8]
     insert_after_3 = ["INSERT INTO target (name1) SELECT (SELECT 'Hello TEXT') AS name1"]
-    actual_after_3 = [h.holders[8].substituted.statement_original]
+    actual_after_3 = [h.holders[8].substituted.statement]
     assert to_sql(actual_after_3) == insert_after_3
 
     insert_query_4 = h.queries[9]
     insert_after_4 = ["INSERT INTO target (name1) SELECT (SELECT 'Hello DOUBLE') AS name1"]
-    actual_after_4 = [h.holders[9].substituted.statement_original]
+    actual_after_4 = [h.holders[9].substituted.statement]
     assert to_sql(actual_after_4) == insert_after_4
 
     insert_query_5 = h.queries[10]
     insert_after_5 = ["INSERT INTO target (name1) SELECT (SELECT 'Hello TEXT, TEXT') AS name1"]
-    actual_after_5 = [h.holders[10].substituted.statement_original]
+    actual_after_5 = [h.holders[10].substituted.statement]
     assert to_sql(actual_after_5) == insert_after_5
 
 
@@ -1000,7 +1000,7 @@ def test_hello_table_join_same_table_udf(holder):
 
     insert_query_1 = h.queries[2]
     insert_after_1 = ["INSERT INTO target (name1, name2, name3, name4) SELECT h.property AS name1, h.value AS name2, i.property AS name3, i.value AS name4 FROM (SELECT 'prop', 'val') AS h(property, value) CROSS JOIN (SELECT 'prop', 'val') AS i(property, value)"]
-    actual_after_1 = [h.holders[2].substituted.statement_original]
+    actual_after_1 = [h.holders[2].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -1038,7 +1038,7 @@ def test_hello_type_return_udf(holder):
 
     insert_query_1 = h.queries[3]
     insert_after_1 = ["INSERT INTO target (name, age) SELECT hello.name1 AS name, hello.age1 AS age FROM (SELECT 'Bob', 75) AS hello(name1, age1)"]
-    actual_after_1 = [h.holders[3].substituted.statement_original]
+    actual_after_1 = [h.holders[3].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -1060,7 +1060,7 @@ def test_hello_parameter_column_precedence_udf(holder):
     # In Postgres, columns from tables take precedence over columns from tables if their names match
     insert_query_1 = h.queries[3]
     insert_after_1 = ["INSERT INTO target (name) SELECT (SELECT name FROM people) AS name"]
-    actual_after_1 = [h.holders[3].substituted.statement_original]
+    actual_after_1 = [h.holders[3].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -1081,7 +1081,7 @@ def test_hello_any_type_fallback_udf(holder):
     # In Postgres, columns from tables take precedence over columns from tables if their names match
     insert_query_1 = h.queries[2]
     insert_after_1 = ["INSERT INTO target (age) SELECT (SELECT 2) AS age"]
-    actual_after_1 = [h.holders[2].substituted.statement_original]
+    actual_after_1 = [h.holders[2].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -1110,5 +1110,5 @@ def test_hello_null_on_null_input_udf(holder, case: str):
     # In Postgres, columns from tables take precedence over columns from tables if their names match
     insert_query_1 = h.queries[2]
     insert_after_1 = ["INSERT INTO target (age) SELECT (SELECT NULL) AS age"]
-    actual_after_1 = [h.holders[2].substituted.statement_original]
+    actual_after_1 = [h.holders[2].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1

@@ -26,4 +26,4 @@ class MergeQuery(Query):
         )
 
     def get_ctes(self):
-        return getattr(self.statement_original, "ctes", [])
+        return getattr(self.statement, "ctes", [])

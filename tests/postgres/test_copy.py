@@ -282,7 +282,7 @@ def test_copy_select_column_aliases_to_file(holder):
         "WHERE simple.age > 10"
     )
     copy_holder = h.lineage.collected_queries.queries[1]
-    assert copy_holder.transformed.statement_original.sql(dialect=DIALECT) == expected_query
+    assert copy_holder.transformed.statement.sql(dialect=DIALECT) == expected_query
 
 
 def test_copy_select_join_to_stream(holder):

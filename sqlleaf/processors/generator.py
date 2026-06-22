@@ -37,9 +37,9 @@ def generate_lineage_for_query(
     over sqlglot's abstract syntax tree (AST) to determine the set of node
     and transformations used along the path to reach the table's columns.
     """
-    statements_to_process = [(holder.transformed, holder.transformed.statement_original)]
+    statements_to_process = [(holder.transformed, holder.transformed.statement)]
     if holder.substituted:
-        statements_to_process.append((holder.substituted, holder.substituted.statement_original))
+        statements_to_process.append((holder.substituted, holder.substituted.statement))
 
     for i, (active_query, statement) in enumerate(statements_to_process):
         logger.debug("----")
@@ -503,7 +503,7 @@ def check_for_put(generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: 
     graph = gen_ctx.graph
 
     if query.dialect == "snowflake" and isinstance(query, PutQuery):
-        expr = query.statement_original
+        expr = query.statement
         # Short-circuit this function; it's not an insert
         for edge in generator.process(expr, gen_ctx, pos_ctx):
             file_node, stage_node = edge.parent, edge.child
@@ -519,7 +519,7 @@ def check_for_external_table(generator: BaseGenerator, gen_ctx: GeneratorContext
     query = gen_ctx.query
 
     if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external":
-        location_expr = query.statement_original.args["properties"].find(exp.LocationProperty)
+        location_expr = query.statement.args["properties"].find(exp.LocationProperty)
 
         for child_node, _ in generator.iter_child_nodes(gen_ctx, pos_ctx):
             if child_node:

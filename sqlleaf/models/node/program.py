@@ -19,7 +19,7 @@ class ProgramNode(NodeAttributes):
         # original_copy_statement cannot be replaced by source_info/target_info here:
         # source_info.expression only holds the stage/file expression, whereas ProgramNode
         # needs the full exp.Copy AST to read query.args["params"] (program name + args).
-        copy_stmt = getattr(gen_ctx.query, "original_copy_statement", None) or gen_ctx.query.statement_original
+        copy_stmt = getattr(gen_ctx.query, "original_copy_statement", None) or gen_ctx.query.statement
         expr = t.cast(exp.Copy, copy_stmt)
 
         program = expr.args["params"][0].sql()

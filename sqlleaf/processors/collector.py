@@ -223,7 +223,7 @@ def _collect_insert_children(query: InsertQuery, parent_holder: QueryHolder, obj
     """
     Collect any additional queries inside an INSERT. For Postgres, this is 'INSERT .. ON CONFLICT DO UPDATE'.
     """
-    on_conflict = query.statement_original.args["conflict"]
+    on_conflict = query.statement.args["conflict"]
 
     if not isinstance(on_conflict, exp.OnConflict) or on_conflict.args["action"].name == "DO NOTHING":
         return
@@ -267,7 +267,7 @@ def _collect_merge_children(parent_query: MergeQuery, parent_holder: QueryHolder
         FROM fruit.raw s;
     """
     merge = parent_query
-    parent_expr = parent_query.statement_original
+    parent_expr = parent_query.statement
     whens = [when.args["then"] for when in parent_expr.args["whens"].expressions]
 
     for i, when in enumerate(whens):
@@ -302,7 +302,7 @@ def _set_column_defs(query: TableQuery):
     """
     Collect all the column definitions for this table.
     """
-    statement = query.statement_original
+    statement = query.statement
     all_columns = []
 
     for expression in statement.this.expressions:
@@ -608,7 +608,7 @@ def _unnest_values_inside_select(statement: exp.Create):
     Replace SELECT * FROM (VALUES ()) with VALUES ().
     This prevents sqlglot from assigning its own aliases.
     """
-    # TODO: this should be done in a transform, checked against self.statement_original
+    # TODO: this should be done in a transform, checked against self.statement
     for values_expr in statement.find_all(exp.Values):
         parent = values_expr.parent_select
         while isinstance(parent, exp.Select) and parent.is_star and parent.parent_select:
@@ -677,7 +677,7 @@ def _process_stored_procedures(
     # TODO: find a way to get each SP's text from a query that has multiple SPs defined in it.
     #  sqlglot will parse the 2 SPs, but does not provide the original, raw text. This is imperfect
     #  as we would like to keep the original text for various reasons.
-    # transformed_text = clean_stored_procedure_text(query.statement_original.sql())
+    # transformed_text = clean_stored_procedure_text(query.statement.sql())
     # query.text_transformed = transformed_text
 
     # The original text is lost, so we are forced to use the transformed text in its place for now

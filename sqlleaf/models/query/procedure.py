@@ -41,7 +41,7 @@ class ProcedureQuery(Query):
 
     @property
     def id(self):
-        return "procedure:" + util.short_sha256_hash(self.statement_original.sql())
+        return "procedure:" + util.short_sha256_hash(self.statement.sql())
 
     def to_dict(self):
         return {

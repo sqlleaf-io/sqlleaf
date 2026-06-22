@@ -200,12 +200,12 @@ def test__select_filter_and_where(holder):
     assert len(h.edges) == 5
     # Ensure the FILTER is dropped
     assert (
-        h.holders[0].transformed.statement_original.sql(dialect=DIALECT)
+        h.holders[0].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO fruit.processed (age, amount) SELECT SUM(raw.age) AS age, COUNT(*) AS amount FROM fruit.raw AS raw"  # noqa: E501
     )
     # Ensure the WHERE is dropped
     assert (
-        h.holders[1].transformed.statement_original.sql(dialect=DIALECT)
+        h.holders[1].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO fruit.processed (age) SELECT 1 AS age"  # noqa: E501
     )
 

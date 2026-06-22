@@ -78,7 +78,7 @@ def test__insert_default_values(holder):
         ["literal[99]", "column[fruit.a.size]"],
     ]
     assert (
-        h.holders[2].transformed.statement_original.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
+        h.holders[2].transformed.statement.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
     )
     assert len(h.nodes) == 12
     assert len(h.edges) == 7

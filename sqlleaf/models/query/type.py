@@ -35,7 +35,7 @@ class TypeQuery(Query):
         """
         Collect the type's column definitions.
         """
-        expression = self.statement_original.args.get("expression")
+        expression = self.statement.args.get("expression")
         if isinstance(expression, exp.Schema):
             for col_def in expression.expressions:
                 if isinstance(col_def, exp.ColumnDef):

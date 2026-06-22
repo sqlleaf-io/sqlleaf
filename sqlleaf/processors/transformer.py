@@ -40,7 +40,7 @@ def transform_query(holder: QueryHolder) -> None:
     Writes the results to holder.transformed and holder.substituted.
     """
     original_query = holder.original
-    statement_to_transform = util.copy_expression(original_query.statement_original)
+    statement_to_transform = util.copy_expression(original_query.statement)
 
     transformed_statement = _transform_statement(statement_to_transform, original_query)
 
@@ -88,13 +88,13 @@ def _build_transformed_query(
         if isinstance(original_query, CopyQuery):
             # Preserve the original exp.Copy statement so that nodes like
             # ProgramNode can still read COPY-specific args (e.g. params).
-            new_query.original_copy_statement = original_query.statement_original
+            new_query.original_copy_statement = original_query.statement
     else:
         # For statements not converted to INSERT, keep the same Query subclass
         # but with the new statement.
         new_query = original_query.__class__.__new__(original_query.__class__)
         new_query.__dict__.update(original_query.__dict__)
-        new_query.statement_original = transformed_statement
+        new_query.statement = transformed_statement
 
     # Propagate shared metadata
     new_query.column_defs = original_query.column_defs
@@ -125,7 +125,7 @@ def _transform_statement(statement: E, query: Q) -> exp.Expr:
     (e.g. _convert_copy_to_insert, _apply_optimizations, _add_column_names_to_insert)
     receive `statement` as an explicit parameter and never re-read it from `query`.
     The only access to `query.statement_*` inside this function is the debug diff at
-    the end, which reads `query.statement_original` explicitly.
+    the end, which reads `query.statement` explicitly.
     """
     logger.debug("----")
     logger.debug(f"Query: {statement.sql(dialect=query.dialect)}")
@@ -208,7 +208,7 @@ def _transform_statement(statement: E, query: Q) -> exp.Expr:
             # Bug in sqlglot: parsing the output for CREATE EXTERNAL TABLE WITH (FORMAT=TEXTFILE) breaks the parser
             pass
 
-    old = query.statement_original.sql(dialect=query.dialect)
+    old = query.statement.sql(dialect=query.dialect)
     new = statement.sql(dialect=query.dialect)
     if old == new:
         logger.debug("No transformations applied.")

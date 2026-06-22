@@ -28,5 +28,5 @@ def test__system_tables_postgres(holder):
     ]
     assert len(h.nodes) == 10
     assert (
-        h.holders[2].transformed.statement_original.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
+        h.holders[2].transformed.statement.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
     )

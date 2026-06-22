@@ -39,11 +39,3 @@ class QueryHolder:
         if types:
             holders = [h for h in holders if isinstance(h.original, types)]
         return holders
-
-    @property
-    def active(self) -> Query:
-        """
-        Return the most-processed available query version.
-        Useful for code that just needs *a* valid query.
-        """
-        return self.transformed or self.original

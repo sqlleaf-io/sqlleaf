@@ -513,7 +513,7 @@ def test__cte_merge_inside_insert(holder):
         ["column[drink.kind2]", "column[cte.kind2]", "column[fruit_drink.kind2]"],
     ]
     assert (
-        h.holders[3].transformed.statement_original.sql(dialect=DIALECT) == "WITH cte AS ("
+        h.holders[3].transformed.statement.sql(dialect=DIALECT) == "WITH cte AS ("
         "SELECT MERGE_ACTION() AS action, t.name AS name, t.kind AS kind, s.name2 AS name2, "
         "s.kind2 AS kind2 FROM fruit AS t JOIN drink AS s ON s.name2 = t.name) "
         "INSERT INTO fruit_drink (action, name, kind, name2, kind2) "

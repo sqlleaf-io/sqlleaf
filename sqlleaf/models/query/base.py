@@ -47,7 +47,7 @@ class Query:
         for expr in statement.walk():
             expr.pop_comments()
 
-        self.statement_original: exp.Expr = statement
+        self.statement: exp.Expr = statement
 
         self.statement_index = statement_index  # The position of this query within a list of queries
 
@@ -59,11 +59,15 @@ class Query:
         logger.debug(f"Created Query: {self.__class__}")
 
     def _determine_expression_type(self, expr: exp.Expr | t.List[exp.Expr], dialect: str) -> SqlObjectType:
+        """
+        Determine the type of object that an expression represents.
+        For example, given the literal string "file://data.csv", this is of type FILE; or, given the
+        identifier "STDIN", this is of type STREAM.
+        """
         if isinstance(expr, exp.Literal):
             _type = SqlObjectType.FILE
 
         elif isinstance(expr, exp.Identifier):
-
             if expr.name in ["stdin", "stdout"]:
                 _type = SqlObjectType.STREAM
             elif expr.name in ["program"]:
@@ -206,19 +210,13 @@ class Query:
         columns = {col.name: str(col.kind) for col in self.get_column_defs(include_system=include_system)}
         return columns
 
-
-    @property
-    def statement(self) -> exp.Expr:
-        return self.statement_original
-
     @property
     def id(self) -> str:
-        return "query:" + util.short_sha256_hash(self.statement_original.sql() + ":" + str(self.statement_index))
+        return "query:" + util.short_sha256_hash(self.statement.sql() + ":" + str(self.statement_index))
 
     def add_child_query(self, child_query):
         child_query.parent_query = self
         self.child_queries.append(child_query)
-
 
     def get_all_queries(self, types: t.Tuple | None = None):
         """

@@ -500,7 +500,7 @@ class BaseGenerator:
                     raise exception.SqlLeafException(f"Unhandled case for type: {target_object.type}")
 
 
-            if col_def.name in util.get_selected_column_names(query.statement_original) or isinstance(query, TableQuery):
+            if col_def.name in util.get_selected_column_names(query.statement) or isinstance(query, TableQuery):
                 # Check if the column is selected.
                 # A 'CREATE TABLE' has no SELECT, so include all columns if this case.
                 selected_node = child_node
