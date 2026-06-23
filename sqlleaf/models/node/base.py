@@ -6,7 +6,7 @@ from sqlglot import exp
 
 from sqlleaf import util
 from sqlleaf.models.context import GeneratorContext, PositionContext
-from sqlleaf.models.query import Q
+from sqlleaf.models.query import Q, QueryHolder
 
 
 class NodeAttributes:
@@ -152,7 +152,7 @@ class EdgeAttributes:
 
 class GraphAttributes:
     def __init__(self):
-        self.queries: t.List[Q] = []
+        self.queries: t.List[QueryHolder] = []
 
-    def add_query_to_graph(self, query: Q):
-        self.queries.append(query)
+    def add_query_to_graph(self, holder: QueryHolder):
+        self.queries.append(holder)

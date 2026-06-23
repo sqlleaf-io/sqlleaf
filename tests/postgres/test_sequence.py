@@ -18,7 +18,7 @@ def test__simple_sequence(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [["sequence[serial]", "column[fruit.raw.age]"]]
-    assert [SequenceQuery, InsertQuery] == list(map(type, h.queries))
+    assert [SequenceQuery, InsertQuery] == h.query_types
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
 
@@ -32,4 +32,4 @@ def test__temporary_sequence(holder):
 
     assert h.paths == [["sequence[temp_serial]", "column[fruit.raw.age]"]]
     assert "sequence[temp_serial type=INT kind=temporary]" in h.nodes_full
-    assert [SequenceQuery, InsertQuery] == list(map(type, h.queries))
+    assert [SequenceQuery, InsertQuery] == h.query_types

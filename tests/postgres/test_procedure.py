@@ -49,7 +49,7 @@ DIALECT = "postgres"
 #     ["variable[v_amount]", "column[fruit.processed.amount]"],
 #     ["literal[1]", "column[fruit.processed.number]"],
 # ]
-#     assert len(h.queries) == 1 and isinstance(h.queries[0], ProcedureQuery)
+#     assert len(h.queries_original) == 1 and isinstance(h.holders[0], ProcedureQuery)
 
 
 # TODO: test an SP with a merge. This creates a 3-level query hierarchy

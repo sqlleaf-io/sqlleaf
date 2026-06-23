@@ -31,7 +31,7 @@ def test__insert_values(holder, case):
         ['literal["yellow"]', "column[fruit.raw.name]"],
         ['literal["banana"]', "function[UPPER]", "column[fruit.raw.kind]"],
     ]
-    assert [InsertQuery] == list(map(type, h.queries))
+    assert [InsertQuery] == h.query_types
 
 
 def test__insert_values_multiple(holder):
@@ -47,7 +47,7 @@ def test__insert_values_multiple(holder):
         ['literal["upper_apple"]', "function[UPPER]", "column[fruit.raw.kind]"],
         ['literal["upper_orange"]', "function[UPPER]", "column[fruit.raw.kind]"],
     ]
-    assert [InsertQuery] == list(map(type, h.queries))
+    assert [InsertQuery] == h.query_types
     assert len(h.nodes) == 8
     assert len(h.edges) == 6
 

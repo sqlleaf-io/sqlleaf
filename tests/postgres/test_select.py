@@ -502,6 +502,6 @@ def test__select_table_as_table(holder):
     assert h.paths == [["column[t1.name1]", "column[t2.name1]"], ["column[t1.name2]", "column[t2.name2]"]]
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
-    assert len(h.queries) == 3
-    assert [TableQuery, TableQuery, InsertQuery] == list(map(type, h.queries))
+    assert len(h.queries_original) == 3
+    assert [TableQuery, TableQuery, InsertQuery] == h.query_types
     assert len(h.collected_queries.unsupported) == 2

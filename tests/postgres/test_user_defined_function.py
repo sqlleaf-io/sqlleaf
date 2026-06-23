@@ -29,7 +29,7 @@ def test_hello_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -41,10 +41,10 @@ def test_hello_udf(holder):
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
 
-    insert_query = h.queries[2]
+    insert_query = h.holders[2]
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello') AS name"]
 
-    actual_after = [h.holders[2].substituted.statement]
+    actual_after = [insert_query.substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -59,7 +59,7 @@ def test_hello_schema_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -71,10 +71,10 @@ def test_hello_schema_udf(holder):
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
 
-    insert_query = h.queries[2]
+    insert_query = h.holders[2]
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello') AS name"]
 
-    actual_after = [h.holders[2].substituted.statement]
+    actual_after = [insert_query.substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -89,12 +89,12 @@ def test_hello_schema_distinction_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    udf1 = h.queries[0]
+    udf1 = h.holders[0].original
     assert isinstance(udf1, UserDefinedFunctionQuery)
     assert udf1.function_name == "hello"
     assert udf1.schema_name is None
 
-    udf2 = h.queries[1]
+    udf2 = h.holders[1].original
     assert isinstance(udf2, UserDefinedFunctionQuery)
     assert udf2.function_name == "hello"
     assert udf2.schema_name == "greetings"
@@ -104,10 +104,10 @@ def test_hello_schema_distinction_udf(holder):
         ["udf[GREETINGS.HELLO]", "column[target.age]"]
     ])
 
-    insert1 = h.queries[3]
+    insert1 = h.holders[3]
     assert to_sql([h.holders[3].substituted.statement]) == ["INSERT INTO target (age) SELECT (SELECT 'no_schema') AS age"]
 
-    insert2 = h.queries[4]
+    insert2 = h.holders[4]
     assert to_sql([h.holders[4].substituted.statement]) == ["INSERT INTO target (age) SELECT (SELECT 'yes_schema') AS age"]
 
 
@@ -122,7 +122,7 @@ def test_hello_nested_invocation_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -134,11 +134,11 @@ def test_hello_nested_invocation_udf(holder):
         ['literal["There"]', "udf[HELLO]", "udf[HELLO]", "column[target.age]"]
     ]
 
-    insert_query = h.queries[2]
+    insert_query = h.holders[2]
     # expect: INSERT INTO target (age) SELECT (SELECT 'Hello ' || (SELECT 'Hello ' || 'There'))
     insert_after = ["INSERT INTO target (age) SELECT (SELECT 'Hello ' || (SELECT 'Hello ' || 'There')) AS age"]
 
-    actual_after = [h.holders[2].substituted.statement]
+    actual_after = [insert_query.substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -157,11 +157,11 @@ def test_udf_referencing_another_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    udf_goodbye = h.queries[0]
+    udf_goodbye = h.holders[0].original
     assert isinstance(udf_goodbye, UserDefinedFunctionQuery)
     assert udf_goodbye.function_name == "goodbye"
 
-    udf_hello = h.queries[1]
+    udf_hello = h.holders[1].original
     assert isinstance(udf_hello, UserDefinedFunctionQuery)
     assert udf_hello.function_name == "hello"
 
@@ -169,7 +169,7 @@ def test_udf_referencing_another_udf(holder):
         ["udf[HELLO]", "column[target.age]"]
     ]
 
-    insert_query = h.queries[3]
+    insert_query = h.holders[3]
     # expect: INSERT INTO target (age) SELECT (SELECT (SELECT MY_UNKNOWN('Hello'))) AS age
     insert_after = ["INSERT INTO target (age) SELECT (SELECT (SELECT MY_UNKNOWN('Hello'))) AS age"]
 
@@ -186,7 +186,7 @@ def test_hello_void_return_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -200,10 +200,10 @@ def test_hello_void_return_udf(holder):
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
 
-    insert_query = h.queries[2]
+    insert_query = h.holders[2]
     insert_after = ["INSERT INTO target (age) SELECT (SELECT NULL) AS age"]
 
-    actual_after = [h.holders[2].substituted.statement]
+    actual_after = [insert_query.substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -216,7 +216,7 @@ def test_hello_return_parameter_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -230,11 +230,11 @@ def test_hello_return_parameter_udf(holder):
     assert len(h.nodes) == 3
     assert len(h.edges) == 2
 
-    insert_query = h.queries[2]
+    insert_query = h.holders[2]
     # Expect: INSERT INTO target (age) SELECT (SELECT 'World') AS age;
     insert_after = ["INSERT INTO target (age) SELECT (SELECT 'World') AS age"]
 
-    actual_after = [h.holders[2].substituted.statement]
+    actual_after = [insert_query.substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -249,7 +249,7 @@ def test_hello_params_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -263,10 +263,10 @@ def test_hello_params_udf(holder):
     assert len(h.nodes) == 3 # 'world', HELLO, target.name
     assert len(h.edges) == 2
 
-    insert_query = h.queries[2]
+    insert_query = h.holders[2]
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello ' || 'world') AS name"]
 
-    actual_after = [h.holders[2].substituted.statement]
+    actual_after = [insert_query.substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -281,7 +281,7 @@ def test_hello_positional_params_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -295,10 +295,10 @@ def test_hello_positional_params_udf(holder):
     assert len(h.nodes) == 3
     assert len(h.edges) == 2
 
-    insert_query = h.queries[2]
+    insert_query = h.holders[2]
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello ' || COALESCE('world', 'Guest')) AS name"]
 
-    actual_after = [h.holders[2].substituted.statement]
+    actual_after = [insert_query.substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -313,7 +313,7 @@ def test_hello_inout_params_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -327,11 +327,11 @@ def test_hello_inout_params_udf(holder):
     assert len(h.nodes) == 3
     assert len(h.edges) == 2
 
-    insert_query = h.queries[2]
+    insert_query = h.holders[2]
     # $1 is replaced by 'world'
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello ' || 'world') AS name"]
 
-    actual_after = [h.holders[2].substituted.statement]
+    actual_after = [insert_query.substituted.statement]
     assert to_sql(actual_after) == insert_after
 
 
@@ -347,7 +347,7 @@ def test_hello_default_params_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -362,13 +362,13 @@ def test_hello_default_params_udf(holder):
     assert len(h.nodes) == 4
     assert len(h.edges) == 3
 
-    insert_query = h.queries[2]
+    insert_query = h.holders[2]
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello ' || 'World') AS name"]
 
-    actual_after = [h.holders[2].substituted.statement]
+    actual_after = [insert_query.substituted.statement]
     assert to_sql(actual_after) == insert_after
 
-    insert_query_2 = h.queries[3]
+    insert_query_2 = h.holders[3]
     insert_after_2 = ["INSERT INTO target (name) SELECT (SELECT 'Hello ' || 'There') AS name"]
 
     actual_after = [h.holders[3].substituted.statement]
@@ -388,7 +388,7 @@ def test_hello_inout_parameter_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -401,9 +401,9 @@ def test_hello_inout_parameter_udf(holder):
     assert query.language == "sql"
 
     # Check substitution for the first INSERT
-    insert_query_1 = h.queries[2]
+    insert_query_1 = h.holders[2]
     insert_after_1 = ["INSERT INTO target (msg, bye) SELECT hello.username AS msg, hello.column2 AS bye FROM (SELECT 'Hi' || ' ' || 'User', 'Goodbye ' || 'User') AS hello(username, column2)"]
-    actual_after_1 = [h.holders[2].substituted.statement]
+    actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -423,7 +423,7 @@ def test_hello_in_out_inout_parameters_udf(holder):
 
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -436,9 +436,9 @@ def test_hello_in_out_inout_parameters_udf(holder):
     assert query.language == "sql"
 
     # Check substitution for the first INSERT
-    insert_query_1 = h.queries[2]
+    insert_query_1 = h.holders[2]
     insert_after_1 = ["INSERT INTO target (name1, name2) SELECT hello.middle_name AS name1, hello.last_name AS name2 FROM (SELECT UPPER('There'), LOWER('Hello')) AS hello(middle_name, last_name)"]
-    actual_after_1 = [h.holders[2].substituted.statement]
+    actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -453,7 +453,7 @@ def test_hello_table_no_params_udf(holder):
 
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -465,9 +465,9 @@ def test_hello_table_no_params_udf(holder):
     ]
     assert query.language == "sql"
 
-    insert_query_1 = h.queries[2]
+    insert_query_1 = h.holders[2]
     insert_after_1 = ["INSERT INTO target (name1, name2) SELECT hello.property AS name1, hello.value AS name2 FROM (SELECT 'prop', 'val') AS hello(property, value)"]
-    actual_after_1 = [h.holders[2].substituted.statement]
+    actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -484,7 +484,7 @@ def test_hello_multi_statement_params_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -496,9 +496,9 @@ def test_hello_multi_statement_params_udf(holder):
         ['literal["Alice"]', "udf[HELLO]", "column[target.age]"]
     ]
 
-    insert_query_1 = h.queries[2]
+    insert_query_1 = h.holders[2]
     insert_after_1 = ["INSERT INTO target (age) SELECT (SELECT 'Hello ' || 'Alice') AS age"]
-    actual_after_1 = [h.holders[2].substituted.statement]
+    actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -516,7 +516,7 @@ def test_hello_cte_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -528,9 +528,9 @@ def test_hello_cte_udf(holder):
         ['literal["Alice"]', "udf[HELLO]", "column[target.age]"]
     ]
 
-    insert_query_1 = h.queries[2]
+    insert_query_1 = h.holders[2]
     insert_after_1 = ["INSERT INTO target (age) SELECT (WITH cte AS (SELECT 'Hello ' || 'Alice' AS msg) SELECT msg FROM cte) AS age"]
-    actual_after_1 = [h.holders[2].substituted.statement]
+    actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -546,7 +546,7 @@ def test_hello_table_and_values_udf(holder):
 
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -557,9 +557,9 @@ def test_hello_table_and_values_udf(holder):
     ]
     assert query.language == "sql"
 
-    insert_query_1 = h.queries[2]
+    insert_query_1 = h.holders[2]
     insert_after_1 = ["INSERT INTO target (name1, name2, age) SELECT hello.property AS name1, hello.value AS name2, 1 AS age FROM (VALUES ('greeting', 'Hello ' || 'John')) AS hello(property, value)"]
-    actual_after_1 = [h.holders[2].substituted.statement]
+    actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -578,7 +578,7 @@ def test_hello_table_parameter_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[1]
+    query = h.holders[1].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -595,16 +595,16 @@ def test_hello_table_parameter_udf(holder):
 
     insert_after = ["INSERT INTO target (age) SELECT (SELECT people.age * 2 AS age) AS age FROM people AS people"]
 
-    insert_query_1 = h.queries[3]
-    actual_after_1 = [h.holders[3].substituted.statement]
+    insert_query_1 = h.holders[3]
+    actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after
 
-    insert_query_2 = h.queries[4]
-    actual_after_2 = [h.holders[4].substituted.statement]
+    insert_query_2 = h.holders[4]
+    actual_after_2 = [insert_query_2.substituted.statement]
     assert to_sql(actual_after_2) == insert_after
 
-    insert_query_alias = h.queries[5]
-    actual_after_alias = [h.holders[5].substituted.statement]
+    insert_query_alias = h.holders[5]
+    actual_after_alias = [insert_query_alias.substituted.statement]
     assert to_sql(actual_after_alias) == insert_after
 
 
@@ -624,7 +624,7 @@ def test_hello_row_parameter_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[1]
+    query = h.holders[1].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -641,13 +641,13 @@ def test_hello_row_parameter_udf(holder):
 
     insert_after = ["INSERT INTO target (age) SELECT (SELECT (CAST(ROW(2) AS people)).age * 2 AS age) AS age"]
 
-    insert_query_1 = h.queries[3]
+    insert_query_1 = h.holders[3]
     actual_after_1 = [h.holders[3].substituted.statement]
     assert to_sql(actual_after_1) == insert_after
 
     insert_after_from = ["INSERT INTO target (age) SELECT (SELECT (CAST(ROW(2) AS people)).age * 2 AS age) AS age FROM people AS people"]
 
-    insert_query_from = h.queries[4]
+    insert_query_from = h.holders[4]
     actual_after_from = [h.holders[4].substituted.statement]
     assert to_sql(actual_after_from) == insert_after_from
 
@@ -667,7 +667,7 @@ def test_hello_row_parameter_udf(holder):
 #     """
 #     h = holder(sql=sql, dialect=DIALECT)
 #
-#     query = h.queries[1]
+#     query = h.holders[1].original
 #     assert isinstance(query, UserDefinedFunctionQuery)
 #
 #     assert query.function_name == "hello"
@@ -688,7 +688,7 @@ def test_hello_row_parameter_udf(holder):
 #     ])
 #
 #     # SELECT * FROM (SELECT 'goodbye' AS bye) CROSS JOIN LATERAL (SELECT * FROM (SELECT 'prop', 'val') AS _t1(property, value)) AS _t2(property, value)
-#     insert_query_1 = h.queries[3]
+#     insert_query_1 = h.holders[3]
 #     insert_after_1 = ["INSERT INTO target (name1, name2, name3) SELECT name1, name2, name3 FROM (SELECT 'goodbye' AS bye) AS bye CROSS JOIN LATERAL udf() as udf(property, value)"]
 #     actual_after_1 = [h.holders[3].substituted.statement]
 #     assert to_sql(actual_after_1) == insert_after_1
@@ -707,7 +707,7 @@ def test_hello_composite_type_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[1]
+    query = h.holders[1].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -727,7 +727,7 @@ def test_hello_composite_type_udf(holder):
         ['column[hello.age1]', 'column[target.age]']
     ])
 
-    insert_query_1 = h.queries[3]
+    insert_query_1 = h.holders[3]
     insert_after_1 = ["INSERT INTO target (name, age) SELECT hello.name1 AS name, hello.age1 AS age FROM (SELECT 'John', 50) AS hello(name1, age1)"]
     actual_after_1 = [h.holders[3].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -746,7 +746,7 @@ def test_hello_table_return_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[1]
+    query = h.holders[1].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -766,7 +766,7 @@ def test_hello_table_return_udf(holder):
         ['column[hello.age]', 'column[target.age]']
     ])
 
-    insert_query_1 = h.queries[3]
+    insert_query_1 = h.holders[3]
     insert_after_1 = ["INSERT INTO target (name, age) SELECT hello.name AS name, hello.age AS age FROM (SELECT 'Mary', 25) AS hello(name, age)"]
     actual_after_1 = [h.holders[3].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -785,7 +785,7 @@ def test_hello_schema_table_return_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[1]
+    query = h.holders[1].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -798,7 +798,7 @@ def test_hello_schema_table_return_udf(holder):
     ]
     assert query.language == "sql"
 
-    insert_query_1 = h.queries[3]
+    insert_query_1 = h.holders[3]
     insert_after_1 = ["INSERT INTO target (name, age) SELECT hello.name AS name, hello.age AS age FROM (SELECT 'Mary', 25) AS hello(name, age)"]
     actual_after_1 = [h.holders[3].substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -819,7 +819,7 @@ def test_hello_variadic_parameter_udf(holder):
 
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -841,9 +841,9 @@ def test_hello_variadic_parameter_udf(holder):
         ['literal["Charlie"]', 'udf[HELLO]', 'column[target.name1]']
     ])
 
-    insert_query_1 = h.queries[2]
+    insert_query_1 = h.holders[2]
     insert_after_1 = ["INSERT INTO target (name1) SELECT (SELECT 'Hi' || ' ' || STRING_AGG(unpacked_name, ' and ') FROM UNNEST(ARRAY['Alice', 'Bob', 'Charlie']) AS unpacked_name) AS name1"]
-    actual_after_1 = [h.holders[2].substituted.statement]
+    actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -869,7 +869,7 @@ def test_mleast_variadic_parameter_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "mleast"
@@ -892,24 +892,24 @@ def test_mleast_variadic_parameter_udf(holder):
         ['literal[{10,-1,5,4.4}]', 'function[CAST]', 'column[data_source.my_array]', 'udf[MLEAST]', 'column[target.age]']
     ])
 
-    insert_query_1 = h.queries[2]
+    insert_query_1 = h.holders[2]
     insert_after_1 = ["INSERT INTO target (age) SELECT (SELECT MIN((ARRAY[10, -1, 5, 4.4])[i]) FROM GENERATE_SUBSCRIPTS(ARRAY[10, -1, 5, 4.4], 1) AS g(i)) AS age"]
-    actual_after_1 = [h.holders[2].substituted.statement]
+    actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
-    insert_query_2 = h.queries[3]
+    insert_query_2 = h.holders[3]
     insert_after_2 = ["INSERT INTO target (age) SELECT (SELECT MIN((ARRAY[10, -1, 5, 4.4])[i]) FROM GENERATE_SUBSCRIPTS(ARRAY[10, -1, 5, 4.4], 1) AS g(i)) AS age"]
-    actual_after_2 = [h.holders[3].substituted.statement]
+    actual_after_2 = [insert_query_2.substituted.statement]
     assert to_sql(actual_after_2) == insert_after_2
 
-    insert_query_3 = h.queries[4]
+    insert_query_3 = h.holders[4]
     insert_after_3 = ["INSERT INTO target (age) SELECT (SELECT MIN((CAST(ARRAY[] AS DECIMAL[]))[i]) FROM GENERATE_SUBSCRIPTS(CAST(ARRAY[] AS DECIMAL[]), 1) AS g(i)) AS age"]
-    actual_after_3 = [h.holders[4].substituted.statement]
+    actual_after_3 = [insert_query_3.substituted.statement]
     assert to_sql(actual_after_3) == insert_after_3
 
-    insert_query_4 = h.queries[5]
+    insert_query_4 = h.holders[5]
     insert_after_4 = ["INSERT INTO target (age) WITH data_source AS (SELECT CAST(ARRAY[10, -1, 5, 4.4] AS DECIMAL[]) AS my_array) SELECT (SELECT MIN(data_source.my_array[i]) FROM GENERATE_SUBSCRIPTS(data_source.my_array, 1) AS g(i)) AS age FROM data_source AS data_source"]
-    actual_after_4 = [h.holders[5].substituted.statement]
+    actual_after_4 = [insert_query_4.substituted.statement]
     assert to_sql(actual_after_4) == insert_after_4
 
 
@@ -946,32 +946,32 @@ def test_hello_overloading_udf(holder):
 
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
-    insert_query_1 = h.queries[6]
+    insert_query_1 = h.holders[6]
     insert_after_1 = ["INSERT INTO target (name1) SELECT (SELECT 'Hello') AS name1"]
-    actual_after_1 = [h.holders[6].substituted.statement]
+    actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
-    insert_query_2 = h.queries[7]
+    insert_query_2 = h.holders[7]
     insert_after_2 = ["INSERT INTO target (name1) SELECT (SELECT 'Hello INT') AS name1"]
-    actual_after_2= [h.holders[7].substituted.statement]
+    actual_after_2= [insert_query_2.substituted.statement]
     assert to_sql(actual_after_2) == insert_after_2
 
-    insert_query_3 = h.queries[8]
+    insert_query_3 = h.holders[8]
     insert_after_3 = ["INSERT INTO target (name1) SELECT (SELECT 'Hello TEXT') AS name1"]
-    actual_after_3 = [h.holders[8].substituted.statement]
+    actual_after_3 = [insert_query_3.substituted.statement]
     assert to_sql(actual_after_3) == insert_after_3
 
-    insert_query_4 = h.queries[9]
+    insert_query_4 = h.holders[9]
     insert_after_4 = ["INSERT INTO target (name1) SELECT (SELECT 'Hello DOUBLE') AS name1"]
-    actual_after_4 = [h.holders[9].substituted.statement]
+    actual_after_4 = [insert_query_4.substituted.statement]
     assert to_sql(actual_after_4) == insert_after_4
 
-    insert_query_5 = h.queries[10]
+    insert_query_5 = h.holders[10]
     insert_after_5 = ["INSERT INTO target (name1) SELECT (SELECT 'Hello TEXT, TEXT') AS name1"]
-    actual_after_5 = [h.holders[10].substituted.statement]
+    actual_after_5 = [insert_query_5.substituted.statement]
     assert to_sql(actual_after_5) == insert_after_5
 
 
@@ -986,7 +986,7 @@ def test_hello_table_join_same_table_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -998,9 +998,9 @@ def test_hello_table_join_same_table_udf(holder):
     ]
     assert query.language == "sql"
 
-    insert_query_1 = h.queries[2]
+    insert_query_1 = h.holders[2]
     insert_after_1 = ["INSERT INTO target (name1, name2, name3, name4) SELECT h.property AS name1, h.value AS name2, i.property AS name3, i.value AS name4 FROM (SELECT 'prop', 'val') AS h(property, value) CROSS JOIN (SELECT 'prop', 'val') AS i(property, value)"]
-    actual_after_1 = [h.holders[2].substituted.statement]
+    actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -1016,7 +1016,7 @@ def test_hello_type_return_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[1]
+    query = h.holders[1].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     assert query.function_name == "hello"
@@ -1036,9 +1036,9 @@ def test_hello_type_return_udf(holder):
         ['column[hello.age1]', 'column[target.age]']
     ])
 
-    insert_query_1 = h.queries[3]
+    insert_query_1 = h.holders[3]
     insert_after_1 = ["INSERT INTO target (name, age) SELECT hello.name1 AS name, hello.age1 AS age FROM (SELECT 'Bob', 75) AS hello(name1, age1)"]
-    actual_after_1 = [h.holders[3].substituted.statement]
+    actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -1054,13 +1054,13 @@ def test_hello_parameter_column_precedence_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[1]
+    query = h.holders[1].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     # In Postgres, columns from tables take precedence over columns from tables if their names match
-    insert_query_1 = h.queries[3]
+    insert_query_1 = h.holders[3]
     insert_after_1 = ["INSERT INTO target (name) SELECT (SELECT name FROM people) AS name"]
-    actual_after_1 = [h.holders[3].substituted.statement]
+    actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -1075,13 +1075,13 @@ def test_hello_any_type_fallback_udf(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     # In Postgres, columns from tables take precedence over columns from tables if their names match
-    insert_query_1 = h.queries[2]
+    insert_query_1 = h.holders[2]
     insert_after_1 = ["INSERT INTO target (age) SELECT (SELECT 2) AS age"]
-    actual_after_1 = [h.holders[2].substituted.statement]
+    actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -1104,11 +1104,11 @@ def test_hello_null_on_null_input_udf(holder, case: str):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    query = h.queries[0]
+    query = h.holders[0].original
     assert isinstance(query, UserDefinedFunctionQuery)
 
     # In Postgres, columns from tables take precedence over columns from tables if their names match
-    insert_query_1 = h.queries[2]
+    insert_query_1 = h.holders[2]
     insert_after_1 = ["INSERT INTO target (age) SELECT (SELECT NULL) AS age"]
-    actual_after_1 = [h.holders[2].substituted.statement]
+    actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1

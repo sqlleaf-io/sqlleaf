@@ -17,7 +17,7 @@ from sqlleaf.models.query import (
     TableQuery,
     UnloadQuery,
     UpdateQuery,
-    ViewQuery,
+    ViewQuery, QueryHolder,
 )
 from sqlleaf.path import LineagePath
 from sqlleaf.processors import collector, generator, transformer
@@ -54,6 +54,9 @@ class Lineage:
             graph = new_graph()
             holders = parent_holder.get_all_holders()
 
+            if not holders:
+                continue
+
             for holder in holders:
                 query = holder.original
                 # Transform and produce lineage only for certain queries
@@ -61,11 +64,11 @@ class Lineage:
                     transformer.transform_query(holder)
                     generator.generate_lineage_for_query(holder, graph)
 
-            graph.graph["attrs"].add_query_to_graph(parent_query)
+            graph.graph["attrs"].add_query_to_graph(holder)
 
             # Associate the query with the graph even if it has no lineage
             self.merge_graph(graph)
-            self.graph.graph["attrs"].add_query_to_graph(parent_query)
+            self.graph.graph["attrs"].add_query_to_graph(holder)
             # types.update_column_data_types(self.graph)
             logger.debug("---")
 
@@ -108,11 +111,17 @@ class Lineage:
         )
         return nodes
 
-    def get_queries(self) -> t.List[Q]:
+    def get_original_queries(self) -> t.List[Q]:
         """
-        Get the queries from each of the subgraphs.
+        Get the original queries from the graph.
         """
-        return self.graph.graph["attrs"].queries
+        return [q.original for q in self.graph.graph["attrs"].queries]
+
+    def get_transformed_queries(self) -> t.List[Q]:
+        """
+        Get the transformed queries from the graph.
+        """
+        return [q.transformed for q in self.graph.graph["attrs"].queries]
 
     def get_stored_procedures(self):
         """

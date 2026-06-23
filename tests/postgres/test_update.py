@@ -22,7 +22,7 @@ def test__update_simple(holder):
         ['literal["john"]', "column[fruit.processed.name]"],
         ["column[fruit.raw.age]", "column[fruit.processed.age]"],
     ]
-    assert [UpdateQuery] == list(map(type, h.queries))
+    assert [UpdateQuery] == h.query_types
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
 
@@ -43,7 +43,7 @@ def test__update_with_subquery(holder):
     ]
     assert len(h.nodes_full) == 5
     assert len(h.edges) == 3
-    assert [UpdateQuery] == list(map(type, h.queries))
+    assert [UpdateQuery] == h.query_types
 
 
 def test__update_with_join(holder):
@@ -58,7 +58,7 @@ def test__update_with_join(holder):
     assert h.paths == [["column[fruit.raw.age]", "column[fruit.processed.age]"]]
     assert len(h.nodes_full) == 2
     assert len(h.edges) == 1
-    assert [UpdateQuery] == list(map(type, h.queries))
+    assert [UpdateQuery] == h.query_types
 
 
 def test__update_with_multiple_joins(holder):
@@ -77,7 +77,7 @@ def test__update_with_multiple_joins(holder):
     assert h.paths == [["column[fruit.raw.age]", "column[fruit.processed.age]"]]
     assert len(h.nodes_full) == 2
     assert len(h.edges) == 1
-    assert [TableQuery, UpdateQuery] == list(map(type, h.queries))
+    assert [TableQuery, UpdateQuery] == h.query_types
 
 
 def test__update_with_case(holder):
@@ -96,7 +96,7 @@ def test__update_with_case(holder):
     ]
     assert len(h.nodes_full) == 3
     assert len(h.edges) == 2
-    assert [UpdateQuery] == list(map(type, h.queries))
+    assert [UpdateQuery] == h.query_types
 
 
 def test__update_with_function(holder):
@@ -111,7 +111,7 @@ def test__update_with_function(holder):
     ]
     assert len(h.nodes_full) == 2
     assert len(h.edges) == 2
-    assert [UpdateQuery] == list(map(type, h.queries))
+    assert [UpdateQuery] == h.query_types
 
 
 def test__update_with_default(holder):
@@ -145,7 +145,7 @@ def test__update_self_join(holder):
     ]
     assert h.nodes_full == ["column[name=age table=processed schema=fruit type=INT kind=table]"]
     assert len(h.edges) == 1
-    assert [UpdateQuery] == list(map(type, h.queries))
+    assert [UpdateQuery] == h.query_types
 
 
 def test__update_with_values(holder):
@@ -186,7 +186,7 @@ def test__update_with_values(holder):
 #     assert h.paths == [
 #         ["column[fruit.raw.age]", "function[MAX]", "column[s.max_age]", "column[fruit.processed.age]"]
 #     ]
-#     assert [UpdateQuery] == list(map(type, h.queries))
+#     assert [UpdateQuery] == h.query_types
 
 
 def test__update_inheritance_only(holder):
@@ -202,7 +202,7 @@ def test__update_inheritance_only(holder):
     assert h.paths == [["literal[10]", "column[fruit.parent.price]"]]
 
 
-def test__update_tuple_assignment(holder):
+def test__update_multiple_columns(holder):
     sql = """
     UPDATE fruit.processed
     SET (name, age) = ('apple', 10);
@@ -213,14 +213,17 @@ def test__update_tuple_assignment(holder):
         ['literal["apple"]', "column[fruit.processed.name]"],
         ["literal[10]", "column[fruit.processed.age]"],
     ]
+    assert h.queries_transformed[0].statement.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (name, age) SELECT 'apple' AS name, 10 AS age FROM fruit.processed AS processed"
 
 
-# def test__update_subquery_tuple_assignment(holder):
+# def test__update_multiple_columns_from_select(holder):
 #     sql = """
 #     UPDATE fruit.processed
 #     SET (name, age) = (SELECT name, age FROM fruit.raw WHERE id = 1);
 #     """
 #     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+#     #
+#     # assert ["column[fruit.raw.name]", "column[fruit.processed.name]"] in h.paths
+#     # assert ["column[fruit.raw.age]", "column[fruit.processed.age]"] in h.paths
 #
-#     assert ["column[fruit.raw.name]", "column[fruit.processed.name]"] in h.paths
-#     assert ["column[fruit.raw.age]", "column[fruit.processed.age]"] in h.paths
+#     assert h.queries_transformed[0].statement.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (name, age) SELECT name AS name, age AS age FROM fruit.raw AS raw"

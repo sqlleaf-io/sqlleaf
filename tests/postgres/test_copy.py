@@ -36,7 +36,7 @@ def test_copy_to_stream(holder, stream):
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
-    query: CopyQuery = h.queries[1]
+    query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.TABLE
     assert query.target_info.type == SqlObjectType.STREAM
 
@@ -60,7 +60,7 @@ def test_copy_from_stream(holder, stream):
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
-    query: CopyQuery = h.queries[1]
+    query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.STREAM
     assert query.target_info.type == SqlObjectType.TABLE
 
@@ -76,7 +76,7 @@ def test_copy_columns_to_stream(holder):
         ["column[fruit.simple.age]", "stream[stdout]"],
     ]
     assert len(h.edges) == 2
-    query: CopyQuery = h.queries[1]
+    query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.TABLE
     assert query.target_info.type == SqlObjectType.STREAM
 
@@ -92,7 +92,7 @@ def test_copy_select_column_names_to_stream(holder):
         ["column[fruit.simple.name]", "stream[stdout]"],
     ]
     assert len(h.edges) == 2
-    query: CopyQuery = h.queries[1]
+    query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.STREAM
 
@@ -107,7 +107,7 @@ def test_copy_select_star_to_stream(holder):
         ["column[fruit.simple.name]", "stream[stdout]"],
         ["column[fruit.simple.age]", "stream[stdout]"],
     ]
-    query: CopyQuery = h.queries[1]
+    query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.STREAM
 
@@ -122,7 +122,7 @@ def test_copy_values_to_stream(holder):
     assert h.paths == []
     assert len(h.nodes_full) == 0
     assert len(h.edges) == 0
-    query: CopyQuery = h.queries[1]
+    query: CopyQuery = h.holders[1].original
     assert query.source_info.type == SqlObjectType.VALUES
     assert query.target_info.type == SqlObjectType.STREAM
 
@@ -157,7 +157,7 @@ def test_copy_into_table_from_file(holder):
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
-    query: CopyQuery = h.queries[1]
+    query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.FILE
     assert query.target_info.type == SqlObjectType.TABLE
 
@@ -179,7 +179,7 @@ def test_copy_into_table_from_file_named_columns(holder):
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
-    query: CopyQuery = h.queries[1]
+    query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.FILE
     assert query.target_info.type == SqlObjectType.TABLE
 
@@ -201,7 +201,7 @@ def test_copy_into_file_from_table(holder):
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
-    query: CopyQuery = h.queries[1]
+    query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.TABLE
     assert query.target_info.type == SqlObjectType.FILE
 
@@ -223,7 +223,7 @@ def test_copy_into_file_from_table_named_columns(holder):
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
-    query: CopyQuery = h.queries[1]
+    query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.TABLE
     assert query.target_info.type == SqlObjectType.FILE
 
@@ -245,7 +245,7 @@ def test_copy_select_column_names_to_file(holder):
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
-    query: CopyQuery = h.queries[1]
+    query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.FILE
 
@@ -271,7 +271,7 @@ def test_copy_select_column_aliases_to_file(holder):
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 3
-    query: CopyQuery = h.queries[1]
+    query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.FILE
 
@@ -310,7 +310,7 @@ def test_copy_select_join_to_stream(holder):
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 4
-    query: CopyQuery = h.queries[2]
+    query: CopyQuery = h.holders[2].transformed
     assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.STREAM
 
@@ -331,7 +331,7 @@ def test_copy_into_program_from_table(holder):
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
-    query: CopyQuery = h.queries[1]
+    query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.TABLE
     assert query.target_info.type == SqlObjectType.PROGRAM
 
@@ -352,7 +352,7 @@ def test_copy_table_program_from_program(holder):
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
-    query: CopyQuery = h.queries[1]
+    query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.PROGRAM
     assert query.target_info.type == SqlObjectType.TABLE
 

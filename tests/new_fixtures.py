@@ -1,9 +1,12 @@
 import os
 import sys
+import typing as t
 
 import pytest
 
+from sqlleaf.models.query import QueryHolder, Q, Query
 from sqlleaf.models.query.table import TableQuery
+from sqlleaf.processors.collector import CollectQueryResult
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -28,7 +31,6 @@ class LineageHolderDummy:
         self._all_nodes = self.lineage.get_nodes()
         self._all_edges = self.lineage.get_edges()
         self._all_paths = list(self.lineage.get_paths())
-        self._all_queries = self.lineage.get_queries()
         self._collected_queries = self.lineage.collected_queries
 
     @property
@@ -44,19 +46,15 @@ class LineageHolderDummy:
         return self._all_edges
 
     @property
-    def queries(self):
-        new_queries = []
-        for query in self._all_queries:
-            # Remove the COMMON_TABLES queries
-            if not (
-                isinstance(query, TableQuery)
-                and exp.table_name(query.get_target_as_table()).lower() in ["fruit.raw", "fruit.processed"]
-            ):
-                new_queries.append(query)
-        return new_queries
+    def queries_original(self) -> t.List[Q]:
+        return [h.original for h in  self.holders]
 
     @property
-    def holders(self):
+    def queries_transformed(self) -> list[Query | None]:
+        return [h.transformed for h in self.holders]
+
+    @property
+    def holders(self) -> t.List[QueryHolder]:
         new_holders = []
         for holder in self.lineage.collected_queries.queries:
             query = holder.original
@@ -68,27 +66,31 @@ class LineageHolderDummy:
         return new_holders
 
     @property
-    def paths(self):
+    def paths(self)-> t.List[str]:
         paths = []
         for path in self._all_paths:
             paths.append([hop.friendly_name for hop in path.node_hops()])
         return paths
 
     @property
-    def paths_full(self):
+    def paths_full(self) -> t.List[str]:
         paths = []
         for path in self._all_paths:
             paths.append([hop.full_name for hop in path.node_hops()])
         return paths
 
     @property
-    def collected_queries(self):
+    def collected_queries(self) -> CollectQueryResult | None:
         return self._collected_queries
 
+    @property
+    def query_types(self) -> t.List:
+        types = [type(h.original) for h in self.holders]
+        return types
 
 @pytest.fixture(scope="function")
 def holder():
-    def _create_holder(sql: str, dialect: str, with_tables: bool = False):
+    def _create_holder(sql: str, dialect: str, with_tables: bool = False) -> LineageHolderDummy:
         h = LineageHolderDummy()
         if with_tables:
             h.generate(sql=COMMON_TABLES, dialect=dialect)
@@ -98,12 +100,7 @@ def holder():
     return _create_holder
 
 
-def is_subset(subarr, arr):
-    """
-    Check if an array is a subset of another array.
-    """
-    missing = [s for s in subarr if s not in arr]
-    return len(missing) == 0
+
 
 
 COMMON_TABLES = """

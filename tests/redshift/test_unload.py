@@ -31,4 +31,4 @@ def test__unload(holder):
         "column[name=name table=source type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
-    assert isinstance(h.queries[1], UnloadQuery)
+    assert isinstance(h.queries_original[1], UnloadQuery)

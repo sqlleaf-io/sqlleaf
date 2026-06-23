@@ -40,7 +40,7 @@ def test__table_empty(holder):
     assert h.nodes_full == []
     assert len(h.nodes) == 0
     assert len(h.edges) == 0
-    assert isinstance(h.queries[0], TableQuery)
+    assert isinstance(h.queries_original[0], TableQuery)
 
 
 def test__table_like_table(holder):
@@ -65,9 +65,9 @@ def test__table_like_table(holder):
         ["column[fruit.a.id]", "column[fruit.b_like_a.id]"],
     ]
     # Test the LIKE declaration position
-    cols = h.queries[1].column_defs
+    cols = h.queries_original[1].column_defs
     assert (cols[0].name, cols[-1].name) == ("label", "color")
-    cols = h.queries[2].column_defs
+    cols = h.queries_original[2].column_defs
     assert (cols[0].name, cols[-1].name) == ("name", "color")
     assert len(h.nodes) == 7
     assert len(h.edges) == 4
@@ -238,7 +238,7 @@ def test__table_foreign(holder):
     OPTIONS (schema_name 'public', table_name 'users');
     """
     h = holder(sql=sql, dialect=DIALECT)
-    assert len(h.queries) == 0
+    assert len(h.queries_original) == 0
     assert len(h.collected_queries.unsupported) == 1
 
 
@@ -256,7 +256,7 @@ def test__table_of_type(holder):
     );
     """
     h = holder(sql=sql, dialect=DIALECT)
-    assert [TypeQuery] == list(map(type, h.queries))
+    assert [TypeQuery] == h.query_types
     assert len(h.collected_queries.unsupported) == 1
 
 

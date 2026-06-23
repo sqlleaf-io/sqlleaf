@@ -17,8 +17,8 @@ def test__table_temporary(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == []
-    assert [TableQuery] == list(map(type, h.queries))
-    assert h.queries[0].property == "temporary"
+    assert [TableQuery] == h.query_types
+    assert h.queries_original[0].property == "temporary"
 
 
 def test__ctas_distkey_sortkey(holder):

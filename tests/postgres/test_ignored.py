@@ -23,4 +23,4 @@ def test__ignore_transaction_statements(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert len(h.nodes) == 0
-    assert len(h.queries) == 0
+    assert len(h.queries_original) == 0

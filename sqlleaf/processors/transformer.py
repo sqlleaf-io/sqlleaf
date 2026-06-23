@@ -26,9 +26,8 @@ from sqlleaf.typing import E, SqlObjectType
 logger = logging.getLogger("sqlleaf")
 
 """
-Transform an SQL query into a form that we can easily generate the lineage from.
-We transform all queries into `INSERT .. SELECT` where possible so that we have
-a single query type to work over.
+Transform an SQL query into a single canonical form that we can easily generate the lineage from.
+The form is `INSERT .. SELECT`.
 """
 
 # TODO: ensure columns have valid types after all transformations (only top-level SELECT for now)

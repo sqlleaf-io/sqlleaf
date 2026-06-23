@@ -16,7 +16,7 @@ def test__prepare_fails(holder):
     EXECUTE my_plan(101);
     """
     h = holder(sql=sql, dialect=DIALECT)
-    assert len(h.queries) == 0
+    assert len(h.queries_original) == 0
 
 
 # sqlglot doesn't support DO - Falling back to parsing as a 'Command'.
@@ -27,7 +27,7 @@ def test__do_fails(holder):
     $$ LANGUAGE SQL;
     """
     h = holder(sql=sql, dialect=DIALECT)
-    assert len(h.queries) == 0
+    assert len(h.queries_original) == 0
 
 
 # sqlglot doesn't support CREATE RULE - Falling back to parsing as a 'Command'.
@@ -39,4 +39,4 @@ def test__rule(holder):
         SELECT * FROM t2;
     """
     h = holder(sql=sql, dialect=DIALECT)
-    assert len(h.queries) == 0
+    assert len(h.queries_original) == 0

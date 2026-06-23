@@ -46,7 +46,7 @@ def test___copy_from_stage(holder, case):
         "column[name=NAME table=ZONE schema=INCOMING type=VARCHAR kind=table]",
     ]
     assert len(h.edges) == 2
-    query: CopyQuery = h.queries[2]
+    query: CopyQuery = h.queries_original[2]
     assert query.source_info.type == SqlObjectType.STAGE
     assert query.target_info.type == SqlObjectType.TABLE
 
@@ -77,7 +77,7 @@ def test___copy_to_stage(holder, case):
         "column[name=AGE table=ZONE schema=OUTGOING type=INT kind=table]",
         "column[name=NAME table=ZONE schema=OUTGOING type=VARCHAR kind=table]",
     ]
-    query: CopyQuery = h.queries[2]
+    query: CopyQuery = h.queries_original[2]
     assert query.source_info.type == SqlObjectType.TABLE
     assert query.target_info.type == SqlObjectType.STAGE
 
@@ -103,7 +103,7 @@ def test___copy_to_and_from_stage(holder, case):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert [TableQuery, TableQuery, StageQuery, CopyQuery, CopyQuery] == list(map(type, h.queries))
+    assert [TableQuery, TableQuery, StageQuery, CopyQuery, CopyQuery] == h.query_types
     assert h.nodes_full == [
         f"column[AGE type=INT kind=stage stage={new} path=s3://load/files/]",
         f"column[NAME type=VARCHAR kind=stage stage={new} path=s3://load/files/]",
@@ -116,11 +116,11 @@ def test___copy_to_and_from_stage(holder, case):
         ["column[OUTGOING.ZONE.NAME]", f"column[NAME stage={new} path=s3://load/files/]", "column[INCOMING.ZONE.NAME]"],
         ["column[OUTGOING.ZONE.AGE]", f"column[AGE stage={new} path=s3://load/files/]", "column[INCOMING.ZONE.AGE]"],
     ]
-    query_1: CopyQuery = h.queries[3]
+    query_1: CopyQuery = h.queries_original[3]
     assert query_1.source_info.type == SqlObjectType.STAGE
     assert query_1.target_info.type == SqlObjectType.TABLE
 
-    query_2: CopyQuery = h.queries[4]
+    query_2: CopyQuery = h.queries_original[4]
     assert query_2.source_info.type == SqlObjectType.TABLE
     assert query_2.target_info.type == SqlObjectType.STAGE
     # TODO: full names should include the stage's s3 file path

@@ -21,7 +21,7 @@ def test_type_composite(holder):
     assert h.paths == []
     assert len(h.nodes) == 0
     assert len(h.edges) == 0
-    assert [TypeQuery] == list(map(type, h.queries))
+    assert [TypeQuery] == h.query_types
 
 
 # Composite type with schema qualification
@@ -36,7 +36,7 @@ def test_type_composite_schema(holder):
     assert h.paths == []
     assert len(h.nodes) == 0
     assert len(h.edges) == 0
-    assert [TypeQuery] == list(map(type, h.queries))
+    assert [TypeQuery] == h.query_types
 
 
 # Composite type with a nested type
@@ -51,7 +51,7 @@ def test_type_composite_nested(holder):
     assert h.paths == []
     assert len(h.nodes) == 0
     assert len(h.edges) == 0
-    assert [TypeQuery] == list(map(type, h.queries))
+    assert [TypeQuery] == h.query_types
 
 
 # Enum type with multiple labels
@@ -63,7 +63,7 @@ def test_type_enum(holder):
     assert h.paths == []
     assert len(h.nodes) == 0
     assert len(h.edges) == 0
-    assert [TypeQuery] == list(map(type, h.queries))
+    assert [TypeQuery] == h.query_types
 
 
 # Enum type with a single label
@@ -75,7 +75,7 @@ def test_type_enum_single(holder):
     assert h.paths == []
     assert len(h.nodes) == 0
     assert len(h.edges) == 0
-    assert [TypeQuery] == list(map(type, h.queries))
+    assert [TypeQuery] == h.query_types
 
 
 # Range type
@@ -88,7 +88,7 @@ def test_type_range(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == []
-    assert len(h.queries) == 0
+    assert len(h.queries_original) == 0
     assert len(h.nodes) == 0
     assert len(h.edges) == 0
 
@@ -102,7 +102,7 @@ def test_type_multirange(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == []
-    assert len(h.queries) == 0
+    assert len(h.queries_original) == 0
     assert len(h.nodes) == 0
     assert len(h.edges) == 0
 
@@ -118,7 +118,7 @@ def test_type_base(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == []
-    assert len(h.queries) == 0
+    assert len(h.queries_original) == 0
     assert len(h.nodes) == 0
     assert len(h.edges) == 0
 
@@ -141,5 +141,4 @@ def test_type_usage_in_table_and_insert(holder):
         "column[name=food table=recipe type=fruit kind=table]",
     ]
     assert len(h.edges) == 2
-    assert h.queries
-    assert TypeQuery == list(map(type, h.queries))[0]
+    assert TypeQuery == h.query_types[0]

@@ -185,7 +185,7 @@ def test__cte_two_identical(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [['literal["a"]', "column[cte1.name]", "column[fruit.processed.name]"]]
-    assert [InsertQuery] == list(map(type, h.queries))
+    assert [InsertQuery] == h.query_types
     assert len(h.nodes) == 3
     assert len(h.edges) == 2
 
@@ -210,7 +210,7 @@ def test__cte_two_same_name_different_query(holder):
     ]
     assert "column[name=name table=cte1 type=INT kind=cte statement=0]" in h.nodes_full
     assert "column[name=name table=cte1 type=INT kind=cte statement=1]" in h.nodes_full
-    assert [InsertQuery, InsertQuery] == list(map(type, h.queries))
+    assert [InsertQuery, InsertQuery] == h.query_types
     assert len(h.nodes) == 6
     assert len(h.edges) == 4
 
@@ -306,7 +306,7 @@ def test__cte_update_returning_with_old_and_new_aliases(holder):
         ["column[fruit.raw.age]", "column[first_cte.age]", "column[fruit.processed.age]"],
         ['literal["pear"]', "column[fruit.raw.name]"],
     ]
-    assert [UpdateQuery] == list(map(type, h.queries))
+    assert [UpdateQuery] == h.query_types
     assert [UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert len(h.nodes) == 5
     assert len(h.edges) == 3
@@ -359,7 +359,7 @@ def test__cte_select_inside_select(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == []
-    assert [SelectQuery] == list(map(type, h.queries))
+    assert [SelectQuery] == h.query_types
     assert len(h.nodes) == 0
     assert len(h.edges) == 0
 
@@ -387,7 +387,7 @@ def test__cte_two_updates_inside_update(holder):
         ['literal["pear"]', "column[fruit.raw.name]"],
         ['literal["tomato"]', "column[fruit.raw.name]"],
     ]
-    assert [UpdateQuery] == list(map(type, h.queries))
+    assert [UpdateQuery] == h.query_types
     assert [UpdateQuery, UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert len(h.nodes) == 6
     assert len(h.edges) == 4
@@ -408,7 +408,7 @@ def test__cte_delete_inside_insert(holder):
     assert h.paths == [
         ["column[fruit.raw.name]", "column[cte.name]", "column[fruit.processed.name]"],
     ]
-    assert [InsertQuery] == list(map(type, h.queries))
+    assert [InsertQuery] == h.query_types
     assert [DeleteQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert len(h.nodes) == 3
     assert len(h.edges) == 2
@@ -430,7 +430,7 @@ def test__cte_insert_inside_delete(holder):
     assert h.paths == [
         ['literal["hello"]', "column[fruit.raw.name]"],
     ]
-    assert [DeleteQuery] == list(map(type, h.queries))
+    assert [DeleteQuery] == h.query_types
     assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
@@ -449,7 +449,7 @@ def test__cte_delete_inside_delete(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == []
-    assert [DeleteQuery] == list(map(type, h.queries))
+    assert [DeleteQuery] == h.query_types
     assert [DeleteQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert len(h.nodes) == 0
     assert len(h.edges) == 0
@@ -475,7 +475,7 @@ def test__cte_merge_inside_select(holder):
         ["column[fruit.raw.name]", "column[fruit.processed.name]"],
         ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
     ]
-    assert [SelectQuery] == list(map(type, h.queries))
+    assert [SelectQuery] == h.query_types
     assert [MergeQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert [UpdateQuery, InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders[0].child_holders]))
     assert len(h.nodes) == 4
@@ -545,7 +545,7 @@ def test__cte_merge_with_update_and_insert(holder):
         ["column[fruit.raw.kind]", "column[merge_cte.kind]", "column[fruit.processed.label]"],
     ]
     assert len(h.nodes) == 6
-    assert len(h.queries) == 1
+    assert len(h.queries_original) == 1
     assert [UpdateQuery, InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
 
 
@@ -565,7 +565,7 @@ def test__cte_insert_inside_insert(holder):
         ["column[fruit.raw.kind]", "column[insert_cte.kind]", "column[fruit.processed.kind]"],
         ['literal["orange"]', "column[fruit.raw.name]", "column[insert_cte.name]", "column[fruit.processed.name]"],
     ]
-    assert [InsertQuery] == list(map(type, h.queries))
+    assert [InsertQuery] == h.query_types
     assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert len(h.nodes) == 7
     assert len(h.edges) == 5
@@ -618,7 +618,7 @@ def test__cte_insert_and_update_inside_select(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [['literal["orange"]', "column[fruit.raw.name]"], ['literal["banana"]', "column[fruit.raw.name]"]]
-    assert [SelectQuery] == list(map(type, h.queries))
+    assert [SelectQuery] == h.query_types
     assert [InsertQuery, UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert len(h.nodes) == 3
     assert len(h.edges) == 2

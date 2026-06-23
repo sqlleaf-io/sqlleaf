@@ -24,7 +24,7 @@ def test__merge_only_update(holder):
         ["column[fruit.raw.name]", "column[fruit.processed.name]"],
     ]
     assert len(h.nodes) == 2
-    assert len(h.queries) == 1
+    assert len(h.queries_original) == 1
     assert [UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert (
         h.holders[0].child_holders[0].transformed.statement.sql(dialect=DIALECT)
@@ -46,7 +46,7 @@ def test__merge_only_insert(holder):
         ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
     ]
     assert len(h.nodes) == 2
-    assert len(h.queries) == 1
+    assert len(h.queries_original) == 1
     assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert (
         h.holders[0].child_holders[0].transformed.statement.sql(dialect=DIALECT)
@@ -68,7 +68,7 @@ def test__merge_with_function(holder):
         ["column[fruit.raw.name]", "function[LOWER]", "column[fruit.processed.name]"],
     ]
     assert len(h.nodes) == 3
-    assert len(h.queries) == 1
+    assert len(h.queries_original) == 1
     assert [UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert (
         h.holders[0].child_holders[0].transformed.statement.sql(dialect=DIALECT)
@@ -93,7 +93,7 @@ def test__merge_two_identical_insert_clauses(holder):
         ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
     ]
     assert len(h.nodes) == 2
-    assert len(h.queries) == 1
+    assert len(h.queries_original) == 1
     assert [InsertQuery, InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert (
         h.holders[0].child_holders[0].transformed.statement.sql(dialect=DIALECT)
@@ -123,7 +123,7 @@ def test__merge_with_values_in_insert(holder):
         ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
     ]
     assert len(h.nodes) == 4
-    assert len(h.queries) == 1
+    assert len(h.queries_original) == 1
     assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert (
         h.holders[0].child_holders[0].transformed.statement.sql(dialect=DIALECT)
@@ -148,7 +148,7 @@ def test__merge_simple_update_and_insert(holder):
         ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
     ]
     assert len(h.nodes) == 4
-    assert len(h.queries) == 1
+    assert len(h.queries_original) == 1
     assert [UpdateQuery, InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
     assert (
         h.holders[0].child_holders[0].transformed.statement.sql(dialect=DIALECT)
