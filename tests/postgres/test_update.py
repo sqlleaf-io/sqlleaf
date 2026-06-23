@@ -213,17 +213,32 @@ def test__update_multiple_columns(holder):
         ['literal["apple"]', "column[fruit.processed.name]"],
         ["literal[10]", "column[fruit.processed.age]"],
     ]
-    assert h.queries_transformed[0].statement.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (name, age) SELECT 'apple' AS name, 10 AS age FROM fruit.processed AS processed"
+    assert (
+        h.queries_transformed[0].statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed (name, age) SELECT 'apple' AS name, 10 AS age FROM fruit.processed AS processed"
+    )
 
 
-# def test__update_multiple_columns_from_select(holder):
-#     sql = """
-#     UPDATE fruit.processed
-#     SET (name, age) = (SELECT name, age FROM fruit.raw WHERE id = 1);
-#     """
-#     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
-#     #
-#     # assert ["column[fruit.raw.name]", "column[fruit.processed.name]"] in h.paths
-#     # assert ["column[fruit.raw.age]", "column[fruit.processed.age]"] in h.paths
-#
-#     assert h.queries_transformed[0].statement.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (name, age) SELECT name AS name, age AS age FROM fruit.raw AS raw"
+def test__update_multiple_columns_from_select(holder):
+    sql = """
+    UPDATE fruit.processed
+    SET (name, age) = (SELECT UPPER(name), age FROM fruit.raw WHERE id = 1);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.name]", "function[UPPER]", "column[fruit.processed.name]"],
+        ["column[fruit.raw.age]", "column[fruit.processed.age]"],
+    ]
+    assert h.nodes_full == [
+        "function[UPPER type=VARCHAR query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]",
+        "column[name=age table=processed schema=fruit type=INT kind=table]",
+        "column[name=name table=processed schema=fruit type=VARCHAR kind=table]",
+        "column[name=age table=raw schema=fruit type=INT kind=table]",
+        "column[name=name table=raw schema=fruit type=VARCHAR kind=table]",
+    ]
+
+    assert (
+        h.queries_transformed[0].statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed (name, age) SELECT UPPER(raw.name) AS name, raw.age AS age FROM fruit.raw AS raw"
+    )

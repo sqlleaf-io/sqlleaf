@@ -606,12 +606,23 @@ def _convert_update_to_insert(statement: exp.Update, query: Q) -> exp.Insert:
     # should contain aliased columns.
     alias_names = []
     new_expressions = []
+    subquery_from = None
     for expr in statement.expressions:
         if isinstance(expr, exp.EQ):
-            if isinstance(expr.left, exp.Tuple):
+            if isinstance(expr.left, exp.Tuple) and isinstance(expr.right, exp.Subquery):
+                # UPDATE x SET (a,b) = (SELECT a, b FROM ...)
+                column_names = expr.left.expressions
+                subquery = expr.right.this  # the inner SELECT
+                column_values = []
+                for col_expr in subquery.expressions:
+                    column_values.append(col_expr.unalias())
+                subquery_from = subquery.args.get("from_")
+
+            elif isinstance(expr.left, exp.Tuple):
                 # UPDATE x SET (a,b) = (1,2)
                 column_names = expr.left.expressions
                 column_values = expr.right.expressions
+
             elif isinstance(expr.left, exp.Column):
                 # UPDATE x SET a = 1
                 column_names = [expr.left]
@@ -658,7 +669,10 @@ def _convert_update_to_insert(statement: exp.Update, query: Q) -> exp.Insert:
     })
 
     into_table = util.get_table(statement)
-    if not from_table:
+    if subquery_from:
+        # If the SET used a subquery, use its FROM clause
+        select_statement = select_statement.from_(subquery_from.this)
+    elif not from_table:
         # If the table is a self-reference
         select_statement = select_statement.from_(into_table)
 
