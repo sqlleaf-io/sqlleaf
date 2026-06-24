@@ -6,7 +6,7 @@ from sqlglot.optimizer.annotate_types import annotate_types
 
 from sqlleaf.exception import SqlLeafException
 from sqlleaf.models.query import FunctionParam, Q, UserDefinedFunctionQuery
-from sqlleaf.processors.transforms.resolver import find_next_udf_call
+from sqlleaf.processors.transformers.resolver import find_next_udf_call
 from sqlleaf.typing import E
 
 logger = logging.getLogger("sqlleaf")

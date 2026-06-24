@@ -185,7 +185,7 @@ def _collect_writable_cte_queries(parent_query: Q, parent_holder: QueryHolder, d
         INSERT INTO ...
 
     then the outer and inner queries form a parent-child relationship.
-    The inner query is left as-is and copied, while the outer query transforms its
+    The inner query is left as-is and copied, while the outer query transformers its
     inner query's SELECT columns with the RETURNING columns. This is so that
     the lineage functions collect the right columns during expression traversal.
     The two queries are processed independently later.
