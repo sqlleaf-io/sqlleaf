@@ -15,7 +15,7 @@ from sqlleaf.models.node import (
     SequenceNode,
     StreamNode,
 )
-from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
+from sqlleaf.processors.generators.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
 from sqlleaf.typing import SourceInfo, SqlObjectType
 
 logger = logging.getLogger("sqlleaf")

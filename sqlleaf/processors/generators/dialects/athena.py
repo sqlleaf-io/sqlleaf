@@ -6,7 +6,7 @@ import typing as t
 from sqlglot import exp
 
 from sqlleaf.models.context import GeneratorContext, PositionContext
-from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
+from sqlleaf.processors.generators.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
 
 logger = logging.getLogger("sqlleaf")
 

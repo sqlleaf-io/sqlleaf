@@ -3,7 +3,6 @@ import logging
 import typing as t
 
 import networkx as nx
-from sqlglot import exp
 
 from sqlleaf import mappings, path, typing, util
 from sqlleaf.mappings import ObjectMapping
@@ -17,10 +16,10 @@ from sqlleaf.models.query import (
     TableQuery,
     UnloadQuery,
     UpdateQuery,
-    ViewQuery, QueryHolder,
+    ViewQuery,
 )
 from sqlleaf.path import LineagePath
-from sqlleaf.processors import collector, generator, transformer
+from sqlleaf.processors import collector, transformer, generator
 from sqlleaf.typing import SqlObjectType
 
 logging.getLogger("sqlglot").setLevel(logging.WARNING)

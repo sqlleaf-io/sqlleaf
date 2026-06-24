@@ -12,7 +12,7 @@ from sqlleaf.models.node import (
     FileColumnNode,
     StageColumnNode,
 )
-from sqlleaf.processors.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
+from sqlleaf.processors.generators.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
 from sqlleaf.typing import SqlObjectType
 
 logger = logging.getLogger("sqlleaf")
