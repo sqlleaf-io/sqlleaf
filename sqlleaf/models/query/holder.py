@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import typing as t
 
-from sqlleaf.models.query.base import Query
+if t.TYPE_CHECKING:
+    from sqlleaf.models.query import Q
+    from sqlleaf.models.query.base import Query
 
 
 class QueryHolder:
@@ -22,6 +24,8 @@ class QueryHolder:
         self.child_holders: t.List[QueryHolder] = []
         self.parent_holder: QueryHolder | None = None
 
+        self.original.set_holder(self)
+
     def add_child_holder(self, child_holder: QueryHolder) -> None:
         child_holder.parent_holder = self
         self.child_holders.append(child_holder)
@@ -39,3 +43,11 @@ class QueryHolder:
         if types:
             holders = [h for h in holders if isinstance(h.original, types)]
         return holders
+
+    def set_transformed_query(self, query: Q)-> None:
+        self.transformed = query
+        self.transformed.set_holder(self)
+
+    def set_substituted_query(self, query: Q) -> None:
+        self.substituted = query
+        self.substituted.set_holder(self)

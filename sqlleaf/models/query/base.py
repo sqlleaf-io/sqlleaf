@@ -4,6 +4,9 @@ import logging
 import typing as t
 from dataclasses import dataclass
 
+if t.TYPE_CHECKING:
+    from sqlleaf.models.query import QueryHolder
+
 from sqlglot import exp
 
 from sqlleaf import exception, mappings, util
@@ -57,6 +60,9 @@ class Query:
             self.target_info = target_info
 
         logger.debug(f"Created Query: {self.__class__}")
+
+    def set_holder(self, holder: QueryHolder):
+        self.holder = holder
 
     def _determine_expression_type(self, expr: exp.Expr | t.List[exp.Expr], dialect: str) -> SqlObjectType:
         """
@@ -120,6 +126,15 @@ class Query:
         )
 
         annotate_types(self.source_info.expression, dialect=self.dialect, schema=self.object_mapping)
+
+    def get_original_self(self)-> Query:
+        return self.holder.original
+
+    def get_transformed_self(self)-> Query | None:
+        return self.holder.transformed
+
+    def get_substituted_self(self)-> Query | None:
+        return self.holder.substituted
 
     def get_target_object(self) -> TargetObject:
         """

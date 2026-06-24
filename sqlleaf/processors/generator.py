@@ -19,7 +19,7 @@ from sqlleaf.models.node import (
     N,
     TargetNodeType,
 )
-from sqlleaf.models.query import PutQuery, Q, QueryHolder, TableQuery, UpdateQuery
+from sqlleaf.models.query import PutQuery, Q, QueryHolder, TableQuery, UpdateQuery, Query
 from sqlleaf.processors.generators.dialects.base import BaseGenerator
 from sqlleaf.typing import E, TableOrScopeType, TableType
 
@@ -290,12 +290,7 @@ def find_inherited_columns_for_child(
     if not isinstance(column_node, ColumnNode) or column_node.parent_kind == TableType.CTE:
         return inherited_columns
 
-    # Only return inherited columns for UPDATE.
-    # Cannot use source_info/target_info here: UpdateQuery has no source_info/target_info,
-    # and MERGE's WHEN MATCHED branch produces an UpdateQuery that IS converted to InsertQuery
-    # by _build_transformed_query, so we must fall back to original_query to recover the type.
-    active_query = gen_ctx.query
-    original_query = getattr(active_query, "original_query", active_query)
+    original_query = gen_ctx.query.get_original_self()
     if isinstance(original_query, UpdateQuery) and not getattr(original_query, "only", False):
         inherited_columns = find_inherited_columns(
             column_node=column_node, generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx

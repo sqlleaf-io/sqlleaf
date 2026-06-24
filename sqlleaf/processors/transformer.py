@@ -55,7 +55,7 @@ def transform_query(holder: QueryHolder) -> None:
         original_query=original_query,
         transformed_statement=transformed_statement,
     )
-    holder.transformed = transformed_query
+    holder.set_transformed_query(transformed_query)
 
     # Substitution
     statement_to_substitute = util.copy_expression(transformed_statement)
@@ -69,7 +69,7 @@ def transform_query(holder: QueryHolder) -> None:
             original_query=original_query,
             transformed_statement=substituted_statement,
         )
-        holder.substituted = substituted_query
+        holder.set_substituted_query(substituted_query)
 
 
 def _build_transformed_query(
