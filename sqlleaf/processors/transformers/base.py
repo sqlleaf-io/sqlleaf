@@ -130,7 +130,7 @@ class BaseQueryTransformer:
         statement = self.statement
         query = self.query
         for node in statement.find_all(exp.Anonymous):
-            call_node, udf_query = resolver.find_next_udf_call(node, query.object_mapping)
+            udf_query = resolver.lookup_udf_call(node, query.object_mapping)
             if not udf_query:
                 continue
 

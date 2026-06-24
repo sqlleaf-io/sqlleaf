@@ -2,7 +2,7 @@ import typing as t
 
 from sqlglot import exp
 
-from sqlleaf import mappings
+from sqlleaf import mappings, util
 from sqlleaf.models.query import FunctionParam, UserDefinedFunctionQuery
 
 
@@ -157,6 +157,21 @@ def match_type_simple(arg: exp.Expr, target_type: exp.DataType) -> bool:
     return exp.DataType.is_type(arg_type, target_type)
 
 
+def lookup_udf_call(
+    node: exp.Anonymous, object_mapping: mappings.ObjectMapping
+) -> t.Optional[UserDefinedFunctionQuery]:
+    """
+    Looks up the UDF definition for a single exp.Anonymous node.
+    Returns the matched UDF definition, or None if not found.
+    """
+    function_schema, function_name = util.get_udf_name(node)
+    udf_object = exp.table_(table=function_name, db=function_schema)
+    candidates = object_mapping.lookup_udf_query(table=udf_object, raise_on_missing=False)
+    if not candidates:
+        return None
+    return resolve_overloaded_function(node, candidates)
+
+
 def find_next_udf_call(
     expression: exp.Expr, object_mapping: mappings.ObjectMapping
 ) -> t.Tuple[t.Optional[exp.Anonymous], t.Optional[UserDefinedFunctionQuery]]:
@@ -164,29 +179,8 @@ def find_next_udf_call(
     Searches the AST for the next UDF call that matches any of the provided UDF definitions.
     Returns the call node and the matched UDF definition.
     """
-    for node in expression.walk():
-        if not isinstance(node, exp.Anonymous):
-            continue
-
-        # TODO: combine this logic with what's in process_anonymous()
-        function_name = node.this.lower()
-        # Check if the call is qualified (e.g., myschema.myfunc())
-        parent = node.parent
-        function_schema = (
-            parent.left.name.lower()
-            if isinstance(parent, exp.Dot) and isinstance(parent.left, exp.Identifier)
-            else None
-        )
-
-        udf_object = exp.table_(table=function_name, db=function_schema)
-        udf_queries = object_mapping.lookup_udf_query(table=udf_object, raise_on_missing=False)
-
-        candidates = udf_queries
-        if not candidates:
-            continue
-
-
-        best_match = resolve_overloaded_function(node, candidates)
+    for node in expression.find_all(exp.Anonymous):
+        best_match = lookup_udf_call(node, object_mapping)
         if best_match:
             return node, best_match
 
