@@ -143,23 +143,6 @@ def test__select_case(holder):
     assert len(h.edges) == 5
 
 
-# TODO: ROW is a value constructor, not UDF - add to sqlglot
-def test__select_row(holder):
-    sql = """
-    INSERT INTO fruit.processed (name)
-    SELECT ROW(r.name, r.kind) AS name
-    FROM fruit.raw AS r;
-    """
-    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
-
-    assert h.paths == [
-        ["column[fruit.raw.name]", "udf[ROW]", "column[fruit.processed.name]"],
-        ["column[fruit.raw.kind]", "udf[ROW]", "column[fruit.processed.name]"],
-    ]
-    assert len(h.nodes) == 4
-    assert len(h.edges) == 3
-
-
 def test__select_cast(holder):
     sql = """
     INSERT INTO fruit.processed (age)

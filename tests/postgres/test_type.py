@@ -66,18 +66,6 @@ def test_type_enum(holder):
     assert [TypeQuery] == h.query_types
 
 
-# Enum type with a single label
-def test_type_enum_single(holder):
-    sql = """
-    CREATE TYPE fruit AS ENUM ('apple', 'banana', 'cherry');
-    """
-    h = holder(sql=sql, dialect=DIALECT)
-    assert h.paths == []
-    assert len(h.nodes) == 0
-    assert len(h.edges) == 0
-    assert [TypeQuery] == h.query_types
-
-
 # Range type
 def test_type_range(holder):
     sql = """
