@@ -18,7 +18,6 @@ The following types of queries and nodes need to be created.
 
 ### Postgres
 - [ ] XML
-- [ ] File
 - [ ] Hidden (system) columns
   - [x] TABLE
   - [x] CTAS
@@ -94,6 +93,7 @@ SELECT
     - [x] WITH (VALUES)
     - [x] WITH MATERIALIZED
     - [ ] Inside subqueries - SELECT FROM (WITH)
+  - [ ] JOIN VALUES
   - [x] LATERAL
   - [ ] ROWS FROM
     - [x] Aliases
@@ -106,6 +106,9 @@ SELECT
   - [ ] WINDOW
   - [x] SELECT FROM ( VALUES ())
   - [x] DISTINCT ON
+  - [ ] Field access methods for columns: col(table)
+  - [ ] Using a UDF like a column
+    - Ensure the column takes precedence if names match
 
 MERGE
 - [x] Regular
@@ -148,6 +151,7 @@ CREATE FUNCTION (language SQL)
   - [ ] Heredoc extraction
   - [ ] Inner statement parsing
   - [ ] Function parameters (IN, OUT, INOUT)
+  - [ ] Empty call args are NULL: (,1,2) => (NULL,1,2)
 
 CREATE PROCEDURE (language SQL)
 
@@ -162,7 +166,9 @@ CREATE TRIGGER
   - [ ] BEFORE / AFTER
 
 CREATE TYPE
-- not supported by sqlglot
+- [o] Regular
+- [o] Composite
+- [o] Enum
 
 COPY
   Sources:
