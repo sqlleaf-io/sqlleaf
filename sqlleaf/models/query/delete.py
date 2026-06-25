@@ -4,6 +4,7 @@ from sqlglot import exp
 
 from sqlleaf import mappings
 from sqlleaf.models.query.base import Query
+from sqlleaf.typing import TargetInfo, SqlObjectType
 
 
 class DeleteQuery(Query):
@@ -15,6 +16,8 @@ class DeleteQuery(Query):
             statement=expr,
             statement_index=statement_index,
             object_mapping=object_mapping,
+            source_info=None,
+            target_info=TargetInfo(expression=expr.this, type=SqlObjectType.TABLE),
         )
 
     def get_ctes(self):

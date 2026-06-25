@@ -28,8 +28,10 @@ class SqlObjectType(StrEnum):
     """
 
     # Targets and sources
+    DATABASE = auto()
     FILE = auto()
     PROGRAM = auto()
+    SCHEMA = auto()
     STAGE = auto()
     STREAM = auto()
     TABLE = auto()

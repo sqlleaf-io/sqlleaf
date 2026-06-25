@@ -8,7 +8,7 @@ from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
 
 from sqlleaf import exception
-from sqlleaf.models.query import CTASQuery, Q, TypeQuery, ViewQuery
+from sqlleaf.models.query import CTASQuery, DatabaseQuery, SchemaQuery, Q, TypeQuery, ViewQuery
 
 if t.TYPE_CHECKING:
     from sqlleaf.models.query import SequenceQuery, StageQuery, TableQuery, TriggerQuery, UserDefinedFunctionQuery
@@ -33,6 +33,12 @@ class ObjectMapping(MappingSchema):
         )  # Set `normalize=False` to prevent an unnecessary second parse.
         self.kind_mapping = {}
         self.kind_mapping_trie = {}
+
+    def add_database_query(self, query: DatabaseQuery) -> None:
+        self._add_query(kind="database", query=query, dialect=query.dialect)
+
+    def add_schema_query(self, query: SchemaQuery) -> None:
+        self._add_query(kind="schema", query=query, dialect=query.dialect)
 
     def add_sequence_query(self, query: SequenceQuery) -> None:
         self._add_query(kind="sequence", query=query, dialect=query.dialect)
@@ -75,20 +81,22 @@ class ObjectMapping(MappingSchema):
             normalize: whether to normalize identifiers according to the dialect of interest.
             match_depth: whether to enforce that the table must match the schema's depth or not.
         """
-        table = query.get_target_as_table()
-
-        normalized_table = self._normalize_table(table, dialect=dialect, normalize=normalize)
-        parts = self.table_parts(normalized_table)
-
+        # Initialize the structures. These are required by sqlglot.
         if kind not in self.kind_mapping:
             self.kind_mapping[kind] = {}
             self.kind_mapping_trie[kind] = new_trie({})
+
+        # Normalize the table parts (catalog.db.table.column)
+        table = query.get_target_as_table()
+        normalized_table = self._normalize_table(table, dialect=dialect, normalize=normalize)
+        parts = self.table_parts(normalized_table)
 
         if kind == "udf":
             # Store the UDF with other UDFs of the same name
             udfs_with_same_name = self.lookup_udf_query(table, raise_on_missing=False) or []
             query = [query] + udfs_with_same_name
 
+        # Store the object
         nested_set(self.kind_mapping[kind], tuple(reversed(parts)), query)
         new_trie([parts], self.kind_mapping_trie[kind])
 

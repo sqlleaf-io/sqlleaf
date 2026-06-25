@@ -14,6 +14,7 @@ from sqlleaf import exception, mappings, util
 from sqlleaf.models.query import (
     CopyQuery,
     CTASQuery,
+    DatabaseQuery,
     DeleteQuery,
     InsertQuery,
     MergeQuery,
@@ -21,6 +22,7 @@ from sqlleaf.models.query import (
     PutQuery,
     Q,
     QueryHolder,
+    SchemaQuery,
     SelectQuery,
     SequenceQuery,
     StageQuery,
@@ -54,12 +56,14 @@ def get_query_processors():
         "sequence": _process_tables,
         "procedure": _process_stored_procedures,
         "function": _process_functions,
+        "database": _process_database,
         "trigger": _process_triggers,
         "select": _process_unnamed,
         "insert": _process_unnamed,
         "update": _process_unnamed,
         "merge": _process_unnamed,
         "delete": _process_unnamed,
+        "schema": _process_schema,
         "unload": _process_unload,
         "stage": _process_stage,
         "copy": _process_unnamed,
@@ -706,4 +710,20 @@ def _process_type(
 ) -> Q:
     query = TypeQuery(statement, dialect, object_mapping, statement_index)
     object_mapping.add_type_query(query)
+    return query
+
+
+def _process_schema(
+    statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+) -> Q:
+    query = SchemaQuery(statement, dialect, object_mapping, statement_index)
+    object_mapping.add_schema_query(query)
+    return query
+
+
+def _process_database(
+    statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+) -> Q:
+    query = DatabaseQuery(statement, dialect, object_mapping, statement_index)
+    object_mapping.add_database_query(query)
     return query

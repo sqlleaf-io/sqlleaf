@@ -28,10 +28,11 @@ The following types of queries and nodes need to be created.
         SELECT (on_hand.item).name FROM on_hand WHERE (on_hand.item).price > 9.99;
 
 CREATE DATABASE
+- [x] Regular
 
 CREATE SCHEMA
-- [ ] Regular
-- [ ] Atomic subcommands
+- [x] Regular
+- [x] Atomic subcommands [not supported]
 
 
 CREATE TABLE

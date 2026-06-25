@@ -15,6 +15,8 @@ class SelectQuery(Query):
             statement=expr,
             statement_index=statement_index,
             object_mapping=object_mapping,
+            source_info=None,
+            target_info=None,
         )
 
     def get_ctes(self):

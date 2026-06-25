@@ -34,11 +34,10 @@ class Query:
         statement: exp.Expr,
         statement_index: int,
         object_mapping: mappings.ObjectMapping,
-        source_info: SourceInfo | None = None,
-        target_info: TargetInfo | None = None,
-        kind: str | None = None,
+        source_info: SourceInfo | None,
+        target_info: TargetInfo,
     ):
-        self.kind = kind or self.KIND
+        self.kind = self.KIND
         self.dialect = dialect
         self.object_mapping = object_mapping
         self.parent_query = None
