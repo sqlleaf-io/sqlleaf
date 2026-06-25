@@ -11,6 +11,7 @@ from sqlleaf import exception, util
 from sqlleaf.models.query import Q
 from sqlleaf.processors.transformers import resolver
 from sqlleaf.typing import E
+# from sqlleaf.processors.transformers.row import _simplify_row_composite_access
 
 logger = logging.getLogger("sqlleaf")
 
@@ -69,6 +70,7 @@ class BaseQueryTransformer:
         # Remove WHERE clauses (not used for column-level lineage)
         for where_expr in self.statement.find_all(exp.Where):
             where_expr.pop()
+        # _simplify_row_composite_access(self.statement, self.query)
 
     @staticmethod
     def _validate_syntax(func):
@@ -197,7 +199,7 @@ class BaseQueryTransformer:
                 from_ = cte_expr.this.args["from_"].this
 
                 if isinstance(from_, exp.Values):
-                    values_expr = self._convert_cte_values_to_select(expression=from_, statement=cte_expr)
+                    values_expr = self._convert_values_to_select(expression=from_, statement=cte_expr)
                     cte_expr.this.replace(values_expr)
 
             # Rename the columns and replace the INSERT with the SELECT
@@ -205,48 +207,39 @@ class BaseQueryTransformer:
 
         return statement
 
-    def _convert_cte_values_to_select(
-        self, expression: exp.Values, statement: exp.CTE
-    ) -> exp.CTE | exp.Insert | exp.Create:
+    def _convert_values_to_select(
+        self,
+        expression: exp.Values,
+        statement: E,
+    ) -> E:
         """
-        Transform the query:
-            WITH cte (age, name) AS (
-                VALUES (1, 'apple'), (2, 'banana')
-            )
-        into:
-            WITH cte (age, name) AS (
-                SELECT 1, 'apple' UNION ALL SELECT 2, 'banana'
-            )
-        so that the lineage functions can process it using build_scope().
+        Convert a VALUES(...) clause into a SELECT ... UNION ALL SELECT ... form
+        and rewrite the parent statement in-place.
         """
+        if not isinstance(statement, (exp.CTE, exp.Insert, exp.Create)):
+            return statement
+
         if not isinstance(expression, exp.Values):
             return statement
 
-        columns = statement.alias_column_names
-        if not columns:
-            # Try and get the columns from the top-level insert
-            columns = [e.name for e in statement.root().this.expressions]
+        # Resolved the column names
+        if isinstance(statement, exp.CTE):
+            columns = statement.alias_column_names
+            if not columns:
+                columns = [e.name for e in statement.root().this.expressions]
+        else:
+            columns = [e.name for e in statement.this.expressions]
 
-        return self._values_to_select_union(columns, expression, statement=statement)
-
-    def _values_to_select_union(
-        self,
-        columns: t.List[str],
-        expression: exp.Values,
-        statement: exp.CTE | exp.Insert | exp.Create,
-    ) -> exp.CTE | exp.Insert | exp.Create:
-        """
-        Convert a VALUES(x, y) to a SELECT x UNION ALL SELECT y
-        """
+        # Fallback: look up from object mapping
         query = self.query
         values_lists: t.List[exp.Tuple] = expression.expressions
         child_table = query.get_target_as_table()
 
         if not columns:
-            # Get the names from the mapping
             cols = query.object_mapping.find_columns_for_table(child_table)
             columns = list(cols)[: len(values_lists[0].expressions)]
 
+        # Build the 'SELECT ... UNION ALL SELECT ...'
         selects = []
         for val_list in values_lists:
             values = val_list.expressions
@@ -259,6 +252,7 @@ class BaseQueryTransformer:
         else:
             new_statement = exp.select(*selects[0])
 
+        # Rewrite the parent statement
         if isinstance(statement, exp.Insert):
             insert_expr = exp.insert(
                 expression=new_statement,
@@ -279,23 +273,6 @@ class BaseQueryTransformer:
             raise exception.SqlLeafException(message=f"Unknown statement type: {statement.__class__}")
 
         return statement
-
-    def _convert_outer_values_to_select(
-        self, expression: exp.Values, statement: exp.Insert | exp.Create
-    ) -> exp.Insert | exp.Create | exp.CTE:
-        """
-        Transform the query:
-            INSERT INTO x (name) VALUES (a), (b)
-        into:
-            INSERT INTO x (name) SELECT a UNION ALL SELECT b
-        so that the lineage functions can process it using build_scope().
-        """
-        if not isinstance(expression, exp.Values):
-            return statement
-
-        columns = [e.name for e in statement.this.expressions]
-
-        return self._values_to_select_union(columns, expression, statement=statement)
 
     def _replace_default_with_value(
         self,

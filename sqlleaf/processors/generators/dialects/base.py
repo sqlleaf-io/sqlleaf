@@ -261,11 +261,10 @@ class BaseGenerator:
         """
         # If no default is specified, the default is NULL (via ANSI SQL) TODO: however in PL/pgsql it's an error instead
         default = expr.args.get("default", exp.Null())
-        thens = [if_expr.args.get("true") or if_expr.args.get("false") for if_expr in expr.args["ifs"]]
+        thens = [if_expr.args.get("true") or if_expr.args.get("false") for if_expr in expr.args.get("ifs", [])]
         grandparents = [default] + thens
 
-        parent = gen_ctx.child_node
-        yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
+        yield from self.do_grandparents(grandparents, gen_ctx.child_node, gen_ctx, pos_ctx)
 
     @process.register
     def process_binary(

@@ -144,10 +144,11 @@ def walk_query_and_build_graph(
 
         nodes = walk_expressions_and_build_graph(generator, gen_ctx, child_ctx)
         if nodes:
-            logger.debug(f"Produced node: {[n.full_name for n in nodes]}")
+            logger.debug(f"Produced nodes: {[n.full_name for n in nodes]}")
 
             for n in nodes:
-                if isinstance(n, ColumnNode) and n.has_child_scope and isinstance(n.source_scope, Scope):
+                if isinstance(n, ColumnNode) and isinstance(n.source_scope, Scope):
+                    # There are additional expressions to traverse (e.g. inside a CTE)
                     walk_query_and_build_graph(generator, n, n.source_scope, gen_ctx, pos_ctx)
 
 

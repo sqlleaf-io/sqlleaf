@@ -12,7 +12,7 @@ class CTASTransformer(BaseQueryTransformer):
     def transform(self) -> exp.Create:
         stmt = self.statement
         if stmt.expression:
-            converted = self._convert_outer_values_to_select(
+            converted = self._convert_values_to_select(
                 stmt.expression, statement=stmt
             )
             if isinstance(converted, exp.Create):

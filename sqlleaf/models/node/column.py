@@ -36,9 +36,6 @@ class ColumnNode(NodeAttributes):
         self.parent_kind: str = ""
         self.parent_subkind: str = ""
         self.source_scope: TableOrScopeType | None = None
-        self.has_child_scope: bool = (
-            False  # Whether the query's source is inside an inner scope that still need to be resolved
-        )
 
         self.set_table_properties(catalog, schema, table, gen_ctx)
 
@@ -105,8 +102,6 @@ class ColumnNode(NodeAttributes):
                     return
 
             elif isinstance(source, Scope):
-                self.has_child_scope = True
-
                 if isinstance(source.expression, exp.Values):
                     self.parent_kind = TableType.DERIVED_TABLE
                     return

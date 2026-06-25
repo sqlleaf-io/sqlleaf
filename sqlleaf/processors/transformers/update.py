@@ -39,7 +39,7 @@ class UpdateTransformer(BaseQueryTransformer):
         parent_insert_expr = None
         if statement.parent and isinstance(statement.parent, (exp.Insert, exp.Create)) and statement.parent.expression:
             if isinstance(statement.parent.expression, exp.Values):
-                converted = self._convert_outer_values_to_select(
+                converted = self._convert_values_to_select(
                     expression=statement.parent.expression,
                     statement=statement.parent,
                 )

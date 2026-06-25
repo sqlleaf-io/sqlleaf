@@ -17,7 +17,7 @@ class InsertTransformer(BaseQueryTransformer):
 
         stmt = self._convert_insert_defaults_to_values(stmt)
         if stmt.expression:
-            stmt_converted = self._convert_outer_values_to_select(stmt.expression, stmt)
+            stmt_converted = self._convert_values_to_select(stmt.expression, stmt)
             if isinstance(stmt_converted, exp.Insert):
                 stmt = stmt_converted
 

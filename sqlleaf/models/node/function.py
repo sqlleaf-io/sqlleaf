@@ -17,6 +17,8 @@ class FunctionNode(NodeAttributes):
         expr = t.cast(t.Union[exp.Binary, exp.Func], gen_ctx.expr)
         if isinstance(expr, exp.Binary):
             name = expr.key
+        elif isinstance(expr, exp.Case):
+            name = "CASE"
         else:
             name = util.calculate_function_name(expr, gen_ctx.query.dialect)
 
