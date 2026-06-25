@@ -15,6 +15,7 @@ from sqlleaf.models.node import (
     SequenceNode,
     StreamNode,
 )
+from sqlleaf.models.query import Query
 from sqlleaf.processors.generators.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
 from sqlleaf.typing import SourceInfo, SqlObjectType
 
@@ -186,7 +187,7 @@ class PostgresGenerator(BaseGenerator):
         elif source_info.type == SqlObjectType.FILE:
             # A filename. Create a file node.
             gen_ctx = replace(gen_ctx, expr=source_expression, new_data_type=gen_ctx.get_child_node().get_data_type())
-            file_format = util.get_file_format(source_expression.name)
+            file_format = getattr(gen_ctx.query.get_original_self(), "file_format", "UNKNOWN")
             node = FileColumnNode(
                 column=gen_ctx.get_child_node().name,
                 file_format=file_format,

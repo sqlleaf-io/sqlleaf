@@ -151,8 +151,8 @@ def test_copy_into_table_from_file(holder):
         ["column[age path=/tmp/data.csv]", "column[fruit.simple.age]"],
     ]
     assert h.nodes_full == [
-        "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
-        "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
+        "column[age type=INT kind=file format=TEXT path=/tmp/data.csv]",
+        "column[name type=VARCHAR kind=file format=TEXT path=/tmp/data.csv]",
         "column[name=age table=simple schema=fruit type=INT kind=table]",
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
@@ -173,8 +173,8 @@ def test_copy_into_table_from_file_named_columns(holder):
         ["column[age path=/tmp/data.csv]", "column[fruit.simple.age]"],
     ]
     assert h.nodes_full == [
-        "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
-        "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
+        "column[age type=INT kind=file format=TEXT path=/tmp/data.csv]",
+        "column[name type=VARCHAR kind=file format=TEXT path=/tmp/data.csv]",
         "column[name=age table=simple schema=fruit type=INT kind=table]",
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
@@ -195,8 +195,8 @@ def test_copy_into_file_from_table(holder):
         ["column[fruit.simple.age]", "column[age path=/tmp/data.csv]"],
     ]
     assert h.nodes_full == [
-        "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
-        "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
+        "column[age type=INT kind=file format=TEXT path=/tmp/data.csv]",
+        "column[name type=VARCHAR kind=file format=TEXT path=/tmp/data.csv]",
         "column[name=age table=simple schema=fruit type=INT kind=table]",
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
@@ -217,8 +217,8 @@ def test_copy_into_file_from_table_named_columns(holder):
         ["column[fruit.simple.age]", "column[age path=/tmp/data.csv]"],
     ]
     assert h.nodes_full == [
-        "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
-        "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
+        "column[age type=INT kind=file format=TEXT path=/tmp/data.csv]",
+        "column[name type=VARCHAR kind=file format=TEXT path=/tmp/data.csv]",
         "column[name=age table=simple schema=fruit type=INT kind=table]",
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
@@ -239,8 +239,8 @@ def test_copy_select_column_names_to_file(holder):
         ["column[fruit.simple.name]", "column[name path=/tmp/data.csv]"],
     ]
     assert h.nodes_full == [
-        "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
-        "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
+        "column[age type=INT kind=file format=TEXT path=/tmp/data.csv]",
+        "column[name type=VARCHAR kind=file format=TEXT path=/tmp/data.csv]",
         "column[name=age table=simple schema=fruit type=INT kind=table]",
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
@@ -264,9 +264,9 @@ def test_copy_select_column_aliases_to_file(holder):
         ["column[fruit.simple.name]", "column[b path=/tmp/data.csv]"],
     ]
     assert h.nodes_full == [
-        "column[a type=INT kind=file format=csv path=/tmp/data.csv]",
-        "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
-        "column[b type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
+        "column[a type=INT kind=file format=TEXT path=/tmp/data.csv]",
+        "column[age type=INT kind=file format=TEXT path=/tmp/data.csv]",
+        "column[b type=VARCHAR kind=file format=TEXT path=/tmp/data.csv]",
         "column[name=age table=simple schema=fruit type=INT kind=table]",
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
@@ -355,6 +355,27 @@ def test_copy_table_program_from_program(holder):
     query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.PROGRAM
     assert query.target_info.type == SqlObjectType.TABLE
+
+
+
+def test_copy_with_format_csv(holder):
+    sql = """
+    CREATE TABLE fruit.simple (name VARCHAR, age INT);
+    COPY fruit.simple FROM 'file://data.csv' WITH (FORMAT csv);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+    assert h.paths == [
+         ['column[name path=file://data.csv]','column[fruit.simple.name]'],
+         ['column[age path=file://data.csv]','column[fruit.simple.age]']
+     ]
+    assert h.nodes_full == [
+        "column[age type=INT kind=file format=csv path=file://data.csv]",
+        "column[name type=VARCHAR kind=file format=csv path=file://data.csv]",
+        "column[name=age table=simple schema=fruit type=INT kind=table]",
+        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+    ]
+    query: CopyQuery = h.holders[1].original
+    assert query.file_format.lower() == "csv"
 
 
 # TODO: COPY FROM SELECT * FROM UDF()

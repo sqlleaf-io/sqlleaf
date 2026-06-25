@@ -29,7 +29,22 @@ class CopyQuery(Query):
             source_info=SourceInfo(expression=source, type=source_type),
             target_info=TargetInfo(expression=target, type=target_type),
         )
+        self.file_format = self._get_file_format(expr)
         self.qualify_and_annotate()
+
+    def _get_file_format(self, expr: exp.Copy) -> str:
+        """
+        Extract the file format from the COPY statement.
+        """
+        for param in expr.args.get("params", []):
+            if (
+                isinstance(param, exp.CopyParameter)
+                and isinstance(param.this, exp.Var)
+                and param.this.name.upper() == "FORMAT"
+            ):
+                return str(param.expression)
+
+        return "TEXT"
 
 
     def get_source_and_target(self, expr: exp.Copy, dialect: str) -> t.Tuple[SourceExprType, TargetExprType]:

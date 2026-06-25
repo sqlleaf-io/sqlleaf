@@ -447,7 +447,7 @@ class BaseGenerator:
             # logger.debug(f"Iter nodes - found node: {target_object.type}")
             match target_object.type:
                 case SqlObjectType.FILE:
-                    file_format = util.get_file_format(expr.name)
+                    file_format = getattr(query.get_original_self(), "file_format", "UNKNOWN")
                     child_node = FileColumnNode(
                         column=col_def.name,
                         file_format=file_format,

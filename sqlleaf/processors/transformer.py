@@ -92,13 +92,10 @@ def _build_transformed_query(
         if isinstance(original_query, (CopyQuery, UnloadQuery)):
             new_query.source_info = original_query.source_info
             new_query.target_info = original_query.target_info
-        if isinstance(original_query, CopyQuery):
-            # Preserve the original exp.Copy statement so that nodes like
-            # ProgramNode can still read COPY-specific args (e.g. params).
-            new_query.original_copy_statement = original_query.statement
     else:
         # For statements not converted to INSERT, keep the same Query subclass
         # but with the new statement.
+        # TODO: this should not occur
         new_query = original_query.__class__.__new__(original_query.__class__)
         new_query.__dict__.update(original_query.__dict__)
         new_query.statement = transformed_statement

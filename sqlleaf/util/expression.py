@@ -141,10 +141,6 @@ def get_function_args(expr: exp.Func):
     return function_args
 
 
-def get_file_format(file_path: str) -> str:
-    file_format = "".join(Path(file_path).suffixes)
-    file_format = file_format[1:] if file_format else "UNKNOWN"
-    return file_format
 
 
 def rename_if_stage(source: SourceExprType, target: TargetExprType) -> None:

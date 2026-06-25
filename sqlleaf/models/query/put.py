@@ -28,3 +28,4 @@ class PutQuery(Query):
             source_info=SourceInfo(expression=source, type=source_type),
             target_info=TargetInfo(expression=target, type=target_type),
         )
+        self.file_format = "TEXT"
