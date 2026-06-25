@@ -42,10 +42,7 @@ class BaseQueryTransformer:
         Post-processing (_add_aliases_to_udfs + _apply_optimizations) is applied
         by the caller via _postprocess().
         """
-        stmt = self.statement
-        if isinstance(stmt, exp.Insert):
-            self._validate_values(stmt)
-        return stmt
+        return self.statement
 
     def _postprocess(self, stmt: exp.Expr) -> exp.Expr:
         """
@@ -421,17 +418,6 @@ class BaseQueryTransformer:
             "ctes":       ctes,
         }
 
-    def _validate_values(self, statement: exp.Insert) -> exp.Insert:
-        """
-        Perform some basic validation of the query. This needs a better place, long-term.
-        """
-        for expr in statement.walk():
-            if isinstance(expr, exp.Values) and isinstance(expr.parent, exp.From):
-                if not expr.args["alias"] or not len(expr.args["alias"].columns):
-                    message = "Expression 'SELECT FROM (VALUES)' currently requires an alias with column names."
-                    raise exception.SqlLeafException(message=message)
-
-        return statement
 
     def _add_column_names_to_insert(self, statement: exp.Insert) -> exp.Insert:
         """

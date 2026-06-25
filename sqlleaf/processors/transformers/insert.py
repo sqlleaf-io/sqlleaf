@@ -24,9 +24,6 @@ class InsertTransformer(BaseQueryTransformer):
         stmt = self._add_information_from_merge(stmt)
         stmt = self._process_inner_ctes(stmt)
 
-        if isinstance(stmt, exp.Insert):
-            self._validate_values(stmt)
-
         self.statement = stmt
         return stmt
 

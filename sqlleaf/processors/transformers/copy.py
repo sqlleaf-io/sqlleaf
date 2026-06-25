@@ -13,7 +13,6 @@ class CopyTransformer(BaseQueryTransformer):
     def transform(self) -> exp.Insert:
         stmt = self._convert_copy_to_insert(self.statement)
         self.statement = stmt
-        self._validate_values(stmt)
         return stmt
 
     def _convert_copy_to_insert(self, statement: exp.Copy) -> exp.Insert:

@@ -12,7 +12,6 @@ class UnloadTransformer(BaseQueryTransformer):
     def transform(self) -> exp.Insert:
         stmt = self._convert_unload_to_insert(self.statement)
         self.statement = stmt
-        self._validate_values(stmt)
         return stmt
 
     def _convert_unload_to_insert(self, statement: exp.Select) -> exp.Insert:
