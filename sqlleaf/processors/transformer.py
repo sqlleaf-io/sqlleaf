@@ -87,6 +87,8 @@ def _build_transformed_query(
             object_mapping=original_query.object_mapping,
             statement_index=original_query.statement_index,
         )
+        # TODO: everything below this in this function this should not occur
+        #  - requires big refactor
         # CopyQuery special case: preserve source_info/target_info so that
         # _apply_optimizations can still read the STREAM/FILE/STAGE type.
         if isinstance(original_query, (CopyQuery, UnloadQuery)):
@@ -95,7 +97,6 @@ def _build_transformed_query(
     else:
         # For statements not converted to INSERT, keep the same Query subclass
         # but with the new statement.
-        # TODO: this should not occur
         new_query = original_query.__class__.__new__(original_query.__class__)
         new_query.__dict__.update(original_query.__dict__)
         new_query.statement = transformed_statement

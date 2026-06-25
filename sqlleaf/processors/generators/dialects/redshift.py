@@ -15,6 +15,7 @@ from sqlleaf.models.node import (
     UnpivotNode,
 )
 from sqlleaf.processors.generators.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
+from sqlleaf.typing import SourceInfo, SqlObjectType
 
 logger = logging.getLogger("sqlleaf")
 
@@ -108,7 +109,31 @@ class RedshiftGenerator(BaseGenerator):
             else:
                 yield from self.process_pivot(pivot, gen_ctx, pos_ctx)
         else:
-            yield from super().process(expr, gen_ctx, pos_ctx)
+            yield from self._process_column_other(expr, gen_ctx, pos_ctx)
+
+
+    def _process_column_other(
+            self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+        ) -> t.Iterator[EdgeToCreate]:
+            source_info: SourceInfo = gen_ctx.query.source_info
+            source_expression = source_info.expression
+
+            # TODO: split out into different subsystems (s3, emr, ssh, etc)
+            if source_info.type == SqlObjectType.FILE:
+                # A filename from COPY/UNLOAD
+                gen_ctx = replace(gen_ctx, expr=source_expression, new_data_type=gen_ctx.get_child_node().get_data_type())
+                file_format = gen_ctx.query.get_original_self().file_format
+                node = FileColumnNode(
+                    column=gen_ctx.get_child_node().name,
+                    file_format=file_format,
+                    file_path=source_expression.name,
+                    gen_ctx=gen_ctx,
+                    pos_ctx=pos_ctx,
+                )
+                yield EdgeToCreate(node, gen_ctx.child_node)
+
+            else:
+                yield from super().process(expr, gen_ctx, pos_ctx)
 
     @process.register
     def process_location(

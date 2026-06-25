@@ -11,11 +11,12 @@ class CopyTransformer(BaseQueryTransformer):
     """Transformer for COPY statements."""
 
     def transform(self) -> exp.Insert:
-        stmt = self._convert_copy_to_insert(self.statement)
+        stmt = self._convert_copy_to_insert()
         self.statement = stmt
         return stmt
 
-    def _convert_copy_to_insert(self, statement: exp.Copy) -> exp.Insert:
+    @BaseQueryTransformer._validate_syntax
+    def _convert_copy_to_insert(self) -> exp.Insert:
         """
         Convert the COPY statement into an INSERT statement.
 
@@ -43,6 +44,13 @@ class CopyTransformer(BaseQueryTransformer):
                 c.set("catalog", "")
                 c.set("schema", "")
                 c.set("table", "")
+
+            # Only use the named columns if provided
+            if isinstance(query.statement.this, exp.Schema):
+                # COPY (name, age) ...
+                named_columns = [s.name for s in query.statement.this.expressions]
+                columns = [col for col in columns if col.name in named_columns]
+                column_names = named_columns
 
             select = exp.select(*columns, dialect=dialect).from_(src)
 

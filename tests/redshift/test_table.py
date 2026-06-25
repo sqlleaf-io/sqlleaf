@@ -12,7 +12,7 @@ DIALECT = "redshift"
 
 def test__table_temporary(holder):
     sql = """
-    CREATE TABLE #banana (name VARCHAR);
+    CREATE TABLE "#banana" (name VARCHAR);
     """
     h = holder(sql=sql, dialect=DIALECT)
 

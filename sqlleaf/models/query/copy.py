@@ -29,29 +29,40 @@ class CopyQuery(Query):
             source_info=SourceInfo(expression=source, type=source_type),
             target_info=TargetInfo(expression=target, type=target_type),
         )
-        self.file_format = self._get_file_format(expr)
+        params = self.get_params(expr)
+        self.file_format = params["file_format"]
+        self.with_data = params["with_data"]
         self.qualify_and_annotate()
 
-    def _get_file_format(self, expr: exp.Copy) -> str:
+    def get_params(self, expr: exp.Copy) -> dict[str, str | bool]:
         """
-        Extract the file format from the COPY statement.
-        """
-        for param in expr.args.get("params", []):
-            if (
-                isinstance(param, exp.CopyParameter)
-                and isinstance(param.this, exp.Var)
-                and param.this.name.upper() == "FORMAT"
-            ):
-                return str(param.expression)
+        Extract the parameters of the COPY statement.
 
-        return "TEXT"
+        For example,
+            Input: "COPY FROM ... FORMAT AS CSV NOLOAD"
+            Params: ["FORMAT AS CSV", "NOLOAD"]
+        """
+        params = {
+            # Defaults
+            "file_format": "TEXT",
+            "with_data": True
+        }
+
+        for param in expr.args.get("params", []):
+            if isinstance(param, exp.CopyParameter) and isinstance(param.this, exp.Var):
+                param_name = param.this.name.upper()
+                if param_name == "FORMAT":
+                    params["file_format"] = str(param.expression)
+                elif param_name == "NOLOAD":
+                    params["with_data"] = False
+        return params
 
 
     def get_source_and_target(self, expr: exp.Copy, dialect: str) -> t.Tuple[SourceExprType, TargetExprType]:
         """
         Determine the source and target expressions of the query.
         """
-        if dialect == "postgres":
+        if dialect in ["postgres", "redshift"]:
             # Postgres treats STDOUT and STDIN the same
             if expr.args["kind"]:
                 # COPY X FROM STDOUT/STDIN

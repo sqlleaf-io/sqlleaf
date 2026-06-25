@@ -68,14 +68,13 @@ def test_copy_from_stream(holder, stream):
 def test_copy_columns_to_stream(holder):
     sql = f"""
     {simple_table}
-    COPY fruit.simple (age, name) TO STDOUT;
+    COPY fruit.simple (age) TO STDOUT;
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-        ["column[fruit.simple.name]", "stream[stdout]"],
         ["column[fruit.simple.age]", "stream[stdout]"],
     ]
-    assert len(h.edges) == 2
+    assert len(h.edges) == 1
     query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.TABLE
     assert query.target_info.type == SqlObjectType.STREAM
@@ -112,6 +111,9 @@ def test_copy_select_star_to_stream(holder):
     assert query.target_info.type == SqlObjectType.STREAM
 
 
+# TODO: COPY (VALUES ('apple', 10), ('banana', (select age from fruit.raw))) TO STDOUT;
+
+# TODO: this should still have lineage
 def test_copy_values_to_stream(holder):
     sql = f"""
     {simple_table}

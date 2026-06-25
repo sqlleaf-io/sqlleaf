@@ -27,6 +27,7 @@ class UnloadQuery(Query):
             source_info=SourceInfo(expression=source, type=source_type),
             target_info=TargetInfo(expression=target, type=target_type),
         )
+        self.file_format = "UNKNOWN"
         self.qualify_and_annotate()
 
     def get_source_and_target(self, statement: exp.Command) -> t.Tuple[exp.Select, exp.Literal]:

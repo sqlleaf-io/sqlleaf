@@ -200,6 +200,8 @@ COPY
     - [ ] SSH
     - [ ] DynamoDB
     - [ ] S3
+    - [ ] JSONPaths
+    - [ ] NODATA
   - [ ] JOB
   - [ ] USING TEMPLATE
 

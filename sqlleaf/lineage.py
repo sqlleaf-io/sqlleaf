@@ -25,8 +25,6 @@ from sqlleaf.typing import SqlObjectType
 logging.getLogger("sqlglot").setLevel(logging.WARNING)
 logger = logging.getLogger("sqlleaf")
 
-QUERIES_WITH_LINEAGE = (InsertQuery, UpdateQuery, ViewQuery, CTASQuery, PutQuery, CopyQuery, TableQuery, UnloadQuery)
-
 
 class Lineage:
     """
@@ -258,6 +256,8 @@ def new_graph() -> nx.MultiDiGraph:
     return nx.MultiDiGraph(attrs=GraphAttributes())
 
 
+QUERIES_WITH_LINEAGE = (InsertQuery, UpdateQuery, ViewQuery, CTASQuery, PutQuery, CopyQuery, TableQuery, UnloadQuery)
+
 def query_has_lineage(query: Q) -> bool:
     """
     Check if a query has lineage within its expressions.
@@ -266,6 +266,8 @@ def query_has_lineage(query: Q) -> bool:
     if not isinstance(query, QUERIES_WITH_LINEAGE):
         has_lineage = False
     elif isinstance(query, CopyQuery) and query.source_info.type == SqlObjectType.VALUES:
+        has_lineage = False
+    elif isinstance(query, CopyQuery) and not query.with_data:
         has_lineage = False
     elif isinstance(query, CTASQuery) and not query.with_data:
         has_lineage = False

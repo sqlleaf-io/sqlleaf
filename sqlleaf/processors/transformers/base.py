@@ -69,25 +69,25 @@ class BaseQueryTransformer:
             where_expr.pop()
         # _simplify_row_composite_access(self.statement, self.query)
 
-    @staticmethod
     def _validate_syntax(func):
         """
         Ensure that the transformed query is parseable.
         """
-
         @functools.wraps(func)
-        def wrapper(*args, **kwargs) -> E:
-            statement = kwargs.pop("statement")
-            query = kwargs.pop("query")
+        def wrapper(self, *args, **kwargs) -> E:
+            # statement = kwargs.pop("statement")
+            # query = kwargs.pop("query")
+            statement = self.statement
+            query = self.query
 
-            should_log = False
+            LOG_TRANSFORMATIONS = True
 
-            if should_log:
+            if LOG_TRANSFORMATIONS:
                 logger.debug(f"Function: {func.__name__}, Input:  {statement.sql(dialect=query.dialect)}")
 
-            result = func(statement=statement, query=query, *args, **kwargs)
+            result = func(self, *args, **kwargs)
 
-            if should_log:
+            if LOG_TRANSFORMATIONS:
                 logger.debug(f"Function: {func.__name__}, Output: {result.sql(dialect=query.dialect)}")
 
             if result and (statement.sql(dialect=query.dialect) != result.sql(dialect=query.dialect)):
