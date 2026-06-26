@@ -75,7 +75,7 @@ class GeneratorContext[Q, N]:
         """
         Called via replace() or if a new object is instantiated
         """
-        expr_type = new_data_type if new_data_type else self.get_expr_type(self.expr)
+        expr_type = new_data_type if new_data_type else self.get_data_type_of_expr(self.expr)
         unwrapped_expr = util.unwrap_expression(self.expr)
 
         object.__setattr__(self, "data_type", expr_type)
@@ -86,7 +86,7 @@ class GeneratorContext[Q, N]:
         return self.child_node
 
     @staticmethod
-    def get_expr_type(expr: exp.Expr) -> exp.DataType:
+    def get_data_type_of_expr(expr: exp.Expr) -> exp.DataType:
         """
         Determine the expression's data type. If it's missing, use an ancestor's data type.
         """

@@ -203,7 +203,7 @@ class ObjectMapping(MappingSchema):
             else:
                 return None
         else:
-            # Must be exp.Table
+            # Must be a Query
             return result
 
     # Override sqlglot's property. It seems to be buggy when using different dict sizes (catalog, schema, etc)
@@ -211,18 +211,18 @@ class ObjectMapping(MappingSchema):
     def supported_table_args(self) -> t.Tuple[str, ...]:
         return exp.TABLE_PARTS
 
-    def get_table_or_stage(self, table: exp.Table | exp.Var, raise_on_missing: bool = True) -> Q | None:
+    def get_table_or_stage(self, table: exp.Table | exp.Var, raise_on_missing: bool = True) -> TableQuery | StageQuery | None:
         """
         Get the 'CREATE' query for a table or stage.
         """
         table_expr = table
-        if isinstance(table, exp.Var):
+        if isinstance(table_expr, exp.Var):
             table_expr = exp.Table(this=table)
 
         if str(table_expr).startswith("@"):
-            child_object_query = self.lookup_stage_query(table=table_expr)
+            child_object_query = self.lookup_stage_query(table=table_expr, raise_on_missing=raise_on_missing)
         else:
-            child_object_query = self.lookup_table_query(table=table_expr)
+            child_object_query = self.lookup_table_query(table=table_expr, raise_on_missing=raise_on_missing)
 
         if not child_object_query and raise_on_missing:
             raise exception.SqlLeafException(message="Unknown table", table=str(table_expr))

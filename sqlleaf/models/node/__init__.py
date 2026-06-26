@@ -6,6 +6,7 @@ from sqlleaf.models.node.base import NodeAttributes as NodeAttributes
 from sqlleaf.models.node.column import ColumnNode as ColumnNode
 from sqlleaf.models.node.column import FileColumnNode as FileColumnNode
 from sqlleaf.models.node.column import StageColumnNode as StageColumnNode
+from sqlleaf.models.node.dynamodb import DynamoDbNode as DynamoDbNode
 from sqlleaf.models.node.function import FunctionNode as FunctionNode
 from sqlleaf.models.node.interval import IntervalNode as IntervalNode
 from sqlleaf.models.node.json import JsonPathNode as JsonPathNode
@@ -23,4 +24,4 @@ from sqlleaf.models.node.variable import VariableNode as VariableNode
 from sqlleaf.models.node.window import WindowNode as WindowNode
 
 N = t.TypeVar("N", bound=NodeAttributes)
-TargetNodeType = ColumnNode | FileColumnNode | StageColumnNode | StreamNode | ProgramNode
+TargetNodeType = ColumnNode | DynamoDbNode | FileColumnNode | StageColumnNode | StreamNode | ProgramNode

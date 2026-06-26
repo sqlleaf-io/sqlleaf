@@ -50,15 +50,12 @@ class Query:
             expr.pop_comments()
 
         self.statement: exp.Expr = statement
-
         self.statement_index = statement_index  # The position of this query within a list of queries
 
-        if source_info:
-            self.source_info = source_info
-        if target_info:
-            self.target_info = target_info
+        self.source_info = source_info
+        self.target_info = target_info
 
-        logger.debug(f"Created Query: {self.__class__}")
+        logger.debug(f"Created new query. Query => {self.__class__.__name__} | SourceType => {self.source_info and self.source_info.type.name} | TargetType => {self.target_info and self.target_info.type.name}")
 
     def set_holder(self, holder: QueryHolder):
         self.holder = holder
@@ -66,11 +63,10 @@ class Query:
     def _determine_expression_type(self, expr: exp.Expr | t.List[exp.Expr], dialect: str) -> SqlObjectType:
         """
         Determine the type of object that an expression represents.
-        For example, given the literal string "file://data.csv", this is of type FILE; or, given the
-        identifier "STDIN", this is of type STREAM.
+        For example, the literal "/tmp/data.csv" is of type FILE; identifier "STDIN" is of type STREAM.
         """
         if isinstance(expr, exp.Literal):
-            _type = SqlObjectType.FILE
+            _type = SqlObjectType.DYNAMODB if expr.this.startswith("dynamodb://") else SqlObjectType.FILE
 
         elif isinstance(expr, exp.Identifier):
             if expr.name in ["stdin", "stdout"]:
@@ -154,6 +150,9 @@ class Query:
             raise exception.SqlLeafException(f"Unhandled target object type: {target_type}")
 
         column_defs = self._get_column_defs(object_with_columns)
+        if not column_defs:
+            raise exception.SqlLeafException(f"Could not find any columns for expression: {object_with_columns}")
+
         return TargetObject(
             type=target_type,
             object=object_with_columns,

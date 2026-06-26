@@ -20,7 +20,7 @@ class UnloadQuery(Query):
     KIND = "unload"
 
     def __init__(self, expr: exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
-        source, target = self.get_source_and_target(expr)
+        source, target = self.get_source_and_target_expressions(expr)
 
         source_type = self._determine_expression_type(source, dialect)
         target_type = self._determine_expression_type(target, dialect)
@@ -36,7 +36,7 @@ class UnloadQuery(Query):
         self.parameters = UnloadQueryParameters(file_format="UNKNOWN")
         self.qualify_and_annotate()
 
-    def get_source_and_target(self, statement: exp.Command) -> t.Tuple[exp.Select, exp.Literal]:
+    def get_source_and_target_expressions(self, statement: exp.Command) -> t.Tuple[exp.Select, exp.Literal]:
         """
         Parse an UNLOAD statement for Redshift.
         We parse this ourselves due to missing support in sqlglot.

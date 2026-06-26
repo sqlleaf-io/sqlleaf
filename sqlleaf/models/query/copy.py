@@ -24,7 +24,7 @@ class CopyQueryParameters:
     job_auto_run: bool = True
 
     @classmethod
-    def from_expression(cls, expr: exp.Copy) -> CopyQueryParameters:
+    def from_expression(cls, expr: exp.Copy, source_info: SourceInfo, target_info: TargetInfo) -> CopyQueryParameters:
         """
         Extract the parameters of the COPY statement.
 
@@ -82,7 +82,7 @@ class CopyQuery(Query):
     KIND = "copy"
 
     def __init__(self, expr: exp.Copy, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
-        source, target = self.get_source_and_target(expr, dialect)
+        source, target = self.get_source_and_target_expressions(expr, dialect)
         if dialect == "snowflake":
             util.rename_if_stage(source, target)
 
@@ -97,14 +97,18 @@ class CopyQuery(Query):
             source_info=SourceInfo(expression=source, type=source_type),
             target_info=TargetInfo(expression=target, type=target_type),
         )
-        self.parameters = self.get_params(expr)
+        self.parameters = self.get_params()
         self.qualify_and_annotate()
 
-    def get_params(self, expr: exp.Copy) -> CopyQueryParameters:
-        return CopyQueryParameters.from_expression(expr)
+    def get_params(self,) -> CopyQueryParameters:
+        return CopyQueryParameters.from_expression(self.statement, self.source_info, self.target_info)
+
+    def is_query_active(self) -> bool:
+        logger.debug(self.parameters)
+        return self.parameters.is_active
 
 
-    def get_source_and_target(self, expr: exp.Copy, dialect: str) -> t.Tuple[SourceExprType, TargetExprType]:
+    def get_source_and_target_expressions(self, expr: exp.Copy, dialect: str) -> t.Tuple[SourceExprType, TargetExprType]:
         """
         Determine the source and target expressions of the query.
         """
@@ -132,7 +136,3 @@ class CopyQuery(Query):
         target = target.unnest()
 
         return source, target
-
-    def is_query_active(self) -> bool:
-        logger.debug(self.parameters)
-        return self.parameters.is_active

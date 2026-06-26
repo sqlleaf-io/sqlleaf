@@ -363,16 +363,16 @@ def test_copy_table_program_from_program(holder):
 def test_copy_with_format_csv(holder):
     sql = """
     CREATE TABLE fruit.simple (name VARCHAR, age INT);
-    COPY fruit.simple FROM 'file://data.csv' WITH (FORMAT csv);
+    COPY fruit.simple FROM '/tmp/data.csv' WITH (FORMAT csv);
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-         ['column[name path=file://data.csv]','column[fruit.simple.name]'],
-         ['column[age path=file://data.csv]','column[fruit.simple.age]']
+         ['column[name path=/tmp/data.csv]','column[fruit.simple.name]'],
+         ['column[age path=/tmp/data.csv]','column[fruit.simple.age]']
      ]
     assert h.nodes_full == [
-        "column[age type=INT kind=file format=csv path=file://data.csv]",
-        "column[name type=VARCHAR kind=file format=csv path=file://data.csv]",
+        "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
+        "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
         "column[name=age table=simple schema=fruit type=INT kind=table]",
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]

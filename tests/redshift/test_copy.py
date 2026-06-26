@@ -43,12 +43,18 @@ def test_copy_s3_column_list(holder):
 def test_copy_dynamodb(holder):
     sql = f"""
     {simple_table}
-    COPY fruit.simple FROM 'dynamodb://MyDynamoTable' {iam_role} READRATIO 50;
+    COPY fruit.simple FROM 'dynamodb://MyTable' {iam_role} READRATIO 50;
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-        ["column[name path=dynamodb://MyDynamoTable]", "column[fruit.simple.name]"],
-        ["column[age path=dynamodb://MyDynamoTable]", "column[fruit.simple.age]"],
+        ["column[name path=dynamodb://MyTable]", "column[fruit.simple.name]"],
+        ["column[age path=dynamodb://MyTable]", "column[fruit.simple.age]"],
+    ]
+    assert h.nodes_full == [
+        'column[age type=INT kind=dynamodb table=MyTable]',
+        'column[name type=VARCHAR kind=dynamodb table=MyTable]',
+        'column[name=age table=simple schema=fruit type=INT kind=table]',
+        'column[name=name table=simple schema=fruit type=VARCHAR kind=table]',
     ]
 
 

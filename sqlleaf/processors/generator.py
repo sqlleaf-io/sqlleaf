@@ -83,7 +83,6 @@ def generate_lineage_for_columns(
     gen_ctx.scope_positions.calculate(scope)
 
     # Process the selected columns
-    columns_processed = 0
     for selected_node, default_node in generator.iter_child_nodes(gen_ctx, pos_ctx):
         child_node: TargetNodeType | None = selected_node or default_node
         if not child_node:
@@ -99,7 +98,7 @@ def generate_lineage_for_columns(
                 constraint_ctx = replace(
                     gen_ctx,
                     expr=constraint_expr.this,
-                    new_data_type=child_node.data_type if child_node else None,
+                    new_data_type=child_node.data_type,
                     child_node=child_node,
                 )
                 # Walk only the expression
@@ -107,10 +106,6 @@ def generate_lineage_for_columns(
 
         if selected_node:
             walk_query_and_build_graph(generator, child_node, scope, gen_ctx, child_node.ctx)
-            columns_processed += 1
-
-    if columns_processed == 0:
-        raise exception.SqlLeafException("Expected to process columns but count was 0. Review underlying logic.")
 
 
 def walk_query_and_build_graph(

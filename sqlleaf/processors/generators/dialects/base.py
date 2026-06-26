@@ -13,6 +13,7 @@ from sqlleaf import exception, util
 from sqlleaf.models.context import GeneratorContext, PositionContext
 from sqlleaf.models.node import (
     ColumnNode,
+    DynamoDbNode,
     FileColumnNode,
     FunctionNode,
     IntervalNode,
@@ -479,6 +480,13 @@ class BaseGenerator:
                     pos_ctx=pos_ctx,
                 )
 
+            case SqlObjectType.DYNAMODB:
+                return DynamoDbNode(
+                    gen_ctx=gen_ctx,
+                    pos_ctx=pos_ctx,
+                    column=column_name,
+                )
+
             case _:
                 raise exception.SqlLeafException(f"Unhandled case for type: {object_type}")
 
@@ -501,7 +509,6 @@ class BaseGenerator:
         for col_def in target_object.columns:
             selected_node = None
             default_node = None
-            process_defaults = False
             gen_ctx = replace(gen_ctx, expr=col_def)
             pos_ctx = replace(pos_ctx, select_index=select_idx)
 
