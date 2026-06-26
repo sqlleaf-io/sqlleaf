@@ -19,14 +19,11 @@ class DynamoDbNode(NodeAttributes):
     ):
         super().__init__(gen_ctx, pos_ctx, name=column)
         self.path = gen_ctx.expr.name
-        self.table_name =self.path.removeprefix("dynamodb://")
-
+        self.table_name = self.path.removeprefix("dynamodb://")
 
     def to_dict(self):
         d = super().to_dict()
-        d.update({
-            "table": self.table_name
-        })
+        d.update({"table": self.table_name})
         return d
 
     def fields(self) -> dict[str, str]:

@@ -42,4 +42,3 @@ class StageQuery(Query):
 
         self.property = util.find_property(expr, self.get_target_expression(), dialect)
         self.path = util.find_stage_path(expr)
-

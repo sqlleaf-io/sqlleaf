@@ -37,7 +37,6 @@ class UserDefinedFunctionQuery(Query):
 
         self.collect()
 
-
     @property
     def name(self):
         return ".".join([var for var in [self.schema_name, self.function_name] if var])

@@ -1,12 +1,10 @@
 import os
 import sys
 
-import pytest
-import sqlglot
-
 from sqlleaf.models.query import CopyQuery, TableQuery
 from sqlleaf.typing import SqlObjectType
-from tests.new_fixtures import assert_query_does_nothing, holder as holder
+from tests.new_fixtures import assert_query_does_nothing
+from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -51,10 +49,10 @@ def test_copy_dynamodb(holder):
         ["column[age path=dynamodb://MyTable]", "column[fruit.simple.age]"],
     ]
     assert h.nodes_full == [
-        'column[age type=INT kind=dynamodb table=MyTable]',
-        'column[name type=VARCHAR kind=dynamodb table=MyTable]',
-        'column[name=age table=simple schema=fruit type=INT kind=table]',
-        'column[name=name table=simple schema=fruit type=VARCHAR kind=table]',
+        "column[age type=INT kind=dynamodb table=MyTable]",
+        "column[name type=VARCHAR kind=dynamodb table=MyTable]",
+        "column[name=age table=simple schema=fruit type=INT kind=table]",
+        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
 
 
@@ -88,10 +86,10 @@ def test_copy_temp_table(holder):
     COPY "#fruit.simple" FROM 's3://bucket/path' {iam_role};
     """
     h = holder(sql=sql, dialect=DIALECT)
-    assert h.paths ==  [
-         ['column[name path=s3://bucket/path]', 'column[#fruit.simple.name]'],
-         ['column[age path=s3://bucket/path]', 'column[#fruit.simple.age]']
-     ]
+    assert h.paths == [
+        ["column[name path=s3://bucket/path]", "column[#fruit.simple.name]"],
+        ["column[age path=s3://bucket/path]", "column[#fruit.simple.age]"],
+    ]
 
 
 # TODO: JSONPaths with AVRO is extremely complex
@@ -109,10 +107,10 @@ def test_copy_parquet(holder):
         ["column[age path=s3://bucket/data.parquet]", "column[fruit.simple.age]"],
     ]
     assert h.nodes_full == [
-        'column[age type=INT kind=file format=PARQUET path=s3://bucket/data.parquet]',
-        'column[name type=VARCHAR kind=file format=PARQUET path=s3://bucket/data.parquet]',
-        'column[name=age table=simple schema=fruit type=INT kind=table]',
-        'column[name=name table=simple schema=fruit type=VARCHAR kind=table]',
+        "column[age type=INT kind=file format=PARQUET path=s3://bucket/data.parquet]",
+        "column[name type=VARCHAR kind=file format=PARQUET path=s3://bucket/data.parquet]",
+        "column[name=age table=simple schema=fruit type=INT kind=table]",
+        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
 
 
@@ -129,6 +127,7 @@ def test_copy_no_data(holder):
 
 # #################### COPY JOBS ####################
 
+
 def test_copy_job_create(holder):
     sql = f"""
     {simple_table}
@@ -136,8 +135,8 @@ def test_copy_job_create(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-        ['column[name path=s3://path]', 'column[fruit.simple.name]'],
-        ['column[age path=s3://path]', 'column[fruit.simple.age]']
+        ["column[name path=s3://path]", "column[fruit.simple.name]"],
+        ["column[age path=s3://path]", "column[fruit.simple.age]"],
     ]
     assert len(h.nodes_full) == 4
     assert len(h.edges) == 2
@@ -181,7 +180,6 @@ def test_copy_job_create_auto_off(holder):
 #     assert h.paths == []
 
 
-
 # # Not supported: sqlglot parses as a regular COPY expression ('COPY job FROM show my_job')
 # cases = ["LIST", "SHOW my_job"]
 # @pytest.mark.parametrize("case", cases)
@@ -199,6 +197,7 @@ template_query = """
 CREATE TEMPLATE test_template FOR COPY AS CSV DELIMITER '|';
 """
 
+
 # Unsupported: Command
 def test_template(holder):
     sql = f"""
@@ -207,7 +206,6 @@ def test_template(holder):
     h = holder(sql=sql, dialect=DIALECT)
     assert_query_does_nothing(h)
     assert len(h.collected_queries.unsupported) == 1
-
 
 
 # # Strange behaviour: COPY USING TEMPLATE must have an associated CREATE TEMPLATE

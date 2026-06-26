@@ -1,10 +1,9 @@
 import typing as t
-from pathlib import Path
 
 from sqlglot import exp
 
 from sqlleaf import exception, util
-from sqlleaf.typing import E, TargetExprType, SourceExprType
+from sqlleaf.typing import E, SourceExprType, TargetExprType
 
 
 def unwrap_expression(expr: E) -> exp.Expr:
@@ -139,8 +138,6 @@ def get_function_args(expr: exp.Func):
     function_args = util.flatten(function_args)
     function_args = [arg for arg in function_args if arg and isinstance(arg, exp.Expr)]
     return function_args
-
-
 
 
 def rename_if_stage(source: SourceExprType, target: TargetExprType) -> None:

@@ -19,7 +19,7 @@ from sqlleaf.models.query import (
     ViewQuery,
 )
 from sqlleaf.path import LineagePath
-from sqlleaf.processors import collector, transformer, generator
+from sqlleaf.processors import collector, generator, transformer
 from sqlleaf.typing import SqlObjectType
 
 logging.getLogger("sqlglot").setLevel(logging.WARNING)
@@ -47,7 +47,6 @@ class Lineage:
 
         for parent_holder in self.collected_queries.queries:
             # A parent holder wraps a top-level query, possibly containing child holders
-            parent_query = parent_holder.original
             graph = new_graph()
             holders = parent_holder.get_all_holders()
 
@@ -257,6 +256,7 @@ def new_graph() -> nx.MultiDiGraph:
 
 
 QUERIES_WITH_LINEAGE = (InsertQuery, UpdateQuery, ViewQuery, CTASQuery, PutQuery, CopyQuery, TableQuery, UnloadQuery)
+
 
 def query_has_lineage(query: Q) -> bool:
     """

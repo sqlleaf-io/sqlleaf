@@ -113,6 +113,7 @@ def test_copy_select_star_to_stream(holder):
 
 # TODO: COPY (VALUES ('apple', 10), ('banana', (select age from fruit.raw))) TO STDOUT;
 
+
 # TODO: this should still have lineage
 def test_copy_values_to_stream(holder):
     sql = f"""
@@ -359,7 +360,6 @@ def test_copy_table_program_from_program(holder):
     assert query.target_info.type == SqlObjectType.TABLE
 
 
-
 def test_copy_with_format_csv(holder):
     sql = """
     CREATE TABLE fruit.simple (name VARCHAR, age INT);
@@ -367,9 +367,9 @@ def test_copy_with_format_csv(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-         ['column[name path=/tmp/data.csv]','column[fruit.simple.name]'],
-         ['column[age path=/tmp/data.csv]','column[fruit.simple.age]']
-     ]
+        ["column[name path=/tmp/data.csv]", "column[fruit.simple.name]"],
+        ["column[age path=/tmp/data.csv]", "column[fruit.simple.age]"],
+    ]
     assert h.nodes_full == [
         "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
         "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",

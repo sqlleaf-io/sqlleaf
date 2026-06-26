@@ -4,7 +4,7 @@ from sqlglot import exp
 
 from sqlleaf import mappings, util
 from sqlleaf.models.query.base import Query
-from sqlleaf.typing import SourceInfo, TargetInfo, SqlObjectType
+from sqlleaf.typing import SourceInfo, SqlObjectType, TargetInfo
 
 
 class InsertQuery(Query):
@@ -24,7 +24,7 @@ class InsertQuery(Query):
         target = table
         source = expr.expression
         if source:
-            source = source.unnest() # Subquery -> Select
+            source = source.unnest()  # Subquery -> Select
         else:
             source = expr.args["source"]
 

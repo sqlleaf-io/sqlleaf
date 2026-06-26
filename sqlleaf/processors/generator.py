@@ -19,7 +19,7 @@ from sqlleaf.models.node import (
     N,
     TargetNodeType,
 )
-from sqlleaf.models.query import PutQuery, Q, QueryHolder, TableQuery, UpdateQuery, Query
+from sqlleaf.models.query import PutQuery, Q, QueryHolder, TableQuery, UpdateQuery
 from sqlleaf.processors.generators.dialects.base import BaseGenerator
 from sqlleaf.typing import E, TableOrScopeType, TableType
 

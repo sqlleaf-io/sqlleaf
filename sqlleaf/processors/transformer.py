@@ -11,24 +11,33 @@ from sqlleaf.models.query import (
     InsertQuery,
     MergeQuery,
     Q,
+    QueryHolder,
     TableQuery,
     UnloadQuery,
     UpdateQuery,
-    QueryHolder
 )
-from sqlleaf.processors.transformers import substitute, BaseQueryTransformer, InsertTransformer, CopyTransformer, DeleteTransformer, MergeTransformer, CTASTransformer, UnloadTransformer, UpdateTransformer
-
+from sqlleaf.processors.transformers import (
+    BaseQueryTransformer,
+    CopyTransformer,
+    CTASTransformer,
+    DeleteTransformer,
+    InsertTransformer,
+    MergeTransformer,
+    UnloadTransformer,
+    UpdateTransformer,
+    substitute,
+)
 from sqlleaf.typing import E
 
 _TRANSFORMER_MAP: dict[type, type[BaseQueryTransformer]] = {
-    CTASQuery:    CTASTransformer,
-    CopyQuery:    CopyTransformer,
-    DeleteQuery:  DeleteTransformer,
-    InsertQuery:  InsertTransformer,
-    MergeQuery:   MergeTransformer,
-    TableQuery:   BaseQueryTransformer,  # pass-through
-    UnloadQuery:  UnloadTransformer,
-    UpdateQuery:  UpdateTransformer,
+    CTASQuery: CTASTransformer,
+    CopyQuery: CopyTransformer,
+    DeleteQuery: DeleteTransformer,
+    InsertQuery: InsertTransformer,
+    MergeQuery: MergeTransformer,
+    TableQuery: BaseQueryTransformer,  # pass-through
+    UnloadQuery: UnloadTransformer,
+    UpdateQuery: UpdateTransformer,
 }
 
 logger = logging.getLogger("sqlleaf")

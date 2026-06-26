@@ -4,7 +4,7 @@ from sqlglot import exp
 
 from sqlleaf import mappings
 from sqlleaf.models.query.base import Query
-from sqlleaf.typing import TargetInfo, SqlObjectType
+from sqlleaf.typing import SqlObjectType, TargetInfo
 
 
 class SchemaQuery(Query):

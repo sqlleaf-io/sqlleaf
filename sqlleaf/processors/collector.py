@@ -178,7 +178,9 @@ def _determine_query_kind(statement: exp.Expr, dialect: str) -> t.Tuple[exp.Expr
     return statement, kind
 
 
-def _collect_writable_cte_queries(parent_query: Q, parent_holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping):
+def _collect_writable_cte_queries(
+    parent_query: Q, parent_holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping
+):
     """
     Transform any writable CTE statements into a form.
 
@@ -243,7 +245,9 @@ def _collect_insert_children(query: InsertQuery, parent_holder: QueryHolder, obj
     parent_holder.add_child_holder(child_holder)
 
 
-def _collect_merge_children(parent_query: MergeQuery, parent_holder: QueryHolder, object_mapping: mappings.ObjectMapping):
+def _collect_merge_children(
+    parent_query: MergeQuery, parent_holder: QueryHolder, object_mapping: mappings.ObjectMapping
+):
     """
     Transform any nested statements (INSERT or UPDATE) into fully qualified queries.
 
@@ -649,10 +653,7 @@ def _process_functions(
         object_mapping=object_mapping,
         statement_index=statement_index,
     )
-    object_mapping.add_udf_query(
-        query,
-        column_mapping=query.get_column_names_with_types(include_system=True)
-    )
+    object_mapping.add_udf_query(query, column_mapping=query.get_column_names_with_types(include_system=True))
 
     return query
 

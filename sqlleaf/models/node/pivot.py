@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import typing as t
-
-from sqlglot import exp
-
 from sqlleaf.models.context import GeneratorContext, PositionContext
 from sqlleaf.models.node import NodeAttributes
 

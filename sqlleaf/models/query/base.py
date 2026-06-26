@@ -10,7 +10,7 @@ if t.TYPE_CHECKING:
 from sqlglot import exp
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.typing import E, SourceExprType, TargetExprType, SqlObjectType, SourceInfo, TargetInfo
+from sqlleaf.typing import SourceExprType, SourceInfo, SqlObjectType, TargetExprType, TargetInfo
 
 logger = logging.getLogger("sqlleaf")
 
@@ -55,7 +55,9 @@ class Query:
         self.source_info = source_info
         self.target_info = target_info
 
-        logger.debug(f"Created new query. Query => {self.__class__.__name__} | SourceType => {self.source_info and self.source_info.type.name} | TargetType => {self.target_info and self.target_info.type.name}")
+        logger.debug(
+            f"Created new query. Query => {self.__class__.__name__} | SourceType => {self.source_info and self.source_info.type.name} | TargetType => {self.target_info and self.target_info.type.name}"
+        )
 
     def set_holder(self, holder: QueryHolder):
         self.holder = holder
@@ -105,8 +107,9 @@ class Query:
         return _type
 
     def qualify_and_annotate(self):
-        from sqlglot.optimizer.qualify import qualify
         from sqlglot.optimizer.annotate_types import annotate_types
+        from sqlglot.optimizer.qualify import qualify
+
         qualify(
             self.source_info.expression,
             schema=self.object_mapping,
@@ -122,13 +125,13 @@ class Query:
 
         annotate_types(self.source_info.expression, dialect=self.dialect, schema=self.object_mapping)
 
-    def get_original_self(self)-> Query:
+    def get_original_self(self) -> Query:
         return self.holder.original
 
-    def get_transformed_self(self)-> Query | None:
+    def get_transformed_self(self) -> Query | None:
         return self.holder.transformed
 
-    def get_substituted_self(self)-> Query | None:
+    def get_substituted_self(self) -> Query | None:
         return self.holder.substituted
 
     def get_target_object(self) -> TargetObject:
@@ -179,7 +182,6 @@ class Query:
                     exp.ColumnDef(this=exp.to_identifier(col.alias_or_name), kind=col.unalias().type)
                     for col in source.expressions
                 ]
-
 
         table_query = self.object_mapping.get_table_or_stage(expr)
         if not table_query:

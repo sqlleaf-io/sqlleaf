@@ -8,7 +8,7 @@ from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
 
 from sqlleaf import exception
-from sqlleaf.models.query import CTASQuery, DatabaseQuery, SchemaQuery, Q, TypeQuery, ViewQuery
+from sqlleaf.models.query import CTASQuery, DatabaseQuery, Q, SchemaQuery, TypeQuery, ViewQuery
 
 if t.TYPE_CHECKING:
     from sqlleaf.models.query import SequenceQuery, StageQuery, TableQuery, TriggerQuery, UserDefinedFunctionQuery
@@ -211,7 +211,9 @@ class ObjectMapping(MappingSchema):
     def supported_table_args(self) -> t.Tuple[str, ...]:
         return exp.TABLE_PARTS
 
-    def get_table_or_stage(self, table: exp.Table | exp.Var, raise_on_missing: bool = True) -> TableQuery | StageQuery | None:
+    def get_table_or_stage(
+        self, table: exp.Table | exp.Var, raise_on_missing: bool = True
+    ) -> TableQuery | StageQuery | None:
         """
         Get the 'CREATE' query for a table or stage.
         """

@@ -1,6 +1,7 @@
 """
 UpdateTransformer — handles UPDATE (and MERGE → UPDATE, ON CONFLICT) statement transformations.
 """
+
 from sqlglot import exp
 
 from sqlleaf.processors.transformers.base import BaseQueryTransformer

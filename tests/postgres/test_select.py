@@ -58,6 +58,8 @@ def test__select_with_ordinality(holder):
 
 
 distinct = ["DISTINCT ON (num)", ""]
+
+
 @pytest.mark.parametrize("case", distinct)
 def test__select_values(holder, case):
     sql = f"""
@@ -188,8 +190,7 @@ def test__select_filter_and_where(holder):
     )
     # Ensure the WHERE is dropped
     assert (
-        h.holders[1].transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO fruit.processed (age) SELECT 1 AS age"  # noqa: E501
+        h.holders[1].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (age) SELECT 1 AS age"  # noqa: E501
     )
 
 

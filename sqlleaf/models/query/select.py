@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlglot import exp
 
-from sqlleaf import mappings, util
+from sqlleaf import mappings
 from sqlleaf.models.query.base import Query
 
 

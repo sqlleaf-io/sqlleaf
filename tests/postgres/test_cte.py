@@ -477,7 +477,9 @@ def test__cte_merge_inside_select(holder):
     ]
     assert [SelectQuery] == h.query_types
     assert [MergeQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
-    assert [UpdateQuery, InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders[0].child_holders]))
+    assert [UpdateQuery, InsertQuery] == list(
+        map(type, [ch.original for ch in h.holders[0].child_holders[0].child_holders])
+    )
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
 

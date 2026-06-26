@@ -6,7 +6,6 @@ from dataclasses import replace
 
 from sqlglot import exp
 
-from sqlleaf import util
 from sqlleaf.models.context import GeneratorContext, PositionContext
 from sqlleaf.models.node import (
     FileColumnNode,

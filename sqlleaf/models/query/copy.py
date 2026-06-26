@@ -6,10 +6,9 @@ from dataclasses import dataclass
 
 from sqlglot import exp
 
-from sqlleaf import mappings, exception, util
+from sqlleaf import exception, mappings, util
 from sqlleaf.models.query.base import Query
-from sqlleaf.typing import SourceExprType, TargetExprType, TargetInfo, SourceInfo
-
+from sqlleaf.typing import SourceExprType, SourceInfo, TargetExprType, TargetInfo
 
 logger = logging.getLogger("sqlleaf")
 
@@ -100,15 +99,18 @@ class CopyQuery(Query):
         self.parameters = self.get_params()
         self.qualify_and_annotate()
 
-    def get_params(self,) -> CopyQueryParameters:
+    def get_params(
+        self,
+    ) -> CopyQueryParameters:
         return CopyQueryParameters.from_expression(self.statement, self.source_info, self.target_info)
 
     def is_query_active(self) -> bool:
         logger.debug(self.parameters)
         return self.parameters.is_active
 
-
-    def get_source_and_target_expressions(self, expr: exp.Copy, dialect: str) -> t.Tuple[SourceExprType, TargetExprType]:
+    def get_source_and_target_expressions(
+        self, expr: exp.Copy, dialect: str
+    ) -> t.Tuple[SourceExprType, TargetExprType]:
         """
         Determine the source and target expressions of the query.
         """

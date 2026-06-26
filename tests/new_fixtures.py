@@ -4,7 +4,7 @@ import typing as t
 
 import pytest
 
-from sqlleaf.models.query import QueryHolder, Q, Query
+from sqlleaf.models.query import Q, Query, QueryHolder
 from sqlleaf.models.query.table import TableQuery
 from sqlleaf.processors.collector import CollectQueryResult
 
@@ -19,8 +19,6 @@ import sqlleaf
 logging.basicConfig(level=logging.NOTSET)
 logger = logging.getLogger("sqlleaf")
 logger.setLevel(logging.DEBUG)
-
-
 
 
 class LineageHolderDummy:
@@ -49,7 +47,7 @@ class LineageHolderDummy:
 
     @property
     def queries_original(self) -> t.List[Q]:
-        return [h.original for h in  self.holders]
+        return [h.original for h in self.holders]
 
     @property
     def queries_transformed(self) -> list[Query | None]:
@@ -68,7 +66,7 @@ class LineageHolderDummy:
         return new_holders
 
     @property
-    def paths(self)-> t.List[str]:
+    def paths(self) -> t.List[str]:
         paths = []
         for path in self._all_paths:
             paths.append([hop.friendly_name for hop in path.node_hops()])
@@ -89,6 +87,7 @@ class LineageHolderDummy:
     def query_types(self) -> t.List:
         types = [type(h.original) for h in self.holders]
         return types
+
 
 @pytest.fixture(scope="function")
 def holder():

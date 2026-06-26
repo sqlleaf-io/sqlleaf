@@ -8,7 +8,7 @@ from sqlglot import TokenType, exp
 
 from sqlleaf import exception, mappings
 from sqlleaf.models.query.base import Query
-from sqlleaf.typing import SourceExprType, TargetExprType, TargetInfo, SourceInfo, SqlObjectType
+from sqlleaf.typing import SourceInfo, TargetInfo
 
 
 @dataclass(frozen=True)

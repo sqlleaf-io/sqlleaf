@@ -1,6 +1,7 @@
 """
 InsertTransformer — handles INSERT (and MERGE → INSERT) statement transformations.
 """
+
 from sqlglot import exp
 
 from sqlleaf import util
@@ -53,9 +54,7 @@ class InsertTransformer(BaseQueryTransformer):
 
         if is_default_values:
             # Transform 'DEFAULT VALUES' into 'VALUES (DEFAULT,)'
-            values = exp.Values(
-                expressions=[exp.Tuple(expressions=[exp.Var(this="DEFAULT") for _ in table_columns])]
-            )
+            values = exp.Values(expressions=[exp.Tuple(expressions=[exp.Var(this="DEFAULT") for _ in table_columns])])
             statement.set("expression", values)
             statement.set("default", False)
 

@@ -7,7 +7,7 @@ from sqlglot import exp
 from sqlleaf import mappings, util
 from sqlleaf.models.query.base import Query
 from sqlleaf.models.query.table import TableQuery
-from sqlleaf.typing import TargetInfo, SourceInfo
+from sqlleaf.typing import SourceInfo, TargetInfo
 
 
 class CTASQuery(Query):

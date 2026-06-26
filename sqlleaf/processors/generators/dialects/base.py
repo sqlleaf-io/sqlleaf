@@ -32,7 +32,7 @@ from sqlleaf.models.node import (
     WindowNode,
 )
 from sqlleaf.models.query import ProcedureQuery, Q, TableQuery
-from sqlleaf.typing import SqlObjectType, SourceExprType, TargetExprType
+from sqlleaf.typing import SourceExprType, SqlObjectType, TargetExprType
 
 logger = logging.getLogger("sqlleaf")
 
@@ -446,9 +446,7 @@ class BaseGenerator:
 
             case SqlObjectType.STAGE:
                 stage_expression = expression.this if isinstance(expression, exp.Table) else expression
-                stage_query = gen_ctx.query.object_mapping.get_table_or_stage(
-                    table=expression, raise_on_missing=False
-                )
+                stage_query = gen_ctx.query.object_mapping.get_table_or_stage(table=expression, raise_on_missing=False)
                 return StageColumnNode(
                     column=column_name,
                     stage=stage_expression,
@@ -521,7 +519,6 @@ class BaseGenerator:
                 pos_ctx=pos_ctx,
             )
             process_defaults = target_object.type == SqlObjectType.TABLE
-
 
             if col_def.name in util.get_selected_column_names(query.statement) or isinstance(query, TableQuery):
                 # Check if the column is selected.

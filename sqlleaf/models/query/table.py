@@ -6,15 +6,13 @@ from sqlglot import exp
 
 from sqlleaf import mappings, util
 from sqlleaf.models.query.base import Query
-from sqlleaf.typing import SourceInfo, TargetInfo
+from sqlleaf.typing import TargetInfo
 
 
 class TableQuery(Query):
     KIND = "table"
 
-    def __init__(
-        self, expr: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
-    ):
+    def __init__(self, expr: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
         source = None
         target = util.get_table(expr.this)
 

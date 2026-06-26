@@ -8,7 +8,7 @@ from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from sqlleaf.models.query import TypeQuery, TableQuery
+from sqlleaf.models.query import TableQuery, TypeQuery
 
 DIALECT = "postgres"
 

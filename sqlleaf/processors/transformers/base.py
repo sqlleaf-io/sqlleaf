@@ -11,6 +11,7 @@ from sqlleaf import exception, util
 from sqlleaf.models.query import Q
 from sqlleaf.processors.transformers import resolver
 from sqlleaf.typing import E
+
 # from sqlleaf.processors.transformers.row import _simplify_row_composite_access
 
 logger = logging.getLogger("sqlleaf")
@@ -73,6 +74,7 @@ class BaseQueryTransformer:
         """
         Ensure that the transformed query is parseable.
         """
+
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs) -> E:
             # statement = kwargs.pop("statement")
@@ -100,6 +102,7 @@ class BaseQueryTransformer:
                 sqlglot.parse_one(result.sql(dialect=query.dialect), dialect=query.dialect)
             except sqlglot.errors.ParseError:
                 from sqlleaf.models.query import TableQuery
+
                 if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external":
                     # Bug in sqlglot: parsing the output for CREATE EXTERNAL TABLE WITH (FORMAT=TEXTFILE) breaks the parser
                     pass
@@ -113,7 +116,6 @@ class BaseQueryTransformer:
         Convert the statement "TABLE x" to "SELECT * FROM x"
         """
         statement = self.statement
-        query = self.query
         source = statement.args.get("source", None)
         if source:
             table = source.pop()
@@ -305,6 +307,7 @@ class BaseQueryTransformer:
                 my.table.name -> my.other.name
         """
         from sqlleaf.typing import SqlObjectType
+
         query = self.query
         validate_columns = True
         exclude_rules = EXCLUDE_OPTIMIZER_RULES[:]
@@ -336,7 +339,10 @@ class BaseQueryTransformer:
 
         # Selectively apply sqlglot's optimization rules.
         statement = optimize(
-            expression=statement, dialect=query.dialect, schema=query.object_mapping, rules=self._optimizer_rules(exclude_rules)
+            expression=statement,
+            dialect=query.dialect,
+            schema=query.object_mapping,
+            rules=self._optimizer_rules(exclude_rules),
         )
 
         # We don't want to merge the CTEs as they provide useful info to the user
@@ -364,14 +370,15 @@ class BaseQueryTransformer:
         INSERT RETURNING * returns all columns from target
         DELETE RETURNING * returns all columns from target
         """
-        query = self.query
         returning_expr: exp.Returning = statement.this.args.get("returning", None)
         if not returning_expr:
             return statement
 
         for col_expr in returning_expr.expressions:
             if not isinstance(col_expr, (exp.Alias, exp.Column, exp.Star)):
-                message = f"Non-column expression ({col_expr}) must have an alias inside RETURNING to prevent ambiguity."
+                message = (
+                    f"Non-column expression ({col_expr}) must have an alias inside RETURNING to prevent ambiguity."
+                )
                 raise exception.SqlLeafException(message=message)
 
         # Replace the OLD & NEW aliases with the table alias if it exists. Otherwise, remove it to be valid.
@@ -412,12 +419,11 @@ class BaseQueryTransformer:
         ctes = merge_expr.args["with_"].expressions if "with_" in merge_expr.args else []
         return {
             "merge_expr": merge_expr,
-            "using":      merge_expr.args["using"],
-            "on":         merge_expr.args["on"],
-            "returning":  merge_expr.args.get("returning"),
-            "ctes":       ctes,
+            "using": merge_expr.args["using"],
+            "on": merge_expr.args["on"],
+            "returning": merge_expr.args.get("returning"),
+            "ctes": ctes,
         }
-
 
     def _add_column_names_to_insert(self, statement: exp.Insert) -> exp.Insert:
         """
@@ -433,6 +439,7 @@ class BaseQueryTransformer:
             INSERT INTO my.apple (a,b) SELECT name as a, age as b FROM my.pear
         """
         from sqlleaf.typing import SqlObjectType
+
         query = self.query
         if not isinstance(statement, exp.Insert) or not statement.selects:
             return statement

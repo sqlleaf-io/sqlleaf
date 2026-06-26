@@ -111,7 +111,6 @@ class RedshiftGenerator(BaseGenerator):
         else:
             yield from self._process_column_other(expr, gen_ctx, pos_ctx)
 
-
     def _process_column_other(
         self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
@@ -147,10 +146,10 @@ class RedshiftGenerator(BaseGenerator):
         # TODO: change to source/target info
 
         # Create: column[name kind=file format=text type=INT path=s3://my-bucket/a/b/c]
-        file_format = gen_ctx.query.statement.args["properties"].find(exp.FileFormatProperty).this
+        gen_ctx.query.statement.args["properties"].find(exp.FileFormatProperty).this
         column_node = FileColumnNode(
             column=child_node.name,
-            #file_format=file_format,
+            # file_format=file_format,
             file_path=location.name,
             gen_ctx=gen_ctx,
             pos_ctx=pos_ctx,

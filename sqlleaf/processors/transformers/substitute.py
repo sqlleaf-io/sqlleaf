@@ -306,7 +306,9 @@ def _transform_row_to_subquery(
     return None
 
 
-def _create_subquery_with_alias(replacement_expr: exp.Expr, query: UserDefinedFunctionQuery, alias: str = "t") -> exp.Subquery:
+def _create_subquery_with_alias(
+    replacement_expr: exp.Expr, query: UserDefinedFunctionQuery, alias: str = "t"
+) -> exp.Subquery:
     """Creates a Subquery with a table alias and the UDF's return columns."""
     return exp.Subquery(
         this=replacement_expr,
@@ -468,7 +470,7 @@ def _transform_row_function_to_subquery(replacement_expr: exp.Expr, query: UserD
                             transformed = True
                             replacement_expr = new_expr
     if transformed:
-        logger.debug(f"Replaced ROW() to subquery: {replacement_expr.sql(dialect="postgres")}")
+        logger.debug(f"Replaced ROW() to subquery: {replacement_expr.sql(dialect='postgres')}")
     return replacement_expr
 
 

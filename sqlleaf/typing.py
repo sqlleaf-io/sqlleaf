@@ -21,7 +21,6 @@ SourceExprType = exp.Table | exp.Literal | exp.Identifier | exp.Select | exp.Val
 TableOrScopeType = exp.Table | Scope
 
 
-
 class SqlObjectType(StrEnum):
     """
     The types of models that represent a 'source' or 'target' in an SQL statement.
@@ -51,7 +50,6 @@ class SqlObjectType(StrEnum):
         return [cls.DYNAMODB, cls.FILE, cls.PROGRAM, cls.STAGE, cls.STREAM]
 
 
-
 @dataclass(frozen=True)
 class SourceInfo:
     expression: SourceExprType
@@ -62,7 +60,7 @@ class SourceInfo:
 class TargetInfo:
     expression: TargetExprType
     type: SqlObjectType
-    #column_expressions: t.List[exp.Expr]
+    # column_expressions: t.List[exp.Expr]
 
 
 class TableType(StrEnum):
@@ -72,7 +70,7 @@ class TableType(StrEnum):
     DERIVED_TABLE = auto()
     STAGE = auto()
     FILE = auto()
-    UDTF = auto()   # LATERAL hello() as hello(col1, col2)
+    UDTF = auto()  # LATERAL hello() as hello(col1, col2)
 
 
 class TableSubtype(StrEnum):

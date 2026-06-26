@@ -7,7 +7,6 @@ from sqlglot import exp
 
 from sqlleaf.models.context import GeneratorContext, PositionContext
 from sqlleaf.models.node import NodeAttributes
-from sqlleaf.models.query import Query
 
 
 class ProgramNode(NodeAttributes):
