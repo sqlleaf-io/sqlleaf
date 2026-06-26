@@ -194,13 +194,13 @@ DO
 [ ] ALTER TABLE ... APPEND
 
 COPY
-  - [ ] FROM
-    - [ ] S3
-    - [ ] EMR
-    - [ ] SSH
-    - [ ] DynamoDB
-    - [ ] S3
-    - [ ] JSONPaths
+  - [x] FROM
+    - [x] S3
+    - [x] EMR
+    - [x] SSH
+    - [x] DynamoDB
+    - [x] S3
+    - [x] JSONPaths
     - [x] NODATA
   - [x] JOB
     - [x] CREATE [AUTO ON | OFF]
