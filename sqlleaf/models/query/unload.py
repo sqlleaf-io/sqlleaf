@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing as t
+from dataclasses import dataclass
 
 import sqlglot
 from sqlglot import TokenType, exp
@@ -8,6 +9,11 @@ from sqlglot import TokenType, exp
 from sqlleaf import exception, mappings
 from sqlleaf.models.query.base import Query
 from sqlleaf.typing import SourceExprType, TargetExprType, TargetInfo, SourceInfo, SqlObjectType
+
+
+@dataclass(frozen=True)
+class UnloadQueryParameters:
+    file_format: str
 
 
 class UnloadQuery(Query):
@@ -27,7 +33,7 @@ class UnloadQuery(Query):
             source_info=SourceInfo(expression=source, type=source_type),
             target_info=TargetInfo(expression=target, type=target_type),
         )
-        self.file_format = "UNKNOWN"
+        self.parameters = UnloadQueryParameters(file_format="UNKNOWN")
         self.qualify_and_annotate()
 
     def get_source_and_target(self, statement: exp.Command) -> t.Tuple[exp.Select, exp.Literal]:

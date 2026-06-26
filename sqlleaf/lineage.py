@@ -267,9 +267,9 @@ def query_has_lineage(query: Q) -> bool:
         has_lineage = False
     elif isinstance(query, CopyQuery) and query.source_info.type == SqlObjectType.VALUES:
         has_lineage = False
-    elif isinstance(query, CopyQuery) and not query.with_data:
+    elif isinstance(query, CopyQuery) and not query.is_query_active():
         has_lineage = False
-    elif isinstance(query, CTASQuery) and not query.with_data:
+    elif isinstance(query, CTASQuery) and not query.load_data:
         has_lineage = False
     elif isinstance(query, TableQuery) and query.property != "external":
         has_lineage = False

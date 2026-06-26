@@ -39,10 +39,10 @@ class CTASQuery(Query):
         self.system_column_defs: t.List[exp.ColumnDef] = []
         self.inherited_by: t.List[TableQuery] = []
 
-        self.with_data: bool = True
+        self.load_data: bool = True
         if props := expr.args["properties"]:
-            if with_data := props.find(exp.WithDataProperty):
-                self.with_data: bool = not with_data.args["no"]
+            if load_data := props.find(exp.WithDataProperty):
+                self.load_data: bool = not load_data.args["no"]
 
         self.property: str = util.find_property(expr, self.get_target_expression(), dialect)
 

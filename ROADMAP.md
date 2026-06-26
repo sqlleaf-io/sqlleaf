@@ -201,9 +201,13 @@ COPY
     - [ ] DynamoDB
     - [ ] S3
     - [ ] JSONPaths
-    - [ ] NODATA
-  - [ ] JOB
-  - [ ] USING TEMPLATE
+    - [x] NODATA
+  - [x] JOB
+    - [x] CREATE [AUTO ON | OFF]
+    - [x] RUN [not supported]
+    - [x] SHOW [not supported]
+    - [x] LIST [not supported]
+  - [x] USING TEMPLATE [not supported]
 
 CREATE SCHEMA
  - [ ] Regular

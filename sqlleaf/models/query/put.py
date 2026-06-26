@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from sqlglot import exp
 
 from sqlleaf import mappings, util
@@ -7,11 +9,15 @@ from sqlleaf.models.query.base import Query
 from sqlleaf.typing import SourceInfo, TargetInfo
 
 
+@dataclass(frozen=True)
+class PutQueryParameters:
+    file_format: str
+
+
 class PutQuery(Query):
     KIND = "put"
 
     def __init__(self, expr: exp.Put, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
-        # TODO: fix types below
         source = expr.this
         target = expr.args["target"]
 
@@ -28,4 +34,4 @@ class PutQuery(Query):
             source_info=SourceInfo(expression=source, type=source_type),
             target_info=TargetInfo(expression=target, type=target_type),
         )
-        self.file_format = "TEXT"
+        self.parameters = PutQueryParameters(file_format="TEXT")

@@ -31,7 +31,7 @@ from sqlleaf.models.node import (
     WindowNode,
 )
 from sqlleaf.models.query import ProcedureQuery, Q, TableQuery
-from sqlleaf.typing import SqlObjectType
+from sqlleaf.typing import SqlObjectType, SourceExprType, TargetExprType
 
 logger = logging.getLogger("sqlleaf")
 
@@ -421,6 +421,67 @@ class BaseGenerator:
         p_ctx = replace(gen_ctx, expr=expr.selects[0], scope=subquery_scope)
         return self.process(p_ctx.expr, gen_ctx=p_ctx, pos_ctx=child_ctx)
 
+    def create_node_from_type(
+        self,
+        object_type: SqlObjectType,
+        expression: TargetExprType | SourceExprType,
+        column_name: str,
+        gen_ctx: GeneratorContext,
+        pos_ctx: PositionContext,
+    ) -> TargetNodeType:
+        """
+        Create a node for a given object type.
+        """
+        match object_type:
+            case SqlObjectType.FILE:
+                file_format = gen_ctx.query.get_original_self().parameters.file_format
+                return FileColumnNode(
+                    column=column_name,
+                    file_format=file_format,
+                    file_path=expression.name,
+                    gen_ctx=gen_ctx,
+                    pos_ctx=pos_ctx,
+                )
+
+            case SqlObjectType.STAGE:
+                stage_expression = expression.this if isinstance(expression, exp.Table) else expression
+                stage_query = gen_ctx.query.object_mapping.get_table_or_stage(
+                    table=expression, raise_on_missing=False
+                )
+                return StageColumnNode(
+                    column=column_name,
+                    stage=stage_expression,
+                    gen_ctx=gen_ctx,
+                    pos_ctx=pos_ctx,
+                    path=stage_query.path if stage_query else "",
+                )
+
+            case SqlObjectType.TABLE:
+                return ColumnNode(
+                    catalog=expression.catalog if isinstance(expression, exp.Table) else "",
+                    schema=expression.db if isinstance(expression, exp.Table) else "",
+                    table=expression.name,
+                    column=column_name,
+                    gen_ctx=gen_ctx,
+                    pos_ctx=pos_ctx,
+                )
+
+            case SqlObjectType.STREAM:
+                return StreamNode(
+                    name=expression.name,
+                    gen_ctx=gen_ctx,
+                    pos_ctx=pos_ctx,
+                )
+
+            case SqlObjectType.PROGRAM:
+                return ProgramNode(
+                    gen_ctx=gen_ctx,
+                    pos_ctx=pos_ctx,
+                )
+
+            case _:
+                raise exception.SqlLeafException(f"Unhandled case for type: {object_type}")
+
     def iter_child_nodes(
         self, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Generator[t.Tuple[TargetNodeType | None, ColumnNode | None]]:
@@ -445,58 +506,14 @@ class BaseGenerator:
             pos_ctx = replace(pos_ctx, select_index=select_idx)
 
             # logger.debug(f"Iter nodes - found node: {target_object.type}")
-            match target_object.type:
-                case SqlObjectType.FILE:
-                    file_format = gen_ctx.query.get_original_self().file_format
-                    child_node = FileColumnNode(
-                        column=col_def.name,
-                        file_format=file_format,
-                        file_path=expr.name,
-                        gen_ctx=gen_ctx,
-                        pos_ctx=pos_ctx,
-                    )
-
-                case SqlObjectType.STAGE:
-                    stage_query = query.object_mapping.get_table_or_stage(table=expr.this, raise_on_missing=False)
-                    child_node = StageColumnNode(
-                        column=col_def.name,
-                        stage=expr.this,
-                        gen_ctx=gen_ctx,
-                        pos_ctx=pos_ctx,
-                        path=stage_query.path,
-                    )
-                    process_defaults = False
-
-                case SqlObjectType.TABLE:
-                    child_node = ColumnNode(
-                        catalog=expr.catalog,
-                        schema=expr.db,
-                        table=expr.name,
-                        column=col_def.name,
-                        gen_ctx=gen_ctx,
-                        pos_ctx=pos_ctx,
-                    )
-                    process_defaults = True
-
-                case SqlObjectType.STREAM:
-                    # Use the ColumnDef as the expr so that correct columns
-                    # are selected during walk()
-                    child_node = StreamNode(
-                        name=expr.name,
-                        gen_ctx=gen_ctx,
-                        pos_ctx=pos_ctx,
-                    )
-
-                case SqlObjectType.PROGRAM:
-                    # Use the ColumnDef as the expr so that correct columns
-                    # are selected during walk()
-                    child_node = ProgramNode(
-                        gen_ctx=gen_ctx,
-                        pos_ctx=pos_ctx,
-                    )
-
-                case _:
-                    raise exception.SqlLeafException(f"Unhandled case for type: {target_object.type}")
+            child_node = self.create_node_from_type(
+                object_type=target_object.type,
+                expression=expr,
+                column_name=col_def.name,
+                gen_ctx=gen_ctx,
+                pos_ctx=pos_ctx,
+            )
+            process_defaults = target_object.type == SqlObjectType.TABLE
 
 
             if col_def.name in util.get_selected_column_names(query.statement) or isinstance(query, TableQuery):

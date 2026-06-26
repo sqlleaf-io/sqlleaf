@@ -310,7 +310,7 @@ class BaseQueryTransformer:
         exclude_rules = EXCLUDE_OPTIMIZER_RULES[:]
 
         # Do not validate the columns if the source is a non-table
-        if query.source_info.type in [SqlObjectType.STREAM, SqlObjectType.FILE, SqlObjectType.STAGE, SqlObjectType.PROGRAM]:
+        if query.source_info.type in SqlObjectType.types_with_no_column_defs():
             validate_columns = False
 
         if not validate_columns:
@@ -438,7 +438,7 @@ class BaseQueryTransformer:
             return statement
 
         # sqlglot throws a parse error on named columns for Snowflake: INSERT INTO @"my_eXt_sTaGe" (NAME, AGE) SELECT ...
-        SKIP_COLUMN_RENAME_TYPES = {SqlObjectType.STREAM, SqlObjectType.FILE, SqlObjectType.STAGE, SqlObjectType.PROGRAM}
+        SKIP_COLUMN_RENAME_TYPES = SqlObjectType.types_with_no_column_defs()
         if query.source_info.type in SKIP_COLUMN_RENAME_TYPES or query.target_info.type in SKIP_COLUMN_RENAME_TYPES:
             # The aliases and column names already exist from a previous transformation,
             # or the target is not a table (e.g. S3 file, stage, stream)
@@ -485,7 +485,7 @@ class BaseQueryTransformer:
                 len(insert_columns),
                 len(statement.selects),
             )
-            raise exception.SqlGlotException(message=message, table=child_table)
+            raise exception.SqlLeafException(message=message, table=child_table)
 
         aliases = [s.alias_or_name for s in statement.selects]
         if aliases != insert_columns:

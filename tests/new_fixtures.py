@@ -21,6 +21,8 @@ logger = logging.getLogger("sqlleaf")
 logger.setLevel(logging.DEBUG)
 
 
+
+
 class LineageHolderDummy:
     def __init__(self):
         self.lineage = sqlleaf.Lineage()
@@ -100,7 +102,10 @@ def holder():
     return _create_holder
 
 
-
+def assert_query_does_nothing(h: LineageHolderDummy):
+    assert h.paths == []
+    assert h.nodes_full == []
+    assert len(h.edges) == 0
 
 
 COMMON_TABLES = """

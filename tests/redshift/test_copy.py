@@ -1,8 +1,12 @@
 import os
 import sys
 
+import pytest
+import sqlglot
+
 from sqlleaf.models.query import CopyQuery, TableQuery
-from tests.new_fixtures import holder as holder
+from sqlleaf.typing import SqlObjectType
+from tests.new_fixtures import assert_query_does_nothing, holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -13,7 +17,7 @@ simple_table = "CREATE TABLE fruit.simple (name VARCHAR, age INT);"
 iam_role = "IAM_ROLE 'arn:aws:iam::0123456789012:role/MyRedshiftRole'"
 
 
-def test_copy_s3_standard(holder):
+def test_copy_s3_simple(holder):
     sql = f"""
     {simple_table}
     COPY fruit.simple FROM 's3://bucket/path' {iam_role};
@@ -84,7 +88,7 @@ def test_copy_temp_table(holder):
      ]
 
 
-# TODO: JSONPaths is extremely complex
+# TODO: JSONPaths with AVRO is extremely complex
 #  https://docs.aws.amazon.com/redshift/latest/dg/copy-parameters-data-format.html#copy-json-jsonpaths
 
 
@@ -112,20 +116,120 @@ def test_copy_no_data(holder):
     COPY fruit.simple FROM 's3://bucket/path' {iam_role} NOLOAD;
     """
     h = holder(sql=sql, dialect=DIALECT)
-    assert h.paths == []
-    assert h.nodes_full == []
-    assert len(h.edges) == 0
+    assert_query_does_nothing(h)
     assert h.query_types == [TableQuery, CopyQuery]
     assert len(h.lineage.collected_queries.queries) == 2
 
-#
-# def test_copy_job(holder):
+
+# #################### COPY JOBS ####################
+
+def test_copy_job_create(holder):
+    sql = f"""
+    {simple_table}
+    COPY fruit.simple FROM 's3://path' {iam_role} JOB CREATE my_job;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+    assert h.paths == [
+        ['column[name path=s3://path]', 'column[fruit.simple.name]'],
+        ['column[age path=s3://path]', 'column[fruit.simple.age]']
+    ]
+    assert len(h.nodes_full) == 4
+    assert len(h.edges) == 2
+    query: CopyQuery = h.queries_original[1]
+    assert h.query_types == [TableQuery, CopyQuery]
+    assert query.source_info.type == SqlObjectType.FILE
+    assert query.target_info.type == SqlObjectType.TABLE
+
+
+def test_copy_job_create_auto_off(holder):
+    sql = f"""
+    {simple_table}
+    COPY fruit.simple FROM 's3://path' {iam_role} JOB CREATE my_job AUTO OFF;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+    assert_query_does_nothing(h)
+
+    query: CopyQuery = h.queries_original[1]
+    assert h.query_types == [TableQuery, CopyQuery]
+    assert query.source_info.type == SqlObjectType.FILE
+    assert query.target_info.type == SqlObjectType.TABLE
+
+
+# # Not supported: sqlglot parses as a regular COPY expression ('COPY job FROM run my_job')
+# def test_copy_job_run(holder):
 #     sql = f"""
 #     {simple_table}
 #     COPY fruit.simple FROM 's3://path' {iam_role} JOB CREATE my_job;
+#     COPY JOB RUN my_job;
 #     """
 #     h = holder(sql=sql, dialect=DIALECT)
-#     assert h.paths == [
-#         ["column[name path=s3://path]", "column[fruit.simple.name]"],
-#         ["column[age path=s3://path]", "column[fruit.simple.age]"],
-#     ]
+#     assert h.paths == []
+
+
+# # Not supported: sqlglot parses as a regular COPY expression ('COPY job FROM run my_job')
+# def test_copy_job_run_error_if_not_created(holder):
+#     sql = f"""
+#     COPY JOB RUN my_job;
+#     """
+#     h = holder(sql=sql, dialect=DIALECT)
+#     assert h.paths == []
+
+
+
+# # Not supported: sqlglot parses as a regular COPY expression ('COPY job FROM show my_job')
+# cases = ["LIST", "SHOW my_job"]
+# @pytest.mark.parametrize("case", cases)
+# def test_copy_job_list_and_show(holder, case: str):
+#     sql = f"""
+#     COPY JOB {case};
+#     """
+#     h = holder(sql=sql, dialect=DIALECT)
+#     assert h.paths == []
+
+
+# #################### COPY TEMPLATES ####################
+
+template_query = """
+CREATE TEMPLATE test_template FOR COPY AS CSV DELIMITER '|';
+"""
+
+# Unsupported: Command
+def test_template(holder):
+    sql = f"""
+    {template_query}
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+    assert_query_does_nothing(h)
+    assert len(h.collected_queries.unsupported) == 1
+
+
+
+# # Strange behaviour: COPY USING TEMPLATE must have an associated CREATE TEMPLATE
+# def test_copy_template_schema(holder):
+#     sql = f"""
+#     {simple_table}
+#     {template_query}
+#     COPY fruit.simple
+#     FROM 's3://amzn-s3-demo-bucket/staging-folder'
+#     IAM_ROLE 'arn:aws:iam::123456789012:role/MyLoadRoleName'
+#     DELIMITER ','
+#     USING TEMPLATE test_template;
+#     """
+#     h = holder(sql=sql, dialect=DIALECT)
+#     assert_query_does_nothing(h)
+#
+#
+#
+# # Not supported: ParseError
+# def test_copy_template_schema_errors(holder):
+#     with pytest.raises(sqlglot.errors.ParseError) as e:
+#         sql = f"""
+#         COPY target_table
+#         FROM 's3://amzn-s3-demo-bucket/staging-folder'
+#         IAM_ROLE 'arn:aws:iam::123456789012:role/MyLoadRoleName'
+#         DELIMITER ','
+#         USING TEMPLATE public.test_template;
+#         """
+#         h = holder(sql=sql, dialect=DIALECT)
+#
+#     assert e.value.args[0].startswith("Required keyword: 'this' missing for <class 'sqlglot.expressions.dml.CopyParameter'>. Line 6, Col: 30.")

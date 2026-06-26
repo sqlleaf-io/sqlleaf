@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import typing as t
 from dataclasses import dataclass
 
@@ -7,7 +8,74 @@ from sqlglot import exp
 
 from sqlleaf import mappings, exception, util
 from sqlleaf.models.query.base import Query
-from sqlleaf.typing import SourceExprType, TargetExprType, SqlObjectType, TargetInfo, SourceInfo
+from sqlleaf.typing import SourceExprType, TargetExprType, TargetInfo, SourceInfo
+
+
+logger = logging.getLogger("sqlleaf")
+
+
+@dataclass(frozen=True)
+class CopyQueryParameters:
+    file_format: str = "TEXT"
+    load_data: bool = True
+    is_a_job: bool = False
+    job_action: str = ""
+    job_name: str = ""
+    job_auto_run: bool = True
+
+    @classmethod
+    def from_expression(cls, expr: exp.Copy) -> CopyQueryParameters:
+        """
+        Extract the parameters of the COPY statement.
+
+        For example,
+            Input: "COPY FROM ... FORMAT AS CSV NOLOAD"
+            Params: ["FORMAT AS CSV", "NOLOAD"]
+        """
+        params_dict: t.Dict[str, t.Any] = {}
+
+        params_list = []
+        # Filter for the parameters we need
+        for param in expr.args.get("params", []):
+            if isinstance(param, exp.CopyParameter) and isinstance(param.this, exp.Var):
+                params_list.append(param)
+
+        for i, param in enumerate(params_list):
+            param_name = param.this.name.upper()
+            if param_name == "FORMAT":
+                params_dict["file_format"] = str(param.expression)
+            elif param_name == "NOLOAD":
+                params_dict["load_data"] = False
+            elif param_name == "JOB":
+                params_dict["is_a_job"] = True
+                try:
+                    # COPY <command> JOB CREATE <name>
+                    job_command = params_list[i + 1].this.name.upper()
+                    job_name = params_list[i + 1].expression.name
+                    params_dict["job_action"] = job_command
+                    params_dict["job_name"] = job_name
+                except IndexError:
+                    message = "Missing one or more parameters to follow expression 'COPY .. JOB'"
+                    raise exception.SqlLeafException(message=message)
+            elif param_name == "AUTO":
+                # COPY <command> JOB CREATE <name> AUTO ON | OFF
+                params_dict["job_auto_run"] = str(param.expression) == "ON"
+        return cls(**params_dict)
+
+    @property
+    def is_active(self) -> bool:
+        """
+        An active COPY query is one that has lineage. It is either:
+        - a regular COPY query
+        - a JOB that is either 'RUN' or 'CREATE and AUTO=ON'
+        """
+        if not self.is_a_job and self.load_data:
+            return True
+        if self.job_action == "RUN":
+            return True
+        if self.job_auto_run and self.job_action == "CREATE":
+            return True
+        return False
 
 
 class CopyQuery(Query):
@@ -29,33 +97,11 @@ class CopyQuery(Query):
             source_info=SourceInfo(expression=source, type=source_type),
             target_info=TargetInfo(expression=target, type=target_type),
         )
-        params = self.get_params(expr)
-        self.file_format = params["file_format"]
-        self.with_data = params["with_data"]
+        self.parameters = self.get_params(expr)
         self.qualify_and_annotate()
 
-    def get_params(self, expr: exp.Copy) -> dict[str, str | bool]:
-        """
-        Extract the parameters of the COPY statement.
-
-        For example,
-            Input: "COPY FROM ... FORMAT AS CSV NOLOAD"
-            Params: ["FORMAT AS CSV", "NOLOAD"]
-        """
-        params = {
-            # Defaults
-            "file_format": "TEXT",
-            "with_data": True
-        }
-
-        for param in expr.args.get("params", []):
-            if isinstance(param, exp.CopyParameter) and isinstance(param.this, exp.Var):
-                param_name = param.this.name.upper()
-                if param_name == "FORMAT":
-                    params["file_format"] = str(param.expression)
-                elif param_name == "NOLOAD":
-                    params["with_data"] = False
-        return params
+    def get_params(self, expr: exp.Copy) -> CopyQueryParameters:
+        return CopyQueryParameters.from_expression(expr)
 
 
     def get_source_and_target(self, expr: exp.Copy, dialect: str) -> t.Tuple[SourceExprType, TargetExprType]:
@@ -86,3 +132,7 @@ class CopyQuery(Query):
         target = target.unnest()
 
         return source, target
+
+    def is_query_active(self) -> bool:
+        logger.debug(self.parameters)
+        return self.parameters.is_active

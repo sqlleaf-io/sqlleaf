@@ -377,7 +377,7 @@ def test_copy_with_format_csv(holder):
         "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
     ]
     query: CopyQuery = h.holders[1].original
-    assert query.file_format.lower() == "csv"
+    assert query.parameters.file_format.lower() == "csv"
 
 
 # TODO: COPY FROM SELECT * FROM UDF()

@@ -41,6 +41,14 @@ class SqlObjectType(StrEnum):
     SET = auto()  # Temporary
     TUPLE = auto()  # Temporary
 
+    @classmethod
+    def types_with_no_column_defs(cls) -> t.List:
+        """
+        Return all the types that do not define any columns of their own.
+        """
+        # Are these also the external systems?
+        return [cls.FILE, cls.PROGRAM, cls.STAGE, cls.STREAM]
+
 
 
 @dataclass(frozen=True)

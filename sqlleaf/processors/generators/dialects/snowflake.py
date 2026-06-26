@@ -36,7 +36,7 @@ class SnowflakeGenerator(BaseGenerator):
         source = gen_ctx.query.source_info.expression
         target = gen_ctx.query.target_info.expression
 
-        file_format = gen_ctx.query.get_original_self().file_format
+        file_format = gen_ctx.query.get_original_self().parameters.file_format
 
         file_ctx = replace(gen_ctx, expr=source)
         stage_ctx = replace(gen_ctx, expr=target)

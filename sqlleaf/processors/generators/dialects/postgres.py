@@ -174,35 +174,20 @@ class PostgresGenerator(BaseGenerator):
         COPY x FROM/TO y
         """
         source_info: SourceInfo = gen_ctx.query.source_info
-        source_expression = source_info.expression
 
-        if source_info.type == SqlObjectType.STREAM:
-            node = StreamNode(
-                name=source_expression.name,
+        if source_info.type in SqlObjectType.types_with_no_column_defs():
+            if source_info.type == SqlObjectType.FILE:
+                gen_ctx = replace(
+                    gen_ctx, expr=source_info.expression, new_data_type=gen_ctx.get_child_node().get_data_type()
+                )
+
+            node = self.create_node_from_type(
+                object_type=source_info.type,
+                expression=source_info.expression,
+                column_name=gen_ctx.get_child_node().name,
                 gen_ctx=gen_ctx,
                 pos_ctx=pos_ctx,
             )
             yield EdgeToCreate(node, gen_ctx.child_node)
-
-        elif source_info.type == SqlObjectType.FILE:
-            # A filename. Create a file node.
-            gen_ctx = replace(gen_ctx, expr=source_expression, new_data_type=gen_ctx.get_child_node().get_data_type())
-            file_format = gen_ctx.query.get_original_self().file_format
-            node = FileColumnNode(
-                column=gen_ctx.get_child_node().name,
-                file_format=file_format,
-                file_path=source_expression.name,
-                gen_ctx=gen_ctx,
-                pos_ctx=pos_ctx,
-            )
-            yield EdgeToCreate(node, gen_ctx.child_node)
-
-        elif source_info.type == SqlObjectType.PROGRAM:
-            node = ProgramNode(
-                gen_ctx=gen_ctx,
-                pos_ctx=pos_ctx,
-            )
-            yield EdgeToCreate(node, gen_ctx.child_node)
-
         else:
             yield from super().process(expr, gen_ctx, pos_ctx)
