@@ -8,7 +8,7 @@ from sqlleaf.typing import SqlObjectType, TargetInfo
 
 
 class SchemaQuery(Query):
-    KIND = "schem"
+    KIND = "schema"
 
     def __init__(
         self,

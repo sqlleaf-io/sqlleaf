@@ -36,9 +36,19 @@ class StageQuery(Query):
         self.column_defs: t.List[exp.ColumnDef] = []
         # Needed due to a bug in sqlglot. Never access the table name via print()!
         #  as it prints double-double quotes
-        stage_name = str(self.get_target_expression().this)
-        self.get_target_expression().this.set("this", "@" + stage_name)
-        self.get_target_expression().this.set("quoted", False)
+        target.this.set("this", "@" + str(target.this))
+        target.this.set("quoted", False)
 
-        self.property = util.find_property(expr, self.get_target_expression(), dialect)
-        self.path = util.find_stage_path(expr)
+        self.property = util.find_property(expr, target, dialect)
+        self.path = find_stage_path(expr)
+
+
+def find_stage_path(statement: exp.Create) -> str:
+    """
+    Get the URL property for Snowflake stages.
+    """
+    if props := statement.args.get("properties"):
+        for prop in props.expressions:
+            if isinstance(prop, exp.Property) and prop.name.upper() == "URL":
+                return prop.args["value"].this
+    return ""

@@ -82,6 +82,7 @@ class CopyQuery(Query):
 
     def __init__(self, expr: exp.Copy, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
         source, target = self.get_source_and_target_expressions(expr, dialect)
+
         if dialect == "snowflake":
             util.rename_if_stage(source, target)
 

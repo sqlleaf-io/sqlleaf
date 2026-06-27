@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import typing as t
-from dataclasses import dataclass
 
 if t.TYPE_CHECKING:
     from sqlleaf.models.query import QueryHolder
@@ -13,16 +12,6 @@ from sqlleaf import exception, mappings, util
 from sqlleaf.typing import SourceExprType, SourceInfo, SqlObjectType, TargetExprType, TargetInfo
 
 logger = logging.getLogger("sqlleaf")
-
-
-# TODO: put this in every Node class?
-@dataclass(frozen=True)
-class TargetObject:
-    type: SqlObjectType
-    # This is not the *actual* target: it's just what was used to derive the columns,
-    # as the source will need to act as the target if the target isn't a table.
-    object: TargetExprType | SourceExprType
-    columns: t.List[exp.ColumnDef]
 
 
 class Query:
@@ -134,7 +123,7 @@ class Query:
     def get_substituted_self(self) -> Query | None:
         return self.holder.substituted
 
-    def get_target_object(self) -> TargetObject:
+    def get_columns_from_target(self) -> t.List[exp.ColumnDef]:
         """
         Given a query, figure out its target object, including its columns.
 
@@ -156,11 +145,7 @@ class Query:
         if not column_defs:
             raise exception.SqlLeafException(f"Could not find any columns for expression: {object_with_columns}")
 
-        return TargetObject(
-            type=target_type,
-            object=object_with_columns,
-            columns=column_defs,
-        )
+        return column_defs
 
     def _get_column_defs(
         self,

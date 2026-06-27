@@ -31,8 +31,8 @@ class CopyTransformer(BaseQueryTransformer):
         query = self.query
         dialect = query.dialect
 
-        target_object = query.get_target_object()
-        column_names = [col.name for col in target_object.columns]
+        target_columns = query.get_columns_from_target()
+        column_names = [col.name for col in target_columns]
 
         # Transform to a SELECT
         src = query.source_info.expression
@@ -40,7 +40,7 @@ class CopyTransformer(BaseQueryTransformer):
             select = src
         else:
             # Add the column names from the target object
-            columns = [util.column_def_to_column(c.copy()) for c in target_object.columns]
+            columns = [util.column_def_to_column(c.copy()) for c in target_columns]
             for c in columns:
                 c.set("catalog", "")
                 c.set("schema", "")

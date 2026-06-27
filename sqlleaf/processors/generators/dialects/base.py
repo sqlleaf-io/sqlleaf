@@ -498,27 +498,28 @@ class BaseGenerator:
         # Both COPY and UNLOAD can have SELECTs as their sources, which have arbitrary
         # columns that vary in length due to their sourcing from any table.
         query = gen_ctx.query
+        target_type = query.target_info.type
         expr = query.get_target_expression()
-        target_object = query.get_target_object()
+        target_columns = query.get_columns_from_target()
 
         select_idx = 0
 
         # Iterate over every column and yield it if it is referenced in the query.
-        for col_def in target_object.columns:
+        for col_def in target_columns:
             selected_node = None
             default_node = None
             gen_ctx = replace(gen_ctx, expr=col_def)
             pos_ctx = replace(pos_ctx, select_index=select_idx)
 
-            # logger.debug(f"Iter nodes - found node: {target_object.type}")
+            # logger.debug(f"Iter nodes - found node: {target_type}")
             child_node = self.create_node_from_type(
-                object_type=target_object.type,
+                object_type=target_type,
                 expression=expr,
                 column_name=col_def.name,
                 gen_ctx=gen_ctx,
                 pos_ctx=pos_ctx,
             )
-            process_defaults = target_object.type == SqlObjectType.TABLE
+            process_defaults = target_type == SqlObjectType.TABLE
 
             if col_def.name in util.get_selected_column_names(query.statement) or isinstance(query, TableQuery):
                 # Check if the column is selected.

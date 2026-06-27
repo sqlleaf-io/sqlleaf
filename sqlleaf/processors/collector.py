@@ -500,13 +500,14 @@ def _process_unnamed(
                 "such as an INSERT, to contain lineage."
             )
     elif isinstance(statement, exp.Select):
-        query = SelectQuery(
-            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
-        )
         if not statement.find(exp.Insert, exp.Update, exp.Merge, exp.Delete):
             logging.warning(
                 "Skipping statement: A SELECT query must have a data-modifying statement, "
                 "such as an INSERT, to contain lineage."
+            )
+        else:
+            query = SelectQuery(
+                expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
             )
     elif isinstance(statement, exp.Copy):
         query = CopyQuery(

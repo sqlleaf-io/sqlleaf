@@ -28,6 +28,7 @@ class InsertQuery(Query):
         else:
             source = expr.args["source"]
 
+        # Set the correct source type. Hacky, but works for now
         is_default_values = expr.args.get("default", False)
         if is_default_values:
             source_type = SqlObjectType.VALUES
