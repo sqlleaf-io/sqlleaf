@@ -189,6 +189,9 @@ COPY
 DO
 - not supported by sqlglot
 
+ROW
+  - [x] Simplify
+
 
 ### Redshift
 [ ] ALTER TABLE ... APPEND

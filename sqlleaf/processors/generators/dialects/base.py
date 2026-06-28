@@ -322,6 +322,10 @@ class BaseGenerator:
                 source_table = dict(gen_ctx.scope.references).get(expr.table)
 
             if source_table:
+                # if isinstance(source_table, exp.Unnest):
+                #     # UNNEST sources cannot be traced back to individual source columns;
+                #     # yield no edges and stop processing (known limitation).
+                #     return
                 if not isinstance(source_table, (exp.Table, exp.Values, exp.Subquery, exp.Select, exp.Lateral)):
                     raise exception.SqlLeafException(message=f"Unexpected source type: {type(source_table)}")
 

@@ -12,7 +12,7 @@ from sqlleaf.models.query import Q
 from sqlleaf.processors.transformers import resolver
 from sqlleaf.typing import E
 
-# from sqlleaf.processors.transformers.row import _simplify_row_composite_access
+from sqlleaf.processors.transformers.simplify import simplify_row
 
 logger = logging.getLogger("sqlleaf")
 
@@ -38,37 +38,35 @@ class BaseQueryTransformer:
 
     def transform(self) -> exp.Expr:
         """
-        Default transform for pass-through query types (e.g. TableQuery).
-        Subclasses override this to add query-type-specific logic.
-        Post-processing (_add_aliases_to_udfs + _apply_optimizations) is applied
-        by the caller via _postprocess().
+        Default transformation function that subclasses override to add query-type-specific logic.
         """
         return self.statement
 
+    def _preprocess(self) -> None:
+        """
+        Run a set of transformations over every statement
+        BEFORE the type-specific transformations.
+        """
+        self.statement = self._convert_table_to_select()
+
+        # Remove any FILTER clauses (not used for lineage)
+        for filter_expr in self.statement.find_all(exp.Filter):
+            filter_expr.replace(filter_expr.this)
+
+        # Remove WHERE clauses (not used for lineage)
+        for where_expr in self.statement.find_all(exp.Where):
+            where_expr.pop()
+
+        simplify_row(self.statement, self.query)
+
     def _postprocess(self, stmt: exp.Expr) -> exp.Expr:
         """
-        Universal post-processing applied after every type-specific transform.
-        Updates self.statement, runs _add_aliases_to_udfs, then _apply_optimizations.
+        Run a set of transformations over every statement
+        AFTER the type-specific transformations.
         """
         self.statement = stmt
         self._add_aliases_to_udfs()
         return self._apply_optimizations(stmt)
-
-    def _preprocess(self) -> None:
-        """
-        Universal pre-processing applied to every statement before type-specific transform.
-        - Runs _convert_table_to_select.
-        - Removes FILTER and WHERE clauses.
-        Updates self.statement in place.
-        """
-        self.statement = self._convert_table_to_select()
-        # Remove any FILTER clauses (aggregate filters not used for lineage)
-        for filter_expr in self.statement.find_all(exp.Filter):
-            filter_expr.replace(filter_expr.this)
-        # Remove WHERE clauses (not used for column-level lineage)
-        for where_expr in self.statement.find_all(exp.Where):
-            where_expr.pop()
-        # _simplify_row_composite_access(self.statement, self.query)
 
     def _validate_syntax(func):
         """
