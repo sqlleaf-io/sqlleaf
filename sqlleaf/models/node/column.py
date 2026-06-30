@@ -26,6 +26,7 @@ class ColumnNode(NodeAttributes):
         column: str,
         gen_ctx: GeneratorContext,
         pos_ctx: PositionContext,
+        source: TableOrScopeType | exp.Values | exp.Select | exp.Subquery | exp.Lateral | None = None,
     ):
         super().__init__(gen_ctx, pos_ctx, name=column)
         self.catalog = catalog
@@ -37,7 +38,9 @@ class ColumnNode(NodeAttributes):
         self.parent_subkind: str = ""
         self.source_scope: TableOrScopeType | None = None
 
-        self.set_table_properties(catalog, schema, table, gen_ctx)
+        self.set_table_properties(catalog, schema, table, gen_ctx, source=source)
+        if source is not None and not isinstance(source, (exp.Subquery, Scope)):
+            self._apply_rename(source, gen_ctx.query.dialect)
 
         # TODO: new algorithm
         # if table_type == "cte":
@@ -52,7 +55,9 @@ class ColumnNode(NodeAttributes):
         })
         return d
 
-    def rename_table(self, source: exp.Table | exp.Values, dialect: str) -> None:
+    def _apply_rename(
+        self, source: exp.Table | exp.Values | exp.Select | exp.Lateral, dialect: str
+    ) -> None:
         """
         Change the column's source table to be its fully qualified name, not its alias,
         so that the ColumnNode is provided complete information.
@@ -79,70 +84,139 @@ class ColumnNode(NodeAttributes):
             self.schema = column.db
             self.table = column.table
 
-    def set_table_properties(self, catalog: str, schema: str, table: str, gen_ctx: GeneratorContext) -> None:
+    def set_table_properties(
+        self,
+        catalog: str,
+        schema: str,
+        table: str,
+        gen_ctx: GeneratorContext,
+        source: TableOrScopeType | exp.Values | exp.Select | exp.Subquery | exp.Lateral | None = None,
+    ) -> None:
         """
-        Figure out the table's type (view/table) by inspecting the original query in the mapping.
+        Figure out the table's kind (view, table, etc) and its subkind (temp, recursive, etc) by
+        inspecting the query's scope and the mapping.
         """
-        tokens = []
         scope = gen_ctx.scope
+
+        # logical_source is what we use to determine CTE/UDTF etc.
+        logical_source = source
         if isinstance(scope, Scope):
-            source = scope.sources.get(table)
-            if not source:
+            # Always try to get the Scope from sources if it exists for this alias
+            logical_source = scope.sources.get(table) or source
+
+            if not logical_source:
                 # Nested 'rows_from' queries have their aliases in 'references'
-                self.source_scope = dict(scope.references).get(table)  # tyy: ignore[invalid-assignment]
+                logical_source = dict(scope.references).get(table)
+
+        self.source_scope = logical_source
+
+        # If it's in references but NOT in sources, it's a derived table (e.g. ROWS FROM)
+        if (
+            logical_source is not None
+            and isinstance(scope, Scope)
+            and table not in scope.sources
+            and table in dict(scope.references)
+        ):
+            self.parent_kind = TableType.DERIVED_TABLE
+            return
+
+        # Determine logical properties (CTE, UDTF, Derived Table)
+        if self._set_kind_of_derived_table(logical_source, table, gen_ctx):
+            return
+
+        # Determine physical properties from object mapping (TABLE, VIEW, etc.)
+        # Use 'source' (the exp.Expr) if available for physical name resolution
+        self._set_kind_of_physical_table(catalog, schema, table, source or logical_source, gen_ctx)
+
+    def _set_kind_of_derived_table(
+        self,
+        source: TableOrScopeType | exp.Values | exp.Select | exp.Subquery | exp.Lateral | None,
+        table: str,
+        gen_ctx: GeneratorContext,
+    ) -> bool:
+        """
+        Identify if the source is a logical entity such as a CTE, UDTF, or derived table and set its properties.
+        """
+        if isinstance(source, Scope):
+            if isinstance(source.expression, exp.Values):
                 self.parent_kind = TableType.DERIVED_TABLE
-                return
+                return True
 
-            self.source_scope: TableOrScopeType = source
+            if source.scope_type == ScopeType.CTE:
+                self._set_cte_properties(source, table, gen_ctx)
+                return True
 
-            if isinstance(source, exp.Table):
-                tokens = [str(s) for s in source.parts]
-                if "rows_from" in source.args:
-                    self.parent_kind = TableType.DERIVED_TABLE
-                    return
+            if source.scope_type == ScopeType.DERIVED_TABLE:
+                self.parent_kind = TableType.DERIVED_TABLE
+                return True
 
-            elif isinstance(source, Scope):
-                if isinstance(source.expression, exp.Values):
-                    self.parent_kind = TableType.DERIVED_TABLE
-                    return
-                elif source.scope_type == ScopeType.CTE:
-                    selected_table, _ = scope.selected_sources.get(table, (None, None))
-                    if not selected_table:
-                        message = f"Table '{table}' is referenced but there is no FROM containing it."
-                        raise exception.SqlLeafException(message=message)
+            if source.scope_type == ScopeType.UDTF:
+                self.parent_kind = TableType.UDTF
+                return True
 
-                    logger.debug("Set node to be a CTE.")
-                    self.parent_kind = TableType.CTE
+        if isinstance(source, exp.Table) and "rows_from" in source.args:
+            self.parent_kind = TableType.DERIVED_TABLE
+            return True
 
-                    # Check if the CTE is a subtype
-                    if source.parent:
-                        for cte in source.parent.ctes:
-                            if cte.alias_or_name == selected_table.name:
-                                if cte.args["materialized"]:
-                                    self.parent_subkind = TableSubtype.MATERIALIZED
-                                else:
-                                    with_ = cte.parent
-                                    if isinstance(with_, exp.With) and with_.recursive:
-                                        # TODO: requires new algorithm
-                                        logger.debug("Set node to be a recursive CTE.")
-                                        self.parent_subkind = TableSubtype.RECURSIVE
-                                break
-                    return
+        if isinstance(source, (exp.Select, exp.Subquery, exp.Values)):
+            self.parent_kind = TableType.DERIVED_TABLE
+            return True
 
-                elif source.scope_type == ScopeType.DERIVED_TABLE:
-                    # PIVOT
-                    self.parent_kind = TableType.DERIVED_TABLE
-                    return
+        return False
 
-                elif source.scope_type == ScopeType.UDTF:
-                    self.parent_kind = TableType.UDTF
-                    return
+    def _set_cte_properties(self, source: Scope, table: str, gen_ctx: GeneratorContext) -> None:
+        """
+        Resolve and set properties specific to Common Table Expressions, including recursive and materialized status.
+        """
+        self.parent_kind = TableType.CTE
+        logger.debug("Set node to be a CTE.")
 
+        # Check if it's recursive or materialized
+        if not source.parent:
+            return
+
+        scope = gen_ctx.scope
+        if not isinstance(scope, Scope):
+            return
+
+        selected_table, _ = scope.selected_sources.get(table, (None, None))
+        if not selected_table:
+            message = f"Table '{table}' is referenced but there is no FROM containing it."
+            raise exception.SqlLeafException(message=message)
+
+        for cte in source.parent.ctes:
+            if cte.alias_or_name == selected_table.name:
+                if cte.args.get("materialized"):
+                    self.parent_subkind = TableSubtype.MATERIALIZED
+                else:
+                    with_ = cte.parent
+                    if isinstance(with_, exp.With) and with_.recursive:
+                        logger.debug("Set node to be a recursive CTE.")
+                        self.parent_subkind = TableSubtype.RECURSIVE
+                break
+
+    def _set_kind_of_physical_table(
+        self,
+        catalog: str,
+        schema: str,
+        table: str,
+        source: TableOrScopeType | exp.Values | exp.Select | exp.Subquery | exp.Lateral | None,
+        gen_ctx: GeneratorContext,
+    ) -> None:
+        """
+        Determine the physical type of the table, such as a base table or view, by resolving its name against the object mapping.
+        """
+        if isinstance(source, exp.Table):
+            tokens = [str(s) for s in source.parts]
         else:
             tokens = [catalog, schema, table]
 
         # Get the table type from the mapping
         name = ".".join([tok for tok in tokens if tok])
+        if not name:
+            self.parent_kind = TableType.TABLE
+            return
+
         tab = exp.to_table(name, dialect=gen_ctx.query.dialect)
         query = gen_ctx.query.object_mapping.get_table_or_stage(table=tab, raise_on_missing=False)
 

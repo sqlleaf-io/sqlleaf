@@ -26,16 +26,8 @@ def test__row_default_aliases(holder):
         "INSERT INTO dest (b, c) SELECT t.f2 AS b, t.f3 AS c FROM (SELECT 25 AS f2, 10.0 AS f3) AS t"
     )
     assert h.paths == [
-        [
-            "literal[25]",
-            "column[t.f2]",
-            "column[dest.b]",
-        ],
-        [
-            "literal[10.0]",
-            "column[t.f3]",
-            "column[dest.c]",
-        ],
+        ["literal[25]", "column[t.f2]", "column[dest.b]"],
+        ["literal[10.0]", "column[t.f3]", "column[dest.c]"],
     ]
 
 
@@ -51,21 +43,9 @@ def test__row_default_aliases_star(holder):
         "INSERT INTO dest (a, b, c) SELECT t.f1 AS a, t.f2 AS b, t.f3 AS c FROM (SELECT 5 AS f1, 25 AS f2, 10.0 AS f3) AS t"
     )
     assert h.paths == [
-        [
-            "literal[5]",
-            "column[t.f1]",
-            "column[dest.a]",
-        ],
-        [
-            "literal[25]",
-            "column[t.f2]",
-            "column[dest.b]",
-        ],
-        [
-            "literal[10.0]",
-            "column[t.f3]",
-            "column[dest.c]",
-        ],
+        ["literal[5]", "column[t.f1]", "column[dest.a]"],
+        ["literal[25]", "column[t.f2]", "column[dest.b]"],
+        ["literal[10.0]", "column[t.f3]", "column[dest.c]"],
     ]
 
 

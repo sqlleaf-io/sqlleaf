@@ -304,16 +304,7 @@ class BaseGenerator:
             # The actual placeholder is processed elsewhere
             return
 
-        parent = ColumnNode(
-            catalog=expr.catalog,
-            schema=expr.db,
-            table=expr.table,
-            column=expr.name,
-            gen_ctx=gen_ctx,
-            pos_ctx=pos_ctx,
-        )
-
-        # Rename the column's table/schema/catalog to be fully qualified
+        source_table = None
         if gen_ctx.scope and isinstance(gen_ctx.scope, Scope):
             # Lateral queries are processed differently
             if gen_ctx.scope.scope_type == ScopeType.UDTF and isinstance(gen_ctx.scope.expression, exp.Lateral):
@@ -322,15 +313,18 @@ class BaseGenerator:
                 source_table = dict(gen_ctx.scope.references).get(expr.table)
 
             if source_table:
-                # if isinstance(source_table, exp.Unnest):
-                #     # UNNEST sources cannot be traced back to individual source columns;
-                #     # yield no edges and stop processing (known limitation).
-                #     return
                 if not isinstance(source_table, (exp.Table, exp.Values, exp.Subquery, exp.Select, exp.Lateral)):
                     raise exception.SqlLeafException(message=f"Unexpected source type: {type(source_table)}")
 
-                if not isinstance(source_table, exp.Subquery):
-                    parent.rename_table(source_table, gen_ctx.query.dialect)
+        parent = ColumnNode(
+            catalog=expr.catalog,
+            schema=expr.db,
+            table=expr.table,
+            column=expr.name,
+            gen_ctx=gen_ctx,
+            pos_ctx=pos_ctx,
+            source=source_table,
+        )
 
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
