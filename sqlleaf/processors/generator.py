@@ -194,8 +194,8 @@ def walk_query_scope(column: exp.Column | int, scope: Scope) -> t.Generator[Scop
         expression=select.unalias(),
         scope=scope,
     )
+    logger.debug("Yielding regular expression: '%s', Expr: %s, Id: %s", column, select.sql(), id(st))
     yield st
-    logger.debug("[1] Created Node '%s', Expr: %s, Id: %s", column, select.sql(), id(st))
 
 
 def walk_expressions_and_build_graph(
