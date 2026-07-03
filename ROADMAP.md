@@ -153,6 +153,8 @@ CREATE FUNCTION (language SQL)
   - [ ] Inner statement parsing
   - [ ] Function parameters (IN, OUT, INOUT)
   - [ ] Empty call args are NULL: (,1,2) => (NULL,1,2)
+  - [ ] INSERT RETURNING
+  - [ ] Must return data unless void return type
 
 CREATE PROCEDURE (language SQL)
 
@@ -311,6 +313,18 @@ Types:
 - [ ] PUT
 - [ ] GET
 - [ ] Multi-table INSERT
+
+
+IDENTIFIER
+- [ ] CREATE TABLE <>
+- [ ] INSERT INTO <>
+- [ ] SELECT FROM <>
+- [ ] SELECT IDENTIFIER($my_function_name)();
+
+CREATE FUNCTION
+
+COPY INTO
+
 
 ### Athena
 [ ] External connectors
