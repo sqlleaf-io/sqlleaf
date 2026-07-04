@@ -25,10 +25,6 @@ class _PivotNode(NodeAttributes):
     def get_name(self) -> str:
         return ""
 
-    @property
-    def full_name(self):
-        fields = " ".join([f"{k}={v}" for k, v in self.fields().items()])
-        return self.wrap(fields)
 
 
 class PivotNode(_PivotNode):

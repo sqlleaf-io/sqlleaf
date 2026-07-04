@@ -49,10 +49,10 @@ def test_copy_dynamodb(holder):
         ["column[age path=dynamodb://MyTable]", "column[fruit.simple.age]"],
     ]
     assert h.nodes_full == [
-        "column[age type=INT kind=dynamodb table=MyTable]",
-        "column[name type=VARCHAR kind=dynamodb table=MyTable]",
-        "column[name=age table=simple schema=fruit type=INT kind=table]",
-        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+        "column[name=age type=INT properties=[kind=dynamodb table=MyTable]]",
+        "column[name=name type=VARCHAR properties=[kind=dynamodb table=MyTable]]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
     ]
 
 
@@ -107,10 +107,10 @@ def test_copy_parquet(holder):
         ["column[age path=s3://bucket/data.parquet]", "column[fruit.simple.age]"],
     ]
     assert h.nodes_full == [
-        "column[age type=INT kind=file format=PARQUET path=s3://bucket/data.parquet]",
-        "column[name type=VARCHAR kind=file format=PARQUET path=s3://bucket/data.parquet]",
-        "column[name=age table=simple schema=fruit type=INT kind=table]",
-        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+        "column[name=age type=INT properties=[kind=file format=PARQUET path=s3://bucket/data.parquet]]",
+        "column[name=name type=VARCHAR properties=[kind=file format=PARQUET path=s3://bucket/data.parquet]]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
     ]
 
 

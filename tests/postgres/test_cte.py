@@ -209,8 +209,14 @@ def test__cte_two_same_name_different_query(holder):
         ["literal[1]", "column[cte1.name]", "column[fruit.processed.name]"],
         ["literal[2]", "column[cte1.name]", "column[fruit.raw.name]"],
     ]
-    assert "column[name=name table=cte1 type=INT kind=cte statement=0]" in h.nodes_full
-    assert "column[name=name table=cte1 type=INT kind=cte statement=1]" in h.nodes_full
+    assert h.nodes_full == [
+        'literal[name=1 type=INT position=[query_depth=1 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]',
+        'literal[name=2 type=INT position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]',
+        'column[name=name type=INT properties=[kind=cte table=cte1 statement=0]]',
+        'column[name=name type=INT properties=[kind=cte table=cte1 statement=1]]',
+        'column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]',
+        'column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]'
+    ]
     assert [InsertQuery, InsertQuery] == h.query_types
     assert len(h.nodes) == 6
     assert len(h.edges) == 4
@@ -645,20 +651,20 @@ def test__cte_insert_and_update_inside_select(holder):
 #         [
 #             "literal[1 type=INT query_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
 #             "column[numbers.n type=INT kind=cte member=anchor statement=0]",
-#             "column[fruit.processed.age type=INT kind=table]",
+#             "column[fruit.processed.age type=INT ]",
 #         ],
 #         [
 #             "literal[1 type=INT query_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
 #             "column[numbers.n type=INT kind=cte member=anchor statement=0]",
 #             "function[ADD type=INT query_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
 #             "column[numbers.n type=INT kind=cte member=recursive statement=0]",
-#             "column[fruit.processed.age type=INT kind=table]",
+#             "column[fruit.processed.age type=INT ]",
 #         ],
 #         [
 #             "literal[1 type=INT query_depth=1 statement=0 select=0 func_depth=1 func_arg=1]",
 #             "function[ADD type=INT query_depth=1 statement=0 select=0 func_depth=0 func_arg=0]",
 #             "column[numbers.n type=INT kind=cte member=recursive statement=0]",
-#             "column[fruit.processed.age type=INT kind=table]",
+#             "column[fruit.processed.age type=INT ]",
 #         ],
 #     ]
 
@@ -680,6 +686,10 @@ def test__cte_materialized(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [["literal[1]", "column[cte.n]", "column[fruit.processed.age]"]]
-    assert "column[name=n table=cte type=INT kind=cte subkind=materialized statement=0]" in h.nodes_full
+    assert h.nodes_full == [
+        'literal[name=1 type=INT position=[query_depth=1 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]',
+        'column[name=n type=INT properties=[kind=cte subkind=materialized table=cte statement=0]]',
+        'column[name=age type=INT properties=[kind=table table=processed schema=fruit]]'
+    ]
     assert len(h.nodes) == 3
     assert len(h.edges) == 2

@@ -25,9 +25,9 @@ def test__json_one_selector(holder):
         ]
     ]
     assert h.nodes_full == [
-        "jsonpath[.fruits depth=1]",
-        "column[name=name table=processed schema=fruit type=VARCHAR kind=table]",
-        "column[name=jsonblob table=raw schema=fruit type=JSONB kind=table]",
+        "jsonpath[name=.fruits properties=[depth=1]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]",
+        "column[name=jsonblob type=JSONB properties=[kind=table table=raw schema=fruit]]",
     ]
 
 
@@ -41,9 +41,9 @@ def test__json_two_selectors(holder):
 
     assert h.paths == [["column[fruit.raw.jsonblob]", "jsonpath[.fruits.apple]", "column[fruit.processed.name]"]]
     assert h.nodes_full == [
-        "jsonpath[.fruits.apple depth=2]",
-        "column[name=name table=processed schema=fruit type=VARCHAR kind=table]",
-        "column[name=jsonblob table=raw schema=fruit type=JSONB kind=table]",
+        "jsonpath[name=.fruits.apple properties=[depth=2]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]",
+        "column[name=jsonblob type=JSONB properties=[kind=table table=raw schema=fruit]]",
     ]
 
 
@@ -67,9 +67,9 @@ def test__json_subscript_nested(holder):
         ]
     ]
     assert h.nodes_full == [
-        # "jsonpath[.user.email depth=2]",
-        "column[name=data table=source type=JSONB kind=table]",
-        "column[name=email table=target type=TEXT kind=table]",
+        # "jsonpath[name=.user.email properties=[depth=2]]",
+        "column[name=data type=JSONB properties=[kind=table table=source]]",
+        "column[name=email type=TEXT properties=[kind=table table=target]]",
     ]
 
 

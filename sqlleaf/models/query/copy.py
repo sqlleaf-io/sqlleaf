@@ -117,6 +117,7 @@ class CopyQuery(Query):
         """
         if dialect in ["postgres", "redshift"]:
             # Postgres treats STDOUT and STDIN the same
+
             if expr.args["kind"]:
                 # COPY X FROM STDOUT/STDIN
                 source = expr.args["files"][0]

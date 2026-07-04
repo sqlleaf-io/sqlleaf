@@ -11,4 +11,7 @@ class LiteralNode(NodeAttributes):
         return {"type": self.data_type}
 
     def get_name(self) -> str:
-        return self.name.replace("'", '"')
+        if self.expr.is_string:
+            return f'"{self.name.replace("'", "")}"'
+        else:
+            return self.name

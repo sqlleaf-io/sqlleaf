@@ -20,8 +20,8 @@ def test__window_qualify(holder):
 
     assert h.paths == [["column[fruit.raw.name]", "column[fruit.processed.name]"]]
     assert h.nodes_full == [
-        "column[name=name table=processed schema=fruit type=VARCHAR kind=table]",
-        "column[name=name table=raw schema=fruit type=VARCHAR kind=table]",
+        "column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]",
     ]
     assert len(h.nodes) == 2
     assert len(h.edges) == 1

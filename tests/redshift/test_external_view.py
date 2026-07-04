@@ -21,10 +21,10 @@ def test__external_view(holder):
         ["column[fruit.raw.age]", "column[fruit.ext_view.age]"],
     ]
     assert h.nodes_full == [
-        "column[name=age table=ext_view schema=fruit type=INT kind=view subkind=external]",
-        "column[name=name table=ext_view schema=fruit type=VARCHAR kind=view subkind=external]",
-        "column[name=age table=raw schema=fruit type=INT kind=table]",
-        "column[name=name table=raw schema=fruit type=VARCHAR kind=table]",
+        "column[name=age type=INT properties=[kind=view subkind=external table=ext_view schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=view subkind=external table=ext_view schema=fruit]]",
+        "column[name=age type=INT properties=[kind=table table=raw schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]",
     ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 2

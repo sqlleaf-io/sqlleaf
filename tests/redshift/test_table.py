@@ -35,10 +35,10 @@ def test__ctas_distkey_sortkey(holder):
         ["column[fruit.raw.age]", "column[banana.age]"],
     ]
     assert h.nodes_full == [
-        "column[name=age table=banana type=INT kind=table]",
-        "column[name=name table=banana type=VARCHAR kind=table]",
-        "column[name=age table=raw schema=fruit type=INT kind=table]",
-        "column[name=name table=raw schema=fruit type=VARCHAR kind=table]",
+        "column[name=age type=INT properties=[kind=table table=banana]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=banana]]",
+        "column[name=age type=INT properties=[kind=table table=raw schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]",
     ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
@@ -54,8 +54,8 @@ def test__ctas_temporary(holder):
         ["column[fruit.raw.name]", "column[#banana.name]"],
         ["column[fruit.raw.age]", "column[#banana.age]"],
     ]
-    assert "column[name=age table=#banana type=INT kind=table subkind=temporary]" in h.nodes_full
-    assert "column[name=name table=#banana type=VARCHAR kind=table subkind=temporary]" in h.nodes_full
+    assert "column[name=age type=INT properties=[kind=table subkind=temporary table=#banana]]" in h.nodes_full
+    assert "column[name=name type=VARCHAR properties=[kind=table subkind=temporary table=#banana]]" in h.nodes_full
 
     assert len(h.nodes) == 4
     assert len(h.edges) == 2

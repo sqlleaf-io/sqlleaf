@@ -57,12 +57,12 @@ class Query:
         For example, the literal "/tmp/data.csv" is of type FILE; identifier "STDIN" is of type STREAM.
         """
         if isinstance(expr, exp.Literal):
-            _type = SqlObjectType.DYNAMODB if expr.this.startswith("dynamodb://") else SqlObjectType.FILE
+            _type = SqlObjectType.DYNAMODB if expr.this.lower().startswith("dynamodb://") else SqlObjectType.FILE
 
         elif isinstance(expr, exp.Identifier):
-            if expr.name in ["stdin", "stdout"]:
+            if expr.name.lower() in ["stdin", "stdout"]:
                 _type = SqlObjectType.STREAM
-            elif expr.name in ["program"]:
+            elif expr.name.lower() in ["program"]:
                 _type = SqlObjectType.PROGRAM
             else:
                 raise exception.SqlLeafException(f"Unknown object type identifier: {expr.name}")

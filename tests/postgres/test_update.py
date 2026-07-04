@@ -143,7 +143,7 @@ def test__update_self_join(holder):
     assert h.paths == [
         ["column[fruit.processed.age]", "column[fruit.processed.age]"],
     ]
-    assert h.nodes_full == ["column[name=age table=processed schema=fruit type=INT kind=table]"]
+    assert h.nodes_full == ["column[name=age type=INT properties=[kind=table table=processed schema=fruit]]"]
     assert len(h.edges) == 1
     assert [UpdateQuery] == h.query_types
 
@@ -164,8 +164,8 @@ def test__update_with_values(holder):
         ["literal[10]", "column[v.new_age]", "column[fruit.processed.age]"],
         ["literal[20]", "column[v.new_age]", "column[fruit.processed.age]"],
     ]
-    assert "column[name=new_age table=v type=INT kind=derived_table]" in h.nodes_full
-    assert "column[name=new_name table=v type=VARCHAR kind=derived_table]" in h.nodes_full
+    assert "column[name=new_age type=INT properties=[kind=derived_table table=v]]" in h.nodes_full
+    assert "column[name=new_name type=VARCHAR properties=[kind=derived_table table=v]]" in h.nodes_full
     assert len(h.nodes_full) == 8
     assert len(h.edges) == 6
 
@@ -231,11 +231,11 @@ def test__update_multiple_columns_from_select(holder):
         ["column[fruit.raw.age]", "column[fruit.processed.age]"],
     ]
     assert h.nodes_full == [
-        "function[UPPER type=VARCHAR query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]",
-        "column[name=age table=processed schema=fruit type=INT kind=table]",
-        "column[name=name table=processed schema=fruit type=VARCHAR kind=table]",
-        "column[name=age table=raw schema=fruit type=INT kind=table]",
-        "column[name=name table=raw schema=fruit type=VARCHAR kind=table]",
+        "function[name=UPPER type=VARCHAR position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]",
+        "column[name=age type=INT properties=[kind=table table=processed schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]",
+        "column[name=age type=INT properties=[kind=table table=raw schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]",
     ]
 
     assert (

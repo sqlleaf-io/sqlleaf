@@ -30,10 +30,10 @@ def test_type_composite(holder, case: str):
         ["literal[5]", "udf[ROW]", "column[target.name]"],
     ]
     assert h.nodes_full == [
-        'literal["apple" type=VARCHAR query_depth=0 query_width=0 statement=2 select=0 func_depth=1 func_arg=0]',
-        "literal[5 type=INT query_depth=0 query_width=0 statement=2 select=0 func_depth=1 func_arg=1]",
-        "udf[ROW type=UNKNOWN query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]",
-        f"column[name=name table=target type={case}fruit kind=table]",
+        'literal[name="apple" type=VARCHAR position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=1 func_arg=0]]',
+        "literal[name=5 type=INT position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=1 func_arg=1]]",
+        "udf[name=ROW type=UNKNOWN position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]",
+        f"column[name=name type={case}fruit properties=[kind=table table=target]]",
     ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 3
@@ -58,12 +58,12 @@ def test_type_composite_nested(holder):
         ['literal["new"]', "udf[ROW]", "udf[ROW]", "function[CAST]", "column[target.some]"],
     ]
     assert h.nodes_full == [
-        'literal["apple" type=VARCHAR query_depth=0 query_width=0 statement=3 select=0 func_depth=2 func_arg=0]',
-        'literal["new" type=VARCHAR query_depth=0 query_width=0 statement=3 select=0 func_depth=3 func_arg=1]',
-        "function[CAST type=fruit query_depth=0 query_width=0 statement=3 select=0 func_depth=0 func_arg=0]",
-        "udf[ROW type=UNKNOWN query_depth=0 query_width=0 statement=3 select=0 func_depth=1 func_arg=0]",
-        "udf[ROW type=UNKNOWN query_depth=0 query_width=0 statement=3 select=0 func_depth=2 func_arg=1]",
-        "column[name=some table=target type=fruit kind=table]",
+        'literal[name="apple" type=VARCHAR position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=2 func_arg=0]]',
+        'literal[name="new" type=VARCHAR position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=3 func_arg=1]]',
+        "function[name=CAST type=fruit position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=0 func_arg=0]]",
+        "udf[name=ROW type=UNKNOWN position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=1 func_arg=0]]",
+        "udf[name=ROW type=UNKNOWN position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=2 func_arg=1]]",
+        "column[name=some type=fruit properties=[kind=table table=target]]",
     ]
     assert len(h.edges) == 5
     assert [TypeQuery, TypeQuery] == h.query_types[:2]
@@ -78,8 +78,8 @@ def test_type_enum(holder):
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [['literal["apple"]', "column[target.name]"]]
     assert h.nodes_full == [
-        'literal["apple" type=VARCHAR query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]',
-        "column[name=name table=target type=fruit_enum kind=table]",
+        'literal[name="apple" type=VARCHAR position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]',
+        "column[name=name type=fruit_enum properties=[kind=table table=target]]",
     ]
     assert len(h.edges) == 1
     assert [TypeQuery] == h.query_types[:1]
@@ -129,9 +129,9 @@ def test_type_usage_in_table_and_insert(holder):
 
     assert h.paths == [['literal["apple"]', "function[CAST]", "column[recipe.food]"]]
     assert h.nodes_full == [
-        'literal["apple" type=VARCHAR query_depth=0 query_width=0 statement=2 select=0 func_depth=1 func_arg=0]',
-        "function[CAST type=fruit query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]",
-        "column[name=food table=recipe type=fruit kind=table]",
+        'literal[name="apple" type=VARCHAR position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=1 func_arg=0]]',
+        "function[name=CAST type=fruit position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]",
+        "column[name=food type=fruit properties=[kind=table table=recipe]]",
     ]
     assert len(h.edges) == 2
     assert TypeQuery == h.query_types[0]

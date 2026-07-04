@@ -23,8 +23,8 @@ def test__table_types(holder):
 
     assert h.paths == [["literal[1]", "column[fruit.new.age]"]]
     assert h.nodes_full == [
-        "literal[1 type=INT query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]",
-        "column[name=age table=new schema=fruit type=INT kind=table subkind=temporary]",
+        "literal[name=1 type=INT position=[query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]",
+        "column[name=age type=INT properties=[kind=table subkind=temporary table=new schema=fruit]]",
     ]
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
@@ -93,9 +93,9 @@ def test__table_like_table_generated(holder):
         ['literal["banana"]', "column[fruit.b_like_a.name]", "function[CONCAT]", "column[fruit.b_like_a.gen]"],
         ['literal["fruit"]', "column[fruit.b_like_a.kind]", "function[CONCAT]", "column[fruit.b_like_a.gen]"],
     ]
-    assert "column[name=gen table=b_like_a schema=fruit type=TEXT kind=table]" in h.nodes_full
-    assert "column[name=kind table=b_like_a schema=fruit type=TEXT kind=table]" in h.nodes_full
-    assert "column[name=name table=b_like_a schema=fruit type=VARCHAR kind=table]" in h.nodes_full
+    assert "column[name=gen type=TEXT properties=[kind=table table=b_like_a schema=fruit]]" in h.nodes_full
+    assert "column[name=kind type=TEXT properties=[kind=table table=b_like_a schema=fruit]]" in h.nodes_full
+    assert "column[name=name type=VARCHAR properties=[kind=table table=b_like_a schema=fruit]]" in h.nodes_full
     assert len(h.nodes) == 6
     assert len(h.edges) == 5
 

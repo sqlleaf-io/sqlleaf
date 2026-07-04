@@ -41,8 +41,8 @@ def test__select_parens(holder, case):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.nodes_full == [
-        "literal[1 type=INT query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]",
-        "column[name=age table=person type=INT kind=table]",
+        "literal[name=1 type=INT position=[query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]",
+        "column[name=age type=INT properties=[kind=table table=person]]",
     ]
     assert h.paths == [["literal[1]", "column[person.age]"]]
     assert len(h.edges) == 1
@@ -74,7 +74,7 @@ def test__select_values(holder, case):
         ['literal["one"]', "column[t.letter]", "column[fruit.processed.kind]"],
         ['literal["two"]', "column[t.letter]", "column[fruit.processed.kind]"],
     ]
-    assert "column[name=letter table=t type=VARCHAR kind=derived_table]" in h.nodes_full
+    assert "column[name=letter type=VARCHAR properties=[kind=derived_table table=t]]" in h.nodes_full
     assert len(h.nodes) == 8
     assert len(h.edges) == 6
 
@@ -155,9 +155,9 @@ def test__select_cast(holder):
 
     assert h.paths == [["column[fruit.raw.name]", "function[CAST]", "column[fruit.processed.age]"]]
     assert h.nodes_full == [
-        "function[CAST type=INT query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]",
-        "column[name=age table=processed schema=fruit type=INT kind=table]",
-        "column[name=name table=raw schema=fruit type=VARCHAR kind=table]",
+        "function[name=CAST type=INT position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]",
+        "column[name=age type=INT properties=[kind=table table=processed schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]",
     ]
     assert len(h.edges) == 2
 
@@ -217,7 +217,7 @@ def test__select_hidden_system_columns(holder):
         ["column[fruit.raw.xmax]", "column[fruit.processed.amount]"],
         ["column[fruit.raw.xmax]", "column[fruit.processed.number]"],
     ]
-    assert "column[name=xmax table=new schema=fruit type=OID kind=table]" in h.nodes_full
+    assert "column[name=xmax type=OID properties=[kind=table table=new schema=fruit]]" in h.nodes_full
     assert len(h.nodes) == 9
     assert len(h.edges) == 5
 
@@ -276,10 +276,10 @@ def test__select_window_function(holder):
         ["window[ROW_NUMBER]", "column[fruit.processed.amount]"],
     ]
     assert h.nodes_full == [
-        "window[RANK type=BIGINT]",
-        "window[ROW_NUMBER type=BIGINT]",
-        "column[name=age table=processed schema=fruit type=INT kind=table]",
-        "column[name=amount table=processed schema=fruit type=INT kind=table]",
+        "window[name=RANK type=BIGINT]",
+        "window[name=ROW_NUMBER type=BIGINT]",
+        "column[name=age type=INT properties=[kind=table table=processed schema=fruit]]",
+        "column[name=amount type=INT properties=[kind=table table=processed schema=fruit]]",
     ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
@@ -318,11 +318,11 @@ def test__select_assorted(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert (
-        "literal[{1,2,3} type=ARRAY<INT> query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]"
+        "literal[name={1,2,3} type=ARRAY<INT> position=[query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]"
         in h.nodes_full
     )
     assert (
-        'interval["-10.75 MINUTE" type=INTERVAL query_depth=0 query_width=0 statement=1 select=1 func_depth=0 func_arg=0]'  # noqa: E501
+        'interval[name="-10.75 MINUTE" type=INTERVAL position=[query_depth=0 query_width=0 statement=1 select=1 func_depth=0 func_arg=0]]'  # noqa: E501
         in h.nodes_full
     )
     assert len(h.nodes) == 5
@@ -345,7 +345,7 @@ def test__select_rows_from(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
     assert h.paths == [
-        ['literal[{"x","y"}]', "function[UNNEST]", "column[x.name]", "column[fruit.processed.name]"],
+        ["literal[{'x','y'}]", "function[UNNEST]", "column[x.name]", "column[fruit.processed.name]"],
         [
             'literal["[{"a":40,"b":"foo"}]"]',
             "udf[JSON_TO_RECORDSET]",
@@ -363,8 +363,8 @@ def test__select_rows_from(holder):
         ["literal[1]", "function[GENERATE_SERIES]", "column[x.amount]", "column[fruit.processed.amount]"],
         ["literal[3]", "function[GENERATE_SERIES]", "column[x.amount]", "column[fruit.processed.amount]"],
     ]
-    assert "column[name=age table=x type=UNKNOWN kind=derived_table]" in h.nodes_full
-    assert "column[name=a table=y type=INT kind=derived_table]" in h.nodes_full
+    assert "column[name=age type=UNKNOWN properties=[kind=derived_table table=x]]" in h.nodes_full
+    assert "column[name=a type=INT properties=[kind=derived_table table=y]]" in h.nodes_full
     # TODO: bug - duplicate node (literals and udfs)
     # assert len(h.node) == 17     # Correct
 
@@ -392,11 +392,11 @@ def test__select_lateral(holder):
         ["column[fruit.raw.age]", "column[fruit.new.age]"],
     ]
     assert h.nodes_full == [
-        "column[name=name table=lat type=UNKNOWN kind=udtf]",
-        "column[name=age table=new schema=fruit type=INT kind=table]",
-        "column[name=name table=new schema=fruit type=VARCHAR kind=table]",
-        "column[name=name table=processed schema=fruit type=VARCHAR kind=table]",
-        "column[name=age table=raw schema=fruit type=INT kind=table]",
+        "column[name=name type=UNKNOWN properties=[kind=udtf table=lat]]",
+        "column[name=age type=INT properties=[kind=table table=new schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=new schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]",
+        "column[name=age type=INT properties=[kind=table table=raw schema=fruit]]",
     ]
     assert len(h.edges) == 3
 
@@ -433,14 +433,14 @@ def test__select_lateral_table_function(holder):
         ],
     ]
     assert h.nodes_full == [
-        'literal["," type=VARCHAR query_depth=1 query_width=0 statement=1 select=0 func_depth=2 func_arg=1]',
-        "function[STRING_TO_ARRAY type=UNKNOWN query_depth=1 query_width=0 statement=1 select=0 func_depth=1 func_arg=0]",
-        "function[UNNEST type=UNKNOWN query_depth=1 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]",
-        "column[name=name table=lat type=UNKNOWN kind=udtf]",
-        "column[name=age table=new schema=fruit type=INT kind=table]",
-        "column[name=name table=new schema=fruit type=VARCHAR kind=table]",
-        "column[name=age table=raw schema=fruit type=INT kind=table]",
-        "column[name=name table=raw schema=fruit type=VARCHAR kind=table]",
+        'literal[name="," type=VARCHAR position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=2 func_arg=1]]',
+        "function[name=STRING_TO_ARRAY type=UNKNOWN position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=1 func_arg=0]]",
+        "function[name=UNNEST type=UNKNOWN position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]",
+        "column[name=name type=UNKNOWN properties=[kind=udtf table=lat]]",
+        "column[name=age type=INT properties=[kind=table table=new schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=new schema=fruit]]",
+        "column[name=age type=INT properties=[kind=table table=raw schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]",
     ]
     assert len(h.edges) == 6
 

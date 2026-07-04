@@ -19,7 +19,7 @@ class ProgramNode(NodeAttributes):
         expr = t.cast(exp.Copy, copy_stmt)
 
         # TODO: put these inside COPY to prevent lookups to the original query here
-        program = expr.args["params"][0].sql()
+        program = expr.args["params"][0].name
         name, args = (program + " ").split(" ", maxsplit=1)
         super().__init__(gen_ctx, pos_ctx, name=name)
         self.program_args = args.strip()

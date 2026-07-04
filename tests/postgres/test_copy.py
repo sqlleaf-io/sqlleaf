@@ -31,9 +31,9 @@ def test_copy_to_stream(holder, stream):
         ["column[fruit.simple.age]", f"stream[{s}]"],
     ]
     assert h.nodes_full == [
-        f"stream[{s}]",
-        "column[name=age table=simple schema=fruit type=INT kind=table]",
-        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+        f"stream[name={s}]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
     ]
     assert len(h.edges) == 2
     query: CopyQuery = h.holders[1].transformed
@@ -55,9 +55,9 @@ def test_copy_from_stream(holder, stream):
         [f"stream[{s}]", "column[fruit.simple.name]"],
     ]
     assert h.nodes_full == [
-        f"stream[{s}]",
-        "column[name=age table=simple schema=fruit type=INT kind=table]",
-        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+        f"stream[name={s}]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
     ]
     assert len(h.edges) == 2
     query: CopyQuery = h.holders[1].transformed
@@ -75,6 +75,10 @@ def test_copy_columns_to_stream(holder):
         ["column[fruit.simple.age]", "stream[stdout]"],
     ]
     assert len(h.edges) == 1
+    assert h.nodes_full == [
+        "stream[name=stdout]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+    ]
     query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.TABLE
     assert query.target_info.type == SqlObjectType.STREAM
@@ -91,6 +95,11 @@ def test_copy_select_column_names_to_stream(holder):
         ["column[fruit.simple.name]", "stream[stdout]"],
     ]
     assert len(h.edges) == 2
+    assert h.nodes_full == [
+        "stream[name=stdout]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
+    ]
     query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.STREAM
@@ -105,6 +114,11 @@ def test_copy_select_star_to_stream(holder):
     assert h.paths == [
         ["column[fruit.simple.name]", "stream[stdout]"],
         ["column[fruit.simple.age]", "stream[stdout]"],
+    ]
+    assert h.nodes_full == [
+        "stream[name=stdout]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
     ]
     query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.SELECT
@@ -154,10 +168,10 @@ def test_copy_into_table_from_file(holder):
         ["column[age path=/tmp/data.csv]", "column[fruit.simple.age]"],
     ]
     assert h.nodes_full == [
-        "column[age type=INT kind=file format=TEXT path=/tmp/data.csv]",
-        "column[name type=VARCHAR kind=file format=TEXT path=/tmp/data.csv]",
-        "column[name=age table=simple schema=fruit type=INT kind=table]",
-        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+        "column[name=age type=INT properties=[kind=file format=TEXT path=/tmp/data.csv]]",
+        "column[name=name type=VARCHAR properties=[kind=file format=TEXT path=/tmp/data.csv]]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
     ]
     assert len(h.edges) == 2
     query: CopyQuery = h.holders[1].transformed
@@ -176,10 +190,10 @@ def test_copy_into_table_from_file_named_columns(holder):
         ["column[age path=/tmp/data.csv]", "column[fruit.simple.age]"],
     ]
     assert h.nodes_full == [
-        "column[age type=INT kind=file format=TEXT path=/tmp/data.csv]",
-        "column[name type=VARCHAR kind=file format=TEXT path=/tmp/data.csv]",
-        "column[name=age table=simple schema=fruit type=INT kind=table]",
-        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+        "column[name=age type=INT properties=[kind=file format=TEXT path=/tmp/data.csv]]",
+        "column[name=name type=VARCHAR properties=[kind=file format=TEXT path=/tmp/data.csv]]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
     ]
     assert len(h.edges) == 2
     query: CopyQuery = h.holders[1].transformed
@@ -198,10 +212,10 @@ def test_copy_into_file_from_table(holder):
         ["column[fruit.simple.age]", "column[age path=/tmp/data.csv]"],
     ]
     assert h.nodes_full == [
-        "column[age type=INT kind=file format=TEXT path=/tmp/data.csv]",
-        "column[name type=VARCHAR kind=file format=TEXT path=/tmp/data.csv]",
-        "column[name=age table=simple schema=fruit type=INT kind=table]",
-        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+        "column[name=age type=INT properties=[kind=file format=TEXT path=/tmp/data.csv]]",
+        "column[name=name type=VARCHAR properties=[kind=file format=TEXT path=/tmp/data.csv]]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
     ]
     assert len(h.edges) == 2
     query: CopyQuery = h.holders[1].transformed
@@ -220,10 +234,10 @@ def test_copy_into_file_from_table_named_columns(holder):
         ["column[fruit.simple.age]", "column[age path=/tmp/data.csv]"],
     ]
     assert h.nodes_full == [
-        "column[age type=INT kind=file format=TEXT path=/tmp/data.csv]",
-        "column[name type=VARCHAR kind=file format=TEXT path=/tmp/data.csv]",
-        "column[name=age table=simple schema=fruit type=INT kind=table]",
-        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+        "column[name=age type=INT properties=[kind=file format=TEXT path=/tmp/data.csv]]",
+        "column[name=name type=VARCHAR properties=[kind=file format=TEXT path=/tmp/data.csv]]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
     ]
     assert len(h.edges) == 2
     query: CopyQuery = h.holders[1].transformed
@@ -242,10 +256,10 @@ def test_copy_select_column_names_to_file(holder):
         ["column[fruit.simple.name]", "column[name path=/tmp/data.csv]"],
     ]
     assert h.nodes_full == [
-        "column[age type=INT kind=file format=TEXT path=/tmp/data.csv]",
-        "column[name type=VARCHAR kind=file format=TEXT path=/tmp/data.csv]",
-        "column[name=age table=simple schema=fruit type=INT kind=table]",
-        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+        "column[name=age type=INT properties=[kind=file format=TEXT path=/tmp/data.csv]]",
+        "column[name=name type=VARCHAR properties=[kind=file format=TEXT path=/tmp/data.csv]]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
     ]
     assert len(h.edges) == 2
     query: CopyQuery = h.holders[1].transformed
@@ -267,11 +281,11 @@ def test_copy_select_column_aliases_to_file(holder):
         ["column[fruit.simple.name]", "column[b path=/tmp/data.csv]"],
     ]
     assert h.nodes_full == [
-        "column[a type=INT kind=file format=TEXT path=/tmp/data.csv]",
-        "column[age type=INT kind=file format=TEXT path=/tmp/data.csv]",
-        "column[b type=VARCHAR kind=file format=TEXT path=/tmp/data.csv]",
-        "column[name=age table=simple schema=fruit type=INT kind=table]",
-        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+        "column[name=a type=INT properties=[kind=file format=TEXT path=/tmp/data.csv]]",
+        "column[name=age type=INT properties=[kind=file format=TEXT path=/tmp/data.csv]]",
+        "column[name=b type=VARCHAR properties=[kind=file format=TEXT path=/tmp/data.csv]]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
     ]
     assert len(h.edges) == 3
     query: CopyQuery = h.holders[1].transformed
@@ -306,11 +320,11 @@ def test_copy_select_join_to_stream(holder):
         ["column[fruit.extra.color]", "stream[stdout]"],
     ]
     assert h.nodes_full == [
-        "function[UPPER type=VARCHAR query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]",
-        "stream[stdout]",
-        "column[name=color table=extra schema=fruit type=VARCHAR kind=table]",
-        "column[name=age table=simple schema=fruit type=INT kind=table]",
-        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+        "function[name=UPPER type=VARCHAR position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]",
+        "stream[name=stdout]",
+        "column[name=color type=VARCHAR properties=[kind=table table=extra schema=fruit]]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
     ]
     assert len(h.edges) == 4
     query: CopyQuery = h.holders[2].transformed
@@ -329,9 +343,9 @@ def test_copy_into_program_from_table(holder):
         ["column[fruit.simple.age]", "program[gzip]"],
     ]
     assert h.nodes_full == [
-        "program[gzip args='> /tmp/data.csv.gz' query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]",
-        "column[name=age table=simple schema=fruit type=INT kind=table]",
-        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+        "program[name=gzip properties=[args='> /tmp/data.csv.gz'] position=[query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
     ]
     assert len(h.edges) == 2
     query: CopyQuery = h.holders[1].transformed
@@ -350,9 +364,9 @@ def test_copy_table_program_from_program(holder):
         ["program[cat]", "column[fruit.simple.name]"],
     ]
     assert h.nodes_full == [
-        "program[cat args='/tmp/data.csv' query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]",
-        "column[name=age table=simple schema=fruit type=INT kind=table]",
-        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+        "program[name=cat properties=[args='/tmp/data.csv'] position=[query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
     ]
     assert len(h.edges) == 2
     query: CopyQuery = h.holders[1].transformed
@@ -371,10 +385,10 @@ def test_copy_with_format_csv(holder):
         ["column[age path=/tmp/data.csv]", "column[fruit.simple.age]"],
     ]
     assert h.nodes_full == [
-        "column[age type=INT kind=file format=csv path=/tmp/data.csv]",
-        "column[name type=VARCHAR kind=file format=csv path=/tmp/data.csv]",
-        "column[name=age table=simple schema=fruit type=INT kind=table]",
-        "column[name=name table=simple schema=fruit type=VARCHAR kind=table]",
+        "column[name=age type=INT properties=[kind=file format=csv path=/tmp/data.csv]]",
+        "column[name=name type=VARCHAR properties=[kind=file format=csv path=/tmp/data.csv]]",
+        "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]",
     ]
     query: CopyQuery = h.holders[1].original
     assert query.parameters.file_format.lower() == "csv"

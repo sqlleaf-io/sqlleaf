@@ -25,7 +25,7 @@ def test__select_into(holder):
         ["column[source.age]", "column[other.age]"],
         ["column[source.age]", "column[target.age]"],
     ]
-    assert "column[name=age table=source type=INT kind=table]" in h.nodes_full
-    assert "column[name=age table=other type=INT kind=table subkind=temporary]" in h.nodes_full
+    assert "column[name=age type=INT properties=[kind=table table=source]]" in h.nodes_full
+    assert "column[name=age type=INT properties=[kind=table subkind=temporary table=other]]" in h.nodes_full
     assert len(h.nodes) == 6
     assert len(h.edges) == 4

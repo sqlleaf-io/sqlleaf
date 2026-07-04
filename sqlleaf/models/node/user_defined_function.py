@@ -18,8 +18,16 @@ class UserDefinedFunctionNode(NodeAttributes):
         self.schema = schema
 
     def get_name(self) -> str:
+        return str(self.name).upper()
+
+    @property
+    def friendly_name(self) -> str:
         tokens = [self.schema, self.name]
-        return ".".join([tok for tok in tokens if tok]).upper()
+        name = ".".join([tok for tok in tokens if tok]).upper()
+        return self.wrap(name)
 
     def fields(self) -> dict[str, str]:
-        return {"type": self.data_type}
+        return {
+            "type": self.data_type,
+            "schema": self.schema.upper() if self.schema else "",
+        }

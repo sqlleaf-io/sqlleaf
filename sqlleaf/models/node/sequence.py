@@ -16,5 +16,5 @@ class SequenceNode(NodeAttributes):
     def fields(self) -> dict[str, str]:
         f = {"type": self.data_type}
         if self.subkind:
-            f["kind"] = self.subkind
+            f["subkind"] = self.subkind
         return f

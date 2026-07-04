@@ -22,9 +22,9 @@ def test__view(holder):
         ["column[source.amount]", "column[my_view.amount]"],
     ]
     assert h.nodes_full == [
-        "column[name=amount table=my_view type=INT kind=view]",
-        "column[name=name table=my_view type=VARCHAR kind=view]",
-        "column[name=amount table=source type=INT kind=table]",
-        "column[name=name table=source type=VARCHAR kind=table]",
+        "column[name=amount type=INT properties=[kind=view table=my_view]]",
+        "column[name=name type=VARCHAR properties=[kind=view table=my_view]]",
+        "column[name=amount type=INT properties=[kind=table table=source]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=source]]",
     ]
     assert len(h.edges) == 2

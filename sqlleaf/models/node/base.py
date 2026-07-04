@@ -39,10 +39,7 @@ class NodeAttributes:
         assert self._data_type is not None
         return self._data_type
 
-    def wrap(self, name: str, with_positions: bool = False) -> str:
-        if with_positions:
-            pos = self.ctx.as_str()
-            name = f"{name} {pos}"
+    def wrap(self, name: str) -> str:
         return f"{self.kind}[{name}]"
 
     def fields(self) -> dict[str, str]:
@@ -56,9 +53,22 @@ class NodeAttributes:
 
     def _build_name(self, fields_dict: dict[str, str], with_positions: bool = False) -> str:
         """Build a formatted name with fields."""
-        fields = " ".join([f"{k}={v}" for k, v in fields_dict.items() if v])
-        name = f"{self.get_name()} {fields}" if fields else self.get_name()
-        return self.wrap(name, with_positions=with_positions)
+        fields_dict = fields_dict.copy()
+        main_parts = [f"name={self.get_name()}"]
+
+        type_val = fields_dict.pop("type", None)
+        if type_val:
+            main_parts.append(f"type={type_val}")
+
+        props = " ".join([f"{k}={v}" for k, v in fields_dict.items() if v])
+        if props:
+            main_parts.append(f"properties=[{props}]")
+
+        content = " ".join(main_parts)
+        if with_positions:
+            content = f"{content} position=[{self.ctx.as_str()}]"
+
+        return self.wrap(content)
 
     @property
     def full_name(self) -> str:
@@ -66,7 +76,19 @@ class NodeAttributes:
 
     @property
     def friendly_name(self) -> str:
-        return self._build_name(self.friendly_fields())
+        name = self.get_name()
+        fields = self.friendly_fields()
+
+        parts = []
+        if name:
+            parts.append(name)
+
+        for k, v in fields.items():
+            if v:
+                parts.append(f"{k}={v}")
+
+        content = " ".join(parts)
+        return self.wrap(content)
 
     @property
     def id(self) -> str:

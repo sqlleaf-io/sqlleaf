@@ -241,29 +241,41 @@ class ColumnNode(NodeAttributes):
         return t.cast(exp.ColumnConstraintKind, constraints[0]) if constraints else None
 
     def get_name(self):
-        tokens = [self.catalog, self.schema, self.table, self.name]
-        return ".".join([tok for tok in tokens if tok])
+        return self.name
 
     @property
-    def full_name(self):
-        fields_dict = self.fields()
-        fields = " ".join([f"{k}={v}" for k, v in fields_dict.items() if v])
-        return self.wrap(fields, with_positions=self.with_positions)
+    def friendly_name(self) -> str:
+        tokens = [self.catalog, self.schema, self.table, self.name]
+        name = ".".join([tok for tok in tokens if tok])
+        fields = self.friendly_fields()
+
+        parts = []
+        if name:
+            parts.append(name)
+
+        for k, v in fields.items():
+            if v:
+                parts.append(f"{k}={v}")
+
+        content = " ".join(parts)
+        return self.wrap(content)
+
 
     def as_table(self) -> exp.Table:
         return exp.table_(catalog=self.catalog, db=self.schema, table=self.table)
 
     def fields(self) -> dict[str, str]:
         f = {
-            "name": self.name,
+            "kind": self.parent_kind
+        }
+        if self.parent_subkind:
+            f["subkind"] = self.parent_subkind
+
+        f |= {
             "table": self.table,
             "schema": self.schema,
             "type": self.data_type,
-            "kind": self.parent_kind,
         }
-
-        if self.parent_subkind:
-            f["subkind"] = self.parent_subkind
 
         if self.parent_kind == TableType.CTE and self.parent_subkind == TableSubtype.RECURSIVE:
             f["member"] = self.member

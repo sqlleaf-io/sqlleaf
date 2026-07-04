@@ -40,10 +40,10 @@ def test___copy_from_stage(holder, case):
         [f"column[AGE stage={new} path=s3://load/files/]", "column[INCOMING.ZONE.AGE]"],
     ]
     assert h.nodes_full == [
-        f"column[AGE type=INT kind=stage stage={new} path=s3://load/files/]",
-        f"column[NAME type=VARCHAR kind=stage stage={new} path=s3://load/files/]",
-        "column[name=AGE table=ZONE schema=INCOMING type=INT kind=table]",
-        "column[name=NAME table=ZONE schema=INCOMING type=VARCHAR kind=table]",
+        f"column[name=AGE type=INT properties=[kind=stage stage={new} path=s3://load/files/]]",
+        f"column[name=NAME type=VARCHAR properties=[kind=stage stage={new} path=s3://load/files/]]",
+        "column[name=AGE type=INT properties=[kind=table table=ZONE schema=INCOMING]]",
+        "column[name=NAME type=VARCHAR properties=[kind=table table=ZONE schema=INCOMING]]",
     ]
     assert len(h.edges) == 2
     query: CopyQuery = h.queries_original[2]
@@ -72,10 +72,10 @@ def test___copy_to_stage(holder, case):
         ["column[OUTGOING.ZONE.AGE]", f"column[AGE stage={new} path=s3://load/files/]"],
     ]
     assert h.nodes_full == [
-        f"column[AGE type=INT kind=stage stage={new} path=s3://load/files/]",
-        f"column[NAME type=VARCHAR kind=stage stage={new} path=s3://load/files/]",
-        "column[name=AGE table=ZONE schema=OUTGOING type=INT kind=table]",
-        "column[name=NAME table=ZONE schema=OUTGOING type=VARCHAR kind=table]",
+        f"column[name=AGE type=INT properties=[kind=stage stage={new} path=s3://load/files/]]",
+        f"column[name=NAME type=VARCHAR properties=[kind=stage stage={new} path=s3://load/files/]]",
+        "column[name=AGE type=INT properties=[kind=table table=ZONE schema=OUTGOING]]",
+        "column[name=NAME type=VARCHAR properties=[kind=table table=ZONE schema=OUTGOING]]",
     ]
     query: CopyQuery = h.queries_original[2]
     assert query.source_info.type == SqlObjectType.TABLE
@@ -105,12 +105,12 @@ def test___copy_to_and_from_stage(holder, case):
 
     assert [TableQuery, TableQuery, StageQuery, CopyQuery, CopyQuery] == h.query_types
     assert h.nodes_full == [
-        f"column[AGE type=INT kind=stage stage={new} path=s3://load/files/]",
-        f"column[NAME type=VARCHAR kind=stage stage={new} path=s3://load/files/]",
-        "column[name=AGE table=ZONE schema=INCOMING type=INT kind=table]",
-        "column[name=NAME table=ZONE schema=INCOMING type=VARCHAR kind=table]",
-        "column[name=AGE table=ZONE schema=OUTGOING type=INT kind=table]",
-        "column[name=NAME table=ZONE schema=OUTGOING type=VARCHAR kind=table]",
+        f"column[name=AGE type=INT properties=[kind=stage stage={new} path=s3://load/files/]]",
+        f"column[name=NAME type=VARCHAR properties=[kind=stage stage={new} path=s3://load/files/]]",
+        "column[name=AGE type=INT properties=[kind=table table=ZONE schema=INCOMING]]",
+        "column[name=NAME type=VARCHAR properties=[kind=table table=ZONE schema=INCOMING]]",
+        "column[name=AGE type=INT properties=[kind=table table=ZONE schema=OUTGOING]]",
+        "column[name=NAME type=VARCHAR properties=[kind=table table=ZONE schema=OUTGOING]]",
     ]
     assert h.paths == [
         ["column[OUTGOING.ZONE.NAME]", f"column[NAME stage={new} path=s3://load/files/]", "column[INCOMING.ZONE.NAME]"],

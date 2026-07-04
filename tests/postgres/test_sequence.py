@@ -31,5 +31,5 @@ def test__temporary_sequence(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [["sequence[temp_serial]", "column[fruit.raw.age]"]]
-    assert "sequence[temp_serial type=INT kind=temporary]" in h.nodes_full
+    assert "sequence[name=temp_serial type=INT properties=[subkind=temporary]]" in h.nodes_full
     assert [SequenceQuery, InsertQuery] == h.query_types
