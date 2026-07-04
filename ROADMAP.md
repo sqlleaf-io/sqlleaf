@@ -169,9 +169,11 @@ CREATE TRIGGER
   - [ ] BEFORE / AFTER
 
 CREATE TYPE
-- [o] Regular
-- [o] Composite
-- [o] Enum
+- [x] Regular
+- [x] Composite
+- [x] Enum
+- [x] Subtype [unsupported]
+- [x] Inner functions [unsupported]
 
 COPY
   Sources:
