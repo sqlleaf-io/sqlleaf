@@ -11,6 +11,58 @@ from sqlleaf.models.query.base import Query
 from sqlleaf.typing import TargetInfo
 
 
+@dataclass(frozen=True)
+class UserDefinedFunctionParameters:
+    schema_name: t.Optional[str]
+    function_name: str
+    return_type: t.Optional[exp.DataType]
+    language: t.Optional[str]
+    parameters: t.List[FunctionParam]
+    return_columns: t.List[exp.ColumnDef]
+    inner_statements: t.List[exp.Expr]
+
+    @classmethod
+    def from_expression(cls, expr: exp.Create, object_mapping: mappings.ObjectMapping) -> UserDefinedFunctionParameters:
+        """
+        Collect the required information from the function DDL.
+        """
+        function_name, schema_name, parameters = _extract_function_info(expr)
+        return_type, return_columns = _extract_return_info(expr, parameters, object_mapping)
+
+        # Filter parameters to only include those that can be passed as input
+        input_parameters = [p for p in parameters if p.is_input or p.is_variadic]
+
+        language = _extract_language(expr)
+
+        body_expr = expr.args.get("expression")
+        inner_statements = []
+
+        if body_expr:
+            # Determine the function body and all internal expressions.
+            # If the body is a string literal or heredoc (common in PostgreSQL), parse it to extract
+            # individual statements. Otherwise, use the expression itself.
+            if isinstance(body_expr, (exp.Literal, exp.Heredoc)):
+                body_text = body_expr.this.strip()
+                try:
+                    inner_statements = sqlglot.parse(body_text, dialect="postgres")
+                except Exception:
+                    pass
+            elif isinstance(body_expr, exp.Return):
+                inner_statements = [exp.select(body_expr.this)]
+            else:
+                inner_statements = [exp.select(body_expr)]
+
+        return cls(
+            schema_name=schema_name,
+            function_name=function_name,
+            return_type=return_type,
+            language=language,
+            parameters=input_parameters,
+            return_columns=return_columns,
+            inner_statements=inner_statements,
+        )
+
+
 class UserDefinedFunctionQuery(Query):
     KIND = "udf"
 
@@ -35,51 +87,43 @@ class UserDefinedFunctionQuery(Query):
             target_info=TargetInfo(expression=target, type=target_type),
         )
 
-        self.collect()
+        self.properties = self.get_params()
+        self.column_defs = self.properties.return_columns
+
+    @property
+    def parameters(self) -> t.List[FunctionParam]:
+        return self.properties.parameters
+
+    @property
+    def schema_name(self) -> t.Optional[str]:
+        return self.properties.schema_name
+
+    @property
+    def function_name(self) -> str:
+        return self.properties.function_name
+
+    @property
+    def return_type(self) -> t.Optional[exp.DataType]:
+        return self.properties.return_type
+
+    @property
+    def language(self) -> t.Optional[str]:
+        return self.properties.language
+
+    @property
+    def return_columns(self) -> t.List[exp.ColumnDef]:
+        return self.properties.return_columns
+
+    @property
+    def inner_statements(self) -> t.List[exp.Expr]:
+        return self.properties.inner_statements
 
     @property
     def name(self):
         return ".".join([var for var in [self.schema_name, self.function_name] if var])
 
-    def collect(self) -> None:
-        """
-        Collect the required information from the function DDL into class attributes.
-        """
-        function_name, schema_name, parameters = _extract_function_info(self.statement)
-        return_type, return_columns = _extract_return_info(self.statement, parameters, self.object_mapping)
-
-        # Filter parameters to only include those that can be passed as input
-        input_parameters = [p for p in parameters if p.is_input or p.is_variadic]
-
-        language = _extract_language(self.statement)
-
-        body_expr = self.statement.args.get("expression")
-        inner_statements = []
-
-        if body_expr:
-            # Determine the function body and all internal expressions.
-            # If the body is a string literal or heredoc (common in PostgreSQL), parse it to extract
-            # individual statements. Otherwise, use the expression itself.
-            if isinstance(body_expr, (exp.Literal, exp.Heredoc)):
-                body_text = body_expr.this.strip()
-                try:
-                    inner_statements = sqlglot.parse(body_text, dialect="postgres")
-                except Exception:
-                    pass
-            elif isinstance(body_expr, exp.Return):
-                inner_statements = [exp.select(body_expr.this)]
-            else:
-                inner_statements = [exp.select(body_expr)]
-
-        self.schema_name: str = schema_name
-        self.function_name: str = function_name
-        self.return_type: exp.DataType = return_type
-        self.language: str = language
-        self.parameters: t.List[FunctionParam] = input_parameters
-        self.return_columns: t.List[exp.ColumnDef] = return_columns
-        self.inner_statements: t.List[exp.Expr] = inner_statements
-
-        self.column_defs = return_columns
+    def get_params(self) -> UserDefinedFunctionParameters:
+        return UserDefinedFunctionParameters.from_expression(self.statement, self.object_mapping)
 
 
 def get_user_defined_data_type(kind: t.Optional[str | exp.Identifier | exp.Dot] = None) -> exp.DataType:
