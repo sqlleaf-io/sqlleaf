@@ -10,6 +10,7 @@ from sqlleaf.models.query import (
     DeleteQuery,
     InsertQuery,
     MergeQuery,
+    MultitableInsertQuery,
     Q,
     QueryHolder,
     TableQuery,
@@ -23,6 +24,7 @@ from sqlleaf.processors.transformers import (
     DeleteTransformer,
     InsertTransformer,
     MergeTransformer,
+    MultitableInsertTransformer,
     UnloadTransformer,
     UpdateTransformer,
     substitute,
@@ -35,6 +37,7 @@ _TRANSFORMER_MAP: dict[type, type[BaseQueryTransformer]] = {
     DeleteQuery: DeleteTransformer,
     InsertQuery: InsertTransformer,
     MergeQuery: MergeTransformer,
+    MultitableInsertQuery: MultitableInsertTransformer,
     TableQuery: BaseQueryTransformer,  # pass-through
     UnloadQuery: UnloadTransformer,
     UpdateQuery: UpdateTransformer,

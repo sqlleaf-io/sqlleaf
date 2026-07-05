@@ -314,7 +314,7 @@ Types:
 - [ ] COPY FILES
 - [ ] PUT
 - [ ] GET
-- [ ] Multi-table INSERT
+- [x] Multi-table INSERT
 
 
 IDENTIFIER

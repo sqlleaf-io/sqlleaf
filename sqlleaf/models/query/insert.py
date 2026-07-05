@@ -26,7 +26,7 @@ class InsertQuery(Query):
         if source:
             source = source.unnest()  # Subquery -> Select
         else:
-            source = expr.args["source"]
+            source = expr.args.get("source")
 
         # Set the correct source type. Hacky, but works for now
         is_default_values = expr.args.get("default", False)

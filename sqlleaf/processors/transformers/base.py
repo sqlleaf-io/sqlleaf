@@ -255,9 +255,9 @@ class BaseQueryTransformer:
                 expression=new_statement,
                 columns=statement.this.expressions,
                 into=child_table,
-                returning=statement.args["returning"],
+                returning=statement.args.get("returning"),
             )
-            insert_expr.set("conflict", statement.args["conflict"])
+            insert_expr.set("conflict", statement.args.get("conflict"))
             statement.replace(insert_expr)
             statement = insert_expr
         elif isinstance(statement, exp.Create):
@@ -423,6 +423,20 @@ class BaseQueryTransformer:
             "ctes": ctes,
         }
 
+    @staticmethod
+    def _extract_multitable_insert_context(statement: exp.Insert) -> dict | None:
+        """
+        Extract the shared source from the parent MultitableInserts statement.
+        """
+        multitable_insert = statement.find_ancestor(exp.MultitableInserts)
+        if not multitable_insert:
+            return None
+
+        source = multitable_insert.args.get("source")
+        return {
+            "source": source,
+        }
+
     def _add_column_names_to_insert(self, statement: exp.Insert) -> exp.Insert:
         """
         Add aliases to SELECTs that are missing them by looking at the corresponding INSERT column.
@@ -449,28 +463,19 @@ class BaseQueryTransformer:
             # or the target is not a table (e.g. S3 file, stage, stream)
             return statement
 
-        # TODO: get the column definitions from the underlying query.TargetObject?
         child_table = query.get_target_as_table()
-        selects = statement.selects
         table_query = query.object_mapping.get_table_or_stage(child_table)
         if not table_query:
             raise exception.SqlLeafException(message=f"Unknown target table: {str(exp.table_name(child_table))}")
 
         table_columns = [c.name for c in table_query.get_column_defs(include_system=True)]
-        insert_columns = []
+        selects = statement.selects
+        insert_columns = self._extract_insert_columns(statement, child_table, include_system=True)
 
-        if isinstance(statement.this, exp.Schema):
-            # INSERT INTO fruit.raw (name)
-            insert_columns = [s.name for s in statement.this.expressions]
-        elif isinstance(statement.this, exp.Table):
-            # INSERT INTO fruit.raw AS r (name)
-            insert_columns = [s for s in statement.this.alias_column_names]
-
-        if not insert_columns:
-            # Add the column names from the mapping to the INSERT's column names
-            insert_columns = list(table_columns)[: len(selects)]
-            schema = exp.Schema(this=child_table, expressions=[exp.to_identifier(c) for c in insert_columns])
-            statement.set("this", schema)
+        # Add the column names from the mapping to the INSERT's column names
+        insert_columns = list(insert_columns)[: len(selects)]
+        schema = exp.Schema(this=child_table, expressions=[exp.to_identifier(c) for c in insert_columns])
+        statement.set("this", schema)
 
         unknown_columns = [col for col in insert_columns if col not in table_columns]
         if unknown_columns:
@@ -505,6 +510,50 @@ class BaseQueryTransformer:
             statement.selects[i] = statement.selects[i].as_(ins)
 
         return statement
+
+    def _extract_insert_columns(
+        self, statement: exp.Insert, target: exp.Table | exp.Schema, include_system: bool = False
+    ) -> t.List[str]:
+        """
+        Returns a list of column names for an exp.Insert statement.
+        """
+        if isinstance(statement.this, exp.Schema):
+            return [s.name for s in statement.this.expressions]
+
+        columns = []
+        if isinstance(statement.this, exp.Table):
+            columns = statement.this.alias_column_names
+        elif isinstance(statement.this, exp.Tuple):
+            columns = [s.alias_or_name for s in statement.this.expressions]
+
+        if columns:
+            return columns
+
+        # Fall back to the table's definition in the mapping
+        table_query = self.query.object_mapping.get_table_or_stage(target)
+        if not table_query:
+            return []
+
+        return [c.name for c in table_query.get_column_defs(include_system=include_system)]
+
+    @staticmethod
+    def _extract_value_lists(expression: exp.Expression) -> t.List[t.List[exp.Expression]]:
+        """
+        Promoted from InsertTransformer._get_insert_values.
+        Handles exp.Values, exp.Tuple, exp.Select, and exp.Union.
+        """
+        values_lists = []
+        if isinstance(expression, exp.Values):
+            values_lists = [t.expressions for t in expression.expressions]
+        elif isinstance(expression, exp.Tuple):
+            values_lists = [expression.expressions]
+        elif isinstance(expression, exp.Select):
+            values_lists = [[s.unalias() for s in expression.expressions]]
+        elif isinstance(expression, exp.Union):
+            # Already converted to UNION of SELECTs by _convert_values_to_select
+            values_lists = [[s.unalias() for s in select.expressions] for select in expression.find_all(exp.Select)]
+
+        return values_lists
 
     def _convert_update_to_insert(self, statement: exp.Update) -> exp.Insert:
         """

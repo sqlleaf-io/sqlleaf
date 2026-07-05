@@ -23,6 +23,7 @@ class InsertTransformer(BaseQueryTransformer):
                 stmt = stmt_converted
 
         stmt = self._add_information_from_merge(stmt)
+        stmt = self._add_information_from_multitable_insert(stmt)
         stmt = self._process_inner_ctes(stmt)
 
         self.statement = stmt
@@ -92,27 +93,67 @@ class InsertTransformer(BaseQueryTransformer):
 
         using = ctx["using"]
         returning = ctx["returning"]
-        new_ctes = [{"alias": cte.alias_or_name, "as_": cte.this} for cte in ctx["ctes"]]
+        target = self.query.get_target_expression()
 
         # Add the missing information to the INSERT statement
-        new_columns = statement.expression.expressions
-        new_aliases = statement.this.expressions
+        insert_columns = self._extract_insert_columns(statement, target, include_system=False)
+        values_lists = self._extract_value_lists(statement.expression)
 
-        aliases = [exp.alias_(str(col), str(alias)) for col, alias in zip(new_columns, new_aliases)]
+        if not values_lists:
+            return statement
 
         # Build a new SELECT
+        values = values_lists[0]
+        aliases = [exp.alias_(val, str(col)) for col, val in zip(insert_columns, values)]
         new_select = exp.select(*aliases).from_(using)
 
+        # 3. Build the standalone INSERT statement
         insert_expr = exp.insert(
             expression=new_select,
-            columns=[col.this for col in statement.this.expressions],
-            into=self.query.get_target_expression(),  # ty: ignore[invalid-argument-type]
+            columns=insert_columns,
+            into=target,
             dialect=self.query.dialect,
             returning=returning,
         )
 
-        for cte in new_ctes:
-            insert_expr = insert_expr.with_(alias=cte["alias"], as_=cte["as_"])
+        # Add the CTEs
+        for cte in ctx["ctes"]:
+            insert_expr = insert_expr.with_(alias=cte.alias_or_name, as_=cte.this)
+
+        statement.replace(insert_expr)
+        return insert_expr
+
+    def _add_information_from_multitable_insert(self, statement: exp.Insert) -> exp.Insert:
+        """
+        Reconstruct a standalone INSERT .. SELECT from a MultitableInsert branch.
+        """
+        ctx = self._extract_multitable_insert_context(statement)
+        if ctx is None:
+            return statement
+
+        source = ctx["source"]
+        target = self.query.get_target_expression()
+
+        insert_columns = self._extract_insert_columns(statement, target, include_system=False)
+        values_lists = self._extract_value_lists(statement.expression)
+
+        if not values_lists:
+            return statement
+
+        selects = []
+        for values in values_lists:
+            aliases = [exp.alias_(val, str(col)) for col, val in zip(insert_columns, values)]
+            new_select = exp.select(*aliases).from_(source.subquery())
+            selects.append(new_select)
+
+        new_expression = exp.union(*selects, distinct=False) if len(selects) > 1 else selects[0]
+
+        insert_expr = exp.insert(
+            expression=new_expression,
+            columns=insert_columns,
+            into=target,
+            dialect=self.query.dialect,
+        )
 
         statement.replace(insert_expr)
         return insert_expr

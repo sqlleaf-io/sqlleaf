@@ -18,6 +18,7 @@ from sqlleaf.models.query import (
     DeleteQuery,
     InsertQuery,
     MergeQuery,
+    MultitableInsertQuery,
     ProcedureQuery,
     PutQuery,
     Q,
@@ -55,6 +56,7 @@ def get_query_processors():
         "view": _process_views_and_ctas,
         "sequence": _process_tables,
         "procedure": _process_stored_procedures,
+        "multitableinserts": _process_unnamed,
         "function": _process_functions,
         "database": _process_database,
         "trigger": _process_triggers,
@@ -221,6 +223,8 @@ def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, 
         _collect_insert_children(query, parent_holder, object_mapping)
     if isinstance(query, MergeQuery):
         _collect_merge_children(query, parent_holder, object_mapping)
+    if isinstance(query, MultitableInsertQuery):
+        _collect_multitable_insert_children(query, parent_holder, object_mapping)
     if not isinstance(query, (CopyQuery, PutQuery)):
         _collect_writable_cte_queries(query, parent_holder, dialect, object_mapping)
 
@@ -304,6 +308,38 @@ def _collect_merge_children(
             insert_query.target_info = merge.target_info
             child_holder = QueryHolder(original=insert_query)
             parent_holder.add_child_holder(child_holder)
+
+
+def _collect_multitable_insert_children(
+    parent_query: MultitableInsertQuery, parent_holder: QueryHolder, object_mapping: mappings.ObjectMapping
+):
+    """
+    Extract the ConditionalInsert (exp.Insert) branches from the Multitable statement.
+    """
+    statement = parent_query.statement
+    for i, branch in enumerate(statement.expressions):
+        if not isinstance(branch, exp.ConditionalInsert):
+            continue
+
+        insert_expr = branch.this
+        if not isinstance(insert_expr, exp.Insert):
+            continue
+
+        copied_expr = util.copy_expression(insert_expr)
+
+        if not copied_expr.expression and not copied_expr.args.get("source"):
+            # If the branch doesn't have its own source, use the parent's shared source.
+            # This happens in Snowflake multi-table inserts without explicit VALUES.
+            copied_expr.set("expression", parent_query.source_info.expression)
+
+        child_query = InsertQuery(
+            expr=copied_expr,
+            dialect=parent_query.dialect,
+            object_mapping=object_mapping,
+            statement_index=i,
+        )
+        child_holder = QueryHolder(original=child_query)
+        parent_holder.add_child_holder(child_holder)
 
 
 def _set_column_defs(query: TableQuery):
@@ -488,6 +524,10 @@ def _process_unnamed(
         )
     elif isinstance(statement, exp.Merge):
         query = MergeQuery(
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
+    elif isinstance(statement, exp.MultitableInserts):
+        query = MultitableInsertQuery(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
     elif isinstance(statement, exp.Delete):

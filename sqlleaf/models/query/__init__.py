@@ -8,6 +8,7 @@ from sqlleaf.models.query.delete import DeleteQuery as DeleteQuery
 from sqlleaf.models.query.holder import QueryHolder as QueryHolder
 from sqlleaf.models.query.insert import InsertQuery as InsertQuery
 from sqlleaf.models.query.merge import MergeQuery as MergeQuery
+from sqlleaf.models.query.multitable_insert import MultitableInsertQuery as MultitableInsertQuery
 from sqlleaf.models.query.procedure import ProcedureQuery as ProcedureQuery
 from sqlleaf.models.query.put import PutQuery as PutQuery
 from sqlleaf.models.query.schema import SchemaQuery as SchemaQuery
