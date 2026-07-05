@@ -1153,3 +1153,55 @@ def test_hello_insert_returning_udf(holder):
     insert_after = ["INSERT INTO target (age) SELECT (SELECT 5) AS age"]
     actual_after = [insert_query.substituted.statement]
     assert to_sql(actual_after) == insert_after
+
+
+
+def test_hello_delete_returning_positional_udf(holder):
+    sql = """
+    CREATE TABLE people(age INT);
+
+    CREATE OR REPLACE FUNCTION hello(int) RETURNS INT AS $$
+        DELETE FROM people RETURNING $1;
+    $$ LANGUAGE sql;
+
+    CREATE TABLE target(age INT);
+    INSERT INTO target SELECT hello(6);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    query = h.holders[1].original
+    assert isinstance(query, UserDefinedFunctionQuery)
+
+    insert_query = h.holders[3]
+    insert_after_2 = ["INSERT INTO target (age) SELECT (SELECT 6) AS age"]
+    actual_after = [insert_query.substituted.statement]
+    assert to_sql(actual_after) == insert_after_2
+
+
+def test_hello_merge_returning_udf(holder):
+    sql = """
+    CREATE TABLE people(age INT);
+
+    CREATE OR REPLACE FUNCTION hello(text) RETURNS TEXT AS $$
+        MERGE INTO target AS t
+        USING people AS s
+        ON t.age = s.age
+        WHEN MATCHED THEN
+            UPDATE SET age = s.age
+        RETURNING merge_action();
+    $$ LANGUAGE sql;
+
+    CREATE TABLE target(age INT);
+    INSERT INTO target SELECT hello(6);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    query = h.holders[1].original
+    assert isinstance(query, UserDefinedFunctionQuery)
+
+    insert_query = h.holders[3]
+    # This is technically invalid as merge_action() can only be used inside a MERGE,
+    # but we do this anyway for lineage purposes.
+    insert_after_2 = ["INSERT INTO target (age) SELECT (SELECT MERGE_ACTION()) AS age"]
+    actual_after = [insert_query.substituted.statement]
+    assert to_sql(actual_after) == insert_after_2

@@ -433,16 +433,16 @@ def _get_target_node(node: exp.Anonymous) -> exp.Expr:
     return node
 
 
-def _resolve_insert_returning_to_select(
-    stmt: exp.Insert,
+def _resolve_returning_to_select(
+    stmt: exp.Expr,
     param_map: t.Dict[str, exp.Expr],
     query: UserDefinedFunctionQuery,
     positional_map: t.Dict[str, exp.Expr],
 ) -> exp.Select:
     """
-    Given an INSERT ... VALUES (...) RETURNING <cols> statement,
-    resolves each RETURNING column to its corresponding VALUES literal
-    and returns a SELECT expression.
+    Given a statement with a RETURNING clause (INSERT, UPDATE, DELETE, MERGE),
+    resolves each RETURNING expression (handling parameter substitution
+    and column-to-literal mapping for INSERT) and returns a SELECT expression.
 
     Example:
         INSERT INTO people (age) VALUES (5) RETURNING age
@@ -452,19 +452,21 @@ def _resolve_insert_returning_to_select(
     if not returning_node:
         return exp.select("*")
 
-    # Extract insert columns. If 'this' is a Schema, it has expressions (columns)
-    schema = stmt.this
-    insert_cols = []
-    if isinstance(schema, exp.Schema):
-        insert_cols = [c.name for c in schema.expressions]
+    col_to_val = {}
+    if isinstance(stmt, exp.Insert):
+        # Extract insert columns. If 'this' is a Schema, it has expressions (columns)
+        schema = stmt.this
+        insert_cols = []
+        if isinstance(schema, exp.Schema):
+            insert_cols = [c.name for c in schema.expressions]
 
-    values_node = stmt.find(exp.Values)
-    values_literals = []
-    if values_node and values_node.expressions:
-        # Get the first row of values
-        values_literals = values_node.expressions[0].expressions
+        values_node = stmt.find(exp.Values)
+        values_literals = []
+        if values_node and values_node.expressions:
+            # Get the first row of values
+            values_literals = values_node.expressions[0].expressions
 
-    col_to_val = dict(zip(insert_cols, values_literals))
+        col_to_val = dict(zip(insert_cols, values_literals))
 
     resolved = []
     for ret_col in returning_node.expressions:
@@ -486,9 +488,9 @@ def _transform_inner_query(
     """
     Performs replacement and transformations over a UDF's inner query.
     """
-    # handle INSERT ... RETURNING inside a UDF body
-    if isinstance(stmt, exp.Insert) and stmt.args.get("returning"):
-        return _resolve_insert_returning_to_select(stmt, param_map, query, positional_map)
+    # handle INSERT/UPDATE/DELETE/MERGE ... RETURNING inside a UDF body
+    if isinstance(stmt, (exp.Insert, exp.Update, exp.Delete, exp.Merge)) and stmt.args.get("returning"):
+        return _resolve_returning_to_select(stmt, param_map, query, positional_map)
 
     logger.debug(f"Transforming inner query: {stmt.sql()}")
     replacement_expr = _substitute_parameters(stmt, query, param_map, positional_map)
