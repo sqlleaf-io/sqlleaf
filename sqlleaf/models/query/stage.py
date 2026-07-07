@@ -1,12 +1,34 @@
 from __future__ import annotations
 
 import typing as t
+from dataclasses import dataclass
 
 from sqlglot import exp
 
 from sqlleaf import mappings, util
 from sqlleaf.models.query.base import Query
-from sqlleaf.typing import TargetInfo
+from sqlleaf.typing import SourceInfo, TargetInfo
+
+
+@dataclass(frozen=True)
+class StageQueryParameters:
+    property: str
+    path: str
+
+    @classmethod
+    def from_expression(
+        cls, expr: exp.Create, source_info: SourceInfo, target_info: TargetInfo, dialect: str
+    ) -> StageQueryParameters:
+        property = util.find_property(expr, target_info.expression, dialect)
+
+        path = ""
+        # Get the URL
+        if props := expr.args.get("properties"):
+            for prop in props.expressions:
+                if isinstance(prop, exp.Property) and prop.name.upper() == "URL":
+                    path = prop.args["value"].this
+                    break
+        return cls(property=property, path=path)
 
 
 class StageQuery(Query):
@@ -39,16 +61,10 @@ class StageQuery(Query):
         target.this.set("this", "@" + str(target.this))
         target.this.set("quoted", False)
 
-        self.property = util.find_property(expr, target, dialect)
-        self.path = find_stage_path(expr)
+        self.properties = StageQueryParameters.from_expression(
+            self.statement, self.source_info, self.target_info, dialect
+        )
 
-
-def find_stage_path(statement: exp.Create) -> str:
-    """
-    Get the URL property for Snowflake stages.
-    """
-    if props := statement.args.get("properties"):
-        for prop in props.expressions:
-            if isinstance(prop, exp.Property) and prop.name.upper() == "URL":
-                return prop.args["value"].this
-    return ""
+    @property
+    def path(self) -> str:
+        return self.properties.path
