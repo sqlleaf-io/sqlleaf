@@ -19,7 +19,7 @@ from sqlleaf.models.node import (
     N,
     TargetNodeType,
 )
-from sqlleaf.models.query import PutQuery, Q, QueryHolder, TableQuery, UpdateQuery
+from sqlleaf.models.query import CallQuery, PutQuery, Q, QueryHolder, TableQuery, UpdateQuery
 from sqlleaf.processors.generators.dialects.base import BaseGenerator
 from sqlleaf.typing import E, TableOrScopeType, TableType
 
@@ -34,33 +34,40 @@ def generate_lineage_for_query(
     Calculate the lineage for an SQL query.
 
     We collect all the columns from the query's target table, and then iterate
-    over sqlglot's abstract syntax tree (AST) to determine the set of node
+    over sqlglot's abstract syntax tree (AST) to determine the set of nodes
     and transformations used along the path to reach the table's columns.
-    """
-    statements_to_process = [(holder.transformed, holder.transformed.statement)]
-    if holder.substituted:
-        statements_to_process.append((holder.substituted, holder.substituted.statement))
 
-    for i, (active_query, statement) in enumerate(statements_to_process):
+    Everything is extracted: columns, literals, functions, etc.
+    """
+    queries_to_process = []
+    if not isinstance(holder.original, CallQuery):
+        # CALL() is an exception - it has no lineage itself, but it executes other statements
+        queries_to_process.append(holder.transformed)
+
+    if holder.substituted:
+        queries_to_process.append(holder.substituted)
+
+    for i, query in enumerate(queries_to_process):
+        statement = query.statement
         logger.debug("----")
         subs = "[SUBSTITUTED] " if i > 0 else ""
-        logger.info(f"Getting lineage for {subs}query: {statement.sql(dialect=active_query.dialect)}")
+        logger.info(f"Getting lineage for {subs}query: {statement.sql(dialect=query.dialect)}")
 
-        target_object = active_query.get_target_expression()
-        pos_ctx = PositionContext(statement_index=active_query.get_statement_index())
+        target_object = query.get_target_expression()
+        pos_ctx = PositionContext(statement_index=query.get_statement_index())
         gen_ctx = GeneratorContext(
             graph=graph,
-            query=active_query,
+            query=query,
             expr=statement,
             child_node=target_object,
             scope=None,
         )
-        generator = BaseGenerator.from_dialect(active_query.dialect)
+        generator = BaseGenerator.from_dialect(query.dialect)
 
         if check_for_put(generator, gen_ctx, pos_ctx):
             return graph
 
-        if check_for_trigger(target_object, active_query.object_mapping):
+        if check_for_trigger(target_object, query.object_mapping):
             return graph
 
         if check_for_external_table(generator, gen_ctx, pos_ctx):

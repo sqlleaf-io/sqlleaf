@@ -76,6 +76,10 @@ class Query:
             else:
                 _type = SqlObjectType.TABLE
 
+        elif isinstance(expr, exp.Anonymous) and expr.this == "PROCEDURE":
+            # CALL() statement
+            _type = SqlObjectType.PROCEDURE
+
         elif isinstance(expr, exp.Select):
             _type = SqlObjectType.SELECT
 
@@ -130,11 +134,16 @@ class Query:
         This is straightforward if source isn't a JOIN: we just use the source object's columns.
         But if it is a JOIN, we use the selected columns rather than the source's columns.
         """
+        if self.source_info is None:
+            # TODO: temp. This occurs when CALL() invokes an SP with only a SELECT
+            #  Remove this after CopyQuery refactor is complete
+            return []
+
         source_expr = self.source_info.expression
         target_expr = self.target_info.expression
         target_type = self.target_info.type
 
-        if target_type in SqlObjectType.types_with_no_column_defs():
+        if target_type in SqlObjectType.objects_with_no_column_defs():
             object_with_columns = source_expr
         elif target_type == SqlObjectType.TABLE:
             object_with_columns = target_expr

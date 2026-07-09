@@ -4,6 +4,7 @@ from sqlglot import exp
 
 from sqlleaf import mappings
 from sqlleaf.models.query.base import Query
+from sqlleaf.typing import SqlObjectType, TargetInfo
 
 
 class TriggerQuery(Query):
@@ -24,11 +25,14 @@ class TriggerQuery(Query):
                 EXECUTE FUNCTION check_fruit('apple');
         """
         properties = expr.args["properties"].expressions[0]
+        target = expr.this
         super().__init__(
             dialect=dialect,
             statement=expr,
             statement_index=statement_index,
             object_mapping=object_mapping,
+            source_info=None,
+            target_info=TargetInfo(expression=target, type=SqlObjectType.TABLE),
         )
         self.name = expr.name  # before_fruit_insert
         self.table = properties.args["table"]  # Table(fruit.processed)

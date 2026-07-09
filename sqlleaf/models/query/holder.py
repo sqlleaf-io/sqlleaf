@@ -12,9 +12,9 @@ class QueryHolder:
     A container that holds up to three versions of the same SQL statement
     as three distinct Query instances.
 
-    - original:    The collected, unmodified Query.
+    - original:    The parsed, unmodified Query.
     - transformed: The Query after transformer.py has processed it.
-    - substituted: The Query after UDF substitution (future use).
+    - substituted: The Query after substitution of a UDF/procedure's statements.
     """
 
     def __init__(self, original: Query):

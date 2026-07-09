@@ -5,7 +5,7 @@ from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
 
 from sqlleaf.exception import SqlLeafException
-from sqlleaf.models.query import FunctionParam, Q, UserDefinedFunctionQuery
+from sqlleaf.models.query import FunctionParam, Q, UserDefinedFunctionQuery, CallQuery
 from sqlleaf.processors.transformers.resolver import find_next_udf_call
 from sqlleaf.typing import E
 
@@ -612,3 +612,43 @@ def substitute_udf(statement: E, query: Q) -> t.List[exp.Expr]:
         _apply_replacement(target_node, replacement_exprs[0], matched_udf)
 
     return result
+
+
+def substitute_call(query: CallQuery) -> t.List[exp.Expr]:
+    """
+    Substitutes a CALL statement with the body of the procedure it calls.
+    Procedures don't return anything, so we just substitute the parameters
+    and return the inner statements.
+    """
+    procedure_table = exp.Table(
+        this=exp.to_identifier(query.procedure),
+        db=exp.to_identifier(query.schema) if query.schema else None,
+    )
+    matched_proc = query.object_mapping.lookup_procedure_query(procedure_table, raise_on_missing=False)
+    if not matched_proc:
+        return []
+
+    logger.debug(f"Substituting CALL query '{query.name}' with procedure body")
+
+    # Re-use _find_arg logic. We don't have an Anonymous node,
+    # just a list of args from the CallQuery.
+    param_map = {}
+    positional_map = {}
+    args = query.args
+
+    for i, param in enumerate(matched_proc.parameters):
+        arg_expr = _find_arg(args, param, i) or param.default
+
+        if arg_expr:
+            param_map[param.name.lower()] = arg_expr
+            positional_map[str(i + 1)] = arg_expr
+
+    replacement_exprs = []
+    for stmt in matched_proc.inner_statements:
+        # Procedures can contain multiple statements
+        replacement_exprs.append(_substitute_parameters(stmt.copy(), None, param_map, positional_map))
+
+    logger.debug(f"Substituted to {len(replacement_exprs)} statements:")
+    for r in replacement_exprs:
+        logger.debug(f"  {r.sql(dialect=query.dialect)}")
+    return replacement_exprs

@@ -171,7 +171,7 @@ class PostgresGenerator(BaseGenerator):
         """
         source_info: SourceInfo = gen_ctx.query.source_info
 
-        if source_info.type in SqlObjectType.types_with_no_column_defs():
+        if source_info.type in SqlObjectType.objects_with_no_column_defs():
             if source_info.type == SqlObjectType.FILE:
                 gen_ctx = replace(
                     gen_ctx, expr=source_info.expression, new_data_type=gen_ctx.get_child_node().get_data_type()

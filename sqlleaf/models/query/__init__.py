@@ -1,6 +1,7 @@
 import typing as t
 
 from sqlleaf.models.query.base import Query as Query
+from sqlleaf.models.query.call import CallQuery as CallQuery
 from sqlleaf.models.query.copy import CopyQuery as CopyQuery
 from sqlleaf.models.query.ctas import CTASQuery as CTASQuery
 from sqlleaf.models.query.database import DatabaseQuery as DatabaseQuery

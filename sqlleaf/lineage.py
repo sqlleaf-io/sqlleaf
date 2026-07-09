@@ -17,6 +17,7 @@ from sqlleaf.models.query import (
     UnloadQuery,
     UpdateQuery,
     ViewQuery,
+    CallQuery,
 )
 from sqlleaf.path import LineagePath
 from sqlleaf.processors import collector, generator, transformer
@@ -255,21 +256,38 @@ def new_graph() -> nx.MultiDiGraph:
     return nx.MultiDiGraph(attrs=GraphAttributes())
 
 
-QUERIES_WITH_LINEAGE = (InsertQuery, UpdateQuery, ViewQuery, CTASQuery, PutQuery, CopyQuery, TableQuery, UnloadQuery)
+QUERIES_WITH_LINEAGE = (
+    CTASQuery,
+    CallQuery,
+    CopyQuery,
+    InsertQuery,
+    PutQuery,
+    TableQuery,
+    UnloadQuery,
+    UpdateQuery,
+    ViewQuery,
+)
 
 
 def query_has_lineage(query: Q) -> bool:
     """
     Check if a query has lineage within its expressions.
+
+    We distinguish between a query's definition and a query that is called.
+    That is, in order for a `CREATE FUNCTION` or `CREATE PROCEDURE` to have
+    lineage, it must be executed by an invoking statement, e.g. `CALL()` or `SELECT UDF()`
+    Simply having statements inside its definition is not sufficient to produce lineage.
     """
     has_lineage = True
     if not isinstance(query, QUERIES_WITH_LINEAGE):
         has_lineage = False
     elif isinstance(query, CopyQuery) and query.source_info.type == SqlObjectType.VALUES:
+        # COPY TO STDOUT VALUES (..)
         has_lineage = False
     elif isinstance(query, CopyQuery) and not query.is_query_active():
         has_lineage = False
     elif isinstance(query, CTASQuery) and not query.load_data:
+        # CREATE TABLE WITH NO DATA
         has_lineage = False
     elif isinstance(query, TableQuery) and query.property != "external":
         has_lineage = False

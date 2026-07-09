@@ -146,17 +146,18 @@ TABLE
 
 CREATE FUNCTION (language SQL)
   - [ ] CALLED ON NULL INPUT
-  - [ ] RETURNS NULL ON NULL INPUT
-  - [ ] RETURNS TABLE
-  - [ ] RETURNS <expression>
-  - [ ] Heredoc extraction
+  - [x] RETURNS NULL ON NULL INPUT
+  - [x] RETURNS TABLE
+  - [x] RETURNS <expression>
+  - [x] Heredoc extraction
   - [ ] Inner statement parsing
-  - [ ] Function parameters (IN, OUT, INOUT)
+  - [x] Function parameters (IN, OUT, INOUT)
   - [ ] Empty call args are NULL: (,1,2) => (NULL,1,2)
   - [x] RETURNING
   - [ ] Must return data unless void return type
 
 CREATE PROCEDURE (language SQL)
+- [x]
 
 PREPARE
 - not supported by sqlglot

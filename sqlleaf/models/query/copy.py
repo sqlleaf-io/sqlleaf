@@ -64,9 +64,11 @@ class CopyQueryParameters:
     @property
     def is_active(self) -> bool:
         """
-        An active COPY query is one that has lineage. It is either:
+        An active COPY query is one that has lineage.
+        It is either:
         - a regular COPY query
         - a JOB that is either 'RUN' or 'CREATE and AUTO=ON'
+        Otherwise (e.g. `COPY JOB LIST`) it is not.
         """
         if not self.is_a_job and self.load_data:
             return True

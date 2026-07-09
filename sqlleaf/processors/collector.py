@@ -12,6 +12,7 @@ from sqlglot.optimizer.qualify import qualify
 
 from sqlleaf import exception, mappings, util
 from sqlleaf.models.query import (
+    CallQuery,
     CopyQuery,
     CTASQuery,
     DatabaseQuery,
@@ -68,6 +69,7 @@ def get_query_processors():
         "schema": _process_schema,
         "unload": _process_unload,
         "stage": _process_stage,
+        "call": _process_unnamed,
         "copy": _process_unnamed,
         "put": _process_unnamed,
         "type": _process_type,
@@ -99,6 +101,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     processors = get_query_processors()
     counts = {kind: 0 for kind in processors.keys()}
     parsed = sqlglot.parse(text, dialect=dialect)
+    parsed = _split_combined_statements(parsed)
 
     for index, stmt in enumerate(parsed):
         if not stmt:
@@ -112,6 +115,8 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         if isinstance(stmt, exp.Command):
             if dialect == "redshift" and stmt.name == "UNLOAD":
                 kind = "unload"
+            elif stmt.this.upper() == "CALL":
+                kind = "call"
             else:
                 logger.warning(f"Unsupported statement: {stmt.sql(dialect=dialect)}")
                 unsupported.append((index, stmt))
@@ -557,6 +562,10 @@ def _process_unnamed(
         query = PutQuery(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
+    elif isinstance(statement, exp.Command) and statement.this.upper() == "CALL":
+        query = CallQuery(
+            statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
 
     return query
 
@@ -706,7 +715,7 @@ def _process_triggers(
     Process a "CREATE TRIGGER" statement.
     """
     query = TriggerQuery(statement, dialect, object_mapping, statement_index)
-    object_mapping.add_type_query(query)
+    object_mapping.add_trigger_query(query)
     return query
 
 
@@ -719,7 +728,7 @@ def _process_stored_procedures(
     query = ProcedureQuery(
         expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
     )
-    # object_mapping.add_query(kind="procedure", query=query, dialect=dialect)
+    object_mapping.add_procedure_query(query)
     # TODO: find a way to get each SP's text from a query that has multiple SPs defined in it.
     #  sqlglot will parse the 2 SPs, but does not provide the original, raw text. This is imperfect
     #  as we would like to keep the original text for various reasons.
@@ -769,3 +778,31 @@ def _process_database(
     query = DatabaseQuery(statement, dialect, object_mapping, statement_index)
     object_mapping.add_database_query(query)
     return query
+
+
+def _split_combined_statements(parsed: t.List[exp.Expr]) -> t.List[exp.Expr]:
+    """
+    Workaround for sqlglot incorrectly bundling statements following a block-based CREATE.
+    For example, with the statement "CREATE PROCEDURE .. BEGIN .. END; CALL();" the CALL()
+    is included with the procedure definition.
+    """
+    new_parsed = []
+    for stmt in parsed:
+        if isinstance(stmt, exp.Create) and isinstance(stmt.args.get("expression"), exp.Block):
+            block = stmt.args["expression"]
+            end_index = -1
+            for i, expr in enumerate(block.expressions):
+                if isinstance(expr, exp.EndStatement):
+                    end_index = i
+                    break
+
+            # Separate the statements
+            if end_index != -1 and end_index < len(block.expressions) - 1:
+                extra = block.expressions[end_index + 1 :]
+                block.set("expressions", block.expressions[: end_index + 1])
+                new_parsed.append(stmt)
+                new_parsed.extend(extra)
+                continue
+
+        new_parsed.append(stmt)
+    return new_parsed

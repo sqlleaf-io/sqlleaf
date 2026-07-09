@@ -483,6 +483,16 @@ class BaseGenerator:
                     column=column_name,
                 )
 
+            case SqlObjectType.PROCEDURE:
+                return ColumnNode(
+                    catalog=expression.catalog if isinstance(expression, exp.Table) else "",
+                    schema=expression.db if isinstance(expression, exp.Table) else "",
+                    table=expression.name,
+                    column=column_name,
+                    gen_ctx=gen_ctx,
+                    pos_ctx=pos_ctx,
+                )
+
             case _:
                 raise exception.SqlLeafException(f"Unhandled case for type: {object_type}")
 

@@ -10,7 +10,7 @@ from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 from sqlleaf import exception, util
 from sqlleaf.models.query import Q
 from sqlleaf.processors.transformers import resolver
-from sqlleaf.typing import E
+from sqlleaf.typing import E, SqlObjectType
 
 from sqlleaf.processors.transformers.simplify import simplify_row
 
@@ -42,7 +42,7 @@ class BaseQueryTransformer:
         """
         return self.statement
 
-    def _preprocess(self) -> None:
+    def preprocess(self) -> None:
         """
         Run a set of transformations over every statement
         BEFORE the type-specific transformations.
@@ -59,14 +59,13 @@ class BaseQueryTransformer:
 
         simplify_row(self.statement, self.query)
 
-    def _postprocess(self, stmt: exp.Expr) -> exp.Expr:
+    def postprocess(self) -> exp.Expr:
         """
         Run a set of transformations over every statement
         AFTER the type-specific transformations.
         """
-        self.statement = stmt
         self._add_aliases_to_udfs()
-        return self._apply_optimizations(stmt)
+        return self._apply_optimizations(self.statement)
 
     def _validate_syntax(func):
         """
@@ -304,14 +303,12 @@ class BaseQueryTransformer:
             produces
                 my.table.name -> my.other.name
         """
-        from sqlleaf.typing import SqlObjectType
-
         query = self.query
         validate_columns = True
         exclude_rules = EXCLUDE_OPTIMIZER_RULES[:]
 
         # Do not validate the columns if the source is a non-table
-        if query.source_info.type in SqlObjectType.types_with_no_column_defs():
+        if not query.source_info or query.source_info.type in SqlObjectType.objects_with_no_column_defs():
             validate_columns = False
 
         if not validate_columns:
@@ -457,7 +454,7 @@ class BaseQueryTransformer:
             return statement
 
         # sqlglot throws a parse error on named columns for Snowflake: INSERT INTO @"my_eXt_sTaGe" (NAME, AGE) SELECT ...
-        SKIP_COLUMN_RENAME_TYPES = SqlObjectType.types_with_no_column_defs()
+        SKIP_COLUMN_RENAME_TYPES = SqlObjectType.objects_with_no_column_defs()
         if query.source_info.type in SKIP_COLUMN_RENAME_TYPES or query.target_info.type in SKIP_COLUMN_RENAME_TYPES:
             # The aliases and column names already exist from a previous transformation,
             # or the target is not a table (e.g. S3 file, stage, stream)
@@ -503,7 +500,7 @@ class BaseQueryTransformer:
                 ",".join(insert_columns),
                 ",".join(aliases),
             )
-            logger.warning(message)
+            #logger.warning(message)
 
         for i, ins in enumerate(insert_columns):
             # Overwrite the aliases because sqlglot may have added incorrect ones

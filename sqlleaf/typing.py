@@ -35,6 +35,7 @@ class SqlObjectType(StrEnum):
     STAGE = auto()
     STREAM = auto()
     TABLE = auto()
+    PROCEDURE = auto()
     # Sources
     SELECT = auto()
     VALUES = auto()
@@ -42,12 +43,12 @@ class SqlObjectType(StrEnum):
     TUPLE = auto()  # Temporary
 
     @classmethod
-    def types_with_no_column_defs(cls) -> t.List:
+    def objects_with_no_column_defs(cls) -> t.List:
         """
         Return all the types that do not define any columns of their own.
         """
         # Are these also the external systems?
-        return [cls.DYNAMODB, cls.FILE, cls.PROGRAM, cls.STAGE, cls.STREAM]
+        return [cls.DYNAMODB, cls.FILE, cls.PROGRAM, cls.STAGE, cls.STREAM, cls.PROCEDURE]
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,7 @@ class TableType(StrEnum):
     STAGE = auto()
     FILE = auto()
     UDTF = auto()  # LATERAL hello() as hello(col1, col2)
+    PROCEDURE = auto()
 
 
 class TableSubtype(StrEnum):

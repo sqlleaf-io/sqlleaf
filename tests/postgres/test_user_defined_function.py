@@ -3,6 +3,7 @@ import sys
 import typing as t
 
 import pytest
+import sqlglot
 from sqlglot import exp
 
 from sqlleaf.models.query import UserDefinedFunctionQuery
@@ -113,6 +114,36 @@ def test_hello_schema_distinction_udf(holder):
     assert to_sql([h.holders[4].substituted.statement]) == [
         "INSERT INTO target (age) SELECT (SELECT 'yes_schema') AS age"
     ]
+
+
+def test_hello_select_udf(holder):
+    sql = """
+    CREATE FUNCTION hello() RETURNS TEXT AS $$
+        SELECT 'Hello';
+    $$ LANGUAGE SQL;
+
+    CREATE TABLE target(name VARCHAR);
+    INSERT INTO target (name) SELECT hello();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    query = h.holders[0].original
+    assert isinstance(query, UserDefinedFunctionQuery)
+
+    assert query.function_name == "hello"
+    assert query.schema_name is None
+    assert query.return_type == exp.DataType.build("TEXT")
+    assert query.language == "sql"
+
+    assert h.paths == [["udf[HELLO]", "column[target.name]"]]
+    assert len(h.nodes) == 2
+    assert len(h.edges) == 1
+
+    insert_query = h.holders[2]
+    insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello') AS name"]
+
+    actual_after = [insert_query.substituted.statement]
+    assert to_sql(actual_after) == insert_after
 
 
 def test_hello_nested_invocation_udf(holder):
@@ -1155,6 +1186,30 @@ def test_hello_insert_returning_udf(holder):
     assert to_sql(actual_after) == insert_after
 
 
+# The same as above, but just a SELECT.
+# TODO: this will work once the logic to process UDFs in any place
+#  make the query segment valid (e.g. in WHERE cluases)
+# def test_hello_select_insert_returning_udf(holder):
+#     sql = """
+#     CREATE TABLE people(age INT);
+#
+#     CREATE OR REPLACE FUNCTION hello() RETURNS INT AS $$
+#         INSERT INTO people (age) VALUES (5), (2) RETURNING age;
+#     $$ LANGUAGE sql;
+#
+#     CREATE TABLE target(age INT);
+#     SELECT hello();
+#     """
+#     h = holder(sql=sql, dialect=DIALECT)
+#
+#     query = h.holders[1].original
+#     assert isinstance(query, UserDefinedFunctionQuery)
+#
+#     insert_query = h.holders[3]
+#     insert_after = ["INSERT INTO target (age) SELECT (SELECT 5) AS age"]
+#     actual_after = [insert_query.substituted.statement]
+#     assert to_sql(actual_after) == insert_after
+
 
 def test_hello_delete_returning_positional_udf(holder):
     sql = """
@@ -1205,3 +1260,11 @@ def test_hello_merge_returning_udf(holder):
     insert_after_2 = ["INSERT INTO target (age) SELECT (SELECT MERGE_ACTION()) AS age"]
     actual_after = [insert_query.substituted.statement]
     assert to_sql(actual_after) == insert_after_2
+
+
+# TODO: inner schema call
+"""
+CREATE FUNCTION hello(username TEXT) RETURNS TEXT AS $$
+        SELECT my.unknown(username);
+    $$ LANGUAGE sql;
+"""
