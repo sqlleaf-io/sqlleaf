@@ -2,11 +2,9 @@ import os
 import sys
 import typing as t
 
-import pytest
-import sqlglot
 from sqlglot import exp
 
-from sqlleaf.models.query import ProcedureQuery, CallQuery, InsertQuery
+from sqlleaf.models.query import CallQuery, InsertQuery, ProcedureQuery
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -69,10 +67,10 @@ def test_call_procedure(holder):
     assert isinstance(substituted, InsertQuery)
     assert substituted.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
 
-    assert h.paths == [['literal["world"]', 'column[target.name]']]
+    assert h.paths == [['literal["world"]', "column[target.name]"]]
     assert h.nodes_full == [
         'literal[name="world" type=VARCHAR position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]',
-        'column[name=name type=TEXT properties=[kind=table table=target]]'
+        "column[name=name type=TEXT properties=[kind=table table=target]]",
     ]
     assert len(h.edges) == 1
 
@@ -108,10 +106,10 @@ def test_call_schema_procedure(holder):
     assert isinstance(substituted, InsertQuery)
     assert substituted.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
 
-    assert h.paths == [['literal["world"]', 'column[target.name]']]
+    assert h.paths == [['literal["world"]', "column[target.name]"]]
     assert h.nodes_full == [
         'literal[name="world" type=VARCHAR position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]',
-        'column[name=name type=TEXT properties=[kind=table table=target]]'
+        "column[name=name type=TEXT properties=[kind=table table=target]]",
     ]
     assert len(h.edges) == 1
 

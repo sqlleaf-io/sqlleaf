@@ -26,7 +26,6 @@ class _PivotNode(NodeAttributes):
         return ""
 
 
-
 class PivotNode(_PivotNode):
     KIND = "pivot"
 

@@ -10,9 +10,8 @@ from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 from sqlleaf import exception, util
 from sqlleaf.models.query import Q
 from sqlleaf.processors.transformers import resolver
-from sqlleaf.typing import E, SqlObjectType
-
 from sqlleaf.processors.transformers.simplify import simplify_row
+from sqlleaf.typing import E, SqlObjectType
 
 logger = logging.getLogger("sqlleaf")
 
@@ -500,7 +499,7 @@ class BaseQueryTransformer:
                 ",".join(insert_columns),
                 ",".join(aliases),
             )
-            #logger.warning(message)
+            # logger.warning(message)
 
         for i, ins in enumerate(insert_columns):
             # Overwrite the aliases because sqlglot may have added incorrect ones

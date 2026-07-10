@@ -8,7 +8,7 @@ from sqlglot import exp
 
 from sqlleaf import util
 from sqlleaf.models.query.base import Query
-from sqlleaf.typing import TargetInfo, SqlObjectType
+from sqlleaf.typing import SqlObjectType, TargetInfo
 
 if t.TYPE_CHECKING:
     from sqlleaf import mappings

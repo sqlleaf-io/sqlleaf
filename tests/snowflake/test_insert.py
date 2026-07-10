@@ -38,7 +38,6 @@ def test__multitable_insert_all(holder):
     )
 
 
-
 def test__multitable_insert_first_reversed(holder):
     sql = """
     CREATE TABLE fruit.target1 (c1 INT);
@@ -96,7 +95,9 @@ def test__multitable_insert_all_else(holder):
         ["column[FRUIT.SOURCE.V1]", "column[FRUIT.TARGET3.C3]"],
     ]
     child_holders = h.holders[4].child_holders
-    assert [InsertQuery, InsertQuery, InsertQuery, InsertQuery] == list(map(type, [ch.original for ch in child_holders]))
+    assert [InsertQuery, InsertQuery, InsertQuery, InsertQuery] == list(
+        map(type, [ch.original for ch in child_holders])
+    )
 
     assert (
         child_holders[0].transformed.statement.sql(dialect=DIALECT)

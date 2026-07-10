@@ -287,7 +287,6 @@ def test__row_access_lateral(holder):
     ]
 
 
-
 # def test__row_unnest_array(holder):
 #     sql = f"""
 #     {COMMON_SQL}

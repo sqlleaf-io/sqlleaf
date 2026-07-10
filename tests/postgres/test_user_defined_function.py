@@ -3,7 +3,6 @@ import sys
 import typing as t
 
 import pytest
-import sqlglot
 from sqlglot import exp
 
 from sqlleaf.models.query import UserDefinedFunctionQuery

@@ -55,9 +55,7 @@ class ColumnNode(NodeAttributes):
         })
         return d
 
-    def _apply_rename(
-        self, source: exp.Table | exp.Values | exp.Select | exp.Lateral, dialect: str
-    ) -> None:
+    def _apply_rename(self, source: exp.Table | exp.Values | exp.Select | exp.Lateral, dialect: str) -> None:
         """
         Change the column's source table to be its fully qualified name, not its alias,
         so that the ColumnNode is provided complete information.
@@ -257,14 +255,11 @@ class ColumnNode(NodeAttributes):
         content = " ".join(parts)
         return self.wrap(content)
 
-
     def as_table(self) -> exp.Table:
         return exp.table_(catalog=self.catalog, db=self.schema, table=self.table)
 
     def fields(self) -> dict[str, str]:
-        f = {
-            "kind": self.parent_kind
-        }
+        f = {"kind": self.parent_kind}
         if self.parent_subkind:
             f["subkind"] = self.parent_subkind
 

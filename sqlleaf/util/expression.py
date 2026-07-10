@@ -122,14 +122,14 @@ def get_udf_name(expr: exp.Anonymous) -> tuple[str, str]:
     return schema, function
 
 
-def get_function_args(expr: exp.Func)-> t.List[exp.Expr]:
+def get_function_args(expr: exp.Func) -> t.List[exp.Expr]:
     """
     Get all the argument expressions inside a function.
     Example: "a, b, c" in "SELECT my.func(a,b,c)"
     """
     function_args = list(expr.args.values())
     function_args = util.flatten(function_args)
-    exclude = (exp.TableAlias,) # SELECT FROM UNNEST() AS u
+    exclude = (exp.TableAlias,)  # SELECT FROM UNNEST() AS u
     function_args = [arg for arg in function_args if arg and isinstance(arg, exp.Expr) and not isinstance(arg, exclude)]
     return function_args
 

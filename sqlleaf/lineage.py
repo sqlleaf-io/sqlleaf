@@ -8,6 +8,7 @@ from sqlleaf import mappings, path, typing, util
 from sqlleaf.mappings import ObjectMapping
 from sqlleaf.models.node import EdgeAttributes, GraphAttributes, N
 from sqlleaf.models.query import (
+    CallQuery,
     CopyQuery,
     CTASQuery,
     InsertQuery,
@@ -17,7 +18,6 @@ from sqlleaf.models.query import (
     UnloadQuery,
     UpdateQuery,
     ViewQuery,
-    CallQuery,
 )
 from sqlleaf.path import LineagePath
 from sqlleaf.processors import collector, generator, transformer

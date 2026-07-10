@@ -25,9 +25,9 @@ def test__insert_into_select(holder):
         ["column[fruit.raw.amount]", "column[fruit.processed.amount]"],
     ]
     assert h.nodes_full == [
-        'column[name=amount type=INT properties=[kind=table table=processed schema=fruit]]',
-        'column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]',
-        'column[name=amount type=INT properties=[kind=table table=raw schema=fruit]]',
-        'column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]',
+        "column[name=amount type=INT properties=[kind=table table=processed schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]",
+        "column[name=amount type=INT properties=[kind=table table=raw schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]",
     ]
     assert len(h.edges) == 2

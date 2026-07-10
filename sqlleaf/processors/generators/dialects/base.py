@@ -321,7 +321,9 @@ class BaseGenerator:
                 source_table = dict(gen_ctx.scope.references).get(expr.table)
 
             if source_table:
-                if not isinstance(source_table, (exp.Table, exp.Values, exp.Subquery, exp.Select, exp.Lateral, exp.Unnest)):
+                if not isinstance(
+                    source_table, (exp.Table, exp.Values, exp.Subquery, exp.Select, exp.Lateral, exp.Unnest)
+                ):
                     raise exception.SqlLeafException(message=f"Unexpected source type: {type(source_table)}")
 
         parent = ColumnNode(

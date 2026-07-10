@@ -210,12 +210,12 @@ def test__cte_two_same_name_different_query(holder):
         ["literal[2]", "column[cte1.name]", "column[fruit.raw.name]"],
     ]
     assert h.nodes_full == [
-        'literal[name=1 type=INT position=[query_depth=1 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]',
-        'literal[name=2 type=INT position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]',
-        'column[name=name type=INT properties=[kind=cte table=cte1 statement=0]]',
-        'column[name=name type=INT properties=[kind=cte table=cte1 statement=1]]',
-        'column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]',
-        'column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]'
+        "literal[name=1 type=INT position=[query_depth=1 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]",
+        "literal[name=2 type=INT position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]",
+        "column[name=name type=INT properties=[kind=cte table=cte1 statement=0]]",
+        "column[name=name type=INT properties=[kind=cte table=cte1 statement=1]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]",
     ]
     assert [InsertQuery, InsertQuery] == h.query_types
     assert len(h.nodes) == 6
@@ -687,9 +687,9 @@ def test__cte_materialized(holder):
 
     assert h.paths == [["literal[1]", "column[cte.n]", "column[fruit.processed.age]"]]
     assert h.nodes_full == [
-        'literal[name=1 type=INT position=[query_depth=1 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]',
-        'column[name=n type=INT properties=[kind=cte subkind=materialized table=cte statement=0]]',
-        'column[name=age type=INT properties=[kind=table table=processed schema=fruit]]'
+        "literal[name=1 type=INT position=[query_depth=1 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]",
+        "column[name=n type=INT properties=[kind=cte subkind=materialized table=cte statement=0]]",
+        "column[name=age type=INT properties=[kind=table table=processed schema=fruit]]",
     ]
     assert len(h.nodes) == 3
     assert len(h.edges) == 2

@@ -5,7 +5,7 @@ from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
 
 from sqlleaf.exception import SqlLeafException
-from sqlleaf.models.query import FunctionParam, Q, UserDefinedFunctionQuery, CallQuery
+from sqlleaf.models.query import CallQuery, FunctionParam, Q, UserDefinedFunctionQuery
 from sqlleaf.processors.transformers.resolver import find_next_udf_call
 from sqlleaf.typing import E
 

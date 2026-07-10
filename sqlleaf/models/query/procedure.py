@@ -7,7 +7,7 @@ from sqlglot import exp
 
 from sqlleaf import mappings, util
 from sqlleaf.models.query.base import Query
-from sqlleaf.models.query.user_defined_function import FunctionParam, _extract_function_info
+from sqlleaf.models.query.user_defined_function import _extract_function_info
 from sqlleaf.typing import TargetInfo
 
 
@@ -68,9 +68,7 @@ class ProcedureQuery(Query):
 
         # Filter out statements that do not contain lineage (e.g. END;)
         return [
-            stmt
-            for stmt in inner_statements
-            if not isinstance(stmt, (exp.EndStatement, exp.Column, exp.Identifier))
+            stmt for stmt in inner_statements if not isinstance(stmt, (exp.EndStatement, exp.Column, exp.Identifier))
         ]
 
     @property
