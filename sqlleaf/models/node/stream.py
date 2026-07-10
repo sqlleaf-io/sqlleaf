@@ -12,6 +12,3 @@ class StreamNode(NodeAttributes):
 
     def fields(self) -> dict[str, str]:
         return {}
-
-    def get_name(self) -> str:
-        return self.name

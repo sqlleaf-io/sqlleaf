@@ -58,7 +58,7 @@ class CopyTransformer(BaseQueryTransformer):
         # Convert the Copy to an Insert
         insert_expr = exp.insert(
             expression=select,
-            into=query.get_target_expression(),  # ty: ignore[invalid-argument-type]
+            into=query.target_info.expression,  # ty: ignore[invalid-argument-type]
             columns=column_names,
             dialect=dialect,
         )

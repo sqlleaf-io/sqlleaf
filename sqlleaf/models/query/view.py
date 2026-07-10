@@ -38,4 +38,4 @@ class ViewQuery(Query):
         self.column_defs: t.List[exp.ColumnDef] = columns
         self.inherited_by: t.List[TableQuery] = []
 
-        self.property: str = util.find_property(expr, self.get_target_expression(), dialect)
+        self.property: str = util.find_property(expr, self.target_info.expression, dialect)

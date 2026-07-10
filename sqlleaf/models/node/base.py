@@ -17,19 +17,16 @@ class NodeAttributes:
         self,
         gen_ctx: GeneratorContext,
         pos_ctx: PositionContext,
-        name: str | None = None,
-        data_type: exp.DataType | None = None,
+        name: str | None = "",
     ):
         self.expr: exp.Expr = gen_ctx.expr
-        self._data_type: exp.DataType | None = data_type or gen_ctx.data_type
+        self._data_type: exp.DataType | None = gen_ctx.data_type
         self.data_type: str = str(self._data_type) if self._data_type else ""
 
-        # Default name to expression name or provided override
-        self.name: str = name if name is not None else getattr(self.expr, "name", "")
-
+        self.name: str = name
         self.kind: str = self.KIND
-        self.ctx: PositionContext = pos_ctx
         self.with_positions: bool = self.WITH_POSITIONS
+        self.ctx: PositionContext = pos_ctx
 
     # Allows the class to be used a networkx node
     def __hash__(self) -> int:

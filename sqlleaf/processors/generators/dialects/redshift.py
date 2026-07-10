@@ -116,7 +116,7 @@ class RedshiftGenerator(BaseGenerator):
     ) -> t.Iterator[EdgeToCreate]:
         source_info: SourceInfo = gen_ctx.query.source_info
 
-        if source_info.type in SqlObjectType.objects_with_no_column_defs():
+        if SqlObjectType.type_has_no_column_defs(source_info.type):
             # A filename from COPY/UNLOAD
             gen_ctx = replace(
                 gen_ctx, expr=source_info.expression, new_data_type=gen_ctx.get_child_node().get_data_type()

@@ -30,4 +30,4 @@ class SequenceQuery(Query):
             source_info=source,
             target_info=TargetInfo(expression=target, type=target_type),
         )
-        self.property = util.find_property(expr, self.get_target_expression(), dialect)
+        self.property = util.find_property(expr, self.target_info.expression, dialect)

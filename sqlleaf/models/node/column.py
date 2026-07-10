@@ -240,9 +240,6 @@ class ColumnNode(NodeAttributes):
         ]
         return t.cast(exp.ColumnConstraintKind, constraints[0]) if constraints else None
 
-    def get_name(self):
-        return self.name
-
     @property
     def friendly_name(self) -> str:
         tokens = [self.catalog, self.schema, self.table, self.name]

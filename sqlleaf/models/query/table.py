@@ -31,7 +31,7 @@ class TableQuery(Query):
         self.inherits: t.List[TableQuery] = []
         self.inherited_by: t.List[TableQuery] = []
 
-        self.property: str = util.find_property(expr, self.get_target_expression(), dialect)
+        self.property: str = util.find_property(expr, self.target_info.expression, dialect)
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
         return self.column_defs + self.system_column_defs if include_system else self.column_defs

@@ -407,7 +407,7 @@ def _collect_inherited_columns(
             query.inherits.append(parent_table_query)
 
             # Re-assign the columns to a copy of the correct table
-            expr = query.get_target_expression()
+            expr = query.target_info.expression
             if expr.parent:
                 schema = util.copy_expression(expr.parent)
                 for parent_col_def in parent_table_query.column_defs:

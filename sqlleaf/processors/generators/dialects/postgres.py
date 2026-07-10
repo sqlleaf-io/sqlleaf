@@ -35,6 +35,16 @@ class PostgresGenerator(BaseGenerator):
         for table functions.
         """
         if "rows_from" in expr.args:
+            """
+            Example:
+                SELECT * FROM ROWS FROM
+                (
+                    unnest(ARRAY['x', 'y']),
+                    json_to_recordset('[{"a":40,"b":"foo"}]')
+                        AS y(a INTEGER, b TEXT),
+                    generate_series(1, 3)
+                ) AS x (name, age, kind, amount)
+            """
             downstream_exprs = []
             for table_function in expr.args["rows_from"]:
                 # Determine the immediate children of the expression.
@@ -71,7 +81,7 @@ class PostgresGenerator(BaseGenerator):
         # We need to find the query that defines this table to get its columns
         table_query = gen_ctx.query.object_mapping.lookup_table_query(table=table, raise_on_missing=False)
         if table_query:
-            target_table = table_query.get_target_expression()
+            target_table = table_query.target_info.expression
             for col_def in table_query.get_column_defs():
                 parent = ColumnNode(
                     catalog=target_table.catalog,
@@ -115,9 +125,8 @@ class PostgresGenerator(BaseGenerator):
             "nextval",
             "currval",
             "setval",
-        ]:
-            # TODO: SequenceNode.from_expression()?
             # 'lastval()' is not supported since it requires tracking state
+        ]:
             seq_name_expr: exp.Literal = expr.args["expressions"][0]
 
             # Ensure the sequence exists
@@ -127,6 +136,7 @@ class PostgresGenerator(BaseGenerator):
                 raise exception.SqlLeafException(f"Sequence '{full_name}' not found.")
 
             subkind = seq_query.property if seq_query else ""
+            gen_ctx = replace(gen_ctx, new_data_type=exp.DataType.build("INT"))
             parent = SequenceNode(name=seq_name_expr.name, gen_ctx=gen_ctx, pos_ctx=pos_ctx, subkind=subkind)
             yield EdgeToCreate(parent, gen_ctx.child_node)
         else:
@@ -171,7 +181,7 @@ class PostgresGenerator(BaseGenerator):
         """
         source_info: SourceInfo = gen_ctx.query.source_info
 
-        if source_info.type in SqlObjectType.objects_with_no_column_defs():
+        if SqlObjectType.type_has_no_column_defs(source_info.type):
             if source_info.type == SqlObjectType.FILE:
                 gen_ctx = replace(
                     gen_ctx, expr=source_info.expression, new_data_type=gen_ctx.get_child_node().get_data_type()

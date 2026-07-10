@@ -43,12 +43,11 @@ class SqlObjectType(StrEnum):
     TUPLE = auto()  # Temporary
 
     @classmethod
-    def objects_with_no_column_defs(cls) -> t.List:
+    def type_has_no_column_defs(cls, *clses: t.Iterable) -> bool:
         """
         Return all the types that do not define any columns of their own.
         """
-        # Are these also the external systems?
-        return [cls.DYNAMODB, cls.FILE, cls.PROGRAM, cls.STAGE, cls.STREAM, cls.PROCEDURE]
+        return not set(clses).isdisjoint({cls.DYNAMODB, cls.FILE, cls.PROGRAM, cls.STAGE, cls.STREAM, cls.PROCEDURE})
 
 
 @dataclass(frozen=True)

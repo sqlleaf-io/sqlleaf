@@ -23,7 +23,7 @@ class UnloadTransformer(BaseQueryTransformer):
             -> INSERT INTO 's3://object-path/name-prefix' SELECT * FROM fruit.raw
         """
         query = self.query
-        table = exp.table_(query.get_target_expression().name)
+        table = exp.table_(query.target_info.expression.name)
         insert_expr = exp.insert(
             expression=statement,
             into=table,

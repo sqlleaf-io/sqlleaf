@@ -53,7 +53,7 @@ def generate_lineage_for_query(
         subs = "[SUBSTITUTED] " if i > 0 else ""
         logger.info(f"Getting lineage for {subs}query: {statement.sql(dialect=query.dialect)}")
 
-        target_object = query.get_target_expression()
+        target_object = query.target_info.expression
         pos_ctx = PositionContext(statement_index=query.get_statement_index())
         gen_ctx = GeneratorContext(
             graph=graph,

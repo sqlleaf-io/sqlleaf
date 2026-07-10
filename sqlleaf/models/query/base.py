@@ -143,7 +143,7 @@ class Query:
         target_expr = self.target_info.expression
         target_type = self.target_info.type
 
-        if target_type in SqlObjectType.objects_with_no_column_defs():
+        if SqlObjectType.type_has_no_column_defs(target_type):
             object_with_columns = source_expr
         elif target_type == SqlObjectType.TABLE:
             object_with_columns = target_expr
@@ -183,18 +183,15 @@ class Query:
 
         return table_query.get_column_defs()
 
-    def get_target_expression(self) -> TargetExprType:
-        return self.target_info.expression
-
     def get_target_as_table(self) -> exp.Table:
         """
         For functions that only accept tables.
         """
-        if not isinstance(self.get_target_expression(), exp.Table):
+        if not isinstance(self.target_info.expression, exp.Table):
             raise exception.SqlLeafException(
                 message=f"Expected the target object to be a table but it is a {type(self.target_info.type)}"
             )
-        return self.get_target_expression()
+        return self.target_info.expression
 
     def get_statement_index(self) -> str:
         """

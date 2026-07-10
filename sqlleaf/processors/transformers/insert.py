@@ -93,7 +93,7 @@ class InsertTransformer(BaseQueryTransformer):
 
         using = ctx["using"]
         returning = ctx["returning"]
-        target = self.query.get_target_expression()
+        target = self.query.target_info.expression
 
         # Add the missing information to the INSERT statement
         insert_columns = self._extract_insert_columns(statement, target, include_system=False)
@@ -132,7 +132,7 @@ class InsertTransformer(BaseQueryTransformer):
             return statement
 
         source = ctx["source"]
-        target = self.query.get_target_expression()
+        target = self.query.target_info.expression
 
         insert_columns = self._extract_insert_columns(statement, target, include_system=False)
         values_lists = self._extract_value_lists(statement.expression)

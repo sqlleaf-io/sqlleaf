@@ -129,11 +129,11 @@ class UpdateTransformer(BaseQueryTransformer):
         new_ctes = [{"alias": cte.alias_or_name, "as_": cte.this} for cte in ctx["ctes"]]
 
         # Add the missing information to the UPDATE statement
-        target = self.query.get_target_expression()
+        target = self.query.target_info.expression
         if isinstance(target, exp.Table):
             self.query.only = target.args.get("only", False)  # type: ignore
 
-        update_expr = statement.table(self.query.get_target_expression()).from_(using).where(on)
+        update_expr = statement.table(self.query.target_info.expression).from_(using).where(on)
         update_expr.set("returning", returning)
 
         for cte in new_ctes:

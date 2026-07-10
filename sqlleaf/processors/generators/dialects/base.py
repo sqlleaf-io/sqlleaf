@@ -85,6 +85,14 @@ class BaseGenerator:
         super().__init_subclass__(**kwargs)
         BaseGenerator._dialects[cls.dialect] = cls
 
+    @process.register(exp.DataType)
+    @process.register(exp.Identifier)
+    @process.register(exp.ColumnDef)
+    @process.register(exp.Table)
+    def skip(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+        logger.debug(f"Skipping expression: {type(expr)} {str(expr)}")
+        yield EdgeToCreate(None, None)
+
     @classmethod
     def from_dialect(cls, class_name, *args, **kwargs):
         """Instantiates a class from the registry by name."""
@@ -101,10 +109,10 @@ class BaseGenerator:
         pos_ctx: PositionContext,
     ) -> t.Iterator[EdgeToCreate]:
         """
-        Process a list of expressions of a parent expression.
+        Process a list of grandparents, which are parents of parent expressions.
 
-        This is usually called after a parent->child edge being added to the graph
-        with additional expressions to now process, i.e. [grandparents]->parent->child
+        This is called after a parent->child edge as been processed, and now we
+        have additional expressions to now process, i.e. [grandparents]->parent->child
         """
         if parent is None:
             raise exception.SqlLeafException(message="A parent cannot be None when processing grandparents.")
@@ -179,7 +187,7 @@ class BaseGenerator:
         """
         select count(*) as cnt
         """
-        parent = StarNode(gen_ctx, pos_ctx)
+        parent = StarNode(gen_ctx, pos_ctx, name="*")
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
@@ -291,9 +299,9 @@ class BaseGenerator:
         self, expr: exp.Var, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
         """
-        A variable in a stored procedure or UDF, or the keyword 'DEFAULT'
+        Var "QUARTER" in: "SELECT EXTRACT(QUARTER FROM <DATE>)"
         """
-        parent = VarNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx)
+        parent = VarNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx, name=gen_ctx.expr.name)
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
@@ -357,14 +365,6 @@ class BaseGenerator:
     ) -> t.Iterator[EdgeToCreate]:
         parent = IntervalNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx)
         yield EdgeToCreate(parent, gen_ctx.child_node)
-
-    @process.register(exp.DataType)
-    @process.register(exp.Identifier)
-    @process.register(exp.ColumnDef)
-    @process.register(exp.Table)
-    def skip(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
-        logger.debug(f"Skipping expression: {type(expr)} {str(expr)}")
-        yield EdgeToCreate(None, None)
 
     @process.register
     def process_values(
@@ -507,7 +507,7 @@ class BaseGenerator:
         # columns that vary in length due to their sourcing from any table.
         query = gen_ctx.query
         target_type = query.target_info.type
-        expr = query.get_target_expression()
+        expr = query.target_info.expression
         target_columns = query.get_columns_from_target()
 
         select_idx = 0
