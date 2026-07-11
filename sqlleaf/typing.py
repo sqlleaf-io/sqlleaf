@@ -25,22 +25,25 @@ class SqlObjectType(StrEnum):
     """
     The types of models that represent a 'source' or 'target' in an SQL statement.
     """
+    NONE = auto()
 
     # Targets and sources
     DATABASE = auto()
     DYNAMODB = auto()
     FILE = auto()
+    PREPARED_STATEMENT = auto()
+    PROCEDURE = auto()
     PROGRAM = auto()
     SCHEMA = auto()
     STAGE = auto()
     STREAM = auto()
     TABLE = auto()
-    PROCEDURE = auto()
     # Sources
+    DML = auto()
     SELECT = auto()
-    VALUES = auto()
     SET = auto()  # Temporary
     TUPLE = auto()  # Temporary
+    VALUES = auto()
 
     @classmethod
     def type_has_no_column_defs(cls, *clses: t.Iterable) -> bool:

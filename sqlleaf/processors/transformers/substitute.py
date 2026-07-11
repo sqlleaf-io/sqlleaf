@@ -5,7 +5,7 @@ from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
 
 from sqlleaf.exception import SqlLeafException
-from sqlleaf.models.query import CallQuery, FunctionParam, Q, UserDefinedFunctionQuery
+from sqlleaf.models.query import CallQuery, ExecuteQuery, FunctionParam, Q, UserDefinedFunctionQuery
 from sqlleaf.processors.transformers.resolver import find_next_udf_call
 from sqlleaf.typing import E
 
@@ -652,3 +652,25 @@ def substitute_call(query: CallQuery) -> t.List[exp.Expr]:
     for r in replacement_exprs:
         logger.debug(f"  {r.sql(dialect=query.dialect)}")
     return replacement_exprs
+
+
+def substitute_execute(query: ExecuteQuery) -> t.List[exp.Expr]:
+    """
+    Substitutes an EXECUTE statement with the statement of the PREPARE it refers to.
+
+    Example:
+        PREPARE stmt AS SELECT 1;
+        EXECUTE stmt;
+        ->
+        SELECT 1;
+    """
+    plan_table = exp.to_table(query.parameters.name)
+    matched_prepare = query.object_mapping.lookup_prepare_query(plan_table, raise_on_missing=False)
+
+    if not matched_prepare:
+        raise SqlLeafException(message=f"Could not find PREPARE statement for plan: {query.parameters.name}")
+
+    logger.debug(f"Substituting EXECUTE query for plan '{query.parameters.name}'")
+
+    # PREPARE only contains a single statement.
+    return [matched_prepare.statement.copy()]

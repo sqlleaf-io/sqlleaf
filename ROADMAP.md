@@ -160,10 +160,12 @@ CREATE PROCEDURE (language SQL)
 - [x]
 
 PREPARE
-- not supported by sqlglot
+- [x] No parameters
+- [ ] Parameters [unsupported]
 
 EXECUTE
-- not supported by sqlglot
+- [x] No parameters
+- [ ] Parameters [unsupported]
 
 CREATE TRIGGER
   - [ ] INSTEAD OF

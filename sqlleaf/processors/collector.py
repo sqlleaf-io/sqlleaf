@@ -3,7 +3,7 @@ import typing as t
 from dataclasses import dataclass, field
 
 import sqlglot
-from sqlglot import exp
+from sqlglot import TokenType, exp
 from sqlglot.dialects import postgres
 from sqlglot.expressions import ColumnDef
 from sqlglot.optimizer.annotate_types import annotate_types
@@ -17,9 +17,11 @@ from sqlleaf.models.query import (
     CTASQuery,
     DatabaseQuery,
     DeleteQuery,
+    ExecuteQuery,
     InsertQuery,
     MergeQuery,
     MultitableInsertQuery,
+    PrepareQuery,
     ProcedureQuery,
     PutQuery,
     Q,
@@ -68,6 +70,8 @@ def get_query_processors():
         "delete": _process_unnamed,
         "schema": _process_schema,
         "unload": _process_unload,
+        "prepare": _process_prepare,
+        "execute": _process_execute,
         "stage": _process_stage,
         "call": _process_unnamed,
         "copy": _process_unnamed,
@@ -81,6 +85,53 @@ class CollectQueryResult:
     queries: t.List = field(default_factory=list)  # Successfully collected queries
     unknown: t.Dict = field(default_factory=dict)  # Unsupported by sqlleaf (no handler)
     unsupported: t.List = field(default_factory=list)  # Unsupported by sqlglot (no grammar)
+
+
+def _is_prepare_supported(stmt: exp.Command) -> bool:
+    """
+    Check if a PREPARE statement for Postgres is supported.
+    Syntax: PREPARE name AS statement
+    The variant where parameters are provided is not yet supported.
+    """
+    expression_name = stmt.expression.name
+    tokens = sqlglot.tokenize(expression_name, dialect="postgres")
+
+    if len(tokens) < 3:
+        raise exception.SqlLeafException(f"Invalid syntax for PREPARE expression: {stmt.sql(dialect='postgres')}")
+
+    # We cannot process arguments yet
+    if tokens[1].token_type != TokenType.ALIAS or tokens[1].text.upper() != "AS":
+        if tokens[1].token_type == TokenType.L_PAREN:
+            logger.warning("PREPARE with arguments is not currently supported.")
+        return False
+
+    # Ensure there's an 'AS' token
+    if not any(t.token_type == TokenType.ALIAS and t.text.upper() == "AS" for t in tokens):
+        raise exception.SqlLeafException(f"Could not find 'AS' in PREPARE expression: {expression_name}")
+
+    return True
+
+
+def _is_execute_supported(stmt: exp.Command) -> bool:
+    """
+    Check if an EXECUTE statement for Postgres is supported.
+    Syntax: EXECUTE name
+    The variant where parameters are provided is not yet supported.
+    """
+    expression_name = stmt.expression.name
+    tokens = sqlglot.tokenize(expression_name, dialect="postgres")
+
+    if not tokens:
+        raise exception.SqlLeafException(f"Invalid syntax for EXECUTE expression: {stmt.sql(dialect='postgres')}")
+
+    if len(tokens) > 1:
+        if tokens[1].token_type == TokenType.L_PAREN:
+            logger.warning("EXECUTE with arguments is not currently supported.")
+            return False
+
+        raise exception.SqlLeafException(f"Invalid syntax for EXECUTE expression: {stmt.sql(dialect='postgres')}")
+
+    return True
 
 
 def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapping) -> CollectQueryResult:
@@ -115,6 +166,18 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         if isinstance(stmt, exp.Command):
             if dialect == "redshift" and stmt.name == "UNLOAD":
                 kind = "unload"
+            elif dialect == "postgres" and stmt.name == "PREPARE":
+                if _is_prepare_supported(stmt):
+                    kind = "prepare"
+                else:
+                    unsupported.append((index, stmt))
+                    continue
+            elif dialect == "postgres" and stmt.name == "EXECUTE":
+                if _is_execute_supported(stmt):
+                    kind = "execute"
+                else:
+                    unsupported.append((index, stmt))
+                    continue
             elif stmt.this.upper() == "CALL":
                 kind = "call"
             else:
@@ -753,6 +816,21 @@ def _process_unload(
     statement: exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
 ) -> Q:
     query = UnloadQuery(statement, dialect, object_mapping, statement_index)
+    return query
+
+
+def _process_prepare(
+    statement: exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+) -> Q:
+    query = PrepareQuery(statement, dialect, object_mapping, statement_index)
+    object_mapping.add_prepare_query(query)
+    return query
+
+
+def _process_execute(
+    statement: exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+) -> Q:
+    query = ExecuteQuery(statement, dialect, object_mapping, statement_index)
     return query
 
 

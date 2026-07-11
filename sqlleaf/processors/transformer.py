@@ -9,6 +9,7 @@ from sqlleaf.models.query import (
     CopyQuery,
     CTASQuery,
     DeleteQuery,
+    ExecuteQuery,
     InsertQuery,
     MergeQuery,
     MultitableInsertQuery,
@@ -139,6 +140,9 @@ def _get_substituted_statements(statement: exp.Expr, query: Q) -> t.List[exp.Exp
     """
     if isinstance(query, CallQuery):
         return substitute.substitute_call(query=query)
+
+    if isinstance(query, ExecuteQuery):
+        return substitute.substitute_execute(query=query)
 
     statements = substitute.substitute_udf(statement=statement, query=query)
     return statements

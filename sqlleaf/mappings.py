@@ -8,7 +8,7 @@ from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
 
 from sqlleaf import exception
-from sqlleaf.models.query import CTASQuery, DatabaseQuery, ProcedureQuery, Q, SchemaQuery, TypeQuery, ViewQuery
+from sqlleaf.models.query import CTASQuery, DatabaseQuery, PrepareQuery, ProcedureQuery, Q, SchemaQuery, TypeQuery, ViewQuery
 
 if t.TYPE_CHECKING:
     from sqlleaf.models.query import SequenceQuery, StageQuery, TableQuery, TriggerQuery, UserDefinedFunctionQuery
@@ -36,6 +36,9 @@ class ObjectMapping(MappingSchema):
 
     def add_database_query(self, query: DatabaseQuery) -> None:
         self._add_query(kind="database", query=query, dialect=query.dialect)
+
+    def add_prepare_query(self, query: PrepareQuery) -> None:
+        self._add_query(kind="prepare", query=query, dialect=query.dialect)
 
     def add_procedure_query(self, query: ProcedureQuery) -> None:
         self._add_query(kind="procedure", query=query, dialect=query.dialect)
@@ -145,6 +148,9 @@ class ObjectMapping(MappingSchema):
             raise_on_missing=raise_on_missing,
             ensure_data_types=ensure_data_types,
         )
+
+    def lookup_prepare_query(self, table: exp.Table, raise_on_missing: bool = True) -> PrepareQuery | None:
+        return self._lookup_query(kind="prepare", table=table, raise_on_missing=raise_on_missing)
 
     def lookup_procedure_query(self, table: exp.Table, raise_on_missing: bool = True) -> ProcedureQuery | None:
         return self._lookup_query(kind="procedure", table=table, raise_on_missing=raise_on_missing)

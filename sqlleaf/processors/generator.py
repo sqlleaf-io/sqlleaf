@@ -19,7 +19,7 @@ from sqlleaf.models.node import (
     N,
     TargetNodeType,
 )
-from sqlleaf.models.query import CallQuery, PutQuery, Q, QueryHolder, TableQuery, UpdateQuery
+from sqlleaf.models.query import CallQuery, ExecuteQuery, PutQuery, Q, QueryHolder, TableQuery, UpdateQuery
 from sqlleaf.processors.generators.dialects.base import BaseGenerator
 from sqlleaf.typing import E, TableOrScopeType, TableType
 
@@ -40,8 +40,8 @@ def generate_lineage_for_query(
     Everything is extracted: columns, literals, functions, etc.
     """
     queries_to_process = []
-    if not isinstance(holder.original, CallQuery):
-        # CALL() is an exception - it has no lineage itself, but it executes other statements
+    if not isinstance(holder.original, (CallQuery, ExecuteQuery)):
+        # CALL() and EXECUTE() are exceptions - they have no lineage, but they execute other statements
         queries_to_process.append(holder.transformed)
 
     if holder.substituted:

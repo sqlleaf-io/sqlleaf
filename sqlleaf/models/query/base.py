@@ -94,6 +94,9 @@ class Query:
             # UPDATE .. SET
             _type = SqlObjectType.SET
 
+        elif isinstance(expr, (exp.Insert, exp.Update, exp.Delete, exp.Merge)):
+            _type = SqlObjectType.DML
+
         else:
             raise exception.SqlLeafException(f"Unknown source/target object type in query: {type(expr)}")
 
