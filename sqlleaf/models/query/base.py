@@ -79,9 +79,13 @@ class Query:
             else:
                 _type = SqlObjectType.TABLE
 
-        elif isinstance(expr, exp.Anonymous) and expr.this == "PROCEDURE":
-            # CALL() statement
-            _type = SqlObjectType.PROCEDURE
+        elif isinstance(expr, exp.Anonymous):
+            if expr.this == "PROCEDURE":
+                # CALL() statement
+                _type = SqlObjectType.PROCEDURE
+            else:
+                # CTAS EXECUTE <statement(args)>
+                _type = SqlObjectType.PREPARED_STATEMENT
 
         elif isinstance(expr, exp.Select):
             _type = SqlObjectType.SELECT

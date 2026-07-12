@@ -115,20 +115,12 @@ def _is_prepare_supported(stmt: exp.Command) -> bool:
 def _is_execute_supported(stmt: exp.Command) -> bool:
     """
     Check if an EXECUTE statement for Postgres is supported.
-    Syntax: EXECUTE name
-    The variant where parameters are provided is not yet supported.
+    Syntax: EXECUTE name [ ( parameter [, ...] ) ]
     """
     expression_name = stmt.expression.name
     tokens = sqlglot.tokenize(expression_name, dialect="postgres")
 
-    if not tokens:
-        raise exception.SqlLeafException(f"Invalid syntax for EXECUTE expression: {stmt.sql(dialect='postgres')}")
-
-    if len(tokens) > 1:
-        if tokens[1].token_type == TokenType.L_PAREN:
-            logger.warning("EXECUTE with arguments is not currently supported.")
-            return False
-
+    if not tokens or len(tokens) > 1:
         raise exception.SqlLeafException(f"Invalid syntax for EXECUTE expression: {stmt.sql(dialect='postgres')}")
 
     return True

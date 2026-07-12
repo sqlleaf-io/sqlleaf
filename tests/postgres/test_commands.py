@@ -9,16 +9,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 DIALECT = "postgres"
 
 
-# sqlglot doesn't support PREPARE/EXECUTE - Falling back to parsing as a 'Command'.
-def test__prepare_fails(holder):
-    sql = """
-    PREPARE my_plan (int) AS SELECT name FROM fruit.raw WHERE age = $1;
-    EXECUTE my_plan(101);
-    """
-    h = holder(sql=sql, dialect=DIALECT)
-    assert len(h.queries_original) == 0
-
-
 # sqlglot doesn't support DO - Falling back to parsing as a 'Command'.
 def test__do_fails(holder):
     sql = """

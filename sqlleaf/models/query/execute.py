@@ -13,7 +13,22 @@ from sqlleaf.typing import SqlObjectType, TargetInfo
 
 @dataclass(frozen=True)
 class ExecuteQueryParameters:
-    name: exp.Literal
+    name: str
+    args: t.List[exp.Expr]
+
+    @classmethod
+    def from_expression(cls, expr: exp.Command, dialect: str):
+        expression_name = expr.expression.name
+        parsed = sqlglot.parse_one(expression_name, read=dialect)
+
+        if isinstance(parsed, exp.Anonymous):
+            name = parsed.this
+            args = parsed.expressions
+        else:
+            name = parsed.name
+            args = []
+
+        return cls(name=name, args=args)
 
 
 class ExecuteQuery(Query):
@@ -26,8 +41,7 @@ class ExecuteQuery(Query):
         object_mapping: mappings.ObjectMapping,
         statement_index: int,
     ):
-        target = expr.expression.name
-        self.parameters = ExecuteQueryParameters(name=target)
+        self.parameters = ExecuteQueryParameters.from_expression(expr, dialect)
 
         super().__init__(
             dialect=dialect,
@@ -35,5 +49,5 @@ class ExecuteQuery(Query):
             statement_index=statement_index,
             object_mapping=object_mapping,
             source_info=None,
-            target_info=TargetInfo(expression=target,type=SqlObjectType.PREPARED_STATEMENT),
+            target_info=TargetInfo(expression=exp.to_table(self.parameters.name), type=SqlObjectType.PREPARED_STATEMENT),
         )

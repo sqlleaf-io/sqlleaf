@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import typing as t
 from dataclasses import dataclass
 
@@ -32,6 +33,15 @@ class PrepareQuery(Query):
             target_info=TargetInfo(expression=target, type=target_type),
         )
         self.qualify_and_annotate()
+        self.parameter_count = self._count_parameters(source)
+
+    def _count_parameters(self, source: exp.Expr) -> int:
+        """
+        Count the number of expected arguments for this prepared statement.
+        Positional parameters are $1, $2, etc.
+        """
+        params = [int(p.name) for p in source.find_all(exp.Parameter) if p.name.isdigit()]
+        return max(params) if params else 0
 
     def get_source_and_target_expressions(self, statement: exp.Command) -> t.Tuple[exp.Expr, exp.Table]:
         """
@@ -39,18 +49,14 @@ class PrepareQuery(Query):
         Syntax: PREPARE name AS statement
         """
         expression_name = statement.expression.name
-        tokens = sqlglot.tokenize(expression_name, dialect="postgres")
-        name = tokens[0].text
 
-        # Find the statement after the 'AS' token and re-parse it.
-        if tokens[1].text.lower() != "as":
-             raise exception.SqlLeafException(message=f"Could not find 'AS' in PREPARE expression: {expression_name}")
+        # Find the 'AS' keyword to split name and statement
+        match = re.search(r"\s+AS\s+", expression_name, re.IGNORECASE)
+        if not match:
+            raise exception.SqlLeafException(message=f"Could not find 'AS' in PREPARE expression: {expression_name}")
 
-        statement_text = " ".join(tok.text for tok in tokens[2:])
+        name = expression_name[: match.start()].strip()
+        statement_text = expression_name[match.end() :].strip()
 
-        try:
-            select_expr = sqlglot.parse_one(statement_text, dialect="postgres")
-        except Exception as e:
-            raise exception.SqlLeafException(message=f"Could not parse statement inside PREPARE: {e}")
-
-        return select_expr, exp.to_table(name)
+        prepared_expr = sqlglot.parse_one(statement_text, dialect="postgres")
+        return prepared_expr, exp.to_table(name)
