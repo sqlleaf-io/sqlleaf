@@ -31,7 +31,7 @@ from sqlleaf.processors.transformers import (
     UpdateTransformer,
     substitute,
 )
-from sqlleaf.typing import E
+from sqlleaf.typing import E, SqlObjectType
 
 _TRANSFORMER_MAP: dict[type, type[BaseQueryTransformer]] = {
     CTASQuery: CTASTransformer,
@@ -87,7 +87,7 @@ def transform_query(holder: QueryHolder) -> None:
         # Note: it seems like this does not need to be done for UDFs (at least the first statement(
         # as the substitution has already occurred correctly. But this may break later when the
         # multiple inner statements are substituted.
-        if isinstance(original_query, CallQuery):
+        if isinstance(original_query, (CallQuery, CTASQuery)):
             final_substituted_statement = _transform_statement(substituted_statement, substituted_query)
             substituted_query.statement = final_substituted_statement
 
@@ -143,6 +143,9 @@ def _get_substituted_statements(statement: exp.Expr, query: Q) -> t.List[exp.Exp
 
     if isinstance(query, ExecuteQuery):
         return substitute.substitute_execute(query=query)
+
+    if isinstance(query, CTASQuery) and query.source_info.type == SqlObjectType.PREPARED_STATEMENT:
+        return [substitute.substitute_create_execute(statement, query.object_mapping)]
 
     statements = substitute.substitute_udf(statement=statement, query=query)
     return statements

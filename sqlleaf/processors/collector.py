@@ -193,7 +193,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
             continue
 
         if not kind:
-            stmt, kind = _determine_query_kind(stmt, kind)
+            stmt, kind = _determine_query_kind(stmt, dialect)
 
         if kind not in processors:
             unknown[kind] = unknown[kind] + 1 if kind in unknown else 1
@@ -227,7 +227,7 @@ def _determine_query_kind(statement: exp.Expr, dialect: str) -> t.Tuple[exp.Expr
     """
     if statement.key == "create" and isinstance(statement, exp.Create):
         if statement.kind == "TABLE":
-            if isinstance(statement.expression, (exp.Select, exp.Values)):
+            if isinstance(statement.expression, (exp.Select, exp.Values)) or statement.find(exp.ExecuteAsProperty):
                 kind = "ctas"
             else:
                 kind = "table"
@@ -236,8 +236,8 @@ def _determine_query_kind(statement: exp.Expr, dialect: str) -> t.Tuple[exp.Expr
     elif statement.key == "select" and "into" in statement.args:
         # sqlglot rewrites 'SELECT INTO' to 'CREATE TABLE AS' during parse()
         # but it's not shown until we produce it with sql(), so we re-parse it
-        if dialect not in ["redshift", "postgres"]:
-            statement = sqlglot.parse_one(statement.sql(dialect=dialect), dialect=dialect)
+        if dialect in ["redshift", "postgres"]:
+            statement = sqlglot.parse_one(statement.sql(dialect=''), dialect=dialect)
             kind = "ctas"
         else:
             message = f"Expression 'SELECT INTO' has not been implemented yet for dialect: {dialect}"
@@ -745,9 +745,24 @@ def _determine_column_defs(statement: exp.Create, object_mapping: mappings.Objec
     Look up the columns for 'y' in 'INSERT INTO x TABLE y'
     """
     if isinstance(statement.expression, exp.Values):
+        # CREATE TABLE AS VALUES
         columns = [stmt.name for stmt in statement.this.expressions]
         types = [val.type for val in statement.expression.expressions[0].expressions]
         col_defs = [exp.ColumnDef(this=col_name, kind=col_type) for col_name, col_type in zip(columns, types)]
+    elif exec_prop := statement.find(exp.ExecuteAsProperty):
+        # CREATE TABLE AS EXECUTE
+        plan_name = exec_prop.this.name
+        plan_table = exp.to_table(plan_name)
+        matched_prepare = object_mapping.lookup_prepare_query(plan_table, raise_on_missing=True)
+
+        source = matched_prepare.statement
+        if isinstance(source, exp.Select):
+            col_defs = [
+                exp.ColumnDef(this=exp.to_identifier(col.alias_or_name), kind=col.unalias().type)
+                for col in source.expressions
+            ]
+        else:
+            col_defs = []
     else:
         col_defs = [exp.ColumnDef(this=exp.to_identifier(s.alias), kind=s.type) for s in statement.selects]
 

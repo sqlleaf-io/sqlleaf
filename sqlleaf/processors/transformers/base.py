@@ -446,8 +446,6 @@ class BaseQueryTransformer:
         renames to:
             INSERT INTO my.apple (a,b) SELECT name as a, age as b FROM my.pear
         """
-        from sqlleaf.typing import SqlObjectType
-
         query = self.query
         if not isinstance(statement, exp.Insert) or not statement.selects:
             return statement

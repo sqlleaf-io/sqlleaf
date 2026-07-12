@@ -4,6 +4,7 @@ import typing as t
 from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
 
+from sqlleaf import mappings
 from sqlleaf.exception import SqlLeafException
 from sqlleaf.models.query import CallQuery, ExecuteQuery, FunctionParam, Q, UserDefinedFunctionQuery
 from sqlleaf.processors.transformers.resolver import find_next_udf_call
@@ -674,3 +675,24 @@ def substitute_execute(query: ExecuteQuery) -> t.List[exp.Expr]:
 
     # PREPARE only contains a single statement.
     return [matched_prepare.statement.copy()]
+
+
+def substitute_create_execute(expression: exp.Expr, object_mapping: mappings.ObjectMapping) -> exp.Expr:
+    """
+    Substitutes 'EXECUTE <plan>' in 'CREATE TABLE AS' with the actual query.
+    """
+    if isinstance(expression, exp.Create) and expression.kind == "TABLE":
+        if exec_prop := expression.find(exp.ExecuteAsProperty):
+            plan_name = exec_prop.this.name
+            plan_table = exp.to_table(plan_name)
+            matched_prepare = object_mapping.lookup_prepare_query(plan_table, raise_on_missing=False)
+            if not matched_prepare:
+                raise SqlLeafException(message=f"Could not find PREPARE statement for plan: {plan_name}")
+
+            logger.debug(f"Substituting 'EXECUTE {plan_name}' in CREATE TABLE statement")
+
+            # Replace property with the actual expression
+            expression.set("expression", matched_prepare.statement.copy())
+            exec_prop.pop()
+
+    return expression

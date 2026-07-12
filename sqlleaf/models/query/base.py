@@ -67,8 +67,11 @@ class Query:
             else:
                 raise exception.SqlLeafException(f"Unknown object type identifier: {expr.name}")
 
-        elif isinstance(expr, exp.Var) and dialect == "snowflake":
-            _type = SqlObjectType.STAGE
+        elif isinstance(expr, exp.Var):
+            if dialect == "snowflake":
+                _type = SqlObjectType.STAGE
+            else:
+                _type = SqlObjectType.PREPARED_STATEMENT
 
         elif isinstance(expr, exp.Table):
             if isinstance(expr.this, exp.Var) and dialect == "snowflake":

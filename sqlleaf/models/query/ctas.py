@@ -22,6 +22,10 @@ class CTASQuery(Query):
         statement_index: int,
     ):
         source = expr.expression
+        if source is None:
+            if exec_prop := expr.find(exp.ExecuteAsProperty):
+                source = exec_prop.this
+
         target = util.get_table(expr)
 
         source_type = self._determine_expression_type(source, dialect)

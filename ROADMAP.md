@@ -41,7 +41,9 @@ CREATE TABLE
     - [x] WITH [NO] DATA
     - [ ] Empty table via WHERE
     - [x] VALUES
-    - [ ] EXECUTE
+    - [o] EXECUTE
+        - [x] No parameters
+        - [ ] Parameters
     - [x] SELECT FROM (VALUES())
     - [x] WITH
   - [x] LIKE

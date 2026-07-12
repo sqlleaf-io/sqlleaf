@@ -92,3 +92,18 @@ VALUES (1, 'Alice'), (2, 'Bob');
 
 -> column1 | column2
 """
+
+
+def test__ctas_execute(holder):
+    sql = """
+    PREPARE plan AS SELECT name, kind FROM fruit.raw;
+    CREATE TABLE fruit.cooked AS EXECUTE plan;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.name]", "column[fruit.cooked.name]"],
+        ["column[fruit.raw.kind]", "column[fruit.cooked.kind]"],
+    ]
+    assert len(h.nodes) == 4
+    assert len(h.edges) == 2

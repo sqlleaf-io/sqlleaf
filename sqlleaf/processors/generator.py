@@ -19,9 +19,18 @@ from sqlleaf.models.node import (
     N,
     TargetNodeType,
 )
-from sqlleaf.models.query import CallQuery, ExecuteQuery, PutQuery, Q, QueryHolder, TableQuery, UpdateQuery
+from sqlleaf.models.query import (
+    CallQuery,
+    CTASQuery,
+    ExecuteQuery,
+    PutQuery,
+    Q,
+    QueryHolder,
+    TableQuery,
+    UpdateQuery,
+)
 from sqlleaf.processors.generators.dialects.base import BaseGenerator
-from sqlleaf.typing import E, TableOrScopeType, TableType
+from sqlleaf.typing import E, TableOrScopeType, TableType, SqlObjectType
 
 logger = logging.getLogger("sqlleaf")
 
@@ -41,8 +50,9 @@ def generate_lineage_for_query(
     """
     queries_to_process = []
     if not isinstance(holder.original, (CallQuery, ExecuteQuery)):
-        # CALL() and EXECUTE() are exceptions - they have no lineage, but they execute other statements
-        queries_to_process.append(holder.transformed)
+        # CALL(), EXECUTE(), CTAS EXECUTE are exceptions - they have no lineage, but they execute other statements containing lineage
+        if not (isinstance(holder.original, CTASQuery) and holder.original.source_info.type == SqlObjectType.PREPARED_STATEMENT):
+            queries_to_process.append(holder.transformed)
 
     if holder.substituted:
         queries_to_process.append(holder.substituted)
