@@ -88,13 +88,26 @@ def test__ctas_with_values(holder, expr):
     assert len(h.edges) == 4
 
 
-# TODO: support no column names
-"""
-CREATE TABLE my_new_table AS
-VALUES (1, 'Alice'), (2, 'Bob');
+def test__ctas_with_values_no_column_names(holder):
+    sql = """
+    CREATE TABLE my_new_table AS
+    VALUES (1, 'Alice'), (2, 'Bob');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
 
--> column1 | column2
-"""
+    assert h.paths == [
+        ["literal[1]", "column[my_new_table.column1]"],
+        ["literal[2]", "column[my_new_table.column1]"],
+        ['literal["Alice"]', "column[my_new_table.column2]"],
+        ['literal["Bob"]', "column[my_new_table.column2]"],
+    ]
+    assert len(h.nodes) == 6
+    assert len(h.edges) == 4
+    query: CTASQuery = h.holders[0].transformed
+    # assert query.source_info.type == SqlObjectType.VALUES # TODO: bug - should be recalculated as SELECT
+    assert query.target_info.type == SqlObjectType.TABLE
+    expected_query = "CREATE TABLE my_new_table AS SELECT 1 AS column1, 'Alice' AS column2 UNION ALL SELECT 2 AS column1, 'Bob' AS column2"
+    assert query.statement.sql(dialect=DIALECT) == expected_query
 
 
 def test__ctas_with_execute(holder):

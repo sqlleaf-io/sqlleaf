@@ -740,6 +740,10 @@ def _determine_column_defs(statement: exp.Create, object_mapping: mappings.Objec
         # CREATE TABLE AS VALUES
         columns = [stmt.name for stmt in statement.this.expressions]
         types = [val.type for val in statement.expression.expressions[0].expressions]
+
+        if not columns:
+            columns = [f"column{i + 1}" for i in range(len(types))]
+
         col_defs = [exp.ColumnDef(this=col_name, kind=col_type) for col_name, col_type in zip(columns, types)]
     elif exec_prop := statement.find(exp.ExecuteAsProperty):
         # CREATE TABLE AS EXECUTE
