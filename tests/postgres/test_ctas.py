@@ -2,6 +2,7 @@ import os
 import sys
 
 import pytest
+import sqlglot
 
 from sqlleaf.exception import SqlLeafException
 from sqlleaf.models.query import CTASQuery
@@ -143,7 +144,7 @@ def test__ctas_execute_missing_params_fails(holder):
     CREATE TABLE fruit.cooked AS EXECUTE my_plan;
     """
     with pytest.raises(
-        SqlLeafException, match=r"wrong number of parameters for prepared statement \(expected: 1, actual: 0\)"
+        SqlLeafException, match=r"Wrong number of parameters for prepared statement \(expected: 1, actual: 0\)"
     ):
         holder(sql=sql, dialect=DIALECT)
 
@@ -166,7 +167,7 @@ def test__ctas_execute_too_many_params_fails(holder):
     CREATE TABLE fruit.cooked AS EXECUTE my_plan(5, 6);
     """
     with pytest.raises(
-        SqlLeafException, match=r"wrong number of parameters for prepared statement \(expected: 1, actual: 2\)"
+        SqlLeafException, match=r"Wrong number of parameters for prepared statement \(expected: 1, actual: 2\)"
     ):
         holder(sql=sql, dialect=DIALECT)
 
@@ -177,7 +178,7 @@ def test__ctas_execute_too_few_params_fails(holder):
     CREATE TABLE fruit.cooked AS EXECUTE my_plan(5);
     """
     with pytest.raises(
-        SqlLeafException, match=r"wrong number of parameters for prepared statement \(expected: 2, actual: 1\)"
+        SqlLeafException, match=r"Wrong number of parameters for prepared statement \(expected: 2, actual: 1\)"
     ):
         holder(sql=sql, dialect=DIALECT)
 
@@ -196,13 +197,28 @@ def test__ctas_execute_ignoring_extra_params(holder):
     ]
 
 
-def test__ctas_execute_params_without_placeholders(holder):
-    sql = """
-    PREPARE plan AS SELECT name, kind FROM fruit.raw;
-    CREATE TABLE fruit.cooked AS EXECUTE plan(3, 4);
-    """
-    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+def test__ctas_execute_with_schema_table_fails(holder):
+    with pytest.raises(sqlglot.errors.ParseError) as e:
+        sql = """
+        PREPARE plan AS TABLE fruit.raw;
+        CREATE TABLE fruit.cooked AS EXECUTE plan;
+        """
+        h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
+    assert e.value.args[0].startswith("Invalid expression / Unexpected token. Line 1, Col: 12")
+
+# AS EXECUTE plan -> AS TABLE fruit.raw;
+#
+# The logic should follow: "substitute the parameters, and then lift the substituted value over to the CTAS"
+
+
+def test__ctas_execute_with_table(holder):
+    sql = """
+    CREATE TABLE raw (name VARCHAR, kind VARCHAR);
+    PREPARE plan AS TABLE raw;
+    CREATE TABLE fruit.cooked AS EXECUTE plan;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=False)
     assert h.paths == [
         ["column[fruit.raw.name]", "column[fruit.cooked.name]"],
         ["column[fruit.raw.kind]", "column[fruit.cooked.kind]"],

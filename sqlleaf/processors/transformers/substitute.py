@@ -6,7 +6,7 @@ from sqlglot.optimizer.annotate_types import annotate_types
 
 from sqlleaf import mappings
 from sqlleaf.exception import SqlLeafException
-from sqlleaf.models.query import CallQuery, ExecuteQuery, FunctionParam, Q, UserDefinedFunctionQuery
+from sqlleaf.models.query import CallQuery, ExecuteQuery, FunctionParam, Q, UserDefinedFunctionQuery, CTASQuery
 from sqlleaf.processors.transformers.resolver import find_next_udf_call
 from sqlleaf.typing import E
 
@@ -137,6 +137,7 @@ def _substitute_parameters(
         col_name = replacement_expr.this.name.lower()
         if col_name in param_map:
             return param_map[col_name].copy()
+
     elif isinstance(replacement_expr, exp.Parameter):
         param_id = replacement_expr.this.name
         if param_id in positional_map:
@@ -655,6 +656,34 @@ def substitute_call(query: CallQuery) -> t.List[exp.Expr]:
     return replacement_exprs
 
 
+def _substitute_execute_with_plan(execute_name: str, execute_arguments: t.List[exp.Literal], object_mapping: mappings.ObjectMapping) -> t.List[exp.Expr]:
+    """
+    Example:
+        PREPARE stmt AS SELECT 1;
+        EXECUTE stmt;
+        ->
+        SELECT 1;
+    """
+    plan_table = exp.to_table(execute_name)
+    matched_prepare = object_mapping.lookup_prepare_query(plan_table, raise_on_missing=False)
+
+    if not matched_prepare:
+        raise SqlLeafException(message=f"Could not find PREPARE statement for plan: {execute_name}")
+
+    expected = matched_prepare.parameter_count
+    actual = len(execute_arguments)
+    if expected > 0 and actual != expected:
+        raise SqlLeafException(
+            message=f"Wrong number of parameters for prepared statement (expected: {expected}, actual: {actual})"
+        )
+
+    logger.debug(f"Substituting EXECUTE query for plan '{execute_name}'")
+
+    positional_map = {str(i + 1): arg for i, arg in enumerate(execute_arguments)}
+    result_expr = _substitute_parameters(matched_prepare.statement.copy(), None, {}, positional_map)
+
+    return [result_expr]
+
 def substitute_execute(query: ExecuteQuery) -> t.List[exp.Expr]:
     """
     Substitutes an EXECUTE statement with the statement of the PREPARE it refers to.
@@ -665,60 +694,35 @@ def substitute_execute(query: ExecuteQuery) -> t.List[exp.Expr]:
         ->
         SELECT 1;
     """
-    plan_table = exp.to_table(query.parameters.name)
-    matched_prepare = query.object_mapping.lookup_prepare_query(plan_table, raise_on_missing=False)
+    execute_name = query.parameters.name
+    execute_args = query.parameters.arguments
 
-    if not matched_prepare:
-        raise SqlLeafException(message=f"Could not find PREPARE statement for plan: {query.parameters.name}")
-
-    expected = matched_prepare.parameter_count
-    actual = len(query.parameters.args)
-    if expected > 0 and actual != expected:
-        raise SqlLeafException(
-            message=f"wrong number of parameters for prepared statement (expected: {expected}, actual: {actual})"
-        )
-
-    logger.debug(f"Substituting EXECUTE query for plan '{query.parameters.name}'")
-
-    positional_map = {str(i + 1): arg for i, arg in enumerate(query.parameters.args)}
-    result_expr = _substitute_parameters(matched_prepare.statement.copy(), None, {}, positional_map)
-
-    return [result_expr]
+    return _substitute_execute_with_plan(execute_name, execute_args, query.object_mapping)
 
 
-def substitute_create_execute(expression: exp.Expr, object_mapping: mappings.ObjectMapping) -> exp.Expr:
+def substitute_create_execute(query: CTASQuery) -> exp.Expr:
     """
     Substitutes 'EXECUTE <plan>' in 'CREATE TABLE AS' with the actual query.
+
+    Example:
+        PREPARE stmt AS SELECT 1 AS one;
+        CREATE TABLE t AS EXECUTE stmt;
+        ->
+        CREATE TABLE t AS SELECT 1 AS one;
     """
-    if isinstance(expression, exp.Create) and expression.kind == "TABLE":
-        if exec_prop := expression.find(exp.ExecuteAsProperty):
-            if isinstance(exec_prop.this, exp.Anonymous):
-                plan_name = exec_prop.this.this
-                args = exec_prop.this.expressions
-            else:
-                plan_name = exec_prop.this.name
-                args = []
+    if exec_prop := query.statement.find(exp.ExecuteAsProperty):
+        if isinstance(exec_prop.this, exp.Anonymous):
+            execute_name = exec_prop.this.this
+            execute_args = exec_prop.this.expressions
+        else:
+            execute_name = exec_prop.this.name
+            execute_args = []
 
-            plan_table = exp.to_table(plan_name)
-            matched_prepare = object_mapping.lookup_prepare_query(plan_table, raise_on_missing=False)
-            if not matched_prepare:
-                raise SqlLeafException(message=f"Could not find PREPARE statement for plan: {plan_name}")
+        result_expr = _substitute_execute_with_plan(execute_name, execute_args, query.object_mapping)[0]
 
-            expected = matched_prepare.parameter_count
-            actual = len(args)
-            if expected > 0 and actual != expected:
-                raise SqlLeafException(
-                    message=f"wrong number of parameters for prepared statement (expected: {expected}, actual: {actual})"
-                )
-
-            logger.debug(f"Substituting 'EXECUTE {plan_name}' in CREATE TABLE statement")
-
-            # PREPARE contains only a single statement
-            positional_map = {str(i + 1): arg for i, arg in enumerate(args)}
-            result_expr = _substitute_parameters(matched_prepare.statement.copy(), None, {}, positional_map)
-
-            # Replace property with the actual expression
-            expression.set("expression", result_expr)
-            exec_prop.pop()
+        # Replace property with the actual expression
+        expression = query.statement
+        expression.set("expression", result_expr)
+        exec_prop.pop()
 
     return expression

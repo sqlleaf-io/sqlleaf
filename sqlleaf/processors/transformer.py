@@ -145,7 +145,7 @@ def _get_substituted_statements(statement: exp.Expr, query: Q) -> t.List[exp.Exp
         return substitute.substitute_execute(query=query)
 
     if isinstance(query, CTASQuery) and query.source_info.type == SqlObjectType.PREPARED_STATEMENT:
-        return [substitute.substitute_create_execute(statement, query.object_mapping)]
+        return [substitute.substitute_create_execute(query=query)]
 
     statements = substitute.substitute_udf(statement=statement, query=query)
     return statements

@@ -106,7 +106,7 @@ def test__execute_missing_parameter_fails(holder):
     PREPARE my_plan AS INSERT INTO target(name) SELECT $1;
     EXECUTE my_plan;
     """
-    with pytest.raises(SqlLeafException, match=r"wrong number of parameters for prepared statement \(expected: 1, actual: 0\)"):
+    with pytest.raises(SqlLeafException, match=r"Wrong number of parameters for prepared statement \(expected: 1, actual: 0\)"):
         holder(sql=sql, dialect=DIALECT)
 
 
