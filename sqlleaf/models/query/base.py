@@ -87,6 +87,11 @@ class Query:
                 # CTAS EXECUTE <statement(args)>
                 _type = SqlObjectType.PREPARED_STATEMENT
 
+        elif dialect == "postgres" and isinstance(expr, exp.Alias):
+            if expr.this.name.upper() == "TABLE":
+                # PREPARE X AS TABLE Y;
+                _type = SqlObjectType.SELECT
+
         elif isinstance(expr, exp.Select):
             _type = SqlObjectType.SELECT
 

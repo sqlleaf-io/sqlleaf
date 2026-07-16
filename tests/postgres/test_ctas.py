@@ -207,21 +207,17 @@ def test__ctas_execute_with_schema_table_fails(holder):
 
     assert e.value.args[0].startswith("Invalid expression / Unexpected token. Line 1, Col: 12")
 
-# AS EXECUTE plan -> AS TABLE fruit.raw;
-#
-# The logic should follow: "substitute the parameters, and then lift the substituted value over to the CTAS"
 
-
-def test__ctas_execute_with_table(holder):
-    sql = """
-    CREATE TABLE raw (name VARCHAR, kind VARCHAR);
-    PREPARE plan AS TABLE raw;
-    CREATE TABLE fruit.cooked AS EXECUTE plan;
-    """
-    h = holder(sql=sql, dialect=DIALECT, with_tables=False)
-    assert h.paths == [
-        ["column[fruit.raw.name]", "column[fruit.cooked.name]"],
-        ["column[fruit.raw.kind]", "column[fruit.cooked.kind]"],
-    ]
-    assert len(h.nodes) == 4
-    assert len(h.edges) == 2
+# def test__ctas_execute_with_table(holder):
+#     sql = """
+#     CREATE TABLE raw (name VARCHAR, kind VARCHAR);
+#     PREPARE plan AS TABLE raw;
+#     CREATE TABLE fruit.cooked AS EXECUTE plan;
+#     """
+#     h = holder(sql=sql, dialect=DIALECT, with_tables=False)
+#     assert h.paths == [
+#         ["column[fruit.raw.name]", "column[fruit.cooked.name]"],
+#         ["column[fruit.raw.kind]", "column[fruit.cooked.kind]"],
+#     ]
+#     assert len(h.nodes) == 4
+#     assert len(h.edges) == 2

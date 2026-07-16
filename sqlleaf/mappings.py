@@ -8,6 +8,7 @@ from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
 
 from sqlleaf import exception
+from sqlleaf.exception import SqlLeafException
 from sqlleaf.models.query import CTASQuery, DatabaseQuery, PrepareQuery, ProcedureQuery, Q, SchemaQuery, TypeQuery, ViewQuery
 
 if t.TYPE_CHECKING:
@@ -197,6 +198,9 @@ class ObjectMapping(MappingSchema):
             The schema of the target table.
         """
         if kind not in self.kind_mapping:
+            # if raise_on_missing:
+            #     # TODO: ensure this works
+            #     raise SqlLeafException(f"Could not find '{table.this}' of type '{kind}' in mapping.")
             return None
 
         parts = self.table_parts(table)[0 : len(self.supported_table_args)]

@@ -84,12 +84,13 @@ def transform_query(holder: QueryHolder) -> None:
             transformed_statement=substituted_statement,
         )
         # Transform the substituted statement as it might need canonicalization (e.g. VALUES -> SELECT)
-        # Note: it seems like this does not need to be done for UDFs (at least the first statement(
+        # Note: it seems like this does not need to be done for UDFs (at least the first statement)
         # as the substitution has already occurred correctly. But this may break later when the
         # multiple inner statements are substituted.
         if isinstance(original_query, (CallQuery, CTASQuery)):
             final_substituted_statement = _transform_statement(substituted_statement, substituted_query)
             substituted_query.statement = final_substituted_statement
+            # TODO: the sourceinfo and targetinfo need to be recalculated with the new transformed expression
 
         holder.set_substituted_query(substituted_query)
 
