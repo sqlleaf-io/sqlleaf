@@ -94,11 +94,11 @@ class BaseGenerator:
         yield EdgeToCreate(None, None)
 
     @classmethod
-    def from_dialect(cls, class_name, *args, **kwargs):
+    def from_dialect(cls, class_name) -> BaseGenerator:
         """Instantiates a class from the registry by name."""
         target_class = cls._dialects.get(class_name)
         if not target_class:
-            raise exception.SqlLeafException(message=f"Unknown dialect: {class_name}")
+            return BaseGenerator()
         return target_class()
 
     def do_grandparents(

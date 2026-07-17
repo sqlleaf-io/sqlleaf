@@ -144,31 +144,31 @@ class Lineage:
         for p in path.find_all_paths(graph=self.graph):
             yield p
 
-    def print_json(self):
-        nodes = self.get_nodes()
-        edges = self.get_edges()
-        queries = self.get_queries()
-        sps = self.get_stored_procedures()
-        paths = self.get_paths()
-
-        _nodes = [n.to_dict() for n in nodes]
-        _edges = [e.to_dict() for e in edges]
-        _queries = [q.to_dict() for q in queries]
-        _sps = [s.to_dict() for s in sps]
-        _paths = [p.to_dict() for p in paths]
-
-        print(
-            json.dumps(
-                {
-                    "node": _nodes,
-                    "edges": _edges,
-                    "queries": _queries,
-                    "stored_procedures": _sps,
-                    "paths": _paths,
-                },
-                indent=2,
-            )
-        )
+    # def print_json(self):
+    #     nodes = self.get_nodes()
+    #     edges = self.get_edges()
+    #     queries = self.get_original_queries()
+    #     sps = self.get_stored_procedures()
+    #     paths = self.get_paths()
+    #
+    #     _nodes = [n.to_dict() for n in nodes]
+    #     _edges = [e.to_dict() for e in edges]
+    #     _queries = [q.to_dict() for q in queries]
+    #     _sps = [s.to_dict() for s in sps]
+    #     _paths = [p.to_dict() for p in paths]
+    #
+    #     print(
+    #         json.dumps(
+    #             {
+    #                 "node": _nodes,
+    #                 "edges": _edges,
+    #                 "queries": _queries,
+    #                 "stored_procedures": _sps,
+    #                 "paths": _paths,
+    #             },
+    #             indent=2,
+    #         )
+    #     )
 
     def print_tree(self, full_name=False):
         """
@@ -181,11 +181,11 @@ class Lineage:
 
         Output:
 
-        fruit.processed.name
-        └── SUBSTRING()
-            ├── fruit.raw.name
-            ├── 2
-            └── 4
+        column[fruit.processed.name]
+        └── function[SUBSTRING]
+            ├── column[fruit.raw.name]
+            ├── literal[2]
+            └── literal[4]
         """
         g = self.graph.reverse()  # We print from the leaves to the roots
         root_columns = util.get_root_nodes(g)
@@ -233,17 +233,17 @@ class Lineage:
         Iterate over all the paths in the graph and print each one.
 
         Example output:
-          column[fruit.raw.apple] -> function[UPPER()] - column[fruit.processed.apple]
+          column[fruit.raw.apple] -> function[UPPER] - column[fruit.processed.apple]
         """
         for _path in self.get_paths():
             nodes = _path.node_hops()
+            path = ""
 
             for i, node in enumerate(nodes):
-                print(node.friendly_name, end="")
+                path += node.friendly_name
                 if i < len(nodes) - 1:
-                    print(" -> ", end="")
-                else:
-                    print("\n")
+                    path += " -> "
+            print(path)
 
     def init_mapping(self, dialect: str) -> mappings.ObjectMapping:
         if self.object_mapping is None:

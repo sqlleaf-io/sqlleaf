@@ -1,21 +1,29 @@
 # sqlleaf
-Extract detailed lineage from any SQL statement.
+### Trace your data
+sqlleaf analyses your SQL statements to understand how your data flows across your data systems.
+It never runs your queries; it only looks at their structure and syntax.
 
-#### This is currently under early development and is not yet 0.0.1. Expect breaking changes!
+For the full roadmap and types of queries that are supported, visit https://sqlleaf.io
 
-See `ROADMAP.md` for supported syntax and upcoming features.
+## Development
+The project uses the `sqlglot` multi-dialect SQL parser under the hood, which supports over 30 SQL dialects. sqlleaf thus inherits this capability.
+However, as sqlleaf is only young, it does not yet support all the features of every dialect. Only Postgres is supported as of now, and more dialects are coming!
 
 ## Example
 
-```python
-sql = """
-CREATE TABLE target (name VARCHAR, age INT, birthday TIMESTAMP);
-CREATE TABLE source (name VARCHAR);
+```sql
+-- File: example.sql
+CREATE TABLE users (name VARCHAR(50), birthday DATE);
+CREATE TABLE logins (name VARCHAR(50));
 
-INSERT INTO target (name, age, birthday)
-SELECT LOWER(name) AS name, 5 as age, CURRENT_TIMESTAMP as birthday
-FROM source;
-"""
+INSERT INTO users (name, birthday)
+SELECT LOWER(name) AS name, CURRENT_TIMESTAMP AS birthday
+FROM logins;
+```
+
+```python
+sql = open("example.sql").read()
+
 import sqlleaf
 lineage = sqlleaf.Lineage()
 lineage.generate(sql=sql, dialect="postgres")
@@ -23,7 +31,6 @@ lineage.print_paths()
 ```
 Output:
 ```
-column[source.name] -> function[LOWER] -> column[target.name]
-literal[5] -> column[target.age]
-function[CURRENT_TIMESTAMP] -> column[target.birthday]
+column[logins.name] -> function[LOWER] -> column[users.name]
+function[CURRENT_TIMESTAMP] -> column[users.birthday]
 ```
