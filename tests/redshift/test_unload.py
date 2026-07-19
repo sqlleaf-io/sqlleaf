@@ -34,4 +34,6 @@ def test__unload(holder):
     assert isinstance(h.queries_original[1], UnloadQuery)
 
 
+# TODO: select subset of column names
+
 # TODO: WITH FORMAT

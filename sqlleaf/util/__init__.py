@@ -4,6 +4,7 @@ from sqlleaf.util.expression import (
     copy_expression,
     find_property,
     get_function_args,
+    get_location_property,
     get_selected_column_names,
     get_table,
     get_udf_name,

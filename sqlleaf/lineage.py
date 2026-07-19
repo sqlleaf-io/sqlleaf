@@ -285,7 +285,7 @@ def query_has_lineage(query: Q) -> bool:
     if not isinstance(query, QUERIES_WITH_LINEAGE):
         has_lineage = False
     elif isinstance(query, CopyQuery) and query.source_info.type == SqlObjectType.VALUES:
-        # COPY TO STDOUT VALUES (..)
+        # COPY TO STDOUT VALUES (..) # TODO: this should have lineage
         has_lineage = False
     elif isinstance(query, CopyQuery) and not query.is_query_active():
         has_lineage = False
@@ -293,6 +293,7 @@ def query_has_lineage(query: Q) -> bool:
         # CREATE TABLE WITH NO DATA
         has_lineage = False
     elif isinstance(query, TableQuery) and query.property != "external":
+        # CREATE EXTERNAL TABLE
         has_lineage = False
 
     if not has_lineage:

@@ -72,6 +72,18 @@ def find_property(statement: exp.Create, child_object: TargetExprType, dialect: 
     return prop
 
 
+def get_location_property(expr: exp.Create, dialect: str) -> str | None:
+    """
+    Get the LOCATION value from a CREATE statement.
+    """
+    location = None
+    if dialect in ["athena"]:
+        if props := expr.args["properties"]:
+            if location_expr := props.find(exp.LocationProperty):
+                location = location_expr.name
+    return location
+
+
 def column_def_to_column(column_def: exp.ColumnDef, parent_table: t.Optional[exp.Table] = None) -> exp.Column:
     """
     Convert an exp.ColumnDef to an exp.Column
