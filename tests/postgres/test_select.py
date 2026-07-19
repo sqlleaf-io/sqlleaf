@@ -12,16 +12,6 @@ import sqlglot
 
 DIALECT = "postgres"
 
-# TODO: unnest([N...]) returns N columns named 'unnest', but sqlglot calls them 'offset'
-#  We need to throw an error if unnest() is called without specific column selection.
-#  We also need to undo sqlglot's column renaming of {col} => {col}.offset
-"""
-SELECT * FROM unnest(ARRAY['apple', 'banana']);                             -- Invalid
-SELECT * FROM unnest(ARRAY['apple', 'banana']) WITH ORDINALITY;             -- Invalid
-SELECT * FROM unnest(ARRAY['apple', 'banana']) WITH ORDINALITY AS t(a,b);   -- Valid  sqlglot sets fruit => fruit.offset
-SELECT fruit FROM unnest(ARRAY['apple', 'banana']);                         -- Valid  sqlglot sets fruit => fruit.offset
-"""
-
 
 literal_ones = [
     "(1)",
@@ -183,12 +173,10 @@ def test__select_filter_and_where(holder):
     ]
     assert len(h.nodes) == 7
     assert len(h.edges) == 5
-    # Ensure the FILTER is dropped
     assert (
         h.holders[0].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO fruit.processed (age, amount) SELECT SUM(raw.age) AS age, COUNT(*) AS amount FROM fruit.raw AS raw"  # noqa: E501
     )
-    # Ensure the WHERE is dropped
     assert (
         h.holders[1].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (age) SELECT 1 AS age"  # noqa: E501
     )
@@ -489,3 +477,12 @@ def test__select_table_as_table(holder):
     assert len(h.queries_original) == 3
     assert [TableQuery, TableQuery, InsertQuery] == h.query_types
     assert len(h.collected_queries.unsupported) == 2
+
+
+# TODO:
+#  CREATE TABLE a.b;
+#  -- works, but should not; problem with trie
+#  SELECT * FROM b;
+
+# TODO: unnest([N...]) returns N columns named 'unnest', but sqlglot calls them 'offset'
+#  Undo sqlglot's column renaming of {col} => {col}.offset
