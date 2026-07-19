@@ -143,6 +143,8 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     unsupported = []
     processors = get_query_processors()
     counts = {kind: 0 for kind in processors.keys()}
+
+    # Parse the statements
     parsed = sqlglot.parse(text, dialect=dialect)
     parsed = _split_combined_statements(parsed)
 
@@ -156,7 +158,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
 
         kind = ""
         if isinstance(stmt, exp.Command):
-            if dialect == "redshift" and stmt.name == "UNLOAD":
+            if dialect in ["athena", "redshift"] and stmt.name == "UNLOAD":
                 kind = "unload"
             elif dialect == "postgres" and stmt.name == "PREPARE":
                 if _is_prepare_supported(stmt):
