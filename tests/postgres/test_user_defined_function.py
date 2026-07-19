@@ -18,7 +18,7 @@ def to_sql(expressions: t.List[exp.Expr]) -> t.List[str]:
     return [e.sql(dialect="postgres") for e in expressions]
 
 
-def test_hello_udf(holder):
+def test(holder):
     sql = """
     CREATE FUNCTION hello() RETURNS TEXT AS $$
         SELECT 'Hello';
@@ -48,7 +48,7 @@ def test_hello_udf(holder):
     assert to_sql(actual_after) == insert_after
 
 
-def test_hello_schema_udf(holder):
+def test__udf_schema(holder):
     sql = """
     CREATE FUNCTION greetings.hello() RETURNS TEXT AS $$
         SELECT 'Hello';
@@ -78,7 +78,7 @@ def test_hello_schema_udf(holder):
     assert to_sql(actual_after) == insert_after
 
 
-def test_hello_schema_distinction_udf(holder):
+def test__udf_schema_distinction(holder):
     sql = """
     CREATE FUNCTION hello() RETURNS TEXT LANGUAGE SQL RETURN 'no_schema';
     CREATE FUNCTION greetings.hello() RETURNS TEXT LANGUAGE SQL RETURN 'yes_schema';
@@ -115,7 +115,7 @@ def test_hello_schema_distinction_udf(holder):
     ]
 
 
-def test_hello_select_udf(holder):
+def test__udf_select(holder):
     sql = """
     CREATE FUNCTION hello() RETURNS TEXT AS $$
         SELECT 'Hello';
@@ -145,7 +145,7 @@ def test_hello_select_udf(holder):
     assert to_sql(actual_after) == insert_after
 
 
-def test_hello_nested_invocation_udf(holder):
+def test__udf_nested_invocation(holder):
     sql = """
     CREATE FUNCTION hello(username TEXT) RETURNS TEXT AS $$
         SELECT 'Hello ' || username;
@@ -174,7 +174,7 @@ def test_hello_nested_invocation_udf(holder):
     assert to_sql(actual_after) == insert_after
 
 
-def test_udf_referencing_another_udf(holder):
+def test__udf_referencing_another(holder):
     sql = """
     CREATE FUNCTION goodbye(username TEXT) RETURNS TEXT AS $$
         SELECT my_unknown(username);
@@ -207,7 +207,7 @@ def test_udf_referencing_another_udf(holder):
     assert to_sql(actual_after) == insert_after
 
 
-def test_hello_void_return_udf(holder):
+def test__udf_void_return(holder):
     sql = """
     CREATE FUNCTION hello() RETURNS void AS 'SELECT 1;' LANGUAGE SQL;
 
@@ -235,7 +235,7 @@ def test_hello_void_return_udf(holder):
     assert to_sql(actual_after) == insert_after
 
 
-def test_hello_return_parameter_udf(holder):
+def test__udf_return_parameter(holder):
     sql = """
     CREATE FUNCTION hello(username TEXT) RETURNS TEXT LANGUAGE SQL RETURN $1;
 
@@ -264,7 +264,7 @@ def test_hello_return_parameter_udf(holder):
     assert to_sql(actual_after) == insert_after
 
 
-def test_hello_params_udf(holder):
+def test__udf_params(holder):
     sql = """
     CREATE FUNCTION hello(username TEXT) RETURNS TEXT AS $$
         SELECT 'Hello ' || username;
@@ -294,7 +294,7 @@ def test_hello_params_udf(holder):
     assert to_sql(actual_after) == insert_after
 
 
-def test_hello_positional_params_udf(holder):
+def test__udf_positional_params(holder):
     sql = """
     CREATE FUNCTION hello(TEXT) RETURNS TEXT AS $$
         SELECT 'Hello ' || COALESCE($1, 'Guest');
@@ -324,7 +324,7 @@ def test_hello_positional_params_udf(holder):
     assert to_sql(actual_after) == insert_after
 
 
-def test_hello_inout_params_udf(holder):
+def test__udf_inout_params(holder):
     sql = """
     CREATE FUNCTION hello(INOUT TEXT) AS $$
         SELECT 'Hello ' || $1;
@@ -355,7 +355,7 @@ def test_hello_inout_params_udf(holder):
     assert to_sql(actual_after) == insert_after
 
 
-def test_hello_default_params_udf(holder):
+def test__udf_default_params(holder):
     sql = """
     CREATE FUNCTION hello(username TEXT DEFAULT 'World') RETURNS TEXT AS $$
         SELECT 'Hello ' || $1;
@@ -396,7 +396,7 @@ def test_hello_default_params_udf(holder):
 # or 'column<N>' if no name is provided, where N is the position of the parameter in the function's list.
 
 
-def test_hello_inout_parameter_udf(holder):
+def test__udf_inout_parameter(holder):
     sql = """
     CREATE FUNCTION hello(INOUT username TEXT DEFAULT 'User', INOUT TEXT DEFAULT 'Hi') AS $$
         SELECT $2 || ' ' || $1, 'Goodbye ' || $1;
@@ -428,7 +428,7 @@ def test_hello_inout_parameter_udf(holder):
     assert to_sql(actual_after_1) == insert_after_1
 
 
-def test_hello_in_out_inout_parameters_udf(holder):
+def test__udf_in_out_inout_parameters(holder):
     sql = """
     CREATE FUNCTION hello(
         IN username TEXT,
@@ -465,7 +465,7 @@ def test_hello_in_out_inout_parameters_udf(holder):
     assert to_sql(actual_after_1) == insert_after_1
 
 
-def test_hello_table_no_params_udf(holder):
+def test__udf_table_no_params(holder):
     sql = """
     CREATE FUNCTION hello() RETURNS TABLE(property TEXT, value TEXT) AS $$
         SELECT 'prop', 'val';
@@ -496,7 +496,7 @@ def test_hello_table_no_params_udf(holder):
     assert to_sql(actual_after_1) == insert_after_1
 
 
-def test_hello_multi_statement_params_udf(holder):
+def test__udf_multi_statement_params(holder):
     sql = """
     CREATE FUNCTION hello(username TEXT) RETURNS TEXT AS $$
         SELECT username;
@@ -524,7 +524,7 @@ def test_hello_multi_statement_params_udf(holder):
     assert to_sql(actual_after_1) == insert_after_1
 
 
-def test_hello_cte_udf(holder):
+def test__udf_cte(holder):
     sql = """
     CREATE FUNCTION hello(username TEXT) RETURNS TEXT AS $$
         WITH cte AS (
@@ -556,7 +556,7 @@ def test_hello_cte_udf(holder):
     assert to_sql(actual_after_1) == insert_after_1
 
 
-def test_hello_table_and_values_udf(holder):
+def test__udf_table_and_values(holder):
     sql = """
     CREATE FUNCTION hello(username TEXT) RETURNS TABLE(property TEXT, value TEXT) AS $$
         VALUES ('greeting', 'Hello ' || username)
@@ -587,7 +587,7 @@ def test_hello_table_and_values_udf(holder):
     assert to_sql(actual_after_1) == insert_after_1
 
 
-def test_hello_table_parameter_udf(holder):
+def test__udf_table_parameter(holder):
     sql = """
     CREATE TABLE people(age INT);
 
@@ -632,7 +632,7 @@ def test_hello_table_parameter_udf(holder):
     assert to_sql(actual_after_alias) == insert_after
 
 
-def test_hello_row_parameter_udf(holder):
+def test__udf_row_parameter(holder):
     sql = """
     CREATE TABLE people(age INT);
 
@@ -679,7 +679,7 @@ def test_hello_row_parameter_udf(holder):
 
 
 # # TODO: return to this one once the basic LATERAL case has been handled in test_select.py
-# def test_lateral_udf(holder):
+# def test__udf_lateral(holder):
 #     sql = """
 #     CREATE FUNCTION hello() RETURNS TABLE(property TEXT, value TEXT) AS $$
 #         SELECT 'prop', 'val';
@@ -720,7 +720,7 @@ def test_hello_row_parameter_udf(holder):
 #     assert to_sql(actual_after_1) == insert_after_1
 
 
-def test_hello_composite_type_udf(holder):
+def test__udf_composite_type(holder):
     sql = """
     CREATE TYPE person AS (name1 TEXT, age1 INT);
     CREATE FUNCTION hello (text) RETURNS person AS $$
@@ -760,7 +760,7 @@ def test_hello_composite_type_udf(holder):
     assert to_sql(actual_after_1) == insert_after_1
 
 
-def test_hello_table_return_udf(holder):
+def test__udf_table_return(holder):
     sql = """
     CREATE TABLE people(name VARCHAR, age INT);
 
@@ -801,7 +801,7 @@ def test_hello_table_return_udf(holder):
     assert to_sql(actual_after_1) == insert_after_1
 
 
-def test_hello_schema_table_return_udf(holder):
+def test__udf_schema_table_return(holder):
     sql = """
     CREATE TABLE earth.people(name VARCHAR, age INT);
 
@@ -835,7 +835,7 @@ def test_hello_schema_table_return_udf(holder):
     assert to_sql(actual_after_1) == insert_after_1
 
 
-def test_hello_variadic_parameter_udf(holder):
+def test__udf_variadic_parameter(holder):
     sql = """
     CREATE FUNCTION hello(greeting TEXT, VARIADIC names TEXT[])
     RETURNS TEXT AS $$
@@ -879,7 +879,7 @@ def test_hello_variadic_parameter_udf(holder):
     assert to_sql(actual_after_1) == insert_after_1
 
 
-def test_mleast_variadic_parameter_udf(holder):
+def test__udf_mleast_variadic_parameter(holder):
     sql = """
     CREATE FUNCTION mleast(VARIADIC arr numeric[]) RETURNS numeric AS $$
         SELECT min($1[i]) FROM generate_subscripts($1, 1) g(i);
@@ -959,7 +959,7 @@ def test_mleast_variadic_parameter_udf(holder):
     assert to_sql(actual_after_4) == insert_after_4
 
 
-def test_hello_overloading_udf(holder):
+def test__udf_overloading(holder):
     sql = """
     CREATE FUNCTION hello() RETURNS TEXT AS $$
         SELECT 'Hello';
@@ -1021,7 +1021,7 @@ def test_hello_overloading_udf(holder):
     assert to_sql(actual_after_5) == insert_after_5
 
 
-def test_hello_table_join_same_table_udf(holder):
+def test__udf_table_join_same_table(holder):
     sql = """
     CREATE FUNCTION hello() RETURNS TABLE(property TEXT, value TEXT) AS $$
         SELECT 'prop', 'val';
@@ -1052,7 +1052,7 @@ def test_hello_table_join_same_table_udf(holder):
     assert to_sql(actual_after_1) == insert_after_1
 
 
-def test_hello_type_return_udf(holder):
+def test__udf_type_return(holder):
     sql = """
     CREATE TYPE person AS (name1 TEXT, age1 INT);
     CREATE FUNCTION hello (text) RETURNS person AS $$
@@ -1092,7 +1092,7 @@ def test_hello_type_return_udf(holder):
     assert to_sql(actual_after_1) == insert_after_1
 
 
-def test_hello_parameter_column_precedence_udf(holder):
+def test__udf_parameter_column_precedence(holder):
     sql = """
     CREATE TABLE people(name TEXT);
     CREATE FUNCTION hello(name TEXT) RETURNS TEXT AS $$
@@ -1114,7 +1114,7 @@ def test_hello_parameter_column_precedence_udf(holder):
     assert to_sql(actual_after_1) == insert_after_1
 
 
-def test_hello_any_type_fallback_udf(holder):
+def test__udf_any_type_fallback(holder):
     sql = """
     CREATE FUNCTION hello(anyelement) RETURNS anyelement AS $$
         SELECT $1
@@ -1140,7 +1140,7 @@ cases = ["STRICT", "RETURNS NULL ON NULL INPUT"]
 
 
 @pytest.mark.parametrize("case", cases)
-def test_hello_null_on_null_input_udf(holder, case: str):
+def test__udf_null_on_null_input(holder, case: str):
     sql = f"""
     CREATE FUNCTION hello(name TEXT) RETURNS anyelement AS $$
         SELECT $1
@@ -1163,7 +1163,7 @@ def test_hello_null_on_null_input_udf(holder, case: str):
     assert to_sql(actual_after_1) == insert_after_1
 
 
-def test_hello_insert_returning_udf(holder):
+def test__udf_insert_returning(holder):
     sql = """
     CREATE TABLE people(age INT);
 
@@ -1188,7 +1188,7 @@ def test_hello_insert_returning_udf(holder):
 # The same as above, but just a SELECT.
 # TODO: this will work once the logic to process UDFs in any place
 #  make the query segment valid (e.g. in WHERE cluases)
-# def test_hello_select_insert_returning_udf(holder):
+# def test__udf_select_insert_returning(holder):
 #     sql = """
 #     CREATE TABLE people(age INT);
 #
@@ -1210,7 +1210,7 @@ def test_hello_insert_returning_udf(holder):
 #     assert to_sql(actual_after) == insert_after
 
 
-def test_hello_delete_returning_positional_udf(holder):
+def test__udf_delete_returning_positional(holder):
     sql = """
     CREATE TABLE people(age INT);
 
@@ -1232,7 +1232,7 @@ def test_hello_delete_returning_positional_udf(holder):
     assert to_sql(actual_after) == insert_after_2
 
 
-def test_hello_merge_returning_udf(holder):
+def test__udf_merge_returning(holder):
     sql = """
     CREATE TABLE people(age INT);
 
