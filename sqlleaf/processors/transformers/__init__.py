@@ -6,6 +6,7 @@ from sqlleaf.processors.transformers.delete import DeleteTransformer
 from sqlleaf.processors.transformers.insert import InsertTransformer
 from sqlleaf.processors.transformers.merge import MergeTransformer
 from sqlleaf.processors.transformers.multitable_insert import MultitableInsertTransformer
+from sqlleaf.processors.transformers.replace import ReplaceTransformer
 from sqlleaf.processors.transformers.unload import UnloadTransformer
 from sqlleaf.processors.transformers.update import UpdateTransformer
 
@@ -19,6 +20,7 @@ __all__ = [
     "InsertTransformer",
     "MergeTransformer",
     "MultitableInsertTransformer",
+    "ReplaceTransformer",
     "UnloadTransformer",
     "UpdateTransformer",
 ]

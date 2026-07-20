@@ -26,6 +26,7 @@ from sqlleaf.models.query import (
     PutQuery,
     Q,
     QueryHolder,
+    ReplaceQuery,
     SchemaQuery,
     SelectQuery,
     SequenceQuery,
@@ -70,6 +71,7 @@ def get_query_processors():
         "delete": _process_unnamed,
         "schema": _process_schema,
         "unload": _process_unload,
+        "replace": _process_replace,
         "prepare": _process_prepare,
         "execute": _process_execute,
         "stage": _process_stage,
@@ -126,6 +128,21 @@ def _is_execute_supported(stmt: exp.Command) -> bool:
     return True
 
 
+def _is_replace_supported(stmt: exp.Command, dialect: str) -> bool:
+    """
+    Check if a REPLACE statement is supported.
+    Transform to INSERT INTO to verify syntax.
+    """
+    expression = stmt.args.get("expression")
+    new_sql = f"INSERT {expression.this}" if expression else "INSERT"
+    try:
+        sqlglot.parse_one(new_sql, dialect=dialect)
+        return True
+    except Exception as e:
+        logger.warning(f"Invalid REPLACE statement syntax: {e}")
+        return False
+
+
 def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapping) -> CollectQueryResult:
     """
     Parse a series of SQL statements provided as text.
@@ -169,6 +186,12 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
             elif dialect == "postgres" and stmt.name == "EXECUTE":
                 if _is_execute_supported(stmt):
                     kind = "execute"
+                else:
+                    unsupported.append((index, stmt))
+                    continue
+            elif dialect == "mysql" and stmt.name == "REPLACE":
+                if _is_replace_supported(stmt, dialect):
+                    kind = "replace"
                 else:
                     unsupported.append((index, stmt))
                     continue
@@ -295,7 +318,10 @@ def _collect_insert_children(query: InsertQuery, parent_holder: QueryHolder, obj
     """
     Collect any additional queries inside an INSERT. For Postgres, this is 'INSERT .. ON CONFLICT DO UPDATE'.
     """
-    on_conflict = query.statement.args["conflict"]
+    if not isinstance(query.statement, exp.Insert):
+        return
+
+    on_conflict = query.statement.args.get("conflict")
 
     if not isinstance(on_conflict, exp.OnConflict) or on_conflict.args["action"].name == "DO NOTHING":
         return
@@ -829,6 +855,13 @@ def _process_unload(
     statement: exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
 ) -> Q:
     query = UnloadQuery(statement, dialect, object_mapping, statement_index)
+    return query
+
+
+def _process_replace(
+    statement: exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+) -> Q:
+    query = ReplaceQuery(statement, dialect, object_mapping, statement_index)
     return query
 
 
