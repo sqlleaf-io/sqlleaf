@@ -1,3 +1,3 @@
-sqlglot==30.11.0
+sqlglot==30.12.0
 networkx==3.6.1
 pytest==9.0.3
