@@ -23,6 +23,7 @@ EXCLUDE_OPTIMIZER_RULES = [
     "quote_identifiers",  # Preserve identifiers
     "eliminate_subqueries",  # Preserve subqueries
 ]
+LOG_TRANSFORMATIONS = True
 
 
 class BaseQueryTransformer:
@@ -77,8 +78,6 @@ class BaseQueryTransformer:
             # query = kwargs.pop("query")
             statement = self.statement
             query = self.query
-
-            LOG_TRANSFORMATIONS = True
 
             if LOG_TRANSFORMATIONS:
                 logger.debug(f"Function: {func.__name__}, Input:  {statement.sql(dialect=query.dialect)}")
@@ -292,6 +291,7 @@ class BaseQueryTransformer:
         """
         return [r for r in RULES if getattr(r, "__name__", None) not in exclude_rules]
 
+    @_validate_syntax
     def _apply_optimizations(self, statement: E, add_column_names: bool = True) -> E:
         """
         1. We pass infer_schema=True to source unqualified columns from the source table (if missing from `schema` param)
