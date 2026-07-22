@@ -25,3 +25,6 @@ from sqlleaf.util.helpers import (
     short_sha256_hash,
     unique,
 )
+from sqlleaf.util.iterators import (
+    default_column_index_iterator,
+)

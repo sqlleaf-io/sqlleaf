@@ -11,6 +11,7 @@ from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify
 
 from sqlleaf import exception, mappings, util
+from sqlleaf.processors.transformers.simplify.row import simplify_row_in_values
 from sqlleaf.models.query import (
     CallQuery,
     CopyQuery,
@@ -687,7 +688,7 @@ def _process_views_and_ctas(
     Convert a series of `CREATE VIEW/TABLE AS ...` SQL DDL statements into sqlglot's MappingSchema
     to extract the table and column details.
     """
-    _unnest_values_inside_select(statement)
+    _unnest_values_inside_select(statement, dialect)
 
     # Expand any stars into column names so that they can be tracked in the mapping
     stmt = qualify(
@@ -708,12 +709,14 @@ def _process_views_and_ctas(
         named_columns = stmt.args["this"].expressions
         for i, ins in enumerate(named_columns):
             # Overwrite the aliases because sqlglot may have added incorrect ones
+            if isinstance(ins, exp.ColumnDef):
+                ins = ins.this
             stmt.selects[i] = stmt.selects[i].as_(ins)
 
     # Add types from the mapping if available. Views often have unknown column types.
     stmt = annotate_types(stmt, dialect=dialect, schema=object_mapping)
 
-    col_defs = _determine_column_defs(stmt, object_mapping)
+    col_defs = _determine_column_defs(stmt, dialect, object_mapping)
 
     if stmt.kind == "VIEW":
         # CREATE VIEW ...
@@ -744,13 +747,14 @@ def _process_views_and_ctas(
     return query
 
 
-def _unnest_values_inside_select(statement: exp.Create):
+def _unnest_values_inside_select(statement: exp.Create, dialect: str):
     """
     Replace SELECT * FROM (VALUES ()) with VALUES ().
     This prevents sqlglot from assigning its own aliases.
     """
     # TODO: this should be done in a transform, checked against self.statement
     for values_expr in statement.find_all(exp.Values):
+        simplify_row_in_values(values_expr, dialect)
         parent = values_expr.parent_select
         while isinstance(parent, exp.Select) and parent.is_star and parent.parent_select:
             parent = parent.parent_select
@@ -760,7 +764,7 @@ def _unnest_values_inside_select(statement: exp.Create):
             parent.parent.set("expression", values_expr)
 
 
-def _determine_column_defs(statement: exp.Create, object_mapping: mappings.ObjectMapping) -> t.List[ColumnDef]:
+def _determine_column_defs(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping) -> t.List[ColumnDef]:
     """
     Look up the columns for 'y' in 'INSERT INTO x TABLE y'
     """
@@ -770,7 +774,7 @@ def _determine_column_defs(statement: exp.Create, object_mapping: mappings.Objec
         types = [val.type for val in statement.expression.expressions[0].expressions]
 
         if not columns:
-            columns = [f"column{i + 1}" for i in range(len(types))]
+            columns = util.default_column_index_iterator(dialect, types)
 
         col_defs = [exp.ColumnDef(this=col_name, kind=col_type) for col_name, col_type in zip(columns, types)]
     elif exec_prop := statement.find(exp.ExecuteAsProperty):

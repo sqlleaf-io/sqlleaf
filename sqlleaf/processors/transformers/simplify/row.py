@@ -5,6 +5,21 @@ from sqlglot import exp
 from sqlleaf.models.query import Query
 
 
+def simplify_row_in_values(values_expr: exp.Values, dialect: str) -> None:
+    """
+    Simplify MySQL's VALUES ROW(...) syntax by flattening the ROW() function.
+
+    Example:
+        VALUES (ROW(1, 2)), (ROW(3, 4)) -> VALUES (1, 2), (3, 4)
+    """
+    if dialect == "mysql":
+        for tuple_node in values_expr.expressions:
+            if isinstance(tuple_node, exp.Tuple) and len(tuple_node.expressions) == 1:
+                inner = tuple_node.expressions[0]
+                if isinstance(inner, exp.Anonymous) and inner.this.upper() == "ROW":
+                    tuple_node.set("expressions", [e.copy() for e in inner.expressions])
+
+
 def simplify_row(statement: exp.Expr, query: Query) -> None:
     """
     Simplify occurrences of the ROW() function.
