@@ -32,6 +32,7 @@ from sqlleaf.processors.transformers import (
     UnloadTransformer,
     UpdateTransformer,
     substitute,
+    udf,
 )
 from sqlleaf.typing import E, SqlObjectType
 
@@ -138,15 +139,15 @@ def _get_substituted_statements(statement: exp.Expr, query: Q) -> t.List[exp.Exp
     Returns a statement only if a UDF was substituted.
     """
     if isinstance(query, CallQuery):
-        return substitute.substitute_call(query=query)
+        return udf.substitute_call(query=query)
 
     if isinstance(query, ExecuteQuery):
-        return substitute.substitute_execute(query=query)
+        return udf.substitute_execute(query=query)
 
     if isinstance(query, CTASQuery) and query.source_info.type == SqlObjectType.PREPARED_STATEMENT:
-        return [substitute.substitute_create_execute(query=query)]
+        return [udf.substitute_create_execute(query=query)]
 
-    statements = substitute.substitute_udf(statement=statement, query=query)
+    statements = udf.substitute_udf(statement=statement, query=query)
     return statements
 
 

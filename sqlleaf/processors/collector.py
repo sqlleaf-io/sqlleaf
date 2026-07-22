@@ -11,7 +11,7 @@ from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.processors.transformers.simplify.row import simplify_row_in_values
+from sqlleaf.processors.transformers.expressions.row import simplify_row_in_values
 from sqlleaf.models.query import (
     CallQuery,
     CopyQuery,

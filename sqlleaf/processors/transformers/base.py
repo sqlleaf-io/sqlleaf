@@ -9,8 +9,8 @@ from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, util
 from sqlleaf.models.query import Q
-from sqlleaf.processors.transformers import resolver
-from sqlleaf.processors.transformers.simplify import simplify_row
+from sqlleaf.processors.transformers import udf
+from sqlleaf.processors.transformers.expressions import simplify_row
 from sqlleaf.typing import E, SqlObjectType
 
 logger = logging.getLogger("sqlleaf")
@@ -126,7 +126,7 @@ class BaseQueryTransformer:
         statement = self.statement
         query = self.query
         for node in statement.find_all(exp.Anonymous):
-            udf_query = resolver.lookup_udf_call(node, query.object_mapping)
+            udf_query = udf.lookup_udf_call(node, query.object_mapping)
             if not udf_query:
                 continue
 
