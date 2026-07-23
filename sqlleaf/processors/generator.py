@@ -58,6 +58,7 @@ def generate_lineage_for_query(
         queries_to_process.append(holder.substituted)
 
     for i, query in enumerate(queries_to_process):
+        logger.info(f"Processing query: {type(query)}")
         statement = query.statement
         logger.debug("----")
         subs = "[SUBSTITUTED] " if i > 0 else ""

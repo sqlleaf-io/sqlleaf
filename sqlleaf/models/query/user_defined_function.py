@@ -44,7 +44,7 @@ class UserDefinedFunctionParameters:
             if isinstance(body_expr, (exp.Literal, exp.Heredoc)):
                 body_text = body_expr.this.strip()
                 try:
-                    inner_statements = sqlglot.parse(body_text, dialect="postgres")
+                    inner_statements = sqlglot.parse(body_text, dialect=object_mapping.dialect)
                 except Exception:
                     pass
             elif isinstance(body_expr, exp.Return):

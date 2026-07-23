@@ -2,6 +2,7 @@ import os
 import sys
 
 import pytest
+import sqlglot
 from sqlleaf.exception import SqlLeafException
 from sqlleaf.models.query import PrepareQuery, ExecuteQuery
 from sqlleaf.typing import SqlObjectType
@@ -27,9 +28,8 @@ def test__prepare(holder):
     assert len(h.edges) == 0
 
     # It should be stored in the mapping
-    from sqlglot import exp
     mapping = h.lineage.object_mapping
-    prepare_query = mapping.lookup_prepare_query(exp.to_table("my_plan"))
+    prepare_query = mapping.lookup_prepare_query(sqlglot.exp.to_table("my_plan"))
     assert prepare_query is not None
     assert isinstance(prepare_query, PrepareQuery)
     # The statement is qualified, so SELECT * becomes SELECT source.name, ...
@@ -37,8 +37,8 @@ def test__prepare(holder):
     assert "source" in sql_generated.lower()
     assert "name" in sql_generated.lower()
     assert "amount" in sql_generated.lower()
-
-
+    assert h.nodes_full == []
+    assert h.paths == []
 
 
 def test__prepare_invalid_syntax_fails(holder):

@@ -18,6 +18,8 @@ def to_sql(expressions: t.List[exp.Expr]) -> t.List[str]:
     return [e.sql(dialect="postgres") for e in expressions]
 
 
+# TODO: VALUES (udf()) by itself; this is valid
+
 def test__udf_simple(holder):
     sql = """
     CREATE FUNCTION hello() RETURNS TEXT AS $$
@@ -381,13 +383,10 @@ def test__udf_default_params(holder):
 
     insert_query = h.holders[2]
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello World' AS _col_0) AS name"]
-
     actual_after = [insert_query.substituted.statement]
     assert to_sql(actual_after) == insert_after
 
-    h.holders[3]
     insert_after_2 = ["INSERT INTO target (name) SELECT (SELECT 'Hello There' AS _col_0) AS name"]
-
     actual_after = [h.holders[3].substituted.statement]
     assert to_sql(actual_after) == insert_after_2
 

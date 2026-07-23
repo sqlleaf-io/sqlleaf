@@ -307,12 +307,54 @@ def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, 
     """
     if isinstance(query, InsertQuery):
         _collect_insert_children(query, parent_holder, object_mapping)
-    if isinstance(query, MergeQuery):
+    elif isinstance(query, MergeQuery):
         _collect_merge_children(query, parent_holder, object_mapping)
-    if isinstance(query, MultitableInsertQuery):
+    elif isinstance(query, MultitableInsertQuery):
         _collect_multitable_insert_children(query, parent_holder, object_mapping)
+    elif isinstance(query, UserDefinedFunctionQuery):
+        _collect_udf_children(query, parent_holder, dialect, object_mapping)
     if not isinstance(query, (CopyQuery, PutQuery)):
         _collect_writable_cte_queries(query, parent_holder, dialect, object_mapping)
+
+
+def _collect_udf_children(
+    query: UserDefinedFunctionQuery,
+    parent_holder: QueryHolder,
+    dialect: str,
+    object_mapping: mappings.ObjectMapping,
+):
+    """
+    Extract the function body from the UDF and parse it into individual statements.
+    """
+    body_expr = query.statement.args.get("expression")
+    inner_statements = []
+
+    if body_expr:
+        if isinstance(body_expr, (exp.Literal, exp.Heredoc)):
+            body_text = body_expr.this.strip()
+            try:
+                inner_statements = sqlglot.parse(body_text, dialect=object_mapping.dialect)
+            except Exception:
+                pass
+        elif isinstance(body_expr, exp.Return):
+            inner_statements = [exp.select(body_expr.this)]
+        else:
+            inner_statements = [body_expr]
+
+    for i, stmt in enumerate(inner_statements):
+        child_query = _process_unnamed(stmt, dialect, object_mapping, i)
+
+        # If it's a simple select and _process_unnamed skipped it, create a SelectQuery
+        # TODO: VALUES and SELECT should be collected
+        if not child_query and isinstance(stmt, exp.Select):
+            child_query = SelectQuery(
+                expr=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=i
+            )
+
+        if child_query:
+            child_holder = QueryHolder(original=child_query)
+            parent_holder.add_child_holder(child_holder)
+            _collect_query_children(child_query, child_holder, dialect, object_mapping)
 
 
 def _collect_insert_children(query: InsertQuery, parent_holder: QueryHolder, object_mapping: mappings.ObjectMapping):

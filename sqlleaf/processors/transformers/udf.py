@@ -318,9 +318,14 @@ def build_replacement_exprs(node: exp.Anonymous, query: UserDefinedFunctionQuery
     param_map, positional_map = substitute.transform_arguments(node, query)
 
     replacement_exprs = []
-    for stmt in query.inner_statements:
-        # Annotate types of the inner UDF query before transformation
-        stmt = annotate_types(stmt.copy(), schema=query.object_mapping)
+    # Collect all child queries from the holder
+    for child in query.holder.child_holders:
+        stmt = child.original.statement
+
+        if isinstance(stmt, (exp.Insert, exp.Update)):
+            stmt = stmt.expression
+
+        stmt = util.copy_expression(stmt)
         replacement_exprs.append(transform_inner_query(stmt, param_map, query, positional_map))
 
     return replacement_exprs
