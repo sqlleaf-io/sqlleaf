@@ -210,9 +210,6 @@ class BaseQueryTransformer:
         Convert a VALUES(...) clause into a SELECT ... UNION ALL SELECT ... form
         and rewrite the parent statement in-place.
         """
-        if not isinstance(statement, (exp.CTE, exp.Insert, exp.Create)):
-            return statement
-
         if not isinstance(expression, exp.Values):
             return statement
 

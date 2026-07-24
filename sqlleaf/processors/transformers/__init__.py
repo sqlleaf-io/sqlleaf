@@ -9,6 +9,7 @@ from sqlleaf.processors.transformers.multitable_insert import MultitableInsertTr
 from sqlleaf.processors.transformers.replace import ReplaceTransformer
 from sqlleaf.processors.transformers.unload import UnloadTransformer
 from sqlleaf.processors.transformers.update import UpdateTransformer
+from sqlleaf.processors.transformers.values import ValuesTransformer
 
 __all__ = [
     "substitute",
@@ -23,4 +24,5 @@ __all__ = [
     "ReplaceTransformer",
     "UnloadTransformer",
     "UpdateTransformer",
+    "ValuesTransformer",
 ]

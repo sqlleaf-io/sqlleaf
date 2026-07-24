@@ -19,6 +19,7 @@ from sqlleaf.models.query import (
     TableQuery,
     UnloadQuery,
     UpdateQuery,
+    ValuesQuery,
 )
 from sqlleaf.processors.transformers import (
     BaseQueryTransformer,
@@ -31,6 +32,7 @@ from sqlleaf.processors.transformers import (
     ReplaceTransformer,
     UnloadTransformer,
     UpdateTransformer,
+    ValuesTransformer,
     substitute,
     udf,
 )
@@ -47,6 +49,7 @@ _TRANSFORMER_MAP: dict[type, type[BaseQueryTransformer]] = {
     TableQuery: BaseQueryTransformer,  # pass-through
     UnloadQuery: UnloadTransformer,
     UpdateQuery: UpdateTransformer,
+    ValuesQuery: ValuesTransformer,
 }
 
 logger = logging.getLogger("sqlleaf")

@@ -38,6 +38,7 @@ from sqlleaf.models.query import (
     UnloadQuery,
     UpdateQuery,
     UserDefinedFunctionQuery,
+    ValuesQuery,
     ViewQuery,
 )
 
@@ -79,6 +80,7 @@ def get_query_processors():
         "call": _process_unnamed,
         "copy": _process_unnamed,
         "put": _process_unnamed,
+        "values": _process_unnamed,
         "type": _process_type,
     }
 
@@ -671,7 +673,7 @@ def _process_unnamed(
                 "such as an INSERT, to contain lineage."
             )
     elif isinstance(statement, exp.Select):
-        if not statement.find(exp.Insert, exp.Update, exp.Merge, exp.Delete):
+        if not statement.find(exp.Insert, exp.Update, exp.Merge, exp.Delete, exp.Values):
             logging.warning(
                 "Skipping statement: A SELECT query must have a data-modifying statement, "
                 "such as an INSERT, to contain lineage."
@@ -682,6 +684,10 @@ def _process_unnamed(
             )
     elif isinstance(statement, exp.Copy):
         query = CopyQuery(
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
+    elif isinstance(statement, exp.Values):
+        query = ValuesQuery(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
     elif isinstance(statement, exp.Put):
