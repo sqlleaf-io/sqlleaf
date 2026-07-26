@@ -7,6 +7,8 @@ if t.TYPE_CHECKING:
     from sqlleaf.models.query import QueryHolder
 
 from sqlglot import exp
+from sqlglot.optimizer.annotate_types import annotate_types
+from sqlglot.optimizer.qualify import qualify
 
 from sqlleaf import exception, mappings, util
 from sqlleaf.typing import SourceExprType, SourceInfo, SqlObjectType, TargetExprType, TargetInfo
@@ -21,7 +23,7 @@ class Query:
         self,
         dialect: str,
         statement: exp.Expr,
-        statement_index: int,
+        statement_index: int | str,
         object_mapping: mappings.ObjectMapping,
         source_info: SourceInfo | None,
         target_info: TargetInfo,
@@ -115,9 +117,6 @@ class Query:
         return _type
 
     def qualify_and_annotate(self):
-        from sqlglot.optimizer.annotate_types import annotate_types
-        from sqlglot.optimizer.qualify import qualify
-
         qualify(
             self.source_info.expression,
             schema=self.object_mapping,

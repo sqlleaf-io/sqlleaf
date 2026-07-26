@@ -24,6 +24,13 @@ def test__values(holder):
     query = h.queries_original[0]
     assert isinstance(query, ValuesQuery)
 
+
+    # TODO: change the logic behind 'has_lineage()': any statement can if it can call a UDF.
+    #  This means we need to change the order: a transformation + subst must occur, and THEN
+    #  the check for lineage must occur
+    #assert to_sql(h.queries_transformed[0]) == ["SELECT 1 AS column1"]
+
+
     assert h.paths == []
     assert len(h.nodes) == 0
     assert len(h.edges) == 0

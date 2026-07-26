@@ -218,37 +218,43 @@ class BaseQueryTransformer:
             columns = statement.alias_column_names
             if not columns:
                 columns = [e.name for e in statement.root().this.expressions]
-        else:
+        elif not isinstance(statement, exp.Values):
             columns = [e.name for e in statement.this.expressions]
+        else:
+            columns = []
 
         # Fallback: look up from object mapping
         query = self.query
         values_lists: t.List[exp.Tuple] = expression.expressions
-        child_table = query.get_target_as_table()
+        child_table = None
 
         if not columns:
-            cols = query.object_mapping.find_columns_for_table(child_table)
-            columns = list(cols)[: len(values_lists[0].expressions)]
+            try:
+                child_table = query.get_target_as_table()
+                cols = query.object_mapping.find_columns_for_table(child_table)
+                columns = list(cols)[: len(values_lists[0].expressions)]
+            except exception.SqlLeafException:
+                pass
+
+        if not child_table:
+            try:
+                child_table = query.get_target_as_table()
+            except exception.SqlLeafException:
+                pass
 
         # Build the 'SELECT ... UNION ALL SELECT ...'
-        selects = []
-        for val_list in values_lists:
-            values = val_list.expressions
-            cols = [exp.alias_(val, str(col)) for col, val in zip(columns, values)]
-            selects.append(cols)
-
-        if len(selects) > 1:
-            new_selects = [exp.select(*select) for select in selects]
-            new_statement = exp.union(*new_selects, distinct=False)
-        else:
-            new_statement = exp.select(*selects[0])
+        new_statement = util.convert_values_to_select(
+            expression=expression,
+            dialect=query.dialect,
+            column_names=columns,
+        )
 
         # Rewrite the parent statement
         if isinstance(statement, exp.Insert):
             insert_expr = exp.insert(
                 expression=new_statement,
                 columns=statement.this.expressions,
-                into=child_table,
+                into=child_table or statement.this,
                 returning=statement.args.get("returning"),
             )
             insert_expr.set("conflict", statement.args.get("conflict"))
@@ -260,6 +266,8 @@ class BaseQueryTransformer:
         elif isinstance(statement, exp.CTE):
             expression.pop()
             statement.set("this", new_statement)
+        elif isinstance(statement, exp.Values):
+            statement = new_statement
         else:
             raise exception.SqlLeafException(message=f"Unknown statement type: {statement.__class__}")
 

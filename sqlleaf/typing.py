@@ -50,7 +50,7 @@ class SqlObjectType(StrEnum):
         """
         Return all the types that do not define any columns of their own.
         """
-        return not set(clses).isdisjoint({cls.DYNAMODB, cls.FILE, cls.PROGRAM, cls.STAGE, cls.STREAM, cls.PROCEDURE})
+        return not set(clses).isdisjoint({cls.DYNAMODB, cls.FILE, cls.PROGRAM, cls.STAGE, cls.STREAM, cls.PROCEDURE, cls.PREPARED_STATEMENT})
 
 
 @dataclass(frozen=True)

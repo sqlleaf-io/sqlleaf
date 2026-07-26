@@ -5,8 +5,5 @@ from sqlglot import exp
 class ValuesTransformer(BaseQueryTransformer):
     def transform(self):
         if isinstance(self.statement, exp.Values):
-            # Standalone VALUES query: convert to SELECT
-            vals = self.statement.expressions[0].expressions
-            names = list(default_column_index_iterator(self.query.dialect, vals))
-            self.statement = exp.select(*[exp.alias_(v, name) for v, name in zip(vals, names)])
+            self.statement = self._convert_values_to_select(self.statement, self.statement)
         return self.statement

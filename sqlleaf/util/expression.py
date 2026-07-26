@@ -4,6 +4,7 @@ from sqlglot import exp
 
 from sqlleaf import exception, util
 from sqlleaf.typing import E, SourceExprType, TargetExprType
+from sqlleaf.util.iterators import default_column_index_iterator
 
 
 def unwrap_expression(expr: E) -> exp.Expr:
@@ -170,3 +171,31 @@ def get_selected_column_names(statement: exp.Expr) -> t.List[str]:
     if isinstance(statement.expression, exp.Values):
         return [s.name for s in statement.this.expressions]
     return [s.alias_or_name for s in statement.selects]
+
+
+def convert_values_to_select(
+    expression: exp.Values,
+    dialect: str,
+    column_names: t.Optional[t.List[str]] = None,
+) -> exp.Expr:
+    """
+    Convert an exp.Values into an exp.Select or exp.Union.
+    """
+    values_lists: t.List[exp.Tuple] = expression.expressions
+    if not values_lists:
+        return exp.select("*")
+
+    if not column_names:
+        column_names = list(default_column_index_iterator(dialect, values_lists[0].expressions))
+
+    selects = []
+    for val_list in values_lists:
+        values = val_list.expressions
+        cols = [exp.alias_(val, str(col)) for col, val in zip(column_names, values)]
+        selects.append(cols)
+
+    if len(selects) > 1:
+        new_selects = [exp.select(*select) for select in selects]
+        return exp.union(*new_selects, distinct=False)
+
+    return exp.select(*selects[0])

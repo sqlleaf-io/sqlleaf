@@ -48,14 +48,11 @@ def generate_lineage_for_query(
 
     Everything is extracted: columns, literals, functions, etc.
     """
-    queries_to_process = []
-    if not isinstance(holder.original, (CallQuery, ExecuteQuery)):
-        # CALL(), EXECUTE(), CTAS EXECUTE are exceptions - they have no lineage, but they execute other statements containing lineage
-        if not (isinstance(holder.original, CTASQuery) and holder.original.source_info.type == SqlObjectType.PREPARED_STATEMENT):
-            queries_to_process.append(holder.transformed)
-
-    if holder.substituted:
-        queries_to_process.append(holder.substituted)
+    # The caller (Lineage.generate) is now responsible for ensuring that only
+    # lineage-eligible holders reach this function. We only process the
+    # transformed query; substituted queries are now handled as independent
+    # child holders.
+    queries_to_process = [holder.transformed]
 
     for i, query in enumerate(queries_to_process):
         logger.info(f"Processing query: {type(query)}")

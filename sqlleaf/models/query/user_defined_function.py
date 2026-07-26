@@ -3,10 +3,9 @@ from __future__ import annotations
 import typing as t
 from dataclasses import dataclass
 
-import sqlglot
 from sqlglot import exp
 
-from sqlleaf import mappings
+from sqlleaf import mappings, util
 from sqlleaf.models.query.base import Query
 from sqlleaf.typing import TargetInfo
 
@@ -38,19 +37,7 @@ class UserDefinedFunctionParameters:
         inner_statements = []
 
         if body_expr:
-            # Determine the function body and all internal expressions.
-            # If the body is a string literal or heredoc (common in PostgreSQL), parse it to extract
-            # individual statements. Otherwise, use the expression itself.
-            if isinstance(body_expr, (exp.Literal, exp.Heredoc)):
-                body_text = body_expr.this.strip()
-                try:
-                    inner_statements = sqlglot.parse(body_text, dialect=object_mapping.dialect)
-                except Exception:
-                    pass
-            elif isinstance(body_expr, exp.Return):
-                inner_statements = [exp.select(body_expr.this)]
-            else:
-                inner_statements = [exp.select(body_expr)]
+            inner_statements = util.iter_inner_statements(body_expr, object_mapping.dialect, wrap=True)
 
         return cls(
             schema_name=schema_name,

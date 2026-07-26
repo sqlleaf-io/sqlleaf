@@ -17,6 +17,35 @@ def to_sql(expressions: t.List[exp.Expr]) -> t.List[str]:
     return [e.sql(dialect="postgres") for e in expressions]
 
 
+
+# def test_hello_procedure_complex(holder):
+#     sql = """
+#     CREATE TABLE target (name TEXT);
+#     CREATE PROCEDURE hello_1(VARCHAR) LANGUAGE SQL
+#     AS $$
+#         INSERT INTO target (name) SELECT $1;
+#         CALL hello_2();
+#     $$;
+#     CREATE PROCEDURE hello_2() LANGUAGE SQL
+#     AS $$
+#         INSERT INTO target (name) VALUES ('world');
+#     $$;
+#     CALL hello_1();
+#     """
+#     h = holder(sql=sql, dialect=DIALECT)
+#
+#     query = h.holders[1].original
+#     assert isinstance(query, ProcedureQuery)
+#
+#     assert h.paths == []
+#     assert h.nodes_full == []
+#     assert len(h.edges) == 0
+#
+#     assert query.procedure == "hello"
+#     assert not query.schema
+#     assert query.args == []
+
+
 def test_hello_procedure(holder):
     sql = """
     CREATE TABLE target (name TEXT);
@@ -69,7 +98,7 @@ def test_call_procedure(holder):
 
     assert h.paths == [['literal["world"]', "column[target.name]"]]
     assert h.nodes_full == [
-        'literal[name="world" type=VARCHAR position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]',
+        'literal[name="world" type=VARCHAR position=[query_depth=0 query_width=0 statement=2:0 select=0 func_depth=0 func_arg=0]]',
         "column[name=name type=TEXT properties=[kind=table table=target]]",
     ]
     assert len(h.edges) == 1
@@ -108,7 +137,7 @@ def test_call_schema_procedure(holder):
 
     assert h.paths == [['literal["world"]', "column[target.name]"]]
     assert h.nodes_full == [
-        'literal[name="world" type=VARCHAR position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]',
+        'literal[name="world" type=VARCHAR position=[query_depth=0 query_width=0 statement=2:0 select=0 func_depth=0 func_arg=0]]',
         "column[name=name type=TEXT properties=[kind=table table=target]]",
     ]
     assert len(h.edges) == 1

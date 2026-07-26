@@ -50,21 +50,10 @@ class ProcedureQuery(Query):
 
     def _extract_inner_statements(self, expr: exp.Create) -> t.List[exp.Expr]:
         body_expr = expr.args.get("expression")
-        inner_statements = []
+        if not body_expr:
+            return []
 
-        if body_expr:
-            if isinstance(body_expr, (exp.Literal, exp.Heredoc)):
-                body_text = body_expr.this.strip()
-                try:
-                    inner_statements = sqlglot.parse(body_text, read=self.dialect)
-                except Exception:
-                    pass
-            elif isinstance(body_expr, exp.Block):
-                inner_statements = body_expr.expressions
-            elif isinstance(body_expr, exp.Return):
-                inner_statements = [exp.select(body_expr.this)]
-            else:
-                inner_statements = [exp.select(body_expr)]
+        inner_statements = util.iter_inner_statements(body_expr, self.dialect, wrap=True)
 
         # Filter out statements that do not contain lineage (e.g. END;)
         return [

@@ -192,7 +192,7 @@ def test__ctas_execute_ignoring_extra_params(holder):
 
     assert h.paths == [['literal["Hello"]', "column[fruit.cooked.col1]"]]
     assert h.nodes_full == [
-        'literal[name="Hello" type=VARCHAR position=[query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]',
+        'literal[name="Hello" type=VARCHAR position=[query_depth=0 query_width=0 statement=1:0 select=0 func_depth=0 func_arg=0]]',
         "column[name=col1 type=VARCHAR properties=[kind=table table=cooked schema=fruit]]",
     ]
 

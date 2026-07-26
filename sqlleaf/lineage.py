@@ -14,12 +14,15 @@ from sqlleaf.models.query import (
     DeleteQuery,
     ExecuteQuery,
     InsertQuery,
+    MultitableInsertQuery,
+    ProcedureQuery,
     PutQuery,
     Q,
     TableQuery,
     UnloadQuery,
     UpdateQuery,
-    ViewQuery,
+    UserDefinedFunctionQuery,
+    ViewQuery, QueryHolder,
 )
 from sqlleaf.path import LineagePath
 from sqlleaf.processors import collector, generator, transformer
@@ -51,23 +54,41 @@ class Lineage:
         for parent_holder in self.collected_queries.queries:
             # A parent holder wraps a top-level query, possibly containing child holders
             graph = new_graph()
-            holders = parent_holder.get_all_holders()
 
-            if not holders:
+            # Phase 2: Transformer — substitution + transformation
+            # Use a while loop because substitution can add new child holders.
+            transformed_holders = set()
+            while True:
+                all_holders = parent_holder.get_all_holders()
+                new_holders = [h for h in all_holders if h not in transformed_holders]
+                if not new_holders:
+                    break
+                for holder in new_holders:
+                    if should_process_holder(holder):
+                        transformer.transform_query(holder, dialect, object_mapping)
+                    transformed_holders.add(holder)
+
+            all_holders = parent_holder.get_all_holders()
+
+            if not all_holders:
                 continue
 
-            for holder in holders:
-                query = holder.original
+            # Phase 3: Generate lineage only for qualifying holders
+            for holder in all_holders:
+                # MultitableInsertQuery should not have lineage generated for it directly
+                # as it is not a SELECT-based query. Its children (InsertQuery) will
+                # have lineage generated instead.
+                if isinstance(holder.original, MultitableInsertQuery):
+                    continue
+
                 # Transform and produce lineage only for certain queries
-                if query_has_lineage(query):
-                    transformer.transform_query(holder)
+                if query_has_lineage(holder.original) and should_process_holder(holder):
                     generator.generate_lineage_for_query(holder, graph)
 
-            graph.graph["attrs"].add_query_to_graph(holder)
-
             # Associate the query with the graph even if it has no lineage
+            graph.graph["attrs"].add_query_to_graph(parent_holder)
             self.merge_graph(graph)
-            self.graph.graph["attrs"].add_query_to_graph(holder)
+            self.graph.graph["attrs"].add_query_to_graph(parent_holder)
             # types.update_column_data_types(self.graph)
             logger.debug("---")
 
@@ -260,10 +281,9 @@ def new_graph() -> nx.MultiDiGraph:
 
 QUERIES_WITH_LINEAGE = (
     CTASQuery,
-    CallQuery,
     CopyQuery,
-    ExecuteQuery,
     InsertQuery,
+    MultitableInsertQuery,
     PutQuery,
     TableQuery,
     UnloadQuery,
@@ -292,6 +312,9 @@ def query_has_lineage(query: Q) -> bool:
     elif isinstance(query, CTASQuery) and not query.load_data:
         # CREATE TABLE WITH NO DATA
         has_lineage = False
+    elif isinstance(query, CTASQuery) and query.source_info.type == SqlObjectType.PREPARED_STATEMENT:
+        # CREATE TABLE AS EXECUTE
+        has_lineage = False
     elif isinstance(query, TableQuery) and query.property != "external":
         # CREATE EXTERNAL TABLE
         has_lineage = False
@@ -299,3 +322,23 @@ def query_has_lineage(query: Q) -> bool:
     if not has_lineage:
         logger.debug(f"Query type '{query.__class__.__name__}' does NOT have lineage. Skipping.")
     return has_lineage
+
+
+def should_process_holder(holder: QueryHolder) -> bool:
+    """
+    Check if a query holder should be processed (transformed or lineage generated).
+
+    Template queries (descendants of a UDF or Procedure definition) should not be
+    transformed or have lineage generated independently; they only contribute to
+    lineage when they are substituted into an invoking statement.
+    """
+    if isinstance(holder.original, (UserDefinedFunctionQuery, ProcedureQuery)):
+        return False
+
+    curr = holder.parent_holder
+    while curr:
+        if isinstance(curr.original, (UserDefinedFunctionQuery, ProcedureQuery)):
+            return False
+        curr = curr.parent_holder
+
+    return True

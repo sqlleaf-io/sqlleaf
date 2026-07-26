@@ -303,6 +303,31 @@ def _collect_writable_cte_queries(
         _collect_query_children(query, child_holder, dialect, object_mapping)
 
 
+def _collect_substituted_children(
+    holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping
+) -> None:
+    """
+    Collects children from substituted statements.
+    Circular references in procedure/UDF calls could cause infinite recursion.
+    """
+    if holder.substituted is None:
+        return
+
+    # The substituted query's statement may contain multiple inner statements
+    # (e.g. a procedure body) — iterate and attach
+    stmt = holder.substituted.statement
+    parent_index = holder.original.get_statement_index()
+
+    for i, inner_stmt in enumerate(util.iter_inner_statements(stmt, dialect)):
+        # The statement index for child queries must be assigned using the format parent_statement_index:child_index
+        composite_index = f"{parent_index}:{i}"
+        child_query = _process_unnamed(inner_stmt, dialect, object_mapping, composite_index)
+        if child_query:
+            child_holder = QueryHolder(original=child_query)
+            holder.add_child_holder(child_holder)
+            _collect_query_children(child_query, child_holder, dialect, object_mapping)
+
+
 def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping):
     """
     Collect any nested child queries for a given query and attach them to the holder.
@@ -319,6 +344,8 @@ def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, 
         _collect_writable_cte_queries(query, parent_holder, dialect, object_mapping)
 
 
+
+
 def _collect_udf_children(
     query: UserDefinedFunctionQuery,
     parent_holder: QueryHolder,
@@ -327,23 +354,13 @@ def _collect_udf_children(
 ):
     """
     Extract the function body from the UDF and parse it into individual statements.
+    Circular references in UDF/procedure definitions could cause infinite recursion.
     """
     body_expr = query.statement.args.get("expression")
-    inner_statements = []
+    if not body_expr:
+        return
 
-    if body_expr:
-        if isinstance(body_expr, (exp.Literal, exp.Heredoc)):
-            body_text = body_expr.this.strip()
-            try:
-                inner_statements = sqlglot.parse(body_text, dialect=object_mapping.dialect)
-            except Exception:
-                pass
-        elif isinstance(body_expr, exp.Return):
-            inner_statements = [exp.select(body_expr.this)]
-        else:
-            inner_statements = [body_expr]
-
-    for i, stmt in enumerate(inner_statements):
+    for i, stmt in enumerate(util.iter_inner_statements(body_expr, dialect)):
         child_query = _process_unnamed(stmt, dialect, object_mapping, i)
 
         # If it's a simple select and _process_unnamed skipped it, create a SelectQuery
@@ -641,7 +658,7 @@ def _get_properties_to_include(options: t.List[str]) -> t.Dict:
 
 
 def _process_unnamed(
-    statement: exp.Expr, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+    statement: exp.Expr, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int | str
 ) -> Q | None:
     """
     Process an unnamed statement - one not inside a 'CREATE <name>' statement.
@@ -698,12 +715,26 @@ def _process_unnamed(
         query = CallQuery(
             statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
+    elif isinstance(statement, exp.Command) and statement.this.upper() == "EXECUTE":
+        query = ExecuteQuery(
+            statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
+    elif isinstance(statement, exp.Create):
+        if statement.kind == "TABLE":
+            if isinstance(statement.expression, (exp.Select, exp.Values)) or statement.find(
+                exp.ExecuteAsProperty
+            ):
+                query = _process_views_and_ctas(statement, dialect, object_mapping, statement_index)
+            else:
+                query = _process_tables(statement, dialect, object_mapping, statement_index)
+        elif statement.kind == "VIEW":
+            query = _process_views_and_ctas(statement, dialect, object_mapping, statement_index)
 
     return query
 
 
 def _process_tables(
-    statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+    statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int | str
 ) -> Q | None:
     """
     Process a 'CREATE TABLE' statement.
@@ -730,7 +761,7 @@ def _process_tables(
 
 
 def _process_views_and_ctas(
-    statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+    statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int | str
 ) -> Q:
     """
     Convert a series of `CREATE VIEW/TABLE AS ...` SQL DDL statements into sqlglot's MappingSchema

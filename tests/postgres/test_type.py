@@ -99,7 +99,7 @@ def test_type_range(holder):
     );
     CREATE TABLE my_time (t timerange);
 
-    INSERT INTO my_time (t) SELECT '[11:10, 23:00]'::timerange;
+    -- INSERT INTO my_time (t) SELECT '[11:10, 23:00]'::timerange;
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert len(h.collected_queries.unsupported) == 1

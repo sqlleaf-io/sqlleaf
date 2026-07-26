@@ -1,6 +1,7 @@
 from sqlleaf.util.expression import (
     calculate_function_name,
     column_def_to_column,
+    convert_values_to_select,
     copy_expression,
     find_property,
     get_function_args,
@@ -27,4 +28,5 @@ from sqlleaf.util.helpers import (
 )
 from sqlleaf.util.iterators import (
     default_column_index_iterator,
+    iter_inner_statements,
 )

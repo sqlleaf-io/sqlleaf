@@ -1,8 +1,10 @@
 from sqlleaf.processors.transformers import substitute, udf
 from sqlleaf.processors.transformers.base import BaseQueryTransformer
+from sqlleaf.processors.transformers.call import CallTransformer
 from sqlleaf.processors.transformers.copy import CopyTransformer
 from sqlleaf.processors.transformers.ctas import CTASTransformer
 from sqlleaf.processors.transformers.delete import DeleteTransformer
+from sqlleaf.processors.transformers.execute import ExecuteTransformer
 from sqlleaf.processors.transformers.insert import InsertTransformer
 from sqlleaf.processors.transformers.merge import MergeTransformer
 from sqlleaf.processors.transformers.multitable_insert import MultitableInsertTransformer
@@ -15,9 +17,11 @@ __all__ = [
     "substitute",
     "udf",
     "BaseQueryTransformer",
+    "CallTransformer",
     "CTASTransformer",
     "CopyTransformer",
     "DeleteTransformer",
+    "ExecuteTransformer",
     "InsertTransformer",
     "MergeTransformer",
     "MultitableInsertTransformer",

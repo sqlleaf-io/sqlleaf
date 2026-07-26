@@ -518,8 +518,12 @@ def test__udf_multi_statement_params(holder):
     assert h.paths == [['literal["Alice"]', "udf[HELLO]", "column[target.age]"]]
 
     insert_query_1 = h.holders[2]
-    insert_after_1 = ["INSERT INTO target (age) SELECT (SELECT 'Hello Alice' AS _col_0) AS age"]
-    actual_after_1 = [insert_query_1.substituted.statement]
+    child_holders = insert_query_1.child_holders
+    actual_after_1 = [c.transformed.statement for c in child_holders]
+    insert_after_1 = [
+        "INSERT INTO target (age) SELECT (SELECT 'Alice' AS Alice) AS age",
+        "INSERT INTO target (age) SELECT (SELECT 'Hello Alice' AS _col_0) AS age",
+    ]
     assert to_sql(actual_after_1) == insert_after_1
 
 
@@ -580,7 +584,7 @@ def test__udf_table_and_values(holder):
 
     insert_query_1 = h.holders[2]
     insert_after_1 = [
-        "INSERT INTO target (name1, name2, age) SELECT hello.property AS name1, hello.value AS name2, 1 AS age FROM (VALUES ('greeting', 'Hello John')) AS hello"
+        "INSERT INTO target (name1, name2, age) SELECT hello.property AS name1, hello.value AS name2, 1 AS age FROM (SELECT 'greeting' AS property, 'Hello John' AS value) AS hello"
     ]
     actual_after_1 = [insert_query_1.substituted.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -952,7 +956,7 @@ def test__udf_mleast_variadic_parameter(holder):
 
     insert_query_4 = h.holders[5]
     insert_after_4 = [
-        "INSERT INTO target (age) WITH data_source AS (SELECT CAST(ARRAY[10, -1, 5, 4.4] AS DECIMAL[]) AS my_array) SELECT (SELECT MIN(data_source.my_array[g.i]) AS _col_0 FROM GENERATE_SUBSCRIPTS(data_source.my_array, 1) AS g(i)) AS age FROM data_source AS data_source"
+        "INSERT INTO target (age) WITH data_source AS (SELECT CAST(ARRAY[10, -1, 5, 4.4] AS DECIMAL[]) AS my_array) SELECT (SELECT MIN(data_source.my_array[g.i]) AS _col_0 FROM GENERATE_SUBSCRIPTS(my_array, 1) AS g(i)) AS age FROM data_source AS data_source"
     ]
     actual_after_4 = [insert_query_4.substituted.statement]
     assert to_sql(actual_after_4) == insert_after_4
@@ -1179,7 +1183,7 @@ def test__udf_insert_returning(holder):
     assert isinstance(query, UserDefinedFunctionQuery)
 
     insert_query = h.holders[3]
-    insert_after = ["INSERT INTO target (age) SELECT (SELECT 5 AS \"5\") AS age"]
+    insert_after = ["INSERT INTO target (age) SELECT (SELECT t.age AS age FROM (SELECT 5 AS age UNION ALL SELECT 2 AS age) AS t) AS age"]
     actual_after = [insert_query.substituted.statement]
     assert to_sql(actual_after) == insert_after
 
@@ -1187,6 +1191,7 @@ def test__udf_insert_returning(holder):
 # The same as above, but just a SELECT.
 # TODO: this will work once the logic to process UDFs in any place
 #  make the query segment valid (e.g. in WHERE cluases)
+# TODO: this is breaking because regular SELECTs are not collected properly
 # def test__udf_select_insert_returning(holder):
 #     sql = """
 #     CREATE TABLE people(age INT);

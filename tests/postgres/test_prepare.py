@@ -59,7 +59,7 @@ def test__execute(holder):
     h = holder(sql=sql, dialect=DIALECT)
     prepare_query: PrepareQuery = h.holders[2].original
     assert prepare_query.source_info.type == SqlObjectType.DML
-    assert prepare_query.target_info.type == SqlObjectType.NONE
+    assert prepare_query.target_info.type == SqlObjectType.PREPARED_STATEMENT
 
     execute_query: ExecuteQuery = h.holders[3].transformed
     assert execute_query.source_info is None

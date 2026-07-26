@@ -22,7 +22,7 @@ class PrepareQuery(Query):
         source, target = self.get_source_and_target_expressions(expr)
 
         source_type = self._determine_expression_type(source, dialect)
-        target_type = SqlObjectType.NONE
+        target_type = SqlObjectType.PREPARED_STATEMENT
 
         super().__init__(
             dialect=dialect,
