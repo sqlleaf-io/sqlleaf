@@ -9,8 +9,8 @@ from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, util
 from sqlleaf.models.query import Q
-from sqlleaf.processors.transformers import udf
-from sqlleaf.processors.transformers.expressions import simplify_row
+from sqlleaf.processors.transformer import udf
+from sqlleaf.processors.transformer.expressions import simplify_row
 from sqlleaf.typing import E, SqlObjectType
 
 logger = logging.getLogger("sqlleaf")
@@ -558,7 +558,7 @@ class BaseQueryTransformer:
         """
         Taken from extract_select_from_update() at datahub/metadata-ingestion/src/datahub/sql_parsing/sqlglotlineage.py
 
-        This transformers an UPDATE statement into an INSERT statement so that it can be processed by the lineage functions.
+        This transforms an UPDATE statement into an INSERT statement so that it can be processed by the lineage functions.
         Subclasses (UpdateTransformer) may override this with a more specific implementation.
         """
         query = self.query

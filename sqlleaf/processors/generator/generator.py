@@ -26,7 +26,7 @@ from sqlleaf.models.query import (
     TableQuery,
     UpdateQuery,
 )
-from sqlleaf.processors.generators.dialects.base import BaseGenerator
+from sqlleaf.processors.generator.dialects.base import BaseGenerator
 from sqlleaf.typing import E, TableOrScopeType, TableType
 
 logger = logging.getLogger("sqlleaf")

@@ -14,7 +14,7 @@ from sqlleaf.models.node import (
     PivotNode,
     UnpivotNode,
 )
-from sqlleaf.processors.generators.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
+from sqlleaf.processors.generator.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
 from sqlleaf.typing import SourceInfo, SqlObjectType
 
 logger = logging.getLogger("sqlleaf")

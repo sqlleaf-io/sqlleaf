@@ -1,7 +1,7 @@
 import sqlglot
 from sqlglot import exp
 
-from sqlleaf.processors.transformers.insert import InsertTransformer
+from sqlleaf.processors.transformer.insert import InsertTransformer
 
 
 class ReplaceTransformer(InsertTransformer):

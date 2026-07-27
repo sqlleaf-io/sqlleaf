@@ -4,7 +4,7 @@ MultitableInsertTransformer — handles MultitableInserts statement transformati
 
 from sqlglot import exp
 
-from sqlleaf.processors.transformers.base import BaseQueryTransformer
+from sqlleaf.processors.transformer.base import BaseQueryTransformer
 
 
 class MultitableInsertTransformer(BaseQueryTransformer):

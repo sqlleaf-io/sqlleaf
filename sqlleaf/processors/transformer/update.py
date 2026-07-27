@@ -4,7 +4,7 @@ UpdateTransformer — handles UPDATE (and MERGE → UPDATE, ON CONFLICT) stateme
 
 from sqlglot import exp
 
-from sqlleaf.processors.transformers.base import BaseQueryTransformer
+from sqlleaf.processors.transformer.base import BaseQueryTransformer
 
 
 class UpdateTransformer(BaseQueryTransformer):

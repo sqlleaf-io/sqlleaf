@@ -22,9 +22,9 @@ from sqlleaf.models.query import (
     ViewQuery,
 )
 from sqlleaf.path import LineagePath
-from sqlleaf.processors import collector
-from sqlleaf.processors.generators import generator
-from sqlleaf.processors.transformers import transformer
+from sqlleaf.processors.collector import collector
+from sqlleaf.processors.generator import generator
+from sqlleaf.processors.transformer import transformer
 from sqlleaf.typing import SqlObjectType
 
 logging.getLogger("sqlglot").setLevel(logging.WARNING)

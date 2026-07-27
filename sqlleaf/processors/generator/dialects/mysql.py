@@ -6,13 +6,13 @@ import typing as t
 from sqlglot import exp
 
 from sqlleaf.models.context import GeneratorContext, PositionContext
-from sqlleaf.processors.generators.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
+from sqlleaf.processors.generator.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
 
 logger = logging.getLogger("sqlleaf")
 
 
-class AthenaGenerator(BaseGenerator):
-    dialect = "athena"
+class MySqlGenerator(BaseGenerator):
+    dialect = "mysql"
 
     @singledispatchmethodlogger
     def process(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:

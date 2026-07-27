@@ -6,7 +6,7 @@ import pytest
 
 from sqlleaf.models.query import Q, Query, QueryHolder
 from sqlleaf.models.query.table import TableQuery
-from sqlleaf.processors.collector import CollectQueryResult
+from sqlleaf.processors.collector.collector import CollectQueryResult
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -60,7 +60,7 @@ class LineageHolderDummy:
             query = holder.original
             if not (
                 isinstance(query, TableQuery)
-                and exp.table_name(query.get_target_as_table()).lower() in ["fruit.raw", "fruit.processed"]
+                and exp.table_name(query.get_target_as_table()).lower() in ["test_source", "fruit.raw", "fruit.processed"]
             ):
                 new_holders.append(holder)
         return new_holders
@@ -108,6 +108,8 @@ def assert_query_does_nothing(h: LineageHolderDummy):
 
 
 COMMON_TABLES = """
+CREATE TABLE test_source (name VARCHAR);
+
  CREATE TABLE fruit.raw
  (
      name VARCHAR,

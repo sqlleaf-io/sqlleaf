@@ -4,7 +4,7 @@ CopyTransformer — handles COPY statement transformations.
 
 from sqlglot import exp
 
-from sqlleaf.processors.transformers.base import BaseQueryTransformer
+from sqlleaf.processors.transformer.base import BaseQueryTransformer
 from sqlleaf.util import expression as util
 
 

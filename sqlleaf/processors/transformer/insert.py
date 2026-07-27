@@ -5,7 +5,7 @@ InsertTransformer — handles INSERT (and MERGE → INSERT) statement transforma
 from sqlglot import exp
 
 from sqlleaf import util
-from sqlleaf.processors.transformers.base import BaseQueryTransformer
+from sqlleaf.processors.transformer.base import BaseQueryTransformer
 
 
 class InsertTransformer(BaseQueryTransformer):

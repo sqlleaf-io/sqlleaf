@@ -1,7 +1,7 @@
 import logging
 import typing as t
 from sqlglot import exp
-from sqlleaf.processors.transformers import base, udf
+from sqlleaf.processors.transformer import base, udf
 from sqlleaf.models.query import ExecuteQuery
 
 logger = logging.getLogger("sqlleaf")

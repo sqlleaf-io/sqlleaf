@@ -7,7 +7,7 @@ from sqlglot.optimizer.annotate_types import annotate_types
 from sqlleaf import mappings, util
 from sqlleaf.exception import SqlLeafException
 from sqlleaf.models.query import CallQuery, ExecuteQuery, Q, UserDefinedFunctionQuery, CTASQuery
-from sqlleaf.processors.transformers import substitute
+from sqlleaf.processors.transformer import substitute
 from sqlleaf.typing import E
 
 logger = logging.getLogger("sqlleaf")

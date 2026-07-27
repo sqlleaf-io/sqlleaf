@@ -20,7 +20,7 @@ from sqlleaf.models.query import (
     UpdateQuery,
     ValuesQuery,
 )
-from sqlleaf.processors.transformers import (
+from sqlleaf.processors.transformer import (
     BaseQueryTransformer,
     CallTransformer,
     CopyTransformer,

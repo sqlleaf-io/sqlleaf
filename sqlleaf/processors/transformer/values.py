@@ -1,4 +1,4 @@
-from sqlleaf.processors.transformers.base import BaseQueryTransformer
+from sqlleaf.processors.transformer.base import BaseQueryTransformer
 from sqlleaf.util.iterators import default_column_index_iterator
 from sqlglot import exp
 

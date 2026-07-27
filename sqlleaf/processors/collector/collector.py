@@ -41,7 +41,7 @@ from sqlleaf.models.query import (
     ValuesQuery,
     ViewQuery,
 )
-from sqlleaf.processors.transformers.expressions.row import simplify_row_in_values
+from sqlleaf.processors.transformer.expressions.row import simplify_row_in_values
 
 logger = logging.getLogger("sqlleaf")
 
@@ -250,7 +250,7 @@ def _collect_writable_cte_queries(
         INSERT INTO ...
 
     then the outer and inner queries form a parent-child relationship.
-    The inner query is left as-is and copied, while the outer query transformers its
+    The inner query is left as-is and copied, while the outer query transformer its
     inner query's SELECT columns with the RETURNING columns. This is so that
     the lineage functions collect the right columns during expression traversal.
     The two queries are processed independently later.
@@ -283,7 +283,7 @@ def _collect_call_substitutions(
     and any query containing UDF call sites.
     The resulting inner statements are classified as Queries and attached as child holders.
     """
-    from sqlleaf.processors.transformers import udf
+    from sqlleaf.processors.transformer import udf
     from sqlleaf import typing
 
     statement = util.copy_expression(query.statement)

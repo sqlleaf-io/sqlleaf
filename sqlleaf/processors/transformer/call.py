@@ -1,7 +1,7 @@
 import logging
 import typing as t
 from sqlglot import exp
-from sqlleaf.processors.transformers import base, substitute
+from sqlleaf.processors.transformer import base, substitute
 from sqlleaf.models.query import CallQuery
 
 logger = logging.getLogger("sqlleaf")
