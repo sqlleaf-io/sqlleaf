@@ -1,5 +1,6 @@
 import logging
 import typing as t
+from collections import Counter
 from dataclasses import dataclass, field
 
 import sqlglot
@@ -53,36 +54,6 @@ postgres.Postgres.EXCLUDES_PSEUDOCOLUMNS_FROM_STAR = True
 """
 Parses text for SQL statements and collects them into Query models.
 """
-
-
-def get_query_processors():
-    return {
-        "table": _process_tables,
-        "ctas": _process_views_and_ctas,
-        "view": _process_views_and_ctas,
-        "sequence": _process_tables,
-        "procedure": _process_stored_procedures,
-        "multitableinserts": _process_unnamed,
-        "function": _process_functions,
-        "database": _process_database,
-        "trigger": _process_triggers,
-        "select": _process_unnamed,
-        "insert": _process_unnamed,
-        "update": _process_unnamed,
-        "merge": _process_unnamed,
-        "delete": _process_unnamed,
-        "schema": _process_schema,
-        "unload": _process_unload,
-        "replace": _process_replace,
-        "prepare": _process_prepare,
-        "execute": _process_execute,
-        "stage": _process_stage,
-        "call": _process_unnamed,
-        "copy": _process_unnamed,
-        "put": _process_unnamed,
-        "values": _process_unnamed,
-        "type": _process_type,
-    }
 
 
 @dataclass(frozen=True)
@@ -146,6 +117,24 @@ def _is_replace_supported(stmt: exp.Command, dialect: str) -> bool:
         return False
 
 
+def _classify_command(stmt: exp.Command, dialect: str) -> tuple[str, bool]:
+    """
+    Classify an exp.Command node into a (kind, is_supported) pair.
+    kind='' means the command is not recognised and should be treated as unsupported.
+    """
+    if dialect in ["athena", "redshift"] and stmt.name == "UNLOAD":
+        return "unload", True
+    if dialect == "postgres" and stmt.name == "PREPARE":
+        return "prepare", _is_prepare_supported(stmt)
+    if dialect == "postgres" and stmt.name == "EXECUTE":
+        return "execute", _is_execute_supported(stmt)
+    if dialect == "mysql" and stmt.name == "REPLACE":
+        return "replace", _is_replace_supported(stmt, dialect)
+    if stmt.this.upper() == "CALL":
+        return "call", True
+    return "", False
+
+
 def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapping) -> CollectQueryResult:
     """
     Parse a series of SQL statements provided as text.
@@ -161,8 +150,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     queries = {}
     unknown = {}
     unsupported = []
-    processors = get_query_processors()
-    counts = {kind: 0 for kind in processors.keys()}
+    counts: Counter[str] = Counter()
 
     # Parse the statements
     parsed = sqlglot.parse(text, dialect=dialect)
@@ -172,36 +160,14 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         if not stmt:
             continue
 
-        # Remove comments at initialization
-        for expr in stmt.walk():
-            expr.pop_comments()
-
         kind = ""
         if isinstance(stmt, exp.Command):
-            if dialect in ["athena", "redshift"] and stmt.name == "UNLOAD":
-                kind = "unload"
-            elif dialect == "postgres" and stmt.name == "PREPARE":
-                if _is_prepare_supported(stmt):
-                    kind = "prepare"
-                else:
-                    unsupported.append((index, stmt))
-                    continue
-            elif dialect == "postgres" and stmt.name == "EXECUTE":
-                if _is_execute_supported(stmt):
-                    kind = "execute"
-                else:
-                    unsupported.append((index, stmt))
-                    continue
-            elif dialect == "mysql" and stmt.name == "REPLACE":
-                if _is_replace_supported(stmt, dialect):
-                    kind = "replace"
-                else:
-                    unsupported.append((index, stmt))
-                    continue
-            elif stmt.this.upper() == "CALL":
-                kind = "call"
-            else:
+            kind, supported = _classify_command(stmt, dialect)
+            if not kind:
                 logger.warning(f"Unsupported statement: {stmt.sql(dialect=dialect)}")
+                unsupported.append((index, stmt))
+                continue
+            if not supported:
                 unsupported.append((index, stmt))
                 continue
 
@@ -215,14 +181,14 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         if not kind:
             stmt, kind = _determine_query_kind(stmt, dialect)
 
-        if kind not in processors:
+        if kind not in _QUERY_PROCESSORS:
             unknown[kind] = unknown[kind] + 1 if kind in unknown else 1
             continue
 
         # Convert the statement to uppercase if the dialect supports it
         stmt = normalize_identifiers(stmt, dialect=dialect, store_original_column_identifiers=True)
 
-        query: t.Optional[Q] = processors[kind](
+        query: t.Optional[Q] = _QUERY_PROCESSORS[kind](
             statement=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=index
         )
         if query:
@@ -231,8 +197,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
             queries[_id] = holder
             counts[kind] += 1
 
-    found = {k: v for k, v in counts.items() if v > 0}
-    logger.debug("Found statements: %s", dict(found.items()))
+    logger.debug("Found statements: %s", +counts)
     if unknown:
         logger.warning("Unknown statements: %s", dict(unknown.items()))
     if unsupported:
@@ -998,6 +963,35 @@ def _process_database(
     query = DatabaseQuery(statement, dialect, object_mapping, statement_index)
     object_mapping.add_database_query(query)
     return query
+
+
+_QUERY_PROCESSORS: dict[str, t.Callable] = {
+    "table": _process_tables,
+    "ctas": _process_views_and_ctas,
+    "view": _process_views_and_ctas,
+    "sequence": _process_tables,
+    "procedure": _process_stored_procedures,
+    "multitableinserts": _process_unnamed,
+    "function": _process_functions,
+    "database": _process_database,
+    "trigger": _process_triggers,
+    "select": _process_unnamed,
+    "insert": _process_unnamed,
+    "update": _process_unnamed,
+    "merge": _process_unnamed,
+    "delete": _process_unnamed,
+    "schema": _process_schema,
+    "unload": _process_unload,
+    "replace": _process_replace,
+    "prepare": _process_prepare,
+    "execute": _process_execute,
+    "stage": _process_stage,
+    "call": _process_unnamed,
+    "copy": _process_unnamed,
+    "put": _process_unnamed,
+    "values": _process_unnamed,
+    "type": _process_type,
+}
 
 
 def _split_combined_statements(parsed: t.List[exp.Expr]) -> t.List[exp.Expr]:
