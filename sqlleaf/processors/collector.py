@@ -11,7 +11,6 @@ from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.processors.transformers.expressions.row import simplify_row_in_values
 from sqlleaf.models.query import (
     CallQuery,
     CopyQuery,
@@ -41,6 +40,7 @@ from sqlleaf.models.query import (
     ValuesQuery,
     ViewQuery,
 )
+from sqlleaf.processors.transformers.expressions.row import simplify_row_in_values
 
 logger = logging.getLogger("sqlleaf")
 
@@ -257,7 +257,7 @@ def _determine_query_kind(statement: exp.Expr, dialect: str) -> t.Tuple[exp.Expr
         # sqlglot rewrites 'SELECT INTO' to 'CREATE TABLE AS' during parse()
         # but it's not shown until we produce it with sql(), so we re-parse it
         if dialect in ["redshift", "postgres"]:
-            statement = sqlglot.parse_one(statement.sql(dialect=''), dialect=dialect)
+            statement = sqlglot.parse_one(statement.sql(dialect=""), dialect=dialect)
             kind = "ctas"
         else:
             message = f"Expression 'SELECT INTO' has not been implemented yet for dialect: {dialect}"
@@ -303,9 +303,7 @@ def _collect_writable_cte_queries(
         _collect_query_children(query, child_holder, dialect, object_mapping)
 
 
-def _collect_substituted_children(
-    holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping
-) -> None:
+def _collect_substituted_children(holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping) -> None:
     """
     Collects children from substituted statements.
     Circular references in procedure/UDF calls could cause infinite recursion.
@@ -342,8 +340,6 @@ def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, 
         _collect_writable_cte_queries(query, parent_holder, dialect, object_mapping)
 
 
-
-
 def _collect_udf_children(
     query: UserDefinedFunctionQuery,
     parent_holder: QueryHolder,
@@ -364,9 +360,7 @@ def _collect_udf_children(
         # If it's a simple select and _process_unnamed skipped it, create a SelectQuery
         # TODO: VALUES and SELECT should be collected
         if not child_query and isinstance(stmt, exp.Select):
-            child_query = SelectQuery(
-                expr=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=i
-            )
+            child_query = SelectQuery(expr=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=i)
 
         if child_query:
             child_holder = QueryHolder(original=child_query)
@@ -713,9 +707,7 @@ def _process_unnamed(
         )
     elif isinstance(statement, exp.Create):
         if statement.kind == "TABLE":
-            if isinstance(statement.expression, (exp.Select, exp.Values)) or statement.find(
-                exp.ExecuteAsProperty
-            ):
+            if isinstance(statement.expression, (exp.Select, exp.Values)) or statement.find(exp.ExecuteAsProperty):
                 query = _process_views_and_ctas(statement, dialect, object_mapping, statement_index)
             else:
                 query = _process_tables(statement, dialect, object_mapping, statement_index)
@@ -835,7 +827,9 @@ def _unnest_values_inside_select(statement: exp.Create, dialect: str):
             parent.parent.set("expression", values_expr)
 
 
-def _determine_column_defs(statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping) -> t.List[ColumnDef]:
+def _determine_column_defs(
+    statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping
+) -> t.List[ColumnDef]:
     """
     Look up the columns for 'y' in 'INSERT INTO x TABLE y'
     """

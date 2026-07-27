@@ -20,9 +20,6 @@ from sqlleaf.models.node import (
     TargetNodeType,
 )
 from sqlleaf.models.query import (
-    CallQuery,
-    CTASQuery,
-    ExecuteQuery,
     PutQuery,
     Q,
     QueryHolder,
@@ -30,7 +27,7 @@ from sqlleaf.models.query import (
     UpdateQuery,
 )
 from sqlleaf.processors.generators.dialects.base import BaseGenerator
-from sqlleaf.typing import E, TableOrScopeType, TableType, SqlObjectType
+from sqlleaf.typing import E, TableOrScopeType, TableType
 
 logger = logging.getLogger("sqlleaf")
 

@@ -3,7 +3,7 @@ import typing as t
 
 from sqlglot import exp
 
-from sqlleaf import mappings, util, typing
+from sqlleaf import mappings, typing, util
 from sqlleaf.models.query import (
     CallQuery,
     CopyQuery,
@@ -21,8 +21,8 @@ from sqlleaf.models.query import (
     UpdateQuery,
     ValuesQuery,
 )
+from sqlleaf.processors import collector as _collector
 from sqlleaf.processors.transformers import (
-    udf,
     BaseQueryTransformer,
     CallTransformer,
     CopyTransformer,
@@ -36,9 +36,9 @@ from sqlleaf.processors.transformers import (
     UnloadTransformer,
     UpdateTransformer,
     ValuesTransformer,
+    udf,
 )
 from sqlleaf.typing import E
-from sqlleaf.processors import collector as _collector
 
 _TRANSFORMER_MAP: dict[type, type[BaseQueryTransformer]] = {
     CallQuery: CallTransformer,
@@ -94,7 +94,7 @@ def _apply_substitution(
     Perform substitution for UDF calls, procedures, and prepared statements.
     If substitutions are found, create a substituted query and collect its children.
     """
-    if holder.substituted:   # non-empty list means already substituted
+    if holder.substituted:  # non-empty list means already substituted
         return
 
     original_query = holder.original
@@ -125,8 +125,6 @@ def _apply_substitution(
             )
             if substituted_query:
                 holder.add_substituted_query(substituted_query)
-
-
 
 
 def _transform_query_instance(query: Q) -> Q:
