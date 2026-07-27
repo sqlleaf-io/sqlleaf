@@ -18,7 +18,6 @@ def to_sql(expressions: t.List[exp.Expr]) -> t.List[str]:
     return [e.sql(dialect="postgres") for e in expressions]
 
 
-# TODO: VALUES (udf()) by itself; this is valid
 
 def test__udf_simple(holder):
     sql = """
@@ -125,6 +124,36 @@ def test__udf_select(holder):
 
     CREATE TABLE target(name VARCHAR);
     INSERT INTO target (name) SELECT hello();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    query = h.holders[0].original
+    assert isinstance(query, UserDefinedFunctionQuery)
+
+    assert query.function_name == "hello"
+    assert query.schema_name is None
+    assert query.return_type == exp.DataType.build("TEXT")
+    assert query.language == "sql"
+
+    assert h.paths == [["udf[HELLO]", "column[target.name]"]]
+    assert len(h.nodes) == 2
+    assert len(h.edges) == 1
+
+    insert_query = h.holders[2]
+    insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS Hello) AS name"]
+
+    actual_after = [insert_query.child_holders[0].transformed.statement]
+    assert to_sql(actual_after) == insert_after
+
+
+def test__udf_values(holder):
+    sql = """
+    CREATE FUNCTION hello() RETURNS TEXT AS $$
+        SELECT 'Hello';
+    $$ LANGUAGE SQL;
+
+    CREATE TABLE target(name VARCHAR);
+    INSERT INTO target (name) VALUES(hello());
     """
     h = holder(sql=sql, dialect=DIALECT)
 
