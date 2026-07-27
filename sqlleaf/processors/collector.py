@@ -58,9 +58,9 @@ Parses text for SQL statements and collects them into Query models.
 
 @dataclass(frozen=True)
 class CollectQueryResult:
-    queries: t.List = field(default_factory=list)  # Successfully collected queries
-    unknown: t.Dict = field(default_factory=dict)  # Unsupported by sqlleaf (no handler)
-    unsupported: t.List = field(default_factory=list)  # Unsupported by sqlglot (no grammar)
+    queries: t.List[QueryHolder] = field(default_factory=list)  # Successfully collected queries
+    unknown: t.Dict[str, int] = field(default_factory=dict)  # Unsupported by sqlleaf (no handler)
+    unsupported: t.List[t.Tuple[int, exp.Expr]] = field(default_factory=list)  # Unsupported by sqlglot (no grammar)
 
 
 def _is_prepare_supported(stmt: exp.Command) -> bool:
@@ -92,6 +92,10 @@ def _is_execute_supported(stmt: exp.Command) -> bool:
     """
     Check if an EXECUTE statement for Postgres is supported.
     Syntax: EXECUTE name [ ( parameter [, ...] ) ]
+
+    Only the bare-name form (exactly one token, no argument parentheses) is supported.
+    If the expression contains more than one token it means arguments were supplied
+    (e.g. EXECUTE my_plan(arg1, arg2)), which is not yet handled.
     """
     expression_name = stmt.expression.name
     tokens = sqlglot.tokenize(expression_name, dialect="postgres")
@@ -237,7 +241,7 @@ def _collect_writable_cte_queries(
     parent_query: Q, parent_holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping
 ):
     """
-    Transform any writable CTE statements into a form.
+    Collect any writable (DML) CTEs and attach them as child holders to the parent query.
 
     If this query is of the form:
         WITH cte AS (
@@ -325,6 +329,8 @@ def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, 
         _collect_multitable_insert_children(query, parent_holder, object_mapping)
     elif isinstance(query, UserDefinedFunctionQuery):
         _collect_udf_children(query, parent_holder, dialect, object_mapping)
+
+    # Always check for writable CTEs regardless of query type above
     if not isinstance(query, (CopyQuery, PutQuery)):
         _collect_writable_cte_queries(query, parent_holder, dialect, object_mapping)
 
@@ -641,72 +647,55 @@ def _get_properties_to_include(options: t.List[str]) -> t.Dict:
     return properties
 
 
+_UNNAMED_TYPE_MAP: dict[type, type] = {
+    exp.Insert:            InsertQuery,
+    exp.Update:            UpdateQuery,
+    exp.Merge:             MergeQuery,
+    exp.MultitableInserts: MultitableInsertQuery,
+    exp.Delete:            DeleteQuery,
+    exp.Select:            SelectQuery,
+    exp.Copy:              CopyQuery,
+    exp.Values:            ValuesQuery,
+    exp.Put:               PutQuery,
+}
+
+
 def _process_unnamed(
     statement: exp.Expr, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int | str
 ) -> Q | None:
     """
     Process an unnamed statement - one not inside a 'CREATE <name>' statement.
     """
-    query = None
-    if isinstance(statement, exp.Insert):
-        query = InsertQuery(
+    query_class = _UNNAMED_TYPE_MAP.get(type(statement))
+    if query_class is not None:
+        query = query_class(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
-    elif isinstance(statement, exp.Update):
-        query = UpdateQuery(
-            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
-        )
-    elif isinstance(statement, exp.Merge):
-        query = MergeQuery(
-            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
-        )
-    elif isinstance(statement, exp.MultitableInserts):
-        query = MultitableInsertQuery(
-            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
-        )
-    elif isinstance(statement, exp.Delete):
-        query = DeleteQuery(
-            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
-        )
-        if not statement.find(exp.Insert, exp.Update, exp.Merge):
-            logging.warning(
+        if isinstance(query, DeleteQuery) and not statement.find(exp.Insert, exp.Update, exp.Merge):
+            logger.warning(
                 "Skipping statement: A DELETE query must have a data-modifying statement, "
                 "such as an INSERT, to contain lineage."
             )
-    elif isinstance(statement, exp.Select):
-        query = SelectQuery(
-            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
-        )
-    elif isinstance(statement, exp.Copy):
-        query = CopyQuery(
-            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
-        )
-    elif isinstance(statement, exp.Values):
-        query = ValuesQuery(
-            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
-        )
-    elif isinstance(statement, exp.Put):
-        query = PutQuery(
-            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
-        )
-    elif isinstance(statement, exp.Command) and statement.this.upper() == "CALL":
-        query = CallQuery(
+        return query
+
+    if isinstance(statement, exp.Command) and statement.this.upper() == "CALL":
+        return CallQuery(
             statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
-    elif isinstance(statement, exp.Command) and statement.this.upper() == "EXECUTE":
-        query = ExecuteQuery(
+    if isinstance(statement, exp.Command) and statement.this.upper() == "EXECUTE":
+        return ExecuteQuery(
             statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
-    elif isinstance(statement, exp.Create):
+    if isinstance(statement, exp.Create):
         if statement.kind == "TABLE":
             if isinstance(statement.expression, (exp.Select, exp.Values)) or statement.find(exp.ExecuteAsProperty):
-                query = _process_views_and_ctas(statement, dialect, object_mapping, statement_index)
+                return _process_views_and_ctas(statement, dialect, object_mapping, statement_index)
             else:
-                query = _process_tables(statement, dialect, object_mapping, statement_index)
+                return _process_tables(statement, dialect, object_mapping, statement_index)
         elif statement.kind == "VIEW":
-            query = _process_views_and_ctas(statement, dialect, object_mapping, statement_index)
+            return _process_views_and_ctas(statement, dialect, object_mapping, statement_index)
 
-    return query
+    return None
 
 
 def _process_tables(
@@ -892,15 +881,6 @@ def _process_stored_procedures(
         expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
     )
     object_mapping.add_procedure_query(query)
-    # TODO: find a way to get each SP's text from a query that has multiple SPs defined in it.
-    #  sqlglot will parse the 2 SPs, but does not provide the original, raw text. This is imperfect
-    #  as we would like to keep the original text for various reasons.
-    # transformed_text = clean_stored_procedure_text(query.statement.sql())
-    # query.text_transformed = transformed_text
-
-    # The original text is lost, so we are forced to use the transformed text in its place for now
-    # queries = collect_queries(text=transformed_text, dialect=dialect, object_mapping=object_mapping)
-    # query.add_child_queries(child_queries=queries)
     return query
 
 
