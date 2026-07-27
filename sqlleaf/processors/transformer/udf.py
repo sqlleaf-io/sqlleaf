@@ -8,6 +8,7 @@ from sqlleaf import mappings, util
 from sqlleaf.exception import SqlLeafException
 from sqlleaf.models.query import CallQuery, ExecuteQuery, Q, UserDefinedFunctionQuery, CTASQuery
 from sqlleaf.processors.transformer import substitute
+from sqlleaf.processors.transformer.expressions.row import transform_row_function_to_subquery
 from sqlleaf.typing import E
 
 logger = logging.getLogger("sqlleaf")
@@ -41,55 +42,6 @@ def find_next_udf_call(
             return node, best_match
 
     return None, None
-
-
-def transform_row_to_subquery(
-    node: exp.Cast, replacement_expr: exp.Expr, query: UserDefinedFunctionQuery
-) -> t.Optional[exp.Expr]:
-    """
-    Transforms the ROW(...)::table_name pattern into a SELECT subquery.
-
-    Example:
-        Query: `SELECT ROW(1, 'abc')::my_table` where `my_table` has two columns.
-        Result: `ROW(1, 'abc')::my_table` -> `(SELECT 1, 'abc')`
-    """
-    # TODO: put this in a generic 'transform' location
-    # 1. Check if this is a ROW(...) cast to a known table
-    data_type = node.args.get("to")
-    if not isinstance(data_type, exp.DataType):
-        return None
-
-    type_name = data_type.sql().lower()
-    table = exp.to_table(type_name)
-    object_query = query.object_mapping.lookup_table_query(table=table, raise_on_missing=False)
-    if not object_query:
-        object_query = query.object_mapping.lookup_type_query(table=table, raise_on_missing=False)
-        if not object_query:
-            raise SqlLeafException(message=f"Unknown table or type in cast to ROW(): {type_name}")
-
-    row_expr = node.this
-
-    # Ensure column count matches
-    columns = object_query.get_column_defs()
-    if len(row_expr.expressions) != len(columns):
-        return None
-
-    # 2. Convert to SELECT
-    new_node = exp.select(*(val.copy() for val in row_expr.expressions))
-
-    # 3. Apply replacement, lifting if inside a single-expression SELECT
-    parent = node.parent
-    if not parent:
-        return new_node if node is replacement_expr else None
-
-    if isinstance(parent, exp.Select) and len(parent.expressions) == 1:
-        if parent is replacement_expr:
-            return new_node
-        parent.replace(new_node)
-    else:
-        node.replace(exp.Paren(this=new_node))
-
-    return None
 
 
 def _get_alias(node: exp.Expr) -> t.Optional[str]:
@@ -315,27 +267,6 @@ def transform_inner_query(
 
     new_expr = replacement_expr
     return new_expr
-
-
-def transform_row_function_to_subquery(replacement_expr: exp.Expr, query: UserDefinedFunctionQuery) -> exp.Expr:
-    """Transform a ROW() function into a subquery."""
-    transformed = False
-
-    for subnode in replacement_expr.walk():
-        if isinstance(subnode, exp.Cast):
-            row_expr = subnode.this
-            if isinstance(row_expr, exp.Anonymous) and row_expr.this.lower() == "row":
-                # Don't replace if it's being used for field access, as it's likely
-                # already been handled or needs to be preserved.
-                if not isinstance(subnode.parent, exp.Paren) or not isinstance(subnode.parent.parent, exp.Dot):
-                    if subnode is not replacement_expr:
-                        new_expr = transform_row_to_subquery(subnode, replacement_expr, query)
-                        if new_expr:
-                            transformed = True
-                            replacement_expr = new_expr
-    if transformed:
-        logger.debug(f"Replaced ROW() to subquery: {replacement_expr.sql(dialect='postgres')}")
-    return replacement_expr
 
 
 def build_replacement_exprs(node: exp.Anonymous, query: UserDefinedFunctionQuery) -> t.List[exp.Expr]:

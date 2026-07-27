@@ -1,8 +1,12 @@
+import logging
 import typing as t
 
 from sqlglot import exp
 
-from sqlleaf.models.query import Query
+from sqlleaf.exception import SqlLeafException
+from sqlleaf.models.query import Query, UserDefinedFunctionQuery
+
+logger = logging.getLogger("sqlleaf")
 
 
 def simplify_row_in_values(values_expr: exp.Values, dialect: str) -> None:
@@ -36,14 +40,14 @@ def simplify_row(statement: exp.Expr, query: Query) -> None:
         _simplify_field_access(row_nodes, statement, query)
 
 
-def _collect_row_functions(statement: exp.Expr) -> t.List[exp.Anonymous]:
+def _collect_row_functions(statement: exp.Expr) -> t.Set[exp.Anonymous]:
     """
     Collect all ROW() expressions from the statement.
     """
-    return [node for node in statement.find_all(exp.Anonymous) if node.name.upper() == "ROW"]
+    return {node for node in statement.find_all(exp.Anonymous) if node.name.upper() == "ROW"}
 
 
-def _expand_row_cast_aliases(row_nodes: t.List[exp.Anonymous], statement: exp.Expr, query: Query) -> None:
+def _expand_row_cast_aliases(row_nodes: t.Set[exp.Anonymous], statement: exp.Expr, query: Query) -> None:
     """
     Expand ROWs with casts into lists of columns, as well as expressions of the form '(alias_name).field'.
 
@@ -77,10 +81,10 @@ def _expand_row_cast_aliases(row_nodes: t.List[exp.Anonymous], statement: exp.Ex
         row_exprs = cast_node.this.expressions
 
         _rewrite_field_references(alias_node, row_exprs, fields, statement)
-        _expand_alias_to_fields(alias_node, row_exprs, fields)
+        _expand_to_select_list(alias_node, row_exprs, fields)
 
 
-def _simplify_field_access(row_nodes: t.List[exp.Anonymous], statement: exp.Expr, query: Query) -> None:
+def _simplify_field_access(row_nodes: t.Set[exp.Anonymous], statement: exp.Expr, query: Query) -> None:
     """
     Simplify field access patterns on ROW casts.
 
@@ -141,6 +145,25 @@ def _simplify_column_field_access(dot: exp.Dot, column: exp.Column, field: exp.I
     dot.replace(new_col)
 
 
+def _resolve_field_index(cast_node: exp.Cast, field_name: str, query: Query) -> t.Optional[t.Tuple[t.List[str], int]]:
+    """
+    Look up the field index for `field_name` in the composite type of `cast_node`.
+    Returns (fields, index) or None if the type or field is unknown.
+
+    Examples:
+        Given `ROW(a, b)::my_type` where `my_type` has fields `(x, y)`:
+        `_resolve_field_index(cast_node, "y", query)` -> `(["x", "y"], 1)`
+        `_resolve_field_index(cast_node, "z", query)` -> `None`
+    """
+    type_id = cast_node.to.find(exp.Identifier)
+    if type_id is None:
+        return None
+    fields = _lookup_type_fields(type_id.name, query)
+    if not fields or field_name not in fields:
+        return None
+    return fields, fields.index(field_name)
+
+
 def _simplify_field_of_row(dot: exp.Dot, cast_node: exp.Cast, right: exp.Expr, query: Query) -> None:
     """
     Handle (ROW(...)::my_type).field or (ROW(...)::my_type).* patterns.
@@ -149,23 +172,17 @@ def _simplify_field_of_row(dot: exp.Dot, cast_node: exp.Cast, right: exp.Expr, q
         `(ROW(a, b, c)::my_type).b` -> `b`
         `(ROW(a, b, c)::my_type).*` -> `a AS a, b AS b, c AS c`
     """
-    type_name = cast_node.to.find(exp.Identifier)
-    if type_name is None:
-        return
-
-    fields = _lookup_type_fields(type_name.name, query)
-    if not fields:
-        return
-
     if isinstance(right, exp.Star):
-        _expand_to_select_list(dot, cast_node.this.expressions, fields)
-    else:
-        field_name = right.name
-        if field_name not in fields:
+        type_id = cast_node.to.find(exp.Identifier)
+        if type_id is None:
             return
-
-        field_index = fields.index(field_name)
-        dot.replace(_extract_field(cast_node, field_index))
+        fields = _lookup_type_fields(type_id.name, query)
+        if fields:
+            _expand_to_select_list(dot, cast_node.this.expressions, fields)
+    else:
+        if resolved := _resolve_field_index(cast_node, right.name, query):
+            _, idx = resolved
+            dot.replace(_extract_field(cast_node, idx))
 
 
 def _simplify_field_of_case_row(
@@ -173,7 +190,7 @@ def _simplify_field_of_case_row(
     case_node: exp.Case,
     right: exp.Identifier,
     query: Query,
-    row_node_set: t.List[exp.Anonymous],
+    row_node_set: t.Set[exp.Anonymous],
 ) -> None:
     """Simplify CASE statements when a field selector is used on its result.
 
@@ -194,20 +211,9 @@ def _simplify_field_of_case_row(
     if _is_inside_unnest(dot):
         return
 
-    type_name = branch_casts[0].to.find(exp.Identifier)
-    if type_name is None:
-        return
-
-    fields = _lookup_type_fields(type_name.name, query)
-    if not fields:
-        return
-
-    field_name = right.name
-    if field_name not in fields:
-        return
-
-    field_index = fields.index(field_name)
-    dot.replace(_replace_row_casts_in_case(case_node, field_index))
+    if resolved := _resolve_field_index(branch_casts[0], right.name, query):
+        _, field_index = resolved
+        dot.replace(_replace_row_casts_in_case(case_node, field_index))
 
 
 def _is_direct_select_expression(node: exp.Expr) -> bool:
@@ -273,17 +279,14 @@ def _rewrite_field_references(
         dot.replace(replacement)
 
 
-def _expand_alias_to_fields(alias_node: exp.Alias, row_exprs: t.List[exp.Expr], fields: t.List[str]) -> None:
-    """Expand a single ROW cast alias into individual field aliases in the SELECT list.
-
-    Examples:
-        `SELECT ROW(a, b, c)::my_type AS r` -> `SELECT a AS a, b AS b, c AS c`
-    """
-    _expand_to_select_list(alias_node, row_exprs, fields)
-
-
 def _expand_to_select_list(node: exp.Expr, expressions: t.List[exp.Expr], aliases: t.List[str]) -> None:
-    """Expand a node into multiple aliased expressions in its parent SELECT list."""
+    """
+    Expand a node into multiple aliased expressions in its parent SELECT list.
+
+    Example:
+        `SELECT ROW(a, b)::my_type AS r` with expressions=[a, b] and aliases=["x", "y"]:
+        `node` (the alias `r`) is replaced in-place -> `SELECT a AS x, b AS y`
+    """
     if not _is_direct_select_expression(node):
         return
 
@@ -296,20 +299,31 @@ def _expand_to_select_list(node: exp.Expr, expressions: t.List[exp.Expr], aliase
     )
 
 
-def _get_row_cast(inner: exp.Expr, row_node_set: t.List[exp.Anonymous]) -> t.Optional[exp.Cast]:
-    """Return the Cast node if it wraps a ROW().
+def _is_row_cast(node: exp.Expr) -> bool:
+    """
+    Check if a node is a Cast of a ROW() to a USERDEFINED type.
+    """
+    return (
+        isinstance(node, exp.Cast)
+        and isinstance(node.this, exp.Anonymous)
+        and node.this.name.upper() == "ROW"
+        and node.to.this == exp.DataType.Type.USERDEFINED
+    )
+
+
+def _get_row_cast(inner: exp.Expr, row_node_set: t.Set[exp.Anonymous]) -> t.Optional[exp.Cast]:
+    """
+    Return the Cast node if it wraps a ROW().
 
     Examples:
         `(ROW(a, b)::my_type)` -> Cast node
     """
-    # inner = node.unnest()
-    if isinstance(inner, exp.Cast) and inner.this in row_node_set and inner.to.this == exp.DataType.Type.USERDEFINED:
-        return inner
-    return None
+    return inner if _is_row_cast(inner) and inner.this in row_node_set else None
 
 
 def _is_inside_unnest(node: exp.Expr) -> bool:
-    """Return True if node is nested inside an UNNEST or ARRAY expression.
+    """
+    Check if a node is nested inside an UNNEST or ARRAY expression.
 
     Examples:
         `UNNEST(ARRAY(SELECT ROW(a)::t FROM t1))` -> True
@@ -320,6 +334,11 @@ def _is_inside_unnest(node: exp.Expr) -> bool:
 def _lookup_type_fields(type_name: str, query: Query) -> t.List[str]:
     """
     Return ordered field names for a composite type.
+
+    Examples:
+        Given a type `my_type` defined as `CREATE TYPE my_type AS (x INT, y TEXT)`:
+        `_lookup_type_fields("my_type", query)` -> `["x", "y"]`
+        `_lookup_type_fields("unknown_type", query)` -> `[]`
     """
     type_table = exp.Table(this=exp.to_identifier(type_name))
     type_query = query.object_mapping.lookup_type_query(table=type_table, raise_on_missing=False)
@@ -332,7 +351,7 @@ def _extract_field(cast_node: exp.Cast, field_index: int) -> exp.Expr:
     """
     Return the k-th expression from the ROW() constructor.
 
-    Examples:
+    Example:
         `CAST(ROW(a, b, c) AS my_type), field_index=1` -> `b`
     """
     return cast_node.this.expressions[field_index].copy()
@@ -348,10 +367,74 @@ def _replace_row_casts_in_case(case_node: exp.Case, field_index: int) -> exp.Cas
     """
     new_case = case_node.copy()
     for cast in new_case.find_all(exp.Cast):
-        if (
-            isinstance(cast.this, exp.Anonymous)
-            and cast.this.name.upper() == "ROW"
-            and cast.to.this == exp.DataType.Type.USERDEFINED
-        ):
+        if _is_row_cast(cast):
             cast.replace(_extract_field(cast, field_index))
     return new_case
+
+
+def transform_row_function_to_subquery(replacement_expr: exp.Expr, query: UserDefinedFunctionQuery) -> exp.Expr:
+    """Transform a ROW() function into a subquery."""
+    transformed = False
+
+    for cast_node in list(replacement_expr.find_all(exp.Cast)):
+        row_expr = cast_node.this
+        if isinstance(row_expr, exp.Anonymous) and row_expr.this.lower() == "row":
+            # Don't replace if it's being used for field access, as it's likely
+            # already been handled or needs to be preserved.
+            if not (isinstance(cast_node.parent, exp.Paren) and isinstance(cast_node.parent.parent, exp.Dot)):
+                if cast_node is not replacement_expr:
+                    new_expr = transform_row_to_subquery(cast_node, replacement_expr, query)
+                    if new_expr:
+                        transformed = True
+                        replacement_expr = new_expr
+    if transformed:
+        logger.debug(f"Replaced ROW() to subquery: {replacement_expr.sql(dialect='postgres')}")
+    return replacement_expr
+
+
+def transform_row_to_subquery(
+    node: exp.Cast, replacement_expr: exp.Expr, query: UserDefinedFunctionQuery
+) -> t.Optional[exp.Expr]:
+    """
+    Transforms the ROW(...)::table_name pattern into a SELECT subquery.
+
+    Example:
+        Query: `SELECT ROW(1, 'abc')::my_table` where `my_table` has two columns.
+        Result: `ROW(1, 'abc')::my_table` -> `(SELECT 1, 'abc')`
+    """
+    # 1. Check if this is a ROW(...) cast to a known table
+    data_type = node.args.get("to")
+    if not isinstance(data_type, exp.DataType):
+        return None
+
+    type_name = data_type.sql().lower()
+    table = exp.to_table(type_name)
+    object_query = query.object_mapping.lookup_table_query(table=table, raise_on_missing=False)
+    if not object_query:
+        object_query = query.object_mapping.lookup_type_query(table=table, raise_on_missing=False)
+        if not object_query:
+            raise SqlLeafException(message=f"Unknown table or type in cast to ROW(): {type_name}")
+
+    row_expr = node.this
+
+    # Ensure column count matches
+    columns = object_query.get_column_defs()
+    if len(row_expr.expressions) != len(columns):
+        return None
+
+    # 2. Convert to SELECT
+    new_node = exp.select(*(val.copy() for val in row_expr.expressions))
+
+    # 3. Apply replacement, lifting if inside a single-expression SELECT
+    parent = node.parent
+    if not parent:
+        return new_node if node is replacement_expr else None
+
+    if isinstance(parent, exp.Select) and len(parent.expressions) == 1:
+        if parent is replacement_expr:
+            return new_node
+        parent.replace(new_node)
+    else:
+        node.replace(exp.Paren(this=new_node))
+
+    return None
