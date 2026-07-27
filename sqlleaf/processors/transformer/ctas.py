@@ -10,17 +10,15 @@ from sqlleaf.processors.transformer.base import BaseQueryTransformer
 class CTASTransformer(BaseQueryTransformer):
     """Transformer for CTAS (CREATE TABLE AS) statements."""
 
-    def transform(self) -> exp.Create:
-        stmt = self.statement
-        if stmt.expression:
-            stmt = self._convert_substituted_table_to_select()
-            converted = self._convert_values_to_select(stmt.expression, statement=stmt)
+    def transform(self, statement: exp.Create) -> exp.Create:
+        if statement.expression:
+            statement = self._convert_substituted_table_to_select(statement)
+            converted = self._convert_values_to_select(statement.expression, statement=statement)
             if isinstance(converted, exp.Create):
-                stmt = converted
-                self.statement = stmt
-        return stmt
+                statement = converted
+        return statement
 
-    def _convert_substituted_table_to_select(self) -> exp.Create:
+    def _convert_substituted_table_to_select(self, statement: exp.Create) -> exp.Create:
         """
         Convert "CREATE TABLE w AS TABLE x" to "CREATE TABLE w AS SELECT * FROM x".
 
@@ -34,9 +32,9 @@ class CTASTransformer(BaseQueryTransformer):
             CREATE TABLE w AS SELECT * FROM x;
         This is handled separately from _convert_table_as_select(), which handles all other TABLE cases.
         """
-        expr = self.statement.expression
+        expr = statement.expression
         if self.query.dialect == "postgres" and isinstance(expr, exp.Alias):
             if expr.this.name.upper() == "TABLE":
                 expr.pop()
-                self.statement.set("expression", exp.select("*").from_(expr.alias))
-        return self.statement
+                statement.set("expression", exp.select("*").from_(expr.alias))
+        return statement

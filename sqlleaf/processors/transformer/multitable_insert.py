@@ -10,5 +10,5 @@ from sqlleaf.processors.transformer.base import BaseQueryTransformer
 class MultitableInsertTransformer(BaseQueryTransformer):
     """Transformer for MultitableInserts statements."""
 
-    def transform(self) -> exp.MultitableInserts:
-        return self.statement
+    def transform(self, statement: exp.MultitableInserts) -> exp.MultitableInserts:
+        return statement

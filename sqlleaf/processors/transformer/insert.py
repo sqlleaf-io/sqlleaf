@@ -11,23 +11,20 @@ from sqlleaf.processors.transformer.base import BaseQueryTransformer
 class InsertTransformer(BaseQueryTransformer):
     """Transformer for INSERT statements."""
 
-    def transform(self) -> exp.Insert:
+    def transform(self, statement: exp.Insert) -> exp.Insert:
         # Note: _convert_table_to_select and FILTER/WHERE removal are performed by
-        # _transform_statement before delegating here; self.statement is already clean.
-        stmt = self.statement
-
-        stmt = self._convert_insert_defaults_to_values(stmt)
-        if stmt.expression:
-            stmt_converted = self._convert_values_to_select(stmt.expression, stmt)
+        # _transform_statement before delegating here; statement is already clean.
+        statement = self._convert_insert_defaults_to_values(statement)
+        if statement.expression:
+            stmt_converted = self._convert_values_to_select(statement.expression, statement)
             if isinstance(stmt_converted, exp.Insert):
-                stmt = stmt_converted
+                statement = stmt_converted
 
-        stmt = self._add_information_from_merge(stmt)
-        stmt = self._add_information_from_multitable_insert(stmt)
-        stmt = self._process_inner_ctes(stmt)
+        statement = self._add_information_from_merge(statement)
+        statement = self._add_information_from_multitable_insert(statement)
+        statement = self._process_inner_ctes(statement)
 
-        self.statement = stmt
-        return stmt
+        return statement
 
     def _convert_insert_defaults_to_values(self, statement: exp.Insert) -> exp.Insert:
         """

@@ -10,5 +10,5 @@ from sqlleaf.processors.transformer.base import BaseQueryTransformer
 class DeleteTransformer(BaseQueryTransformer):
     """Transformer for DELETE statements."""
 
-    def transform(self) -> exp.Delete:
-        return self._process_inner_ctes(self.statement)
+    def transform(self, statement: exp.Delete) -> exp.Delete:
+        return self._process_inner_ctes(statement)

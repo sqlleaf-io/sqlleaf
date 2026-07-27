@@ -10,10 +10,8 @@ from sqlleaf.processors.transformer.base import BaseQueryTransformer
 class UnloadTransformer(BaseQueryTransformer):
     """Transformer for UNLOAD statements."""
 
-    def transform(self) -> exp.Insert:
-        stmt = self._convert_unload_to_insert(self.statement)
-        self.statement = stmt
-        return stmt
+    def transform(self, statement: exp.Insert) -> exp.Insert:
+        return self._convert_unload_to_insert(statement)
 
     def _convert_unload_to_insert(self, statement: exp.Select) -> exp.Insert:
         """

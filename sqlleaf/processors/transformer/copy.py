@@ -11,10 +11,8 @@ from sqlleaf.util import expression as util
 class CopyTransformer(BaseQueryTransformer):
     """Transformer for COPY statements."""
 
-    def transform(self) -> exp.Insert:
-        stmt = self._convert_copy_to_insert()
-        self.statement = stmt
-        return stmt
+    def transform(self, statement: exp.Insert) -> exp.Insert:
+        return self._convert_copy_to_insert()
 
     @BaseQueryTransformer._validate_syntax
     def _convert_copy_to_insert(self) -> exp.Insert:

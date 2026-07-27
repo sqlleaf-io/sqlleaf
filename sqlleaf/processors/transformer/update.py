@@ -10,18 +10,16 @@ from sqlleaf.processors.transformer.base import BaseQueryTransformer
 class UpdateTransformer(BaseQueryTransformer):
     """Transformer for UPDATE statements."""
 
-    def transform(self) -> exp.Insert:
-        stmt = self._convert_on_conflict_to_update(self.statement)
-        if isinstance(stmt, (exp.Insert, exp.Update)):
-            stmt = self._add_information_from_merge(stmt)
-        if isinstance(stmt, exp.Update):
-            stmt = self._convert_update_defaults_to_values(stmt)
-            stmt = self._convert_update_to_insert(stmt)
-        if isinstance(stmt, (exp.Insert, exp.Merge, exp.Update, exp.Delete)):
-            stmt = self._process_inner_ctes(stmt)
-
-        self.statement = stmt
-        return stmt
+    def transform(self, statement: exp.Insert) -> exp.Insert:
+        statement = self._convert_on_conflict_to_update(statement)
+        if isinstance(statement, (exp.Insert, exp.Update)):
+            statement = self._add_information_from_merge(statement)
+        if isinstance(statement, exp.Update):
+            statement = self._convert_update_defaults_to_values(statement)
+            statement = self._convert_update_to_insert(statement)
+        if isinstance(statement, (exp.Insert, exp.Merge, exp.Update, exp.Delete)):
+            statement = self._process_inner_ctes(statement)
+        return statement
 
     def _convert_on_conflict_to_update(self, statement: exp.OnConflict | exp.Update) -> exp.Update:
         """

@@ -10,5 +10,5 @@ from sqlleaf.processors.transformer.base import BaseQueryTransformer
 class MergeTransformer(BaseQueryTransformer):
     """Transformer for MERGE statements."""
 
-    def transform(self) -> exp.Merge:
-        return self._process_inner_ctes(self.statement)
+    def transform(self, statement: exp.Merge) -> exp.Merge:
+        return self._process_inner_ctes(statement)

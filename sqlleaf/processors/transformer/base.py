@@ -36,36 +36,37 @@ class BaseQueryTransformer:
         self.statement = statement
         self.query = query
 
-    def transform(self) -> exp.Expr:
+    def transform(self, statement: E) -> E:
         """
         Default transformation function that subclasses override to add query-type-specific logic.
         """
-        return self.statement
+        return statement
 
-    def preprocess(self) -> None:
+    def preprocess(self, statement: E) -> E:
         """
         Run a set of transformations over every statement
         BEFORE the type-specific transformations.
         """
-        self.statement = self._convert_table_to_select()
+        statement = self._convert_table_to_select(statement)
 
         # Remove any FILTER clauses (not used for lineage)
-        for filter_expr in self.statement.find_all(exp.Filter):
+        for filter_expr in statement.find_all(exp.Filter):
             filter_expr.replace(filter_expr.this)
 
         # Remove WHERE clauses (not used for lineage)
-        for where_expr in self.statement.find_all(exp.Where):
+        for where_expr in statement.find_all(exp.Where):
             where_expr.pop()
 
-        simplify_row(self.statement, self.query)
+        simplify_row(statement, self.query)
+        return statement
 
-    def postprocess(self) -> exp.Expr:
+    def postprocess(self, statement: E) -> E:
         """
         Run a set of transformations over every statement
         AFTER the type-specific transformations.
         """
-        self._add_aliases_to_udfs()
-        return self._apply_optimizations(self.statement)
+        statement = self._add_aliases_to_udfs(statement)
+        return self._apply_optimizations(statement)
 
     def _validate_syntax(func):
         """
@@ -76,7 +77,7 @@ class BaseQueryTransformer:
         def wrapper(self, *args, **kwargs) -> E:
             # statement = kwargs.pop("statement")
             # query = kwargs.pop("query")
-            statement = self.statement
+            statement = args[0] if args else kwargs.get("statement", self.statement)
             query = self.query
 
             if LOG_TRANSFORMATIONS:
@@ -106,24 +107,22 @@ class BaseQueryTransformer:
 
         return wrapper
 
-    def _convert_table_to_select(self) -> E:
+    def _convert_table_to_select(self, statement: E) -> E:
         """
         Convert the statement "TABLE x" to "SELECT * FROM x"
         """
-        statement = self.statement
         source = statement.args.get("source", None)
         if source:
             table = source.pop()
             statement.set("expression", exp.select("*").from_(table))
         return statement
 
-    def _add_aliases_to_udfs(self) -> exp.Expr:
+    def _add_aliases_to_udfs(self, statement: E) -> E:
         """
         Iterate over the query looking for UDFs and add an alias to them with the same name
         as the UDF if it doesn't already exist. This prevents sqlglot from adding its own
         custom aliases (_0, _1, etc).
         """
-        statement = self.statement
         query = self.query
         for node in statement.find_all(exp.Anonymous):
             udf_query = udf.lookup_udf_call(node, query.object_mapping)
@@ -152,7 +151,7 @@ class BaseQueryTransformer:
 
         return statement
 
-    def _add_aliases_to_pseudocolumns(self, statement: exp.Expr | None = None) -> None:
+    def _add_aliases_to_pseudocolumns(self, statement: E) -> E:
         """
         Given a query:
             SELECT xmax FROM fruit.raw
@@ -162,8 +161,6 @@ class BaseQueryTransformer:
 
         This requires that the tables and columns have run through qualify()
         """
-        if statement is None:
-            statement = self.statement
         for pseudo in statement.find_all(exp.Pseudocolumn):
             if pseudo.table:
                 continue
