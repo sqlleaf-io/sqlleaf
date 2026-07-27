@@ -41,6 +41,7 @@ from sqlleaf.models.query import (
     ValuesQuery,
     ViewQuery,
 )
+from sqlleaf.processors.collector import substitute
 from sqlleaf.processors.transformer.expressions.row import simplify_row_in_values
 
 logger = logging.getLogger("sqlleaf")
@@ -290,16 +291,16 @@ def _collect_call_substitutions(
     subst_statements: t.List[exp.Expr] = []
 
     if isinstance(query, CallQuery):
-        subst_statements = udf.substitute_call(query=query)
+        subst_statements = substitute.substitute_call(query=query)
     elif isinstance(query, ExecuteQuery):
-        subst_statements = udf.substitute_execute(query=query)
+        subst_statements = substitute.substitute_execute(query=query)
     elif (
         isinstance(query, CTASQuery)
         and query.source_info.type == typing.SqlObjectType.PREPARED_STATEMENT
     ):
-        subst_statements = [udf.substitute_create_execute(query=query)]
+        subst_statements = [substitute.substitute_create_execute(query=query)]
     else:
-        subst_statements = udf.substitute_udf(statement=statement, query=query)
+        subst_statements = substitute.substitute_udf(statement=statement, query=query)
 
     parent_index = query.get_statement_index()
     for i, stmt in enumerate(subst_statements):
