@@ -17,15 +17,23 @@ lineage.filter(
 The following types of queries and nodes need to be created.
 
 ### Postgres
+
+Functions
 - [ ] XML
+- [x] System functions
+- [x] JSON functions
+  - [ ] Hard-code default returned column names
+- [x] Window functions
+- [ ] Field accesses
+- [ ] Double field accesses
+        SELECT (on_hand.item).name FROM on_hand WHERE (on_hand.item).price > 9.99;
+
+System
 - [ ] Hidden (system) columns
   - [x] TABLE
   - [x] CTAS
   - [ ] MATERIALIZED VIEW
 - [ ] System tables (pg_class, pg_attribute)
-- [ ] Field accesses
-- [ ] Double field accesses
-        SELECT (on_hand.item).name FROM on_hand WHERE (on_hand.item).price > 9.99;
 
 CREATE DATABASE
 - [x] Regular
@@ -33,7 +41,6 @@ CREATE DATABASE
 CREATE SCHEMA
 - [x] Regular
 - [x] Atomic subcommands [not supported]
-
 
 CREATE TABLE
   - [x] AS
@@ -79,10 +86,6 @@ CREATE RULE
 - not supported by sqlglot
 
 SELECT
-  - [x] System functions
-    - [x] JSON functions
-      - [ ] Hard-code default returned column names
-  - [x] Window functions
   - [ ] FROM udf()
   - [x] UNION
   - [x] EXCEPT
@@ -169,6 +172,10 @@ EXECUTE
 - [x] No parameters
 - [ ] Parameters [unsupported]
 
+BEGIN
+- [ ] COMMIT/END
+- [ ] ROLLBACK
+
 CREATE TRIGGER
   - [ ] INSTEAD OF
   - [ ] BEFORE / AFTER
@@ -199,6 +206,7 @@ DO
 - not supported by sqlglot
 
 ROW
+  - [ ] Support type 'record'
   - [x] Simplify
 
 
