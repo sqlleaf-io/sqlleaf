@@ -303,25 +303,49 @@ def _collect_writable_cte_queries(
         _collect_query_children(query, child_holder, dialect, object_mapping)
 
 
-def _collect_substituted_children(holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping) -> None:
+def _collect_call_substitutions(
+    query: Q,
+    holder: QueryHolder,
+    dialect: str,
+    object_mapping: mappings.ObjectMapping,
+) -> None:
     """
-    Collects children from substituted statements.
-    Circular references in procedure/UDF calls could cause infinite recursion.
+    Performs argument substitution for CallQuery, ExecuteQuery, CTASQuery (EXECUTE AS),
+    and any query containing UDF call sites.
+    The resulting inner statements are classified as Queries and attached as child holders.
     """
-    if not holder.substituted:
-        return
+    from sqlleaf.processors.transformers import udf
+    from sqlleaf import typing
 
-    parent_index = holder.original.get_statement_index()
+    statement = util.copy_expression(query.statement)
+    subst_statements: t.List[exp.Expr] = []
 
-    for i, substituted_query in enumerate(holder.substituted):
-        # The statement index for child queries must be assigned using the format parent_statement_index:child_index
+    if isinstance(query, CallQuery):
+        subst_statements = udf.substitute_call(query=query)
+    elif isinstance(query, ExecuteQuery):
+        subst_statements = udf.substitute_execute(query=query)
+    elif (
+        isinstance(query, CTASQuery)
+        and query.source_info.type == typing.SqlObjectType.PREPARED_STATEMENT
+    ):
+        subst_statements = [udf.substitute_create_execute(query=query)]
+    else:
+        subst_statements = udf.substitute_udf(statement=statement, query=query)
+
+    parent_index = query.get_statement_index()
+    for i, stmt in enumerate(subst_statements):
         composite_index = f"{parent_index}:{i}"
-
-        # The substituted_query is already a Query object; wrap it in a child holder
-        substituted_query.statement_index = composite_index
-        child_holder = QueryHolder(original=substituted_query)
-        holder.add_child_holder(child_holder)
-        _collect_query_children(substituted_query, child_holder, dialect, object_mapping)
+        substituted_query = _process_unnamed(
+            statement=stmt,
+            dialect=dialect,
+            object_mapping=object_mapping,
+            statement_index=composite_index,
+        )
+        if substituted_query:
+            child_holder = QueryHolder(original=substituted_query)
+            holder.add_child_holder(child_holder)
+            # Recurse: the substituted child may itself contain calls/UDFs
+            _collect_query_children(substituted_query, child_holder, dialect, object_mapping)
 
 
 def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping):
@@ -338,6 +362,9 @@ def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, 
         _collect_udf_children(query, parent_holder, dialect, object_mapping)
     if not isinstance(query, (CopyQuery, PutQuery)):
         _collect_writable_cte_queries(query, parent_holder, dialect, object_mapping)
+
+    # Perform call-site substitution immediately at collection time
+    _collect_call_substitutions(query, parent_holder, dialect, object_mapping)
 
 
 def _collect_udf_children(

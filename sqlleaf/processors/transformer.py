@@ -1,9 +1,8 @@
 import logging
-import typing as t
 
 from sqlglot import exp
 
-from sqlleaf import mappings, typing, util
+from sqlleaf import mappings, util
 from sqlleaf.models.query import (
     CallQuery,
     CopyQuery,
@@ -21,7 +20,6 @@ from sqlleaf.models.query import (
     UpdateQuery,
     ValuesQuery,
 )
-from sqlleaf.processors import collector as _collector
 from sqlleaf.processors.transformers import (
     BaseQueryTransformer,
     CallTransformer,
@@ -36,7 +34,6 @@ from sqlleaf.processors.transformers import (
     UnloadTransformer,
     UpdateTransformer,
     ValuesTransformer,
-    udf,
 )
 from sqlleaf.typing import E
 
@@ -71,60 +68,14 @@ def transform_query(
     dialect: str,
     object_mapping: mappings.ObjectMapping,
 ) -> None:
-    """Phase 2 entry point: apply substitution (if applicable), then transform."""
-    # Step 1: substitution — discover inner statements and populate holder.substituted
-    _apply_substitution(holder, dialect, object_mapping)
-
-    # Step 2: transform original
+    """
+    1. Transform the original query's AST (DML flattening, qualification, etc.).
+    2. If the original query contains UDF call sites, replace each call with an
+       inline subquery built from the output columns of the last transformed
+       child holder for that call — producing `holder.transformed`.
+    """
     transformed_query = _transform_query_instance(holder.original)
     holder.set_transformed_query(transformed_query)
-
-    # Step 3: transform substituted (if present)
-    if holder.substituted:
-        transformed_substituted = [_transform_query_instance(q) for q in holder.substituted]
-        holder.set_substituted_queries(transformed_substituted)
-
-
-def _apply_substitution(
-    holder: QueryHolder,
-    dialect: str,
-    object_mapping: mappings.ObjectMapping,
-) -> None:
-    """
-    Perform substitution for UDF calls, procedures, and prepared statements.
-    If substitutions are found, create a substituted query and collect its children.
-    """
-    if holder.substituted:  # non-empty list means already substituted
-        return
-
-    original_query = holder.original
-    statement = util.copy_expression(original_query.statement)
-
-    subst_statements: t.List[exp.Expr] = []
-    if isinstance(original_query, CallQuery):
-        subst_statements = udf.substitute_call(query=original_query)
-    elif isinstance(original_query, ExecuteQuery):
-        subst_statements = udf.substitute_execute(query=original_query)
-    elif (
-        isinstance(original_query, CTASQuery)
-        and original_query.source_info.type == typing.SqlObjectType.PREPARED_STATEMENT
-    ):
-        subst_statements = [udf.substitute_create_execute(query=original_query)]
-    else:
-        subst_statements = udf.substitute_udf(statement=statement, query=original_query)
-
-    if subst_statements:
-        for i, stmt in enumerate(subst_statements):
-            # The substituted query is a NEW query, so we must classify it correctly.
-            # Use original query's index as a base.
-            substituted_query = _collector._process_unnamed(
-                statement=stmt,
-                dialect=dialect,
-                object_mapping=object_mapping,
-                statement_index=original_query.statement_index,
-            )
-            if substituted_query:
-                holder.add_substituted_query(substituted_query)
 
 
 def _transform_query_instance(query: Q) -> Q:

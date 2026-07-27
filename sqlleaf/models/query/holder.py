@@ -12,15 +12,17 @@ class QueryHolder:
     A container that holds up to three versions of the same SQL statement
     as three distinct Query instances.
 
-    - original:    The parsed, unmodified Query.
-    - transformed: The Query after transformer.py has processed it.
-    - substituted: A list of Queries after substitution of a UDF/procedure's statements.
+    - original:      The parsed, unmodified Query.
+    - transformed:   The Query after transformer.py has processed it.
+    - child_holders: The containers for downstream queries. Used both for structural
+                     children (MERGE branches, INSERT ON CONFLICT, UDF bodies) and for
+                     call-site substituted queries (CallQuery, ExecuteQuery, UDF call sites).
+                     Populated entirely during the Collector phase.
     """
 
     def __init__(self, original: Query):
         self.original: Query = original
         self.transformed: Query | None = None
-        self.substituted: t.List[Query] = []
         self.child_holders: t.List[QueryHolder] = []
         self.parent_holder: QueryHolder | None = None
 
@@ -46,11 +48,3 @@ class QueryHolder:
         self.transformed = query
         self.transformed.set_holder(self)
 
-    def add_substituted_query(self, query: Q) -> None:
-        query.set_holder(self)
-        self.substituted.append(query)
-
-    def set_substituted_queries(self, queries: t.List[Q]) -> None:
-        self.substituted = []
-        for q in queries:
-            self.add_substituted_query(q)

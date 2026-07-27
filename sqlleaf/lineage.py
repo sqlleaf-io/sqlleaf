@@ -52,22 +52,10 @@ class Lineage:
             # A parent holder wraps a top-level query, possibly containing child holders
             graph = new_graph()
 
-            # Phase 2: Transformer — substitution + transformation
-            # Use a while loop because substitution can add new child holders.
-            transformed_holders = set()
-            while True:
-                all_holders = parent_holder.get_all_holders()
-                new_holders: t.List[QueryHolder] = [h for h in all_holders if h not in transformed_holders]
-                if not new_holders:
-                    break
-                for holder in new_holders:
-                    if should_process_holder(holder):
-                        transformer.transform_query(holder, dialect, object_mapping)
-                    transformed_holders.add(holder)
-
-                    if holder.substituted:
-                        # Now collect child holders from the substituted statement
-                        collector._collect_substituted_children(holder, dialect, object_mapping)
+            # Phase 2: Transformer — transformation only (substitution done at collection time)
+            for holder in parent_holder.get_all_holders():
+                if should_process_holder(holder):
+                    transformer.transform_query(holder, dialect, object_mapping)
 
             all_holders = parent_holder.get_all_holders()
 
