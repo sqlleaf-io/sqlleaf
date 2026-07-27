@@ -138,9 +138,6 @@ class Query:
     def get_transformed_self(self) -> Query | None:
         return self.holder.transformed
 
-    def get_substituted_self(self) -> Query | None:
-        return self.holder.substituted
-
     def get_columns_from_target(self) -> t.List[exp.ColumnDef]:
         """
         Given a query, figure out its target object, including its columns.

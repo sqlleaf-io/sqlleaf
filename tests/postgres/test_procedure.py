@@ -18,32 +18,43 @@ def to_sql(expressions: t.List[exp.Expr]) -> t.List[str]:
 
 
 
-# def test_hello_procedure_complex(holder):
-#     sql = """
-#     CREATE TABLE target (name TEXT);
-#     CREATE PROCEDURE hello_1(VARCHAR) LANGUAGE SQL
-#     AS $$
-#         INSERT INTO target (name) SELECT $1;
-#         CALL hello_2();
-#     $$;
-#     CREATE PROCEDURE hello_2() LANGUAGE SQL
-#     AS $$
-#         INSERT INTO target (name) VALUES ('world');
-#     $$;
-#     CALL hello_1();
-#     """
-#     h = holder(sql=sql, dialect=DIALECT)
-#
-#     query = h.holders[1].original
-#     assert isinstance(query, ProcedureQuery)
-#
-#     assert h.paths == []
-#     assert h.nodes_full == []
-#     assert len(h.edges) == 0
-#
-#     assert query.procedure == "hello"
-#     assert not query.schema
-#     assert query.args == []
+def test_call_procedure_multi(holder):
+    sql = """
+    CREATE TABLE target (name TEXT);
+    CREATE PROCEDURE hello()
+    LANGUAGE SQL
+    AS $$
+        VALUES (5);
+        INSERT INTO target (name) VALUES ('world');
+    $$;
+    CALL hello();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert len(h.holders) == 3
+
+    proc_query = h.holders[1].original
+    assert isinstance(proc_query, ProcedureQuery)
+
+    call_query = h.holders[2].original
+    assert isinstance(call_query, CallQuery)
+
+    assert call_query.procedure == "hello"
+    assert call_query.args == []
+
+    substituted = h.holders[2].substituted
+    assert len(substituted) == 2
+    # first inner statement: VALUES (5)
+    # second inner statement: INSERT INTO target ...
+    assert isinstance(substituted[1], InsertQuery)
+    assert substituted[1].statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
+
+    assert h.paths == [['literal["world"]', "column[target.name]"]]
+    assert h.nodes_full == [
+        'literal[name="world" type=VARCHAR position=[query_depth=0 query_width=0 statement=2:1 select=0 func_depth=0 func_arg=0]]',
+        "column[name=name type=TEXT properties=[kind=table table=target]]",
+    ]
+    assert len(h.edges) == 1
 
 
 def test_hello_procedure(holder):
@@ -93,8 +104,9 @@ def test_call_procedure(holder):
     assert call_query.args == []
 
     substituted = h.holders[2].substituted
-    assert isinstance(substituted, InsertQuery)
-    assert substituted.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
+    assert len(substituted) == 1
+    assert isinstance(substituted[0], InsertQuery)
+    assert substituted[0].statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
 
     assert h.paths == [['literal["world"]', "column[target.name]"]]
     assert h.nodes_full == [
@@ -132,8 +144,9 @@ def test_call_schema_procedure(holder):
     assert call_query.args == []
 
     substituted = h.holders[2].substituted
-    assert isinstance(substituted, InsertQuery)
-    assert substituted.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
+    assert len(substituted) == 1
+    assert isinstance(substituted[0], InsertQuery)
+    assert substituted[0].statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
 
     assert h.paths == [['literal["world"]', "column[target.name]"]]
     assert h.nodes_full == [
@@ -168,7 +181,7 @@ def test_call_procedure_with_params(holder):
     assert call_query.procedure == "hello"
     assert len(call_query.args) == 1
 
-    substituted = h.holders[2].substituted
+    substituted = h.holders[2].substituted[0]
     assert isinstance(substituted, InsertQuery)
     assert substituted.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
 
@@ -198,7 +211,7 @@ def test_call_procedure_positional_param(holder):
     assert call_query.procedure == "hello"
     assert len(call_query.args) == 1
 
-    substituted = h.holders[2].substituted
+    substituted = h.holders[2].substituted[0]
     assert isinstance(substituted, InsertQuery)
     assert substituted.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
 
@@ -229,7 +242,7 @@ def test_call_procedure_default_value(holder):
     assert call_query.procedure == "hello"
     assert call_query.args == []
 
-    substituted = h.holders[2].substituted
+    substituted = h.holders[2].substituted[0]
     assert isinstance(substituted, InsertQuery)
     assert substituted.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
 
@@ -293,7 +306,7 @@ def test_call_procedure_positional_notation(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert len(h.holders) == 3
-    substituted = h.holders[2].substituted
+    substituted = h.holders[2].substituted[0]
     assert isinstance(substituted, InsertQuery)
     assert substituted.statement.sql(dialect=DIALECT) == "INSERT INTO target (a, b) SELECT 10 AS a, 20 AS b"
 
@@ -311,7 +324,7 @@ def test_call_procedure_mixed_notation(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert len(h.holders) == 3
-    substituted = h.holders[2].substituted
+    substituted = h.holders[2].substituted[0]
     assert isinstance(substituted, InsertQuery)
     assert substituted.statement.sql(dialect=DIALECT) == "INSERT INTO target (a, b) SELECT 10 AS a, 20 AS b"
 
@@ -341,9 +354,9 @@ def test_call_procedure_in_out_params(holder):
     assert isinstance(call_query, CallQuery)
     assert len(call_query.args) == 2
 
-    substituted = h.holders[1].substituted
+    substituted = h.holders[1].substituted[0]
     assert substituted.statement.sql(dialect=DIALECT) == 'SELECT 10 AS "10"'
 
-
+#
 # TODO: test chained procs
 # TODO: nested statements

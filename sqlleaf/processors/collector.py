@@ -310,22 +310,20 @@ def _collect_substituted_children(
     Collects children from substituted statements.
     Circular references in procedure/UDF calls could cause infinite recursion.
     """
-    if holder.substituted is None:
+    if not holder.substituted:
         return
 
-    # The substituted query's statement may contain multiple inner statements
-    # (e.g. a procedure body) — iterate and attach
-    stmt = holder.substituted.statement
     parent_index = holder.original.get_statement_index()
 
-    for i, inner_stmt in enumerate(util.iter_inner_statements(stmt, dialect)):
+    for i, substituted_query in enumerate(holder.substituted):
         # The statement index for child queries must be assigned using the format parent_statement_index:child_index
         composite_index = f"{parent_index}:{i}"
-        child_query = _process_unnamed(inner_stmt, dialect, object_mapping, composite_index)
-        if child_query:
-            child_holder = QueryHolder(original=child_query)
-            holder.add_child_holder(child_holder)
-            _collect_query_children(child_query, child_holder, dialect, object_mapping)
+
+        # The substituted_query is already a Query object; wrap it in a child holder
+        substituted_query.statement_index = composite_index
+        child_holder = QueryHolder(original=substituted_query)
+        holder.add_child_holder(child_holder)
+        _collect_query_children(substituted_query, child_holder, dialect, object_mapping)
 
 
 def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping):
@@ -690,15 +688,9 @@ def _process_unnamed(
                 "such as an INSERT, to contain lineage."
             )
     elif isinstance(statement, exp.Select):
-        if not statement.find(exp.Insert, exp.Update, exp.Merge, exp.Delete, exp.Values):
-            logging.warning(
-                "Skipping statement: A SELECT query must have a data-modifying statement, "
-                "such as an INSERT, to contain lineage."
-            )
-        else:
-            query = SelectQuery(
-                expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
-            )
+        query = SelectQuery(
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
     elif isinstance(statement, exp.Copy):
         query = CopyQuery(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index

@@ -81,8 +81,8 @@ def transform_query(
 
     # Step 3: transform substituted (if present)
     if holder.substituted:
-        substituted_query = _transform_query_instance(holder.substituted)
-        holder.set_substituted_query(substituted_query)
+        transformed_substituted = [_transform_query_instance(q) for q in holder.substituted]
+        holder.set_substituted_queries(transformed_substituted)
 
 
 def _apply_substitution(
@@ -94,7 +94,7 @@ def _apply_substitution(
     Perform substitution for UDF calls, procedures, and prepared statements.
     If substitutions are found, create a substituted query and collect its children.
     """
-    if holder.substituted is not None:
+    if holder.substituted:   # non-empty list means already substituted
         return
 
     original_query = holder.original
@@ -114,19 +114,19 @@ def _apply_substitution(
         subst_statements = udf.substitute_udf(statement=statement, query=original_query)
 
     if subst_statements:
-        if len(subst_statements) > 1:
-            substituted_statement = exp.Block(expressions=subst_statements)
-        else:
-            substituted_statement = subst_statements[0]
+        for i, stmt in enumerate(subst_statements):
+            # The substituted query is a NEW query, so we must classify it correctly.
+            # Use original query's index as a base.
+            substituted_query = _collector._process_unnamed(
+                statement=stmt,
+                dialect=dialect,
+                object_mapping=object_mapping,
+                statement_index=original_query.statement_index,
+            )
+            if substituted_query:
+                holder.add_substituted_query(substituted_query)
 
-        substituted_query = build_transformed_query(
-            original_query=original_query,
-            transformed_statement=substituted_statement,
-        )
-        holder.set_substituted_query(substituted_query)
 
-        # Now collect child holders from the substituted statement
-        _collector._collect_substituted_children(holder, dialect, object_mapping)
 
 
 def _transform_query_instance(query: Q) -> Q:

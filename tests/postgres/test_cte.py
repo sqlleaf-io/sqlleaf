@@ -366,7 +366,7 @@ def test__cte_select_inside_select(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert_query_does_nothing(h)
-    assert h.query_types == []
+    assert h.query_types == [SelectQuery]
 
 
 def test__cte_two_updates_inside_update(holder):

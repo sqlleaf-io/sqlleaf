@@ -14,13 +14,13 @@ class QueryHolder:
 
     - original:    The parsed, unmodified Query.
     - transformed: The Query after transformer.py has processed it.
-    - substituted: The Query after substitution of a UDF/procedure's statements.
+    - substituted: A list of Queries after substitution of a UDF/procedure's statements.
     """
 
     def __init__(self, original: Query):
         self.original: Query = original
         self.transformed: Query | None = None
-        self.substituted: Query | None = None
+        self.substituted: t.List[Query] = []
         self.child_holders: t.List[QueryHolder] = []
         self.parent_holder: QueryHolder | None = None
 
@@ -46,6 +46,11 @@ class QueryHolder:
         self.transformed = query
         self.transformed.set_holder(self)
 
-    def set_substituted_query(self, query: Q) -> None:
-        self.substituted = query
-        self.substituted.set_holder(self)
+    def add_substituted_query(self, query: Q) -> None:
+        query.set_holder(self)
+        self.substituted.append(query)
+
+    def set_substituted_queries(self, queries: t.List[Q]) -> None:
+        self.substituted = []
+        for q in queries:
+            self.add_substituted_query(q)

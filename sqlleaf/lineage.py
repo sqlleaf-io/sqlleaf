@@ -60,13 +60,17 @@ class Lineage:
             transformed_holders = set()
             while True:
                 all_holders = parent_holder.get_all_holders()
-                new_holders = [h for h in all_holders if h not in transformed_holders]
+                new_holders: t.List[QueryHolder] = [h for h in all_holders if h not in transformed_holders]
                 if not new_holders:
                     break
                 for holder in new_holders:
                     if should_process_holder(holder):
                         transformer.transform_query(holder, dialect, object_mapping)
                     transformed_holders.add(holder)
+
+                    if holder.substituted:
+                        # Now collect child holders from the substituted statement
+                        collector._collect_substituted_children(holder, dialect, object_mapping)
 
             all_holders = parent_holder.get_all_holders()
 
