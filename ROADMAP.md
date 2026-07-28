@@ -176,6 +176,8 @@ BEGIN
 - [ ] COMMIT/END
 - [ ] ROLLBACK
 
+DECLARE, MOVE, FETCH, CLOSE
+
 CREATE TRIGGER
   - [ ] INSTEAD OF
   - [ ] BEFORE / AFTER
@@ -209,6 +211,13 @@ ROW
   - [ ] Support type 'record'
   - [x] Simplify
 
+
+VALUES
+- [x] Regular
+- [ ] LIMIT
+- [ ] OFFSET
+- [ ] FETCH FIRST ROWS ONLY
+- [ ] ORDER BY (required for LIMIT/OFFSET/FETCH)
 
 ### Redshift
 [ ] ALTER TABLE ... APPEND
