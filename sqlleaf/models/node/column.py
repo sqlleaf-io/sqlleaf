@@ -179,8 +179,14 @@ class ColumnNode(NodeAttributes):
 
         selected_table, _ = scope.selected_sources.get(table, (None, None))
         if not selected_table:
-            message = f"Table '{table}' is referenced but there is no FROM containing it."
-            raise exception.SqlLeafException(message=message)
+            # Try the regular sources; may occur when column nested inside subquery references a CTE outside itself
+            # In this case, skip it.
+            selected_source = scope.sources.get(table)
+            if selected_source and selected_source.scope_type == ScopeType.CTE:
+                return
+            else:
+                message = f"Table '{table}' is referenced but there is no FROM containing it."
+                raise exception.SqlLeafException(message=message)
 
         for cte in source.parent.ctes:
             if cte.alias_or_name == selected_table.name:

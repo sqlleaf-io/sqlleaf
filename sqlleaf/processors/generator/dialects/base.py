@@ -415,12 +415,13 @@ class BaseGenerator:
 
         # Update the scope to be the subquery itself, as it is a subscope
         scope = t.cast(Scope, gen_ctx.scope)
+        logger.debug(f"process_subquery: scope.subquery_scopes={len(scope.subquery_scopes)}, expr.this={expr.this.sql()[:40]}")
         subquery_scope = [s for s in scope.subquery_scopes if s.expression == expr.this][0]
 
         height, width = gen_ctx.scope_positions.get_scope_for_expr(expr.this)
         child_ctx = replace(pos_ctx, query_depth=height, query_width=width)
         p_ctx = replace(gen_ctx, expr=expr.selects[0], scope=subquery_scope)
-        return self.process(p_ctx.expr, gen_ctx=p_ctx, pos_ctx=child_ctx)
+        yield from self.process(p_ctx.expr, gen_ctx=p_ctx, pos_ctx=child_ctx)
 
     def create_node_from_type(
         self,

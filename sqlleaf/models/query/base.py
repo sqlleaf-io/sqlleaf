@@ -40,6 +40,8 @@ class Query:
         for expr in statement.walk():
             expr.pop_comments()
 
+        annotate_types(statement, dialect=dialect, schema=object_mapping)
+
         self.statement: exp.Expr = statement
         self.statement_index = statement_index  # The position of this query within a list of queries
 

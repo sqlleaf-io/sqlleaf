@@ -2,7 +2,6 @@ import os
 import sys
 import typing as t
 
-import pytest
 from sqlglot import exp
 
 from sqlleaf.models.query import UserDefinedFunctionQuery
@@ -36,15 +35,14 @@ def test__udf_simple(holder):
     assert query.return_type == exp.DataType.build("TEXT")
     assert query.language == "sql"
 
-    assert h.paths == [["udf[HELLO]", "column[target.name]"]]
-    assert len(h.nodes) == 2
-    assert len(h.edges) == 1
-
     insert_query = h.holders[2]
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS Hello) AS name"]
-
-    actual_after = [insert_query.child_holders[0].transformed.statement]
+    actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after) == insert_after
+
+    assert h.paths == [['literal["Hello"]', "column[target.name]"]]
+    assert len(h.nodes) == 2
+    assert len(h.edges) == 1
 
 
 def test__udf_schema(holder):
@@ -66,15 +64,14 @@ def test__udf_schema(holder):
     assert query.return_type == exp.DataType.build("TEXT")
     assert query.language == "sql"
 
-    assert h.paths == [["udf[GREETINGS.HELLO]", "column[target.name]"]]
-    assert len(h.nodes) == 2
-    assert len(h.edges) == 1
-
     insert_query = h.holders[2]
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS Hello) AS name"]
-
-    actual_after = [insert_query.child_holders[0].transformed.statement]
+    actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after) == insert_after
+
+    assert h.paths == [['literal["Hello"]', "column[target.name]"]]
+    assert len(h.nodes) == 2
+    assert len(h.edges) == 1
 
 
 def test__udf_schema_distinction(holder):
@@ -98,19 +95,16 @@ def test__udf_schema_distinction(holder):
     assert udf2.function_name == "hello"
     assert udf2.schema_name == "greetings"
 
-    assert sorted(h.paths) == sorted([
-        ["udf[HELLO]", "column[target.age]"],
-        ["udf[GREETINGS.HELLO]", "column[target.age]"],
-    ])
-
-    h.holders[3]
-    assert to_sql([h.holders[3].child_holders[0].transformed.statement]) == [
+    assert to_sql([h.holders[3].transformed.statement]) == [
         "INSERT INTO target (age) SELECT (SELECT 'no_schema' AS no_schema) AS age"
     ]
-
-    h.holders[4]
-    assert to_sql([h.holders[4].child_holders[0].transformed.statement]) == [
+    assert to_sql([h.holders[4].transformed.statement]) == [
         "INSERT INTO target (age) SELECT (SELECT 'yes_schema' AS yes_schema) AS age"
+    ]
+
+    assert h.paths == [
+        ['literal["no_schema"]', "column[target.age]"],
+        ['literal["yes_schema"]', "column[target.age]"],
     ]
 
 
@@ -133,15 +127,14 @@ def test__udf_select(holder):
     assert query.return_type == exp.DataType.build("TEXT")
     assert query.language == "sql"
 
-    assert h.paths == [["udf[HELLO]", "column[target.name]"]]
-    assert len(h.nodes) == 2
-    assert len(h.edges) == 1
-
     insert_query = h.holders[2]
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS Hello) AS name"]
-
-    actual_after = [insert_query.child_holders[0].transformed.statement]
+    actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after) == insert_after
+
+    assert h.paths == [['literal["Hello"]', "column[target.name]"]]
+    assert len(h.nodes) == 2
+    assert len(h.edges) == 1
 
 
 def test__udf_values(holder):
@@ -163,12 +156,11 @@ def test__udf_values(holder):
     assert query.return_type == exp.DataType.build("TEXT")
     assert query.language == "sql"
 
-    assert h.paths == [["udf[HELLO]", "column[target.name]"]]
-    assert len(h.nodes) == 2
-    assert len(h.edges) == 1
-
     insert_query = h.holders[2]
     insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS Hello) AS name"]
-
-    actual_after = [insert_query.child_holders[0].transformed.statement]
+    actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after) == insert_after
+
+    assert h.paths == [['literal["Hello"]', "column[target.name]"]]
+    assert len(h.nodes) == 2
+    assert len(h.edges) == 1

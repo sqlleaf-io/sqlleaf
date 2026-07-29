@@ -65,8 +65,60 @@ class BaseQueryTransformer:
         Run a set of transformations over every statement
         AFTER the type-specific transformations.
         """
+        statement = self._apply_udf_substitutions(statement)
         statement = self._add_aliases_to_udfs(statement)
         return self._apply_optimizations(statement)
+
+    def _apply_udf_substitutions(self, statement: E) -> E:
+        """
+        Replaces UDF call sites in the transformed statement with their inlined body.
+        Must run before _add_aliases_to_udfs so raw exp.Anonymous nodes are still present.
+
+        Example:
+            Given a UDF defined as:
+                CREATE FUNCTION hello() RETURNS TEXT LANGUAGE SQL RETURN 'Hello';
+
+            And an INSERT statement:
+                INSERT INTO target (name) SELECT hello();
+
+            The call site `hello()` is replaced with the inlined UDF body, producing:
+                INSERT INTO target (name) SELECT (SELECT 'Hello' AS Hello) AS name
+        """
+        while True:
+            annotated = statement
+            node, matched_udf = udf.find_next_udf_call(annotated, self.query.object_mapping)
+            if not node:
+                break
+
+            target_node = udf.get_target_node(node)
+            replacement_exprs = udf.build_replacement_exprs(node, matched_udf)
+            if not replacement_exprs:
+                break
+
+            if len(replacement_exprs) > 1:
+                # Multi-statement UDF body: branch the entire query for each expression,
+                # then recursively process each branch to handle remaining UDF calls.
+                node_index = next((i for i, n in enumerate(annotated.walk()) if n is target_node), -1)
+                if node_index == -1:
+                    break
+                final_results = []
+                for repl_expr in replacement_exprs:
+                    new_statement = annotated.copy()
+                    for i, n in enumerate(new_statement.walk()):
+                        if i == node_index:
+                            udf.apply_replacement(n, repl_expr, matched_udf)
+                            break
+                    # Recursively substitute any remaining UDF calls in this branch
+                    substituted = self._apply_udf_substitutions(new_statement)
+                    final_results.append(substituted)
+
+                # Return the last statement as the primary statement; for scalar UDFs the last
+                # statement is the return value. Others are discarded.
+                if final_results:
+                    return final_results[-1]
+                break
+            udf.apply_replacement(target_node, replacement_exprs[0], matched_udf)
+        return statement
 
     def _validate_syntax(func):
         """
@@ -75,8 +127,6 @@ class BaseQueryTransformer:
 
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs) -> E:
-            # statement = kwargs.pop("statement")
-            # query = kwargs.pop("query")
             statement = args[0] if args else kwargs.get("statement", self.statement)
             query = self.query
 
@@ -310,6 +360,12 @@ class BaseQueryTransformer:
 
         # Do not validate the columns if the source is a non-table
         if not query.source_info or SqlObjectType.type_has_no_column_defs(query.source_info.type):
+            validate_columns = False
+
+        # Do not validate columns for SELECT statements with no FROM clause (e.g. UDF body inner queries
+        # that have table-qualified columns from parameter substitution but no actual FROM tables).
+        # For example, after substitution of 'MY_UDF(people.*)' with 'MY_UDF = SELECT $1.age AS age'
+        if isinstance(statement, exp.Select) and not statement.args.get("from"):
             validate_columns = False
 
         if not validate_columns:

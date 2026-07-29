@@ -57,6 +57,22 @@ def test__cte_with_values(holder):
     assert len(h.edges) == 6
 
 
+def test__cte_inside_select(holder):
+    sql = """
+    CREATE TABLE target(age INT);
+    INSERT INTO target (age) SELECT (
+        WITH cte AS (
+            SELECT 'Hello Alice' AS msg
+        )
+        SELECT msg FROM cte
+    ) AS age;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+    assert h.paths == [['literal["Hello Alice"]', "column[cte.msg]", "column[target.age]"]]
+    assert len(h.nodes) == 3
+    assert len(h.edges) == 2
+
+
 def test__cte_named_columns(holder):
     sql = """
     WITH cte_names(col2, col1) AS (
@@ -367,6 +383,23 @@ def test__cte_select_inside_select(holder):
 
     assert_query_does_nothing(h)
     assert h.query_types == [SelectQuery]
+
+
+def test__select_complex_array_min(holder):
+    sql = """
+    CREATE TABLE target(age INT);
+
+    INSERT INTO target (age)
+    WITH data_source AS (
+        SELECT CAST(ARRAY[10, -1, 5, 4.4] AS DECIMAL[]) AS my_array
+    )
+    SELECT (
+        SELECT MIN(data_source.my_array[g.i]) AS min
+        FROM GENERATE_SUBSCRIPTS(my_array, 1) AS g(i)
+    )
+    FROM data_source AS data_source;
+    """
+    holder(sql=sql, dialect=DIALECT)
 
 
 def test__cte_two_updates_inside_update(holder):

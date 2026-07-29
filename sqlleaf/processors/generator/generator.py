@@ -45,40 +45,35 @@ def generate_lineage_for_query(
 
     Everything is extracted: columns, literals, functions, etc.
     """
-    # The caller (Lineage.generate) is now responsible for ensuring that only
-    # lineage-eligible holders reach this function. We only process the
-    # transformed query; substituted queries are now handled as independent
-    # child holders.
-    queries_to_process = [holder.transformed]
+    query = holder.transformed
 
-    for i, query in enumerate(queries_to_process):
-        logger.info(f"Processing query: {type(query)}")
-        statement = query.statement
-        logger.debug("----")
-        subs = "[SUBSTITUTED] " if i > 0 else ""
-        logger.info(f"Getting lineage for {subs}query: {statement.sql(dialect=query.dialect)}")
+    logger.info(f"Processing query: {type(query)}")
+    statement = query.statement
+    logger.debug("----")
+    logger.info(f"Getting lineage for query: {statement.sql(dialect=query.dialect)}")
+    logger.debug(repr(statement))
 
-        target_object = query.target_info.expression
-        pos_ctx = PositionContext(statement_index=query.get_statement_index())
-        gen_ctx = GeneratorContext(
-            graph=graph,
-            query=query,
-            expr=statement,
-            child_node=target_object,
-            scope=None,
-        )
-        generator = BaseGenerator.from_dialect(query.dialect)
+    target_object = query.target_info.expression
+    pos_ctx = PositionContext(statement_index=query.get_statement_index())
+    gen_ctx = GeneratorContext(
+        graph=graph,
+        query=query,
+        expr=statement,
+        child_node=target_object,
+        scope=None,
+    )
+    generator = BaseGenerator.from_dialect(query.dialect)
 
-        if check_for_put(generator, gen_ctx, pos_ctx):
-            return graph
+    if check_for_put(generator, gen_ctx, pos_ctx):
+        return graph
 
-        if check_for_trigger(target_object, query.object_mapping):
-            return graph
+    if check_for_trigger(target_object, query.object_mapping):
+        return graph
 
-        if check_for_external_table(generator, gen_ctx, pos_ctx):
-            return graph
+    if check_for_external_table(generator, gen_ctx, pos_ctx):
+        return graph
 
-        generate_lineage_for_columns(generator, gen_ctx, pos_ctx)
+    generate_lineage_for_columns(generator, gen_ctx, pos_ctx)
 
     return graph
 
@@ -206,7 +201,7 @@ def walk_query_scope(column: exp.Column | int, scope: Scope) -> t.Generator[Scop
         expression=select.unalias(),
         scope=scope,
     )
-    logger.debug("Yielding regular expression: '%s', Expr: %s, Id: %s", column, select.sql(), id(st))
+    logger.debug("Yielding standard expression: '%s', Type: %s, Expr: %s, Id: %s", column, type(select.unalias()), select.sql(), id(st))
     yield st
 
 

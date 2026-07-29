@@ -5,6 +5,7 @@ import pytest
 
 from sqlleaf.models.query import InsertQuery, TableQuery
 from tests.new_fixtures import holder as holder
+from tests.new_fixtures import to_sql
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -85,6 +86,25 @@ def test__select_dpipe_cte(holder):
     assert h.paths == 2 * [['literal["hello"]', "column[cte.other]", "function[DPIPE]", "column[fruit.processed.kind]"]]
     assert len(h.nodes) == 4
     assert len(h.edges) == 4
+
+
+def test__select_subquery(holder):
+    sql = """
+    INSERT INTO fruit.processed (age) SELECT (SELECT r.age * 2 AS age) AS age FROM fruit.raw AS r;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    insert_query = h.holders[0]
+    insert_after = ["INSERT INTO fruit.processed (age) SELECT (SELECT r.age * 2 AS age) AS age FROM fruit.raw AS r"]
+    actual_after = [insert_query.transformed.statement]
+    assert to_sql(actual_after, dialect=DIALECT) == insert_after
+
+    assert h.paths == [
+        ["column[r.age]", "function[MUL]", "column[fruit.processed.age]"],
+        ["literal[2]", "function[MUL]", "column[fruit.processed.age]"],
+    ]
+    assert len(h.nodes) == 4
+    assert len(h.edges) == 3
 
 
 def test__select_dpipe(holder):

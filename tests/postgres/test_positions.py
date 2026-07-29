@@ -67,6 +67,8 @@ def test__positions_values(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
+    assert h.holders[1].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO num (a, b) SELECT 1 AS a, 1 AS b UNION ALL SELECT 1 AS a, 1 AS b"
+
     assert h.nodes_full == [
         "literal[name=1 type=INT position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]",
         "literal[name=1 type=INT position=[query_depth=1 query_width=1 statement=1 select=0 func_depth=0 func_arg=0]]",

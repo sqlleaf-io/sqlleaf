@@ -287,7 +287,6 @@ def _collect_call_substitutions(
     from sqlleaf.processors.transformer import udf
     from sqlleaf import typing
 
-    statement = util.copy_expression(query.statement)
     subst_statements: t.List[exp.Expr] = []
 
     if isinstance(query, CallQuery):
@@ -300,7 +299,19 @@ def _collect_call_substitutions(
     ):
         subst_statements = [substitute.substitute_create_execute(query=query)]
     else:
-        subst_statements = substitute.substitute_udf(statement=statement, query=query)
+        expression = util.copy_expression(query.statement)
+        while True:
+            node, matched_udf = udf.find_next_udf_call(expression, query.object_mapping)
+            if not node:
+                break
+
+            inner_exprs = udf.substitute_udf(node, matched_udf)
+            subst_statements.extend(inner_exprs)
+            # Replace the processed call site with a placeholder so find_next_udf_call()
+            # no longer matches it on the next iteration, allowing the loop to advance
+            # to the next UDF call. The statement is a working copy and is not used
+            # after this function; only the extracted subst_statements matter.
+            node.replace(exp.Null())
 
     parent_index = query.get_statement_index()
     for i, stmt in enumerate(subst_statements):

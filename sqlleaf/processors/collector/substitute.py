@@ -2,13 +2,10 @@ import logging
 import typing as t
 
 from sqlglot import exp
-from sqlglot.optimizer.annotate_types import annotate_types
-
 from sqlleaf import mappings
 from sqlleaf.exception import SqlLeafException
 
-from sqlleaf.models.query import FunctionParam, UserDefinedFunctionQuery, Q, CallQuery, ExecuteQuery, CTASQuery
-from sqlleaf.processors.transformer.udf import find_next_udf_call, logger, get_target_node, build_replacement_exprs, apply_replacement
+from sqlleaf.models.query import FunctionParam, UserDefinedFunctionQuery, CallQuery, ExecuteQuery, CTASQuery
 from sqlleaf.typing import E
 
 logger = logging.getLogger("sqlleaf")
@@ -254,66 +251,10 @@ def replace_dot_reference(
     )
 
     if table_name:
-        node.set("this", exp.Identifier(this=table_name, quoted=False))
+        node.replace(exp.Column(table=exp.Identifier(this=table_name, quoted=False), this=node.right.copy()))
     elif isinstance(sub, exp.Cast):
         # Wrap cast in parentheses so we can look up fields on it, e.g. (ROW(...)::type).field
         node.set("this", exp.Paren(this=sub.copy()))
-
-
-def substitute_udf(statement: E, query: Q) -> t.List[exp.Expr]:
-    """
-    Inlines UDF calls in a SQL string with their defined bodies and parameters.
-    Example:
-        substitute_udf("SELECT hello('world')", [hello_udf])
-        -> ["SELECT (SELECT 'Hello ' || 'world')"]
-
-    Circular references in UDF/procedure definitions could cause infinite recursion.
-    """
-    result = []
-    while True:
-        # Annotate types to help with function overloading resolution
-        expression = annotate_types(statement, dialect=query.dialect, schema=query.object_mapping)
-
-        # Find the next UDF call to substitute
-        to_replace, matched_udf = find_next_udf_call(expression, query.object_mapping)
-        if not to_replace:
-            break
-
-        logger.debug(f"Found UDF call to substitute: {matched_udf.name}")
-
-        param_map, _ = transform_arguments(to_replace, matched_udf)
-        result = [expression]
-
-        target_node = get_target_node(to_replace)
-        replacement_exprs = build_replacement_exprs(to_replace, matched_udf)
-
-        if len(replacement_exprs) > 1:
-            # Handles UDFs returning multiple statements by branching the entire query.
-            # Each branch is then recursively processed to handle any remaining UDF calls.
-            node_index = next((i for i, n in enumerate(expression.walk()) if n is target_node), -1)
-            if node_index == -1:
-                return [expression]
-
-            final_results = []
-            for repl_expr in replacement_exprs:
-                new_expression = expression.copy()
-                for i, n in enumerate(new_expression.walk()):
-                    if i == node_index:
-                        apply_replacement(n, repl_expr, matched_udf)
-                        break
-
-                # Apply the substitution recursively.
-                substituted_branches = substitute_udf(new_expression, query)
-                if not substituted_branches:
-                    final_results.append(new_expression)
-                else:
-                    final_results.extend(substituted_branches)
-            return final_results
-
-        # Single statement: apply replacement and continue finding next UDF calls
-        apply_replacement(target_node, replacement_exprs[0], matched_udf)
-
-    return result
 
 
 def substitute_call(query: CallQuery) -> t.List[exp.Expr]:

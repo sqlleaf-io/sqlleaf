@@ -44,9 +44,11 @@ def calculate_function_name(expr: exp.Expr, dialect: str) -> str:
     try:
         # Get the name without its parameters
         name = expr.__class__().sql(dialect=dialect)
-    except TypeError:
+    except TypeError, AttributeError:
         # Some classes can't be converted to SQL using this method (e.g. CONCAT() in Postgres)
         name = expr.__class__().sql()
+        if not name:
+            name = expr.sql(dialect=dialect)
 
     first_bracket = name.find("(")
     if first_bracket == -1:
@@ -196,6 +198,9 @@ def convert_values_to_select(
 
     if len(selects) > 1:
         new_selects = [exp.select(*select) for select in selects]
-        return exp.union(*new_selects, distinct=False)
+        return_expr = exp.union(*new_selects, distinct=False)
+    else:
+        return_expr = exp.select(*selects[0])
 
-    return exp.select(*selects[0])
+    # Wrap the query in a subquery if it's not a top-level statement
+    return return_expr.subquery() if expression.parent_select else return_expr

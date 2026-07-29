@@ -162,7 +162,7 @@ def transform_field_access_to_subquery(
 
 def replace_scalar_call(target_node: exp.Expr, replacement_expr: exp.Expr) -> None:
     """
-    Replaces a scalar UDF call, wrapping query-like expressions in parentheses.
+    Replaces a scalar UDF call, wrapping query-like expressions in a Subquery.
 
     Example:
         Given hello() as `SELECT 1`,
@@ -170,8 +170,9 @@ def replace_scalar_call(target_node: exp.Expr, replacement_expr: exp.Expr) -> No
         After: `SELECT (SELECT 1)`
     """
     if isinstance(replacement_expr, (exp.Select, exp.Values)):
-        replacement_expr = exp.Paren(this=replacement_expr)
-    target_node.replace(replacement_expr.copy())
+        replacement_expr = exp.Subquery(this=replacement_expr)
+    copied = replacement_expr.copy()
+    target_node.replace(copied)
 
 
 def get_target_node(node: exp.Anonymous) -> exp.Expr:
@@ -197,19 +198,18 @@ def resolve_returning_to_select(
     and column-to-literal mapping for INSERT) and returns a SELECT expression.
 
     Example:
-        INSERT INTO people (age) VALUES (5) RETURNING age
-        → SELECT 5
+        INSERT INTO people (age) VALUES (5), (2) RETURNING age
+        → SELECT people.age FROM people
     """
     returning_node = stmt.args.get("returning")
     if not returning_node:
         return exp.select("*")
 
     if isinstance(stmt, exp.Insert) and isinstance(stmt.expression, exp.Values):
-        column_names = [c.name for c in stmt.this.expressions] if isinstance(stmt.this, exp.Schema) else None
-        select_expr = util.convert_values_to_select(stmt.expression, query.dialect, column_names)
-
-        # Create a SELECT that projects the RETURNING columns from the converted VALUES
-        returning_select = exp.select(*returning_node.expressions).from_(select_expr.subquery("t"))
+        # For INSERT ... VALUES ... RETURNING, select the RETURNING columns from the target table.
+        # This avoids exposing the VALUES union to the graph generator.
+        table = stmt.this.this if isinstance(stmt.this, exp.Schema) else stmt.this
+        returning_select = exp.select(*[r.copy() for r in returning_node.expressions]).from_(table.copy())
         return substitute.substitute_parameters(returning_select, query, param_map, positional_map)
 
     col_to_val = {}
@@ -247,6 +247,13 @@ def transform_inner_query(
 ) -> exp.Expr:
     """
     Performs replacement and transformations over a UDF's inner query.
+
+    Example:
+        Given a UDF body statement `SELECT $1 * 2 AS val` with param_map `{"$1": 5}`:
+            → SELECT 5 * 2 AS val
+
+        Given a UDF body statement `INSERT INTO people (age) VALUES (5) RETURNING age`:
+            → SELECT people.age FROM people
     """
     # handle INSERT/UPDATE/DELETE/MERGE ... RETURNING inside a UDF body
     if isinstance(stmt, (exp.Insert, exp.Update, exp.Delete, exp.Merge)) and stmt.args.get("returning"):
@@ -267,7 +274,16 @@ def transform_inner_query(
 
 
 def build_replacement_exprs(node: exp.Anonymous, query: UserDefinedFunctionQuery) -> t.List[exp.Expr]:
-    """Builds the expressions that will replace a UDF call."""
+    """
+    Builds the expressions that will replace a UDF call.
+
+    Example:
+        Given a UDF `hello()` defined as `SELECT 'Hello'` and a call site `hello()`:
+            → [SELECT 'Greetings!' AS greeting]
+
+        Given a UDF `hello()` with a RETURNING body `INSERT INTO people (age) VALUES (5) RETURNING age`:
+            → [SELECT people.age FROM people]
+    """
     if query.return_type and query.return_type.this == exp.DataType.Type.NULL:
         return [exp.select(exp.Null())]
 
@@ -287,8 +303,32 @@ def build_replacement_exprs(node: exp.Anonymous, query: UserDefinedFunctionQuery
     return replacement_exprs
 
 
+def substitute_udf(
+    node: exp.Anonymous,
+    query: UserDefinedFunctionQuery,
+) -> t.List[exp.Expr]:
+    """
+    Returns the UDF's inner body with arguments substituted.
+    Does NOT modify the caller query.
+    Mirrors the contract of substitute_call / substitute_execute_with_plan.
+    """
+    return build_replacement_exprs(node, query)
+
+
 def apply_replacement(target_node: exp.Expr, replacement_expr: exp.Expr, query: UserDefinedFunctionQuery) -> None:
-    """Applies the replacement of a UDF call node with its body logic."""
+    """
+    Applies the replacement of a UDF call node with its body logic.
+
+    Dispatches to the appropriate replacement strategy based on the call context:
+    - LATERAL context: wraps the replacement in a LATERAL subquery.
+    - Table reference context: wraps the replacement as a derived table.
+    - Field access (dot notation): replaces with a field-access subquery.
+    - Scalar call: replaces the call node inline.
+
+    Example:
+        Given `SELECT hello()` where `hello()` resolves to `SELECT 'Greetings!' AS greeting`:
+            → SELECT (SELECT 'Greetings!' AS greeting) AS hello
+    """
     logger.debug(f"Applying replacement for UDF: {query.name}")
     dot_node = get_dot_node(target_node)
 

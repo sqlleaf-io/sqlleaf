@@ -101,6 +101,10 @@ def holder():
     return _create_holder
 
 
+def to_sql(expressions: t.List[exp.Expr], dialect: str) -> t.List[str]:
+    return [e.sql(dialect=dialect) for e in expressions]
+
+
 def assert_query_does_nothing(h: LineageHolderDummy):
     assert h.paths == []
     assert h.nodes_full == []
