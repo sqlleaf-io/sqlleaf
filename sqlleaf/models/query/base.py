@@ -23,10 +23,11 @@ class Query:
         self,
         dialect: str,
         statement: exp.Expr,
-        statement_index: int | str,
+        statement_index: int,
         object_mapping: mappings.ObjectMapping,
         source_info: SourceInfo | None,
         target_info: TargetInfo,
+        skip_type_annotation: bool = False
     ):
         self.kind = self.KIND
         self.dialect = dialect
@@ -40,7 +41,9 @@ class Query:
         for expr in statement.walk():
             expr.pop_comments()
 
-        annotate_types(statement, dialect=dialect, schema=object_mapping)
+        if skip_type_annotation:
+            # Prevent overwriting the types with UNKNOWN if they've already been annotated
+            annotate_types(statement, dialect=dialect, schema=object_mapping)
 
         self.statement: exp.Expr = statement
         self.statement_index = statement_index  # The position of this query within a list of queries
@@ -144,7 +147,9 @@ class Query:
         """
         Given a query, figure out its target object, including its columns.
 
-        This is straightforward if source isn't a JOIN: we just use the source object's columns.
+        The structure is: INSERT INTO <target> .. <source>
+
+        This is straightforward if 'source' isn't a JOIN: we just use the source object's columns.
         But if it is a JOIN, we use the selected columns rather than the source's columns.
         """
         if self.source_info is None:

@@ -63,9 +63,9 @@ class SourceInfo:
 class TargetInfo:
     expression: TargetExprType
     type: SqlObjectType
-    # column_expressions: t.List[exp.Expr]
 
 
+# TODO: merge this with SqlObjectType?
 class TableType(StrEnum):
     TABLE = auto()
     VIEW = auto()

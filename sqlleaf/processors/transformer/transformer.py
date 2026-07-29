@@ -60,22 +60,16 @@ Transform an SQL query into a single canonical form that we can easily generate 
 The form is `INSERT .. SELECT`.
 """
 
-# TODO: ensure columns have valid types after all transformations (only top-level SELECT for now)
 
-
-def transform_query(
-    holder: QueryHolder,
-    dialect: str,
-    object_mapping: mappings.ObjectMapping,
-) -> None:
+def transform_query(holder: QueryHolder) -> None:
     """
     1. Transform the original query's AST (DML flattening, qualification, etc.).
     2. If the original query contains UDF call sites, replace each call with an
        inline subquery built from the output columns of the last transformed
        downstream holder for that call — producing `holder.transformed`.
     """
-    transformed_query = _transform_query_instance(holder.original)
-    holder.set_transformed_query(transformed_query)
+    transformed_query = _transform_query_instance(query=holder.original)
+    holder.set_transformed_query(query=transformed_query)
 
 
 def _transform_query_instance(query: Q) -> Q:
@@ -83,15 +77,15 @@ def _transform_query_instance(query: Q) -> Q:
     Helper to transform a Query instance.
     """
     statement_to_transform = util.copy_expression(query.statement)
-    transformed_statement = _transform_statement(statement_to_transform, query)
+    transformed_statement = _transform_statement(statement=statement_to_transform, query=query)
 
-    return build_transformed_query(
+    return _build_transformed_query(
         original_query=query,
         transformed_statement=transformed_statement,
     )
 
 
-def build_transformed_query(
+def _build_transformed_query(
     original_query: Q,
     transformed_statement: exp.Expr,
 ) -> Q:
@@ -105,6 +99,7 @@ def build_transformed_query(
             dialect=original_query.dialect,
             object_mapping=original_query.object_mapping,
             statement_index=original_query.statement_index,
+            skip_annotate=True,
         )
         # TODO: everything below this in this function this should not occur
         #  - requires big refactor
@@ -134,7 +129,7 @@ def _transform_statement(statement: E, query: Q) -> exp.Expr:
     Perform a series of transformations against an SQL statement.
     Dispatches to the appropriate transformer class based on the query type.
     """
-    logger.debug("----")
+    logger.debug("---- Transformer ---")
     logger.debug(f"Query: {statement.sql(dialect=query.dialect)}")
     logger.debug(f"Transforming: {query.__class__.__name__} - {statement.__class__}")
 

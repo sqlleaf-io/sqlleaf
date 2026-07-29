@@ -24,7 +24,7 @@ def test___put_stage(holder):
         ["column[? path=file:///tmp/data/mydata.csv]", "column[? stage=MY_INT_STAGE path=s3://load/files/]"]
     ]
     assert h.nodes_full == [
-        "column[name=? properties=[kind=file format=TEXT path=file:///tmp/data/mydata.csv]]",
-        "column[name=? properties=[kind=stage stage=MY_INT_STAGE path=s3://load/files/]]",
+        "column[name=? type=VARCHAR properties=[kind=file format=TEXT path=file:///tmp/data/mydata.csv]]",
+        "column[name=? type=UNKNOWN properties=[kind=stage stage=MY_INT_STAGE path=s3://load/files/]]",
     ]
     assert len(h.edges) == 1

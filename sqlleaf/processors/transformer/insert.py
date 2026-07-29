@@ -3,9 +3,11 @@ InsertTransformer — handles INSERT (and MERGE → INSERT) statement transforma
 """
 
 from sqlglot import exp
+from sqlglot.optimizer.annotate_types import annotate_types
 
 from sqlleaf import util
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
+from sqlleaf.typing import E
 
 
 class InsertTransformer(BaseQueryTransformer):
@@ -25,6 +27,12 @@ class InsertTransformer(BaseQueryTransformer):
         statement = self._process_inner_ctes(statement)
 
         return statement
+
+    def postprocess(self, statement: E) -> E:
+        # TODO: this is a hack to get the types annotated for UDF overloading to work for Inserts.
+        #  Revisit proper type annotation so that every query (not just Inserts) has its types populated to enable UDF resolution.
+        statement = annotate_types(statement, dialect=self.query.dialect, schema=self.query.object_mapping)
+        return super().postprocess(statement)
 
     def _convert_insert_defaults_to_values(self, statement: exp.Insert) -> exp.Insert:
         """

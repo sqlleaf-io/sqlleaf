@@ -47,10 +47,10 @@ def generate_lineage_for_query(
     """
     query = holder.transformed
 
-    logger.info(f"Processing query: {type(query)}")
+    logger.debug("---- Generator ----")
+    logger.debug(f"Generating for: {type(query)}")
     statement = query.statement
-    logger.debug("----")
-    logger.info(f"Getting lineage for query: {statement.sql(dialect=query.dialect)}")
+    logger.debug(f"Getting lineage for query: {statement.sql(dialect=query.dialect)}")
     logger.debug(repr(statement))
 
     target_object = query.target_info.expression
@@ -516,8 +516,8 @@ def check_for_external_table(generator: BaseGenerator, gen_ctx: GeneratorContext
     """
     query = gen_ctx.query
 
-    if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external":
-        location_expr = query.statement.args["properties"].find(exp.LocationProperty)
+    if query.dialect in ["athena", "redshift"] and isinstance(query, TableQuery) and query.property == "external":
+        location_expr = query.location
 
         for child_node, _ in generator.iter_child_nodes(gen_ctx, pos_ctx):
             if child_node:

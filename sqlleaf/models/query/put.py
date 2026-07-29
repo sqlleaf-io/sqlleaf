@@ -33,5 +33,6 @@ class PutQuery(Query):
             object_mapping=object_mapping,
             source_info=SourceInfo(expression=source, type=source_type),
             target_info=TargetInfo(expression=target, type=target_type),
+            skip_type_annotation=True
         )
         self.parameters = PutQueryParameters(file_format="TEXT")

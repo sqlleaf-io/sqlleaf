@@ -366,7 +366,6 @@ def match_type(arg: exp.Expr, target_type: exp.DataType) -> bool:
     arg_type = arg.type
     if not arg_type:
         # If type isn't annotated, we can't be sure, but let's try to be lenient or rely on annotate_types
-        # In this project, it seems we expect types to be available or we do some basic matching
         return True
 
     if arg_type.this == exp.DataType.Type.VARCHAR:

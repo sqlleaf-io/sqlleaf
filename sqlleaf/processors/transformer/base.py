@@ -5,10 +5,11 @@ import typing as t
 import sqlglot
 from sqlglot import exp
 from sqlglot.optimizer import RULES, optimize, qualify
+from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, util
-from sqlleaf.models.query import Q
+from sqlleaf.models.query import Q, TableQuery
 from sqlleaf.processors.transformer import udf
 from sqlleaf.processors.transformer.expressions import simplify_row
 from sqlleaf.typing import E, SqlObjectType
@@ -67,7 +68,8 @@ class BaseQueryTransformer:
         """
         statement = self._apply_udf_substitutions(statement)
         statement = self._add_aliases_to_udfs(statement)
-        return self._apply_optimizations(statement)
+        statement = self._apply_optimizations(statement)
+        return statement
 
     def _apply_udf_substitutions(self, statement: E) -> E:
         """
@@ -147,9 +149,7 @@ class BaseQueryTransformer:
             try:
                 sqlglot.parse_one(result.sql(dialect=query.dialect), dialect=query.dialect)
             except sqlglot.errors.ParseError:
-                from sqlleaf.models.query import TableQuery
-
-                if query.dialect == "redshift" and isinstance(query, TableQuery) and query.property == "external":
+                if query.dialect in ["athena", "redshift"] and isinstance(query, TableQuery) and query.property == "external":
                     # Bug in sqlglot: parsing the output for CREATE EXTERNAL TABLE WITH (FORMAT=TEXTFILE) breaks the parser
                     pass
 

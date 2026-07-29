@@ -54,11 +54,11 @@ class Lineage:
             # A parent holder wraps a top-level query, possibly containing downstream holders
             graph = new_graph()
 
-            # Phase 2: Transformer — transformation only (substitution done at collection time)
             for holder in parent_holder.get_all_holders():
                 if should_process_holder(holder):
-                    transformer.transform_query(holder, dialect, object_mapping)
+                    transformer.transform_query(holder)
 
+             # TODO: remove?
             all_holders = parent_holder.get_all_holders()
 
             if not all_holders:
