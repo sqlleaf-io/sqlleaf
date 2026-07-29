@@ -2,11 +2,10 @@ import logging
 import typing as t
 
 from sqlglot import exp
+
 from sqlleaf import mappings
 from sqlleaf.exception import SqlLeafException
-
 from sqlleaf.models.query import FunctionParam, UserDefinedFunctionQuery, CallQuery, ExecuteQuery, CTASQuery
-from sqlleaf.typing import E
 
 logger = logging.getLogger("sqlleaf")
 
@@ -367,3 +366,43 @@ def substitute_create_execute(query: CTASQuery) -> exp.Expr:
         exec_prop.pop()
 
     return expression
+
+
+def substitute_session_variables(
+    stmt: exp.Expr,
+    session_variables: dict[str, exp.Expr],
+) -> exp.Expr:
+    """
+    Replaces $var Parameter nodes with their stored session variable values,
+    and resolves IDENTIFIER($var) DynamicIdentifier nodes to concrete identifiers.
+    """
+    # 1. Walk and replace exp.Parameter nodes
+    for node in stmt.walk():
+        if isinstance(node, exp.Parameter):
+            var_name = node.this.name.upper()
+            if var_name in session_variables:
+                logger.debug(f"Substituting session variable: ${var_name}")
+                node.replace(session_variables[var_name].copy())
+
+    # 2. Resolve any remaining DynamicIdentifier nodes that wrap a resolved Literal
+    #    (e.g. IDENTIFIER('my_table') or IDENTIFIER($var) after step 1)
+    #    Use transform to handle replacements more robustly during traversal
+    def _transform_dynamic_identifiers(node):
+        if isinstance(node, exp.DynamicIdentifier):
+            inner = node.this
+            if isinstance(inner, exp.Literal) and inner.is_string:
+                resolved_name = inner.this
+
+                if isinstance(node.parent, exp.Table):
+                    # FROM IDENTIFIER($b) → FROM my_table
+                    # Here we modify the parent Table node's 'this' arg
+                    node.parent.set("this", exp.to_identifier(resolved_name.upper()))
+                    return node # It's already disconnected or about to be ignored
+                else:
+                    # SELECT IDENTIFIER($col) → SELECT col_name
+                    return exp.column(resolved_name.upper())
+        return node
+
+    stmt.transform(_transform_dynamic_identifiers, copy=False)
+
+    return stmt

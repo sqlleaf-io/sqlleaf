@@ -194,6 +194,10 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         # Convert the statement to uppercase if the dialect supports it
         stmt = normalize_identifiers(stmt, dialect=dialect, store_original_column_identifiers=True)
 
+        # Substitute any Snowflake session variables ($var) in non-SET statements
+        if kind != "set" and object_mapping.session_variables:
+            stmt = substitute.substitute_session_variables(stmt, object_mapping.session_variables)
+
         query: t.Optional[Q] = _QUERY_PROCESSORS[kind](
             statement=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=index
         )
