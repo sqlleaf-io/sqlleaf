@@ -10,15 +10,11 @@ from sqlleaf.models.query import (
     CopyQuery,
     CTASQuery,
     InsertQuery,
-    MultitableInsertQuery,
-    ProcedureQuery,
     PutQuery,
     Q,
-    QueryHolder,
     TableQuery,
     UnloadQuery,
     UpdateQuery,
-    UserDefinedFunctionQuery,
     ViewQuery,
 )
 from sqlleaf.path import LineagePath
@@ -53,34 +49,20 @@ class Lineage:
         for parent_holder in self.collected_queries.queries:
             # A parent holder wraps a top-level query, possibly containing downstream holders
             graph = new_graph()
-
-            for holder in parent_holder.get_all_holders():
-                if should_process_holder(holder):
-                    transformer.transform_query(holder)
-
-             # TODO: remove?
             all_holders = parent_holder.get_all_holders()
 
-            if not all_holders:
-                continue
-
-            # Phase 3: Generate lineage only for qualifying holders
             for holder in all_holders:
-                # MultitableInsertQuery should not have lineage generated for it directly
-                # as it is not a SELECT-based query. Its children (InsertQuery) will
-                # have lineage generated instead.
-                if isinstance(holder.original, MultitableInsertQuery):
-                    continue
+                transformer.transform_query(holder)
 
+            for holder in all_holders:
                 # Transform and produce lineage only for certain queries
-                if query_has_lineage(holder.original) and should_process_holder(holder):
+                if query_has_lineage(holder.original):
                     generator.generate_lineage_for_query(holder, graph)
 
             # Associate the query with the graph even if it has no lineage
             graph.graph["attrs"].add_query_to_graph(parent_holder)
             self.merge_graph(graph)
             self.graph.graph["attrs"].add_query_to_graph(parent_holder)
-            # types.update_column_data_types(self.graph)
             logger.debug("---")
 
     def merge_graph(self, subgraph: nx.MultiDiGraph):
@@ -274,7 +256,6 @@ QUERIES_WITH_LINEAGE = (
     CTASQuery,
     CopyQuery,
     InsertQuery,
-    MultitableInsertQuery,
     PutQuery,
     TableQuery,
     UnloadQuery,
@@ -313,23 +294,3 @@ def query_has_lineage(query: Q) -> bool:
     if not has_lineage:
         logger.debug(f"Query type '{query.__class__.__name__}' does NOT have lineage. Skipping.")
     return has_lineage
-
-
-def should_process_holder(holder: QueryHolder) -> bool:
-    """
-    Check if a query holder should be processed (transformed or lineage generated).
-
-    Template queries (descendants of a UDF or Procedure definition) should not be
-    transformed or have lineage generated independently; they only contribute to
-    lineage when they are substituted into an invoking statement.
-    """
-    if isinstance(holder.original, (UserDefinedFunctionQuery, ProcedureQuery)):
-        return False
-
-    curr = holder.parent_holder
-    while curr:
-        if isinstance(curr.original, (UserDefinedFunctionQuery, ProcedureQuery)):
-            return False
-        curr = curr.parent_holder
-
-    return True
