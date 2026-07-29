@@ -34,6 +34,7 @@ class ObjectMapping(MappingSchema):
         )  # Set `normalize=False` to prevent an unnecessary second parse.
         self.kind_mapping = {}
         self.kind_mapping_trie = {}
+        self.session_variables: dict[str, exp.Expr] = {}
 
     def add_database_query(self, query: DatabaseQuery) -> None:
         self._add_query(kind="database", query=query, dialect=query.dialect)

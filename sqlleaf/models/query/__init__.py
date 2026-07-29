@@ -18,6 +18,7 @@ from sqlleaf.models.query.replace import ReplaceQuery as ReplaceQuery
 from sqlleaf.models.query.schema import SchemaQuery as SchemaQuery
 from sqlleaf.models.query.select import SelectQuery as SelectQuery
 from sqlleaf.models.query.sequence import SequenceQuery as SequenceQuery
+from sqlleaf.models.query.set import SetQuery as SetQuery
 from sqlleaf.models.query.stage import StageQuery as StageQuery
 from sqlleaf.models.query.table import TableQuery as TableQuery
 from sqlleaf.models.query.trigger import TriggerQuery as TriggerQuery

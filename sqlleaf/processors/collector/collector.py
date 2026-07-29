@@ -31,6 +31,7 @@ from sqlleaf.models.query import (
     SchemaQuery,
     SelectQuery,
     SequenceQuery,
+    SetQuery,
     StageQuery,
     TableQuery,
     TriggerQuery,
@@ -669,6 +670,7 @@ _UNNAMED_TYPE_MAP: dict[type, type] = {
     exp.Copy:              CopyQuery,
     exp.Values:            ValuesQuery,
     exp.Put:               PutQuery,
+    exp.Set:               SetQuery,
 }
 
 
@@ -981,6 +983,7 @@ _QUERY_PROCESSORS: dict[str, t.Callable] = {
     "call": _process_unnamed,
     "copy": _process_unnamed,
     "put": _process_unnamed,
+    "set": _process_unnamed,
     "values": _process_unnamed,
     "type": _process_type,
 }

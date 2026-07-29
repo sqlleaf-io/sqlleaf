@@ -349,6 +349,9 @@ CREATE FUNCTION
 
 COPY INTO
 
+SET
+- [x] Single variables
+
 
 ### Athena
 [ ] External connectors
