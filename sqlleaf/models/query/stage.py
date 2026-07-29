@@ -12,14 +12,14 @@ from sqlleaf.typing import SourceInfo, TargetInfo
 
 @dataclass(frozen=True)
 class StageQueryParameters:
-    property: str
     path: str
+    is_temporary: bool
 
     @classmethod
     def from_expression(
         cls, expr: exp.Create, source_info: SourceInfo, target_info: TargetInfo, dialect: str
     ) -> StageQueryParameters:
-        property = util.find_property(expr, target_info.expression, dialect)
+        is_temporary = expr.find(exp.TemporaryProperty) is not None
 
         path = ""
         # Get the URL
@@ -28,7 +28,7 @@ class StageQueryParameters:
                 if isinstance(prop, exp.Property) and prop.name.upper() == "URL":
                     path = prop.args["value"].this
                     break
-        return cls(property=property, path=path)
+        return cls(is_temporary=is_temporary, path=path)
 
 
 class StageQuery(Query):
@@ -68,3 +68,11 @@ class StageQuery(Query):
     @property
     def path(self) -> str:
         return self.properties.path
+
+    @property
+    def name(self) -> str:
+        return self.target_info.expression.name
+
+    @property
+    def is_temporary(self) -> bool:
+        return self.properties.is_temporary
