@@ -334,7 +334,10 @@ def test__udf_insert_returning(holder):
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after) == insert_after
 
-    assert h.paths == [["column[people.age]", "column[target.age]"]]
+    assert h.paths == [
+        ["literal[5]", "column[people.age]", "column[target.age]"],
+        ["literal[2]", "column[people.age]", "column[target.age]"],
+    ]
 
 
 def test__udf_delete_returning_positional(holder):
