@@ -291,7 +291,7 @@ def build_replacement_exprs(node: exp.Anonymous, query: UserDefinedFunctionQuery
 
     replacement_exprs = []
     # Collect all child queries from the holder
-    for child in query.holder.child_holders:
+    for child in query.holder.downstream_holders:
         stmt = child.original.statement
 
         if isinstance(stmt, (exp.Insert, exp.Update)) and not stmt.args.get("returning"):

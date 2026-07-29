@@ -330,7 +330,7 @@ def test__cte_update_returning_with_old_and_new_aliases(holder):
         ['literal["pear"]', "column[fruit.raw.name]"],
     ]
     assert [UpdateQuery] == h.query_types
-    assert [UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
     assert len(h.nodes) == 5
     assert len(h.edges) == 3
 
@@ -426,7 +426,7 @@ def test__cte_two_updates_inside_update(holder):
         ['literal["tomato"]', "column[fruit.raw.name]"],
     ]
     assert [UpdateQuery] == h.query_types
-    assert [UpdateQuery, UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [UpdateQuery, UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
     assert len(h.nodes) == 6
     assert len(h.edges) == 4
 
@@ -447,7 +447,7 @@ def test__cte_delete_inside_insert(holder):
         ["column[fruit.raw.name]", "column[cte.name]", "column[fruit.processed.name]"],
     ]
     assert [InsertQuery] == h.query_types
-    assert [DeleteQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [DeleteQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
     assert len(h.nodes) == 3
     assert len(h.edges) == 2
 
@@ -469,7 +469,7 @@ def test__cte_insert_inside_delete(holder):
         ['literal["hello"]', "column[fruit.raw.name]"],
     ]
     assert [DeleteQuery] == h.query_types
-    assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
 
@@ -488,7 +488,7 @@ def test__cte_delete_inside_delete(holder):
 
     assert h.paths == []
     assert [DeleteQuery] == h.query_types
-    assert [DeleteQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [DeleteQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
     assert len(h.nodes) == 0
     assert len(h.edges) == 0
 
@@ -514,9 +514,9 @@ def test__cte_merge_inside_select(holder):
         ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
     ]
     assert [SelectQuery] == h.query_types
-    assert [MergeQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [MergeQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
     assert [UpdateQuery, InsertQuery] == list(
-        map(type, [ch.original for ch in h.holders[0].child_holders[0].child_holders])
+        map(type, [ch.original for ch in h.holders[0].downstream_holders[0].downstream_holders])
     )
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
@@ -586,7 +586,7 @@ def test__cte_merge_with_update_and_insert(holder):
     ]
     assert len(h.nodes) == 6
     assert len(h.queries_original) == 1
-    assert [UpdateQuery, InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [UpdateQuery, InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
 
 
 def test__cte_insert_inside_insert(holder):
@@ -606,7 +606,7 @@ def test__cte_insert_inside_insert(holder):
         ['literal["orange"]', "column[fruit.raw.name]", "column[insert_cte.name]", "column[fruit.processed.name]"],
     ]
     assert [InsertQuery] == h.query_types
-    assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
     assert len(h.nodes) == 7
     assert len(h.edges) == 5
 
@@ -659,7 +659,7 @@ def test__cte_insert_and_update_inside_select(holder):
 
     assert h.paths == [['literal["orange"]', "column[fruit.raw.name]"], ['literal["banana"]', "column[fruit.raw.name]"]]
     assert [SelectQuery] == h.query_types
-    assert [InsertQuery, UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [InsertQuery, UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
     assert len(h.nodes) == 3
     assert len(h.edges) == 2
 

@@ -131,7 +131,7 @@ def test__ctas_with_execute(holder):
     assert query.target_info.type == SqlObjectType.TABLE
 
     # Substituted
-    query: CTASQuery = h.holders[1].child_holders[0].original
+    query: CTASQuery = h.holders[1].downstream_holders[0].original
     # assert query.source_info.type == SqlObjectType.SELECT # TODO: bug - should be recalculated as PREPARED_STATEMENT
     assert query.target_info.type == SqlObjectType.TABLE
     expected_query = "CREATE TABLE fruit.cooked AS SELECT raw.name AS name, raw.kind AS kind FROM fruit.raw AS raw"

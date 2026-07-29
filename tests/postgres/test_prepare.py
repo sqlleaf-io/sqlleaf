@@ -65,7 +65,7 @@ def test__execute(holder):
     assert execute_query.source_info is None
     assert execute_query.target_info.type == SqlObjectType.PREPARED_STATEMENT
 
-    insert_query: InsertQuery = execute_query.holder.child_holders[0].transformed
+    insert_query: InsertQuery = execute_query.holder.downstream_holders[0].transformed
     assert insert_query.statement.sql(dialect=DIALECT) == "INSERT INTO target (name, amount) SELECT source.name AS name, source.amount AS amount FROM source AS source"
     assert insert_query.source_info.type == SqlObjectType.SELECT
     assert insert_query.target_info.type == SqlObjectType.TABLE

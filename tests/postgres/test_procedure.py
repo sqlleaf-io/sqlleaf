@@ -42,12 +42,12 @@ def test_call_procedure_multi(holder):
     assert call_query.procedure == "hello"
     assert call_query.args == []
 
-    child_holders = h.holders[2].child_holders
-    assert len(child_holders) == 2
+    downstream_holders = h.holders[2].downstream_holders
+    assert len(downstream_holders) == 2
     # first inner statement: VALUES (5)
     # second inner statement: INSERT INTO target ...
-    assert isinstance(child_holders[1].original, InsertQuery)
-    assert child_holders[1].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
+    assert isinstance(downstream_holders[1].original, InsertQuery)
+    assert downstream_holders[1].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
 
     assert h.paths == [['literal["world"]', "column[target.name]"]]
     assert h.nodes_full == [
@@ -103,10 +103,10 @@ def test_call_procedure(holder):
     assert call_query.procedure == "hello"
     assert call_query.args == []
 
-    child_holders = h.holders[2].child_holders
-    assert len(child_holders) == 1
-    assert isinstance(child_holders[0].original, InsertQuery)
-    assert child_holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
+    downstream_holders = h.holders[2].downstream_holders
+    assert len(downstream_holders) == 1
+    assert isinstance(downstream_holders[0].original, InsertQuery)
+    assert downstream_holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
 
     assert h.paths == [['literal["world"]', "column[target.name]"]]
     assert h.nodes_full == [
@@ -143,10 +143,10 @@ def test_call_schema_procedure(holder):
     assert call_query.name == "my_schema.hello"
     assert call_query.args == []
 
-    child_holders = h.holders[2].child_holders
-    assert len(child_holders) == 1
-    assert isinstance(child_holders[0].original, InsertQuery)
-    assert child_holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
+    downstream_holders = h.holders[2].downstream_holders
+    assert len(downstream_holders) == 1
+    assert isinstance(downstream_holders[0].original, InsertQuery)
+    assert downstream_holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
 
     assert h.paths == [['literal["world"]', "column[target.name]"]]
     assert h.nodes_full == [
@@ -181,9 +181,9 @@ def test_call_procedure_with_params(holder):
     assert call_query.procedure == "hello"
     assert len(call_query.args) == 1
 
-    child_holder = h.holders[2].child_holders[0]
-    assert isinstance(child_holder.original, InsertQuery)
-    assert child_holder.transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
+    downstream_holder = h.holders[2].downstream_holders[0]
+    assert isinstance(downstream_holder.original, InsertQuery)
+    assert downstream_holder.transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
 
 
 def test_call_procedure_positional_param(holder):
@@ -211,9 +211,9 @@ def test_call_procedure_positional_param(holder):
     assert call_query.procedure == "hello"
     assert len(call_query.args) == 1
 
-    child_holder = h.holders[2].child_holders[0]
-    assert isinstance(child_holder.original, InsertQuery)
-    assert child_holder.transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
+    downstream_holder = h.holders[2].downstream_holders[0]
+    assert isinstance(downstream_holder.original, InsertQuery)
+    assert downstream_holder.transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
 
 
 def test_call_procedure_default_value(holder):
@@ -242,9 +242,9 @@ def test_call_procedure_default_value(holder):
     assert call_query.procedure == "hello"
     assert call_query.args == []
 
-    child_holder = h.holders[2].child_holders[0]
-    assert isinstance(child_holder.original, InsertQuery)
-    assert child_holder.transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
+    downstream_holder = h.holders[2].downstream_holders[0]
+    assert isinstance(downstream_holder.original, InsertQuery)
+    assert downstream_holder.transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
 
 
 def test_procedure_begin_atomic(holder):
@@ -306,9 +306,9 @@ def test_call_procedure_positional_notation(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert len(h.holders) == 3
-    child_holder = h.holders[2].child_holders[0]
-    assert isinstance(child_holder.original, InsertQuery)
-    assert child_holder.transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (a, b) SELECT 10 AS a, 20 AS b"
+    downstream_holder = h.holders[2].downstream_holders[0]
+    assert isinstance(downstream_holder.original, InsertQuery)
+    assert downstream_holder.transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (a, b) SELECT 10 AS a, 20 AS b"
 
 
 def test_call_procedure_mixed_notation(holder):
@@ -324,9 +324,9 @@ def test_call_procedure_mixed_notation(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert len(h.holders) == 3
-    child_holder = h.holders[2].child_holders[0]
-    assert isinstance(child_holder.original, InsertQuery)
-    assert child_holder.transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (a, b) SELECT 10 AS a, 20 AS b"
+    downstream_holder = h.holders[2].downstream_holders[0]
+    assert isinstance(downstream_holder.original, InsertQuery)
+    assert downstream_holder.transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (a, b) SELECT 10 AS a, 20 AS b"
 
 
 def test_call_procedure_in_out_params(holder):
@@ -354,8 +354,8 @@ def test_call_procedure_in_out_params(holder):
     assert isinstance(call_query, CallQuery)
     assert len(call_query.args) == 2
 
-    child_holder = h.holders[1].child_holders[0]
-    assert child_holder.transformed.statement.sql(dialect=DIALECT) == 'SELECT 10 AS "10"'
+    downstream_holder = h.holders[1].downstream_holders[0]
+    assert downstream_holder.transformed.statement.sql(dialect=DIALECT) == 'SELECT 10 AS "10"'
 
 #
 # TODO: test chained procs

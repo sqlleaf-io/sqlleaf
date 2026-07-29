@@ -72,7 +72,7 @@ def transform_query(
     1. Transform the original query's AST (DML flattening, qualification, etc.).
     2. If the original query contains UDF call sites, replace each call with an
        inline subquery built from the output columns of the last transformed
-       child holder for that call — producing `holder.transformed`.
+       downstream holder for that call — producing `holder.transformed`.
     """
     transformed_query = _transform_query_instance(holder.original)
     holder.set_transformed_query(transformed_query)

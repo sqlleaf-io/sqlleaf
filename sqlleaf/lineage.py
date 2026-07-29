@@ -51,7 +51,7 @@ class Lineage:
         self.collected_queries = collector.collect_queries(sql, dialect, object_mapping)
 
         for parent_holder in self.collected_queries.queries:
-            # A parent holder wraps a top-level query, possibly containing child holders
+            # A parent holder wraps a top-level query, possibly containing downstream holders
             graph = new_graph()
 
             # Phase 2: Transformer — transformation only (substitution done at collection time)

@@ -242,7 +242,7 @@ def _collect_writable_cte_queries(
     parent_query: Q, parent_holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping
 ):
     """
-    Collect any writable (DML) CTEs and attach them as child holders to the parent query.
+    Collect any writable (DML) CTEs and attach them as downstream holders to the parent query.
 
     If this query is of the form:
         WITH cte AS (
@@ -268,9 +268,9 @@ def _collect_writable_cte_queries(
             continue
 
         # Detach the query in the AST so that certain transformations work later
-        child_holder = QueryHolder(original=query)
-        parent_holder.add_child_holder(child_holder)
-        _collect_query_children(query, child_holder, dialect, object_mapping)
+        downstream_holder = QueryHolder(original=query)
+        parent_holder.add_downstream_holder(downstream_holder)
+        _collect_query_children(query, downstream_holder, dialect, object_mapping)
 
 
 def _collect_call_substitutions(
@@ -282,7 +282,7 @@ def _collect_call_substitutions(
     """
     Performs argument substitution for CallQuery, ExecuteQuery, CTASQuery (EXECUTE AS),
     and any query containing UDF call sites.
-    The resulting inner statements are classified as Queries and attached as child holders.
+    The resulting inner statements are classified as Queries and attached as downstream holders.
     """
     from sqlleaf.processors.transformer import udf
     from sqlleaf import typing
@@ -323,10 +323,10 @@ def _collect_call_substitutions(
             statement_index=composite_index,
         )
         if substituted_query:
-            child_holder = QueryHolder(original=substituted_query)
-            holder.add_child_holder(child_holder)
+            downstream_holder = QueryHolder(original=substituted_query)
+            holder.add_downstream_holder(downstream_holder)
             # Recurse: the substituted child may itself contain calls/UDFs
-            _collect_query_children(substituted_query, child_holder, dialect, object_mapping)
+            _collect_query_children(substituted_query, downstream_holder, dialect, object_mapping)
 
 
 def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping):
@@ -373,9 +373,9 @@ def _collect_udf_children(
             child_query = SelectQuery(expr=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=i)
 
         if child_query:
-            child_holder = QueryHolder(original=child_query)
-            parent_holder.add_child_holder(child_holder)
-            _collect_query_children(child_query, child_holder, dialect, object_mapping)
+            downstream_holder = QueryHolder(original=child_query)
+            parent_holder.add_downstream_holder(downstream_holder)
+            _collect_query_children(child_query, downstream_holder, dialect, object_mapping)
 
 
 def _collect_insert_children(query: InsertQuery, parent_holder: QueryHolder, object_mapping: mappings.ObjectMapping):
@@ -397,8 +397,8 @@ def _collect_insert_children(query: InsertQuery, parent_holder: QueryHolder, obj
         statement_index=0,
         table=query.get_target_as_table(),
     )
-    child_holder = QueryHolder(original=update_query)
-    parent_holder.add_child_holder(child_holder)
+    downstream_holder = QueryHolder(original=update_query)
+    parent_holder.add_downstream_holder(downstream_holder)
 
 
 def _collect_merge_children(
@@ -446,8 +446,8 @@ def _collect_merge_children(
                 statement_index=i,
                 table=merge.get_target_as_table(),
             )
-            child_holder = QueryHolder(original=update_query)
-            parent_holder.add_child_holder(child_holder)
+            downstream_holder = QueryHolder(original=update_query)
+            parent_holder.add_downstream_holder(downstream_holder)
 
         elif isinstance(when_expr, exp.Insert):
             insert_query = InsertQuery(
@@ -458,8 +458,8 @@ def _collect_merge_children(
                 table=merge.get_target_as_table(),
             )
             insert_query.target_info = merge.target_info
-            child_holder = QueryHolder(original=insert_query)
-            parent_holder.add_child_holder(child_holder)
+            downstream_holder = QueryHolder(original=insert_query)
+            parent_holder.add_downstream_holder(downstream_holder)
 
 
 def _collect_multitable_insert_children(
@@ -490,8 +490,8 @@ def _collect_multitable_insert_children(
             object_mapping=object_mapping,
             statement_index=i,
         )
-        child_holder = QueryHolder(original=child_query)
-        parent_holder.add_child_holder(child_holder)
+        downstream_holder = QueryHolder(original=child_query)
+        parent_holder.add_downstream_holder(downstream_holder)
 
 
 def _set_column_defs(query: TableQuery):

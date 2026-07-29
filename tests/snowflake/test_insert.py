@@ -26,14 +26,14 @@ def test__multitable_insert_all(holder):
         ["column[FRUIT.SOURCE.V1]", "column[FRUIT.TARGET1.C1]"],
         ["column[FRUIT.SOURCE.V2]", "column[FRUIT.TARGET2.C2]"],
     ]
-    child_holders = h.holders[3].child_holders
-    assert [InsertQuery, InsertQuery] == list(map(type, [ch.original for ch in child_holders]))
+    downstream_holders = h.holders[3].downstream_holders
+    assert [InsertQuery, InsertQuery] == list(map(type, [ch.original for ch in downstream_holders]))
     assert (
-        child_holders[0].transformed.statement.sql(dialect=DIALECT)
+        downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO FRUIT.TARGET1 (C1) SELECT SOURCE.V1 AS C1 FROM FRUIT.SOURCE AS SOURCE"
     )
     assert (
-        child_holders[1].transformed.statement.sql(dialect=DIALECT)
+        downstream_holders[1].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO FRUIT.TARGET2 (C2) SELECT SOURCE.V2 AS C2 FROM FRUIT.SOURCE AS SOURCE"
     )
 
@@ -57,14 +57,14 @@ def test__multitable_insert_first_reversed(holder):
         ["column[FRUIT.SOURCE.V2]", "column[FRUIT.TARGET1.C1]"],
         ["column[FRUIT.SOURCE.V1]", "column[FRUIT.TARGET2.C2]"],
     ]
-    child_holders = h.holders[3].child_holders
-    assert [InsertQuery, InsertQuery] == list(map(type, [ch.original for ch in child_holders]))
+    downstream_holders = h.holders[3].downstream_holders
+    assert [InsertQuery, InsertQuery] == list(map(type, [ch.original for ch in downstream_holders]))
     assert (
-        child_holders[0].transformed.statement.sql(dialect=DIALECT)
+        downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO FRUIT.TARGET1 (C1) SELECT SOURCE.V2 AS C1 FROM FRUIT.SOURCE AS SOURCE"
     )
     assert (
-        child_holders[1].transformed.statement.sql(dialect=DIALECT)
+        downstream_holders[1].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO FRUIT.TARGET2 (C2) SELECT SOURCE.V1 AS C2 FROM FRUIT.SOURCE AS SOURCE"
     )
 
@@ -94,24 +94,24 @@ def test__multitable_insert_all_else(holder):
         ["column[FRUIT.SOURCE.V1]", "column[FRUIT.TARGET2.C2]"],
         ["column[FRUIT.SOURCE.V1]", "column[FRUIT.TARGET3.C3]"],
     ]
-    child_holders = h.holders[4].child_holders
+    downstream_holders = h.holders[4].downstream_holders
     assert [InsertQuery, InsertQuery, InsertQuery, InsertQuery] == list(
-        map(type, [ch.original for ch in child_holders])
+        map(type, [ch.original for ch in downstream_holders])
     )
 
     assert (
-        child_holders[0].transformed.statement.sql(dialect=DIALECT)
+        downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO FRUIT.TARGET1 (C1) SELECT SOURCE.V1 AS C1 FROM FRUIT.SOURCE AS SOURCE"
     )
     assert (
-        child_holders[1].transformed.statement.sql(dialect=DIALECT)
+        downstream_holders[1].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO FRUIT.TARGET1 (C1) SELECT SOURCE.V1 AS C1 FROM FRUIT.SOURCE AS SOURCE"
     )
     assert (
-        child_holders[2].transformed.statement.sql(dialect=DIALECT)
+        downstream_holders[2].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO FRUIT.TARGET2 (C2) SELECT SOURCE.V1 AS C2 FROM FRUIT.SOURCE AS SOURCE"
     )
     assert (
-        child_holders[3].transformed.statement.sql(dialect=DIALECT)
+        downstream_holders[3].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO FRUIT.TARGET3 (C3) SELECT SOURCE.V1 AS C3 FROM FRUIT.SOURCE AS SOURCE"
     )

@@ -25,9 +25,9 @@ def test__merge_only_update(holder):
     ]
     assert len(h.nodes) == 2
     assert len(h.queries_original) == 1
-    assert [UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
     assert (
-        h.holders[0].child_holders[0].transformed.statement.sql(dialect=DIALECT)
+        h.holders[0].downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO fruit.processed AS t (name) SELECT s.name AS name FROM fruit.raw AS s"
     )
 
@@ -47,9 +47,9 @@ def test__merge_only_insert(holder):
     ]
     assert len(h.nodes) == 2
     assert len(h.queries_original) == 1
-    assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
     assert (
-        h.holders[0].child_holders[0].transformed.statement.sql(dialect=DIALECT)
+        h.holders[0].downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO fruit.processed AS t (label) SELECT s.kind AS label FROM fruit.raw AS s"
     )
 
@@ -69,9 +69,9 @@ def test__merge_with_function(holder):
     ]
     assert len(h.nodes) == 3
     assert len(h.queries_original) == 1
-    assert [UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
     assert (
-        h.holders[0].child_holders[0].transformed.statement.sql(dialect=DIALECT)
+        h.holders[0].downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO fruit.processed AS t (name) SELECT LOWER(s.name) AS name FROM fruit.raw AS s"
     )
 
@@ -94,13 +94,13 @@ def test__merge_two_identical_insert_clauses(holder):
     ]
     assert len(h.nodes) == 2
     assert len(h.queries_original) == 1
-    assert [InsertQuery, InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [InsertQuery, InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
     assert (
-        h.holders[0].child_holders[0].transformed.statement.sql(dialect=DIALECT)
+        h.holders[0].downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO fruit.processed AS t (label) SELECT s.kind AS label FROM fruit.raw AS s"
     )
     assert (
-        h.holders[0].child_holders[1].transformed.statement.sql(dialect=DIALECT)
+        h.holders[0].downstream_holders[1].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO fruit.processed AS t (label) SELECT s.kind AS label FROM fruit.raw AS s"
     )
 
@@ -124,9 +124,9 @@ def test__merge_with_values_in_insert(holder):
     ]
     assert len(h.nodes) == 4
     assert len(h.queries_original) == 1
-    assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
     assert (
-        h.holders[0].child_holders[0].transformed.statement.sql(dialect=DIALECT)
+        h.holders[0].downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO fruit.processed AS t (label, name) SELECT s.kind AS label, 'apple' AS name FROM fruit.raw AS s"
     )
 
@@ -149,13 +149,13 @@ def test__merge_simple_update_and_insert(holder):
     ]
     assert len(h.nodes) == 4
     assert len(h.queries_original) == 1
-    assert [UpdateQuery, InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].child_holders]))
+    assert [UpdateQuery, InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
     assert (
-        h.holders[0].child_holders[0].transformed.statement.sql(dialect=DIALECT)
+        h.holders[0].downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO fruit.processed AS t (name) SELECT s.name AS name FROM fruit.raw AS s"
     )
     assert (
-        h.holders[0].child_holders[1].transformed.statement.sql(dialect=DIALECT)
+        h.holders[0].downstream_holders[1].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO fruit.processed AS t (label) SELECT s.kind AS label FROM fruit.raw AS s"
     )
 

@@ -12,25 +12,25 @@ class QueryHolder:
     A container that holds up to three versions of the same SQL statement
     as three distinct Query instances.
 
-    - original:      The parsed, unmodified Query.
-    - transformed:   The Query after transformer.py has processed it.
-    - child_holders: The containers for downstream queries. Used both for structural
-                     children (MERGE branches, INSERT ON CONFLICT, UDF bodies) and for
-                     call-site substituted queries (CallQuery, ExecuteQuery, UDF call sites).
-                     Populated entirely during the Collector phase.
+    - original:           The parsed, unmodified Query.
+    - transformed:        The Query after transformer.py has processed it.
+    - downstream_holders: The containers for downstream queries. Used both for structural
+                          children (MERGE branches, INSERT ON CONFLICT, UDF bodies) and for
+                          call-site substituted queries (CallQuery, ExecuteQuery, UDF call sites).
+                          Populated entirely during the Collector phase.
     """
 
     def __init__(self, original: Query):
         self.original: Query = original
         self.transformed: Query | None = None
-        self.child_holders: t.List[QueryHolder] = []
+        self.downstream_holders: t.List[QueryHolder] = []
         self.parent_holder: QueryHolder | None = None
 
         self.original.set_holder(self)
 
-    def add_child_holder(self, child_holder: QueryHolder) -> None:
-        child_holder.parent_holder = self
-        self.child_holders.append(child_holder)
+    def add_downstream_holder(self, holder: QueryHolder) -> None:
+        holder.parent_holder = self
+        self.downstream_holders.append(holder)
 
     def get_all_holders(self, types: t.Tuple | None = None) -> t.List[QueryHolder]:
         """
@@ -38,7 +38,7 @@ class QueryHolder:
         Optionally filter by the type of their `original` query.
         """
         holders = [self]
-        for child in self.child_holders:
+        for child in self.downstream_holders:
             holders.extend(child.get_all_holders(types))
         if types:
             holders = [h for h in holders if isinstance(h.original, types)]
