@@ -93,7 +93,7 @@ class Lineage:
         edges = [data["attrs"] for par, chi, data in self.graph.edges(data=True)]
         edges = sorted(edges, key=lambda e: (e.parent.full_name, e.child.full_name))
         for edge in edges:
-            logger.debug(f"Edge: {edge.parent.friendly_name} -> {edge.child.friendly_name}")
+            logger.debug(f"Found edge: {edge.parent.friendly_name} -> {edge.child.friendly_name}")
         return edges
 
     def get_nodes(self) -> t.List[N]:

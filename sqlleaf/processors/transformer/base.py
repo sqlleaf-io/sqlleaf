@@ -5,7 +5,6 @@ import typing as t
 import sqlglot
 from sqlglot import exp
 from sqlglot.optimizer import RULES, optimize, qualify
-from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, util
@@ -48,6 +47,7 @@ class BaseQueryTransformer:
         Run a set of transformations over every statement
         BEFORE the type-specific transformations.
         """
+        statement = self._expand_to_query(statement)
         statement = self._convert_table_to_select(statement)
 
         # Remove any FILTER clauses (not used for lineage)
@@ -69,6 +69,43 @@ class BaseQueryTransformer:
         statement = self._apply_udf_substitutions(statement)
         statement = self._add_aliases_to_udfs(statement)
         statement = self._apply_optimizations(statement)
+        return statement
+
+    def _expand_to_query(self, statement: E) -> E:
+        """
+        Expand Snowflake TABLE(TO_QUERY(SQL => '...')) into an inline subquery.
+
+        Transforms:
+            SELECT * FROM TABLE(TO_QUERY(SQL => 'SELECT * FROM source'))
+        Into:
+            SELECT * FROM (SELECT * FROM source)
+        """
+        if self.query.dialect == "snowflake":
+            for table_from_rows in statement.find_all(exp.TableFromRows):
+                anon = table_from_rows.this
+                if not (isinstance(anon, exp.Anonymous) and anon.name.upper() == "TO_QUERY"):
+                    continue
+
+                # Extract the SQL string - named arg (SQL => '...') or positional first arg
+                sql_str = None
+                for arg in anon.expressions:
+                    if isinstance(arg, exp.Kwarg) and arg.this.name.upper() == "SQL":
+                        sql_str = arg.expression.this  # Literal.this gives the string value
+                        break
+                    if isinstance(arg, exp.Literal) and arg.is_string:
+                        sql_str = arg.this
+                        break
+
+                if sql_str is None:
+                    continue
+
+                # Parse the extracted SQL string
+                inner_query = sqlglot.parse_one(sql_str, dialect=self.query.dialect)
+
+                # Wrap as subquery and replace the TableFromRows
+                subquery = inner_query.subquery()
+                table_from_rows.replace(subquery)
+
         return statement
 
     def _apply_udf_substitutions(self, statement: E) -> E:
@@ -161,10 +198,11 @@ class BaseQueryTransformer:
         """
         Convert the statement "TABLE x" to "SELECT * FROM x"
         """
-        source = statement.args.get("source", None)
-        if source:
-            table = source.pop()
-            statement.set("expression", exp.select("*").from_(table))
+        if self.query.dialect in ["mysql", "postgres"]:
+            source = statement.args.get("source", None)
+            if source:
+                table = source.pop()
+                statement.set("expression", exp.select("*").from_(table))
         return statement
 
     def _add_aliases_to_udfs(self, statement: E) -> E:
