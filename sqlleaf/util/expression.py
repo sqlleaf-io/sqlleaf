@@ -204,3 +204,10 @@ def convert_values_to_select(
 
     # Wrap the query in a subquery if it's not a top-level statement
     return return_expr.subquery() if expression.parent_select else return_expr
+
+
+def is_row_function(expr: exp.Expr) -> bool:
+    """
+    Returns True if the given expression is the ROW() function.
+    """
+    return isinstance(expr, exp.Anonymous) and expr.this.upper() == "ROW"

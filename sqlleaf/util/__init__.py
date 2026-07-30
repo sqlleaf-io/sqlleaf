@@ -9,6 +9,7 @@ from sqlleaf.util.expression import (
     get_selected_column_names,
     get_table,
     get_udf_name,
+    is_row_function,
     rename_if_stage,
     str_to_column_def,
     unwrap_expression,

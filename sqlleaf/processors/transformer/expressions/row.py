@@ -3,6 +3,7 @@ import typing as t
 
 from sqlglot import exp
 
+from sqlleaf import util
 from sqlleaf.exception import SqlLeafException
 from sqlleaf.models.query import Query, UserDefinedFunctionQuery
 
@@ -20,7 +21,7 @@ def simplify_row_in_values(values_expr: exp.Values, dialect: str) -> None:
         for tuple_node in values_expr.expressions:
             if isinstance(tuple_node, exp.Tuple) and len(tuple_node.expressions) == 1:
                 inner = tuple_node.expressions[0]
-                if isinstance(inner, exp.Anonymous) and inner.this.upper() == "ROW":
+                if util.is_row_function(inner):
                     tuple_node.set("expressions", [e.copy() for e in inner.expressions])
 
 
@@ -305,8 +306,7 @@ def _is_row_cast(node: exp.Expr) -> bool:
     """
     return (
         isinstance(node, exp.Cast)
-        and isinstance(node.this, exp.Anonymous)
-        and node.this.name.upper() == "ROW"
+        and util.is_row_function(node.this)
         and node.to.this == exp.DataType.Type.USERDEFINED
     )
 
@@ -378,7 +378,7 @@ def transform_row_function_to_subquery(replacement_expr: exp.Expr, query: UserDe
 
     for cast_node in list(replacement_expr.find_all(exp.Cast)):
         row_expr = cast_node.this
-        if isinstance(row_expr, exp.Anonymous) and row_expr.this.lower() == "row":
+        if util.is_row_function(row_expr):
             # Don't replace if it's being used for field access, as it's likely
             # already been handled or needs to be preserved.
             if not (isinstance(cast_node.parent, exp.Paren) and isinstance(cast_node.parent.parent, exp.Dot)):

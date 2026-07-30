@@ -3,7 +3,7 @@ import typing as t
 
 from sqlglot import exp
 
-from sqlleaf import mappings
+from sqlleaf import mappings, util
 from sqlleaf.exception import SqlLeafException
 from sqlleaf.models.query import FunctionParam, UserDefinedFunctionQuery, CallQuery, ExecuteQuery, CTASQuery
 
@@ -100,8 +100,7 @@ def transform_arguments(
             # If the parameter is a table type and the argument is a ROW expression without a cast,
             # we need to add the cast to the expected type.
             if (
-                isinstance(arg_expr, exp.Anonymous)
-                and arg_expr.this.lower() == "row"
+                util.is_row_function(arg_expr)
                 and (isinstance(param.type, exp.DataType) and param.type.this == exp.DataType.Type.USERDEFINED)
             ):
                 arg_expr = exp.Cast(
