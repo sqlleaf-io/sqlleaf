@@ -282,24 +282,24 @@ class BaseGenerator:
         """
         SELECT 1 + 2 AS age
         """
-        if isinstance(expr, exp.Dot):
-            # Field access (a.b, a.b.c) appears as a chain of exp.Dot nodes.
+        if isinstance(expr, (exp.Dot, exp.Bracket)):
+            # Field/Array access (a.b, a.b.c, a[0], a.b[0]) appears as a chain of exp.Dot/exp.Bracket nodes.
             # Walk back to the left-most object so lineage points at the real source column, not the final field token.
-            logger.debug("Found exp.Dot inside exp.Binary")
+            logger.debug(f"Found {type(expr)} inside exp.Binary")
             base: exp.Expr = expr
-            while isinstance(base, exp.Dot):
+            while isinstance(base, (exp.Dot, exp.Bracket)):
                 base = base.this
 
             if isinstance(base, exp.Column):
                 # If the base is a Column, run it through normal Column handling.
-                logger.debug(f"Dot struct field access: processing base column {base.sql(dialect=self.dialect)}")
+                logger.debug(f"Struct/Array access: processing base column {base.sql(dialect=self.dialect)}")
                 gen_ctx = replace(gen_ctx, expr=base)
                 yield from self.process(base, gen_ctx, pos_ctx)
             else:
                 # If the base isn't a Column (e.g., a schema-qualified routine),
                 # process only the right-hand side so that UDF/qualified-name dispatch still works
-                gen_ctx = replace(gen_ctx, expr=expr.right)
-                yield from self.process(expr.right, gen_ctx, pos_ctx)
+                gen_ctx = replace(gen_ctx, expr=expr.right if isinstance(expr, exp.Binary) else expr.this)
+                yield from self.process(gen_ctx.expr, gen_ctx, pos_ctx)
         else:
             parent = FunctionNode(gen_ctx, pos_ctx)
             yield EdgeToCreate(parent, gen_ctx.child_node)
@@ -407,9 +407,8 @@ class BaseGenerator:
         """
         Array/JSON subscripting: my_arr[0] or data['user']
         """
-        inner = util.unwrap_expression(expr.this)
-        gen_ctx = replace(gen_ctx, expr=inner)
-        yield from self.process(inner, gen_ctx, pos_ctx)
+        # Array access often behaves like a binary expression for lineage purposes (points to a base column)
+        return self.process_binary(expr, gen_ctx, pos_ctx)
 
     @process.register
     def process_subquery(
