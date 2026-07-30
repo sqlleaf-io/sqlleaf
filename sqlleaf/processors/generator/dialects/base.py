@@ -283,10 +283,23 @@ class BaseGenerator:
         SELECT 1 + 2 AS age
         """
         if isinstance(expr, exp.Dot):
-            # Process this as a UDF
+            # Field access (a.b, a.b.c) appears as a chain of exp.Dot nodes.
+            # Walk back to the left-most object so lineage points at the real source column, not the final field token.
             logger.debug("Found exp.Dot inside exp.Binary")
-            gen_ctx = replace(gen_ctx, expr=expr.right)
-            yield from self.process(expr.right, gen_ctx, pos_ctx)
+            base: exp.Expr = expr
+            while isinstance(base, exp.Dot):
+                base = base.this
+
+            if isinstance(base, exp.Column):
+                # If the base is a Column, run it through normal Column handling.
+                logger.debug(f"Dot struct field access: processing base column {base.sql(dialect=self.dialect)}")
+                gen_ctx = replace(gen_ctx, expr=base)
+                yield from self.process(base, gen_ctx, pos_ctx)
+            else:
+                # If the base isn't a Column (e.g., a schema-qualified routine),
+                # process only the right-hand side so that UDF/qualified-name dispatch still works
+                gen_ctx = replace(gen_ctx, expr=expr.right)
+                yield from self.process(expr.right, gen_ctx, pos_ctx)
         else:
             parent = FunctionNode(gen_ctx, pos_ctx)
             yield EdgeToCreate(parent, gen_ctx.child_node)
