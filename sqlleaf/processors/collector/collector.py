@@ -5,13 +5,12 @@ from dataclasses import dataclass, field
 
 import sqlglot
 from sqlglot import TokenType, exp
-from sqlglot.dialects import postgres
 from sqlglot.expressions import ColumnDef
 from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify
 
-from sqlleaf import exception, mappings, util
+from sqlleaf import exception, mappings, util, settings
 from sqlleaf.models.query import (
     CallQuery,
     CopyQuery,
@@ -47,10 +46,6 @@ from sqlleaf.processors.transformer.expressions.row import simplify_row_in_value
 
 logger = logging.getLogger("sqlleaf")
 
-# sqlglot is missing pseudocolumns for Postgres
-PSEUDOCOLUMNS = ["ctid", "xmin", "xmax", "cmin", "cmax", "tableoid", "oid"]
-postgres.Postgres.PSEUDOCOLUMNS = {c.upper() for c in PSEUDOCOLUMNS}
-postgres.Postgres.EXCLUDES_PSEUDOCOLUMNS_FROM_STAR = True
 
 
 """
@@ -528,19 +523,7 @@ def _set_column_defs(query: TableQuery):
             default.this.type = col_def.kind
 
     query.column_defs = all_columns
-    query.system_column_defs = _system_columns(dialect=query.dialect)
-
-
-def _system_columns(dialect: str) -> t.List[exp.ColumnDef]:
-    """
-    Create a set of ColumnDefs representing system columns for a given dialect.
-    """
-    col_defs = []
-    if dialect == "postgres":
-        data_type = exp.DataType.build("OID", dialect="postgres")
-        col_defs = [exp.ColumnDef(this=exp.to_identifier(name), kind=data_type) for name in PSEUDOCOLUMNS]
-
-    return col_defs
+    query.system_column_defs = settings.system_columns(query.dialect)
 
 
 def _collect_inherited_columns(
@@ -798,7 +781,7 @@ def _process_views_and_ctas(
             columns=col_defs,
             statement_index=statement_index,
         )
-        query.system_column_defs = _system_columns(dialect=dialect)
+        query.system_column_defs = settings.system_columns(dialect)
     else:
         raise exception.SqlLeafException(message=f"Unhandled situation for query: {stmt.kind}")
 
