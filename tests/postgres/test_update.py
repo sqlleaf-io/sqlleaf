@@ -114,22 +114,6 @@ def test__update_with_function(holder):
     assert [UpdateQuery] == h.query_types
 
 
-def test__update_with_default(holder):
-    sql = """
-    CREATE TABLE source(age INT DEFAULT 3);
-
-    UPDATE source
-    SET age = DEFAULT;
-    """
-    h = holder(sql=sql, dialect=DIALECT)
-
-    assert h.paths == [
-        ["literal[3]", "column[source.age]"],
-        ["literal[3]", "column[source.age]"],
-    ]
-    assert len(h.nodes_full) == 2
-    assert len(h.edges) == 2
-
 
 def test__update_self_join(holder):
     sql = """

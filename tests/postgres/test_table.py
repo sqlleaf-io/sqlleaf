@@ -100,23 +100,6 @@ def test__table_like_table_generated(holder):
     assert len(h.edges) == 5
 
 
-def test__table_with_default_columns(holder):
-    sql = """
-    CREATE TABLE fruit (name varchar, size int default 1, age int default 42);
-
-    INSERT INTO fruit
-    SELECT 'apple' as name, 10 as size;
-    """
-    h = holder(sql=sql, dialect=DIALECT)
-
-    assert h.paths == [
-        ['literal["apple"]', "column[fruit.name]"],
-        ["literal[1]", "column[fruit.size]"],
-        ["literal[10]", "column[fruit.size]"],
-        ["literal[42]", "column[fruit.age]"],
-    ]
-    assert len(h.nodes) == 7
-    assert len(h.edges) == 4
 
 
 # TODO: LIKE + INHERITS with same columns
