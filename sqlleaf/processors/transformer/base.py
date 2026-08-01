@@ -286,13 +286,52 @@ class BaseQueryTransformer:
 
         return statement
 
+    def _convert_nested_values_in_subqueries(self, statement: E) -> E:
+        """
+        Convert any Subquery nodes that directly wrap a Values expression into
+        a Subquery that wraps a Select/Union built from those values.
+
+        Example:
+        In:  SELECT a FROM (VALUES('x')) v
+        Out: SELECT a FROM (SELECT 'x' AS column1) v
+        """
+        # Handle VALUES nodes that appear under a SELECT (e.g., FROM (VALUES(...)) AS v)
+        for values in statement.find_all(exp.Values):
+            # IMPORTANT: Skip VALUES inside CTEs. Inner CTE handling has its own
+            # conversion path that assigns the correct column names from the CTE
+            # alias list (e.g., WITH cte(a,b) AS (VALUES ...)). If we convert
+            # here, we end up creating a nested SELECT that then requires
+            # projecting _values.columnN AS alias, which is not desired.
+            if values.find_ancestor(exp.CTE) is not None:
+                continue
+
+            # Find an enclosing Subquery like: FROM (VALUES (...)) AS t(...)
+            outer_subquery = values.find_ancestor(exp.Subquery)
+            if outer_subquery is None or outer_subquery.this is not values:
+                # Only handle VALUES that are directly wrapped by a Subquery in FROM
+                continue
+
+            # Build SELECT/UNION from VALUES
+            converted = util.convert_values_to_select(
+                expression=values,
+                dialect=self.query.dialect,
+            )
+
+            # Ensure we replace the subquery's inner expression, preserving
+            # the outer alias and column list. Avoid nesting Subquery(Subquery(...)).
+            if isinstance(converted, exp.Subquery):
+                converted = converted.this  # unwrap
+            outer_subquery.set("this", converted)
+
+        return statement
+
     def _convert_values_to_select(
         self,
         expression: exp.Values,
         statement: E,
     ) -> E:
         """
-        Convert a VALUES(...) clause into a SELECT ... UNION ALL SELECT ... form
+        Convert a `VALUES(...)` clause into a `SELECT ... UNION ALL SELECT ...` form
         and rewrite the parent statement in-place.
         """
         if not isinstance(expression, exp.Values):

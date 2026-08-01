@@ -20,6 +20,10 @@ cases = [
     "INSERT INTO fruit.raw (kind, name) VALUES (UPPER('banana'), 'yellow');",
     "INSERT INTO fruit.raw SELECT 'yellow' as name, UPPER('banana') AS kind;",
     "INSERT INTO fruit.raw SELECT 'yellow', UPPER('banana');",
+    # "INSERT INTO fruit.raw (name, kind) SELECT column1 AS name, column2 AS kind FROM (VALUES('yellow', UPPER('banana'))) v;",
+    "INSERT INTO fruit.raw (VALUES ('yellow', UPPER('banana')));",
+    "INSERT INTO fruit.raw VALUES ('yellow', (VALUES(UPPER('banana'))));",
+
 ]
 
 

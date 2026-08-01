@@ -22,6 +22,7 @@ class InsertTransformer(BaseQueryTransformer):
             if isinstance(stmt_converted, exp.Insert):
                 statement = stmt_converted
 
+        statement = self._convert_nested_values_in_subqueries(statement)
         statement = self._add_information_from_merge(statement)
         statement = self._add_information_from_multitable_insert(statement)
         statement = self._process_inner_ctes(statement)

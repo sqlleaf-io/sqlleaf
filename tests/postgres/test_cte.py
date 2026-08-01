@@ -57,6 +57,27 @@ def test__cte_with_values(holder):
     assert len(h.edges) == 6
 
 
+def test__cte_with_union(holder):
+    sql = """
+    WITH cte (age, name) AS (
+        SELECT 1 AS age, 'apple' AS name
+        UNION
+        SELECT 2 AS age, 'banana' AS name
+    )
+    INSERT INTO fruit.processed (age, name)
+    SELECT * FROM cte;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+    assert h.paths == [
+        ['literal["apple"]', "column[cte.name]", "column[fruit.processed.name]"],
+        ['literal["banana"]', "column[cte.name]", "column[fruit.processed.name]"],
+        ["literal[1]", "column[cte.age]", "column[fruit.processed.age]"],
+        ["literal[2]", "column[cte.age]", "column[fruit.processed.age]"],
+    ]
+    assert len(h.nodes) == 8
+    assert len(h.edges) == 6
+
+
 def test__cte_inside_select(holder):
     sql = """
     CREATE TABLE target(age INT);

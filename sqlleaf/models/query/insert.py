@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlglot
 from sqlglot import exp
 
 from sqlleaf import mappings, util
@@ -27,9 +28,20 @@ class InsertQuery(Query):
         target = table
         source = expr.expression
         if source:
-            source = source.unnest()  # Subquery -> Select
+            # Subquery(Select) -> Select
+            source = source.unnest()
+        elif src := expr.args.get("source"):
+            # INSERT .. DEFAULT VALUES
+            source = src
         else:
-            source = expr.args.get("source")
+            # INSERT .. (VALUES())
+            exprs = expr.this.expressions
+            if len(exprs) == 1 and (ex := exprs[0]):
+                if isinstance(ex, exp.Anonymous) and ex.name.upper() == "VALUES":
+                    # sqlglot parses this incorrectly; fix it by re-parsing it to an exp.Values
+                    source = sqlglot.parse_one(ex.sql(dialect=dialect), dialect=dialect)
+                    expr.set("expression", source)
+                    [e.pop() for e in (expr.this.expressions or [])]
 
         # Set the correct source type. Hacky, but works for now
         is_default_values = expr.args.get("default", False)
