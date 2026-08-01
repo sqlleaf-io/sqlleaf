@@ -170,23 +170,21 @@ def test__update_with_values(holder):
     assert len(h.edges) == 6
 
 
-# def test__update_with_subquery_in_from(holder):
-#     sql = """
-#     UPDATE fruit.processed p
-#     SET age = s.max_age
-#     FROM (
-#         SELECT MAX(age) as max_age, kind
-#         FROM fruit.raw
-#         GROUP BY kind
-#     ) s
-#     WHERE p.kind = s.kind;
-#     """
-#     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
-#
-#     assert h.paths == [
-#         ["column[fruit.raw.age]", "function[MAX]", "column[s.max_age]", "column[fruit.processed.age]"]
-#     ]
-#     assert [UpdateQuery] == h.query_types
+def test__update_with_subquery_in_from(holder):
+    sql = """
+    UPDATE fruit.processed p
+    SET age = s.max_age
+    FROM (
+        SELECT MAX(age) as max_age, kind
+        FROM fruit.raw
+        GROUP BY kind
+    ) s
+    WHERE p.kind = s.kind;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [["column[fruit.raw.age]", "function[MAX]", "column[s.max_age]", "column[fruit.processed.age]"]]
+    assert [UpdateQuery] == h.query_types
 
 
 def test__update_inheritance_only(holder):
@@ -242,3 +240,19 @@ def test__update_multiple_columns_from_select(holder):
         h.queries_transformed[0].statement.sql(dialect=DIALECT)
         == "INSERT INTO fruit.processed (name, age) SELECT UPPER(raw.name) AS name, raw.age AS age FROM fruit.raw AS raw"
     )
+
+
+def test__update_single_column_tuple(holder):
+    sql = "UPDATE fruit.raw SET (name) = (SELECT 'foo')"
+
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+    assert (
+        h.holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.raw (name) SELECT 'foo' AS name FROM fruit.raw AS raw"
+    )
+
+    assert h.paths == [['literal["foo"]', "column[fruit.raw.name]"]]
+    assert h.nodes_full == [
+        'literal[name="foo" type=VARCHAR position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]',
+        "column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]",
+    ]

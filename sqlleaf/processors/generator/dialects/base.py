@@ -124,7 +124,8 @@ class BaseGenerator:
             yield from self.process(gen_ctx.expr, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
             pos_ctx = pos_ctx.new(function_arg_index=pos_ctx.function_arg_index + 1)
 
-    @process.register
+    @process.register(exp.AtTimeZone)
+    @process.register(exp.Func)
     def process_function(
         self, expr: exp.Func, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:

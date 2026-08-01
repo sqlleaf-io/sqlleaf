@@ -670,6 +670,14 @@ class BaseQueryTransformer:
         subquery_from = None
         for expr in statement.expressions:
             if isinstance(expr, exp.EQ):
+                if isinstance(expr.left, exp.Paren) and isinstance(expr.right, exp.Subquery):
+                    # UPDATE x SET (a) = (SELECT a FROM ...)
+                    column_names = [expr.left.this]
+                    subquery = expr.right.this  # the inner SELECT
+                    column_values = []
+                    for col_expr in subquery.expressions:
+                        column_values.append(col_expr.unalias())
+                    subquery_from = subquery.args.get("from_")
                 if isinstance(expr.left, exp.Tuple) and isinstance(expr.right, exp.Subquery):
                     # UPDATE x SET (a,b) = (SELECT a, b FROM ...)
                     column_names = expr.left.expressions
