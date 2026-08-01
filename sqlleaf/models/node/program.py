@@ -14,7 +14,7 @@ class ProgramNode(NodeAttributes):
     WITH_POSITIONS = True
 
     def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
-        pos_ctx = replace(pos_ctx, select_index=0)  # Prevent duplicate nodes
+        pos_ctx = pos_ctx.new(select_index=0)  # Prevent duplicate nodes
         copy_stmt = gen_ctx.query.get_original_self().statement
         expr = t.cast(exp.Copy, copy_stmt)
 

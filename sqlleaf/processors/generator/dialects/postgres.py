@@ -62,7 +62,7 @@ class PostgresGenerator(BaseGenerator):
                         # A table function inside a 'ROWS FROM'
                         down_expr = down_expr.this
 
-                    gen_ctx = replace(gen_ctx, expr=down_expr)
+                    gen_ctx = gen_ctx.new(expr=down_expr)
                     yield from self.process(down_expr, gen_ctx, pos_ctx)
                     break
         else:
@@ -105,7 +105,7 @@ class PostgresGenerator(BaseGenerator):
         This only handles cases where a function follows LATERAL. If a subquery follows instead,
         its expressions are walked inside walk_query_scope().
         """
-        gen_ctx = replace(gen_ctx, expr=expr.this)
+        gen_ctx = gen_ctx.new(expr=expr.this)
         yield from self.process(expr.this, gen_ctx, pos_ctx)
 
     @process.register
@@ -136,7 +136,7 @@ class PostgresGenerator(BaseGenerator):
                 raise exception.SqlLeafException(f"Sequence '{full_name}' not found.")
 
             subkind = seq_query.property if seq_query else ""
-            gen_ctx = replace(gen_ctx, new_data_type=exp.DataType.build("INT"))
+            gen_ctx = gen_ctx.new(new_data_type=exp.DataType.build("INT"))
             parent = SequenceNode(name=seq_name_expr.name, gen_ctx=gen_ctx, pos_ctx=pos_ctx, subkind=subkind)
             yield EdgeToCreate(parent, gen_ctx.child_node)
         else:
@@ -146,7 +146,7 @@ class PostgresGenerator(BaseGenerator):
     def process_column_def(
         self, expr: exp.ColumnDef, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
-        gen_ctx = replace(gen_ctx, new_data_type=expr.kind)
+        gen_ctx = gen_ctx.new(new_data_type=expr.kind)
 
         if isinstance(expr.parent, exp.TableAlias):
             # An alias to a table function inside 'ROWS FROM'

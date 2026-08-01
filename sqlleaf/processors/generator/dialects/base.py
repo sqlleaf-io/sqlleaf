@@ -117,12 +117,12 @@ class BaseGenerator:
         if parent is None:
             raise exception.SqlLeafException(message="A parent cannot be None when processing grandparents.")
         if parent.kind in ["function", "udf"]:
-            pos_ctx = replace(pos_ctx, function_depth=pos_ctx.function_depth + 1)
+            pos_ctx = pos_ctx.new(function_depth=pos_ctx.function_depth + 1)
 
         for grand_expr in grandparents:
-            gen_ctx = replace(gen_ctx, expr=grand_expr, child_node=parent)
+            gen_ctx = gen_ctx.new(expr=grand_expr, child_node=parent)
             yield from self.process(gen_ctx.expr, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
-            pos_ctx = replace(pos_ctx, function_arg_index=pos_ctx.function_arg_index + 1)
+            pos_ctx = pos_ctx.new(function_arg_index=pos_ctx.function_arg_index + 1)
 
     @process.register
     def process_function(
@@ -143,7 +143,7 @@ class BaseGenerator:
         SELECT v_amount     <-- placeholder
         """
         expr: exp.ColumnDef = expr.this
-        gen_ctx = replace(gen_ctx, new_data_type=expr.kind)
+        gen_ctx = gen_ctx.new(new_data_type=expr.kind)
         parent = VariableNode(gen_ctx, pos_ctx)
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
@@ -214,7 +214,7 @@ class BaseGenerator:
         """
         MLEAST(VARIADIC ARRAY[1, 2, 3])
         """
-        gen_ctx = replace(gen_ctx, expr=expr.this)
+        gen_ctx = gen_ctx.new(expr=expr.this)
         yield from self.process(expr.this, gen_ctx, pos_ctx)
 
     @process.register
@@ -247,7 +247,7 @@ class BaseGenerator:
         """
         SELECT MODE() WITHIN GROUP (ORDER BY name DESC) AS name
         """
-        gen_ctx = replace(gen_ctx, expr=expr.this)
+        gen_ctx = gen_ctx.new(expr=expr.this)
         yield from self.process(expr.this, gen_ctx, pos_ctx)
 
     @process.register
@@ -293,12 +293,12 @@ class BaseGenerator:
             if isinstance(base, exp.Column):
                 # If the base is a Column, run it through normal Column handling.
                 logger.debug(f"Struct/Array access: processing base column {base.sql(dialect=self.dialect)}")
-                gen_ctx = replace(gen_ctx, expr=base)
+                gen_ctx = gen_ctx.new(expr=base)
                 yield from self.process(base, gen_ctx, pos_ctx)
             else:
                 # If the base isn't a Column (e.g., a schema-qualified routine),
                 # process only the right-hand side so that UDF/qualified-name dispatch still works
-                gen_ctx = replace(gen_ctx, expr=expr.right if isinstance(expr, exp.Binary) else expr.this)
+                gen_ctx = gen_ctx.new(expr=expr.right if isinstance(expr, exp.Binary) else expr.this)
                 yield from self.process(gen_ctx.expr, gen_ctx, pos_ctx)
         else:
             parent = FunctionNode(gen_ctx, pos_ctx)
@@ -354,7 +354,7 @@ class BaseGenerator:
         if isinstance(parent.source_scope, exp.Table):
             # Traverse into the table (esp. needed by "ROWS FROM")
             ex = parent.source_scope
-            gen_ctx = replace(gen_ctx, expr=ex, child_node=parent)
+            gen_ctx = gen_ctx.new(expr=ex, child_node=parent)
             yield from self.process(ex, gen_ctx, pos_ctx)
 
     @process.register(exp.JSONExtract)
@@ -371,7 +371,7 @@ class BaseGenerator:
 
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
-        gen_ctx = replace(gen_ctx, expr=source, child_node=parent)
+        gen_ctx = gen_ctx.new(expr=source, child_node=parent)
         yield from self.process(source, gen_ctx, pos_ctx)
 
     @process.register
@@ -431,8 +431,8 @@ class BaseGenerator:
         subquery_scope = [s for s in scope.subquery_scopes if s.expression == expr.this][0]
 
         height, width = gen_ctx.scope_positions.get_scope_for_expr(expr.this)
-        child_ctx = replace(pos_ctx, query_depth=height, query_width=width)
-        p_ctx = replace(gen_ctx, expr=expr.selects[0], scope=subquery_scope)
+        child_ctx = pos_ctx.new(query_depth=height, query_width=width)
+        p_ctx = gen_ctx.new(expr=expr.selects[0], scope=subquery_scope)
         yield from self.process(p_ctx.expr, gen_ctx=p_ctx, pos_ctx=child_ctx)
 
     def create_node_from_type(
@@ -531,8 +531,8 @@ class BaseGenerator:
         for col_def in target_columns:
             selected_node = None
             default_node = None
-            gen_ctx = replace(gen_ctx, expr=col_def)
-            pos_ctx = replace(pos_ctx, select_index=select_idx)
+            gen_ctx = gen_ctx.new(expr=col_def)
+            pos_ctx = pos_ctx.new(select_index=select_idx)
 
             # logger.debug(f"Iter nodes - found node: {target_type}")
             child_node = self.create_node_from_type(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 import typing as t
 from dataclasses import InitVar, dataclass
@@ -107,6 +108,12 @@ class GeneratorContext[Q, N]:
             return t.cast(exp.DataType, expr.parent.type)
         return expr.type or exp.DType.UNKNOWN.into_expr()
 
+    def new(self, **args) -> GeneratorContext[Q, N]:
+        """
+        Convenience method to take us to this class definition.
+        """
+        return dataclasses.replace(self, **args)
+
 
 @dataclass(frozen=True)
 class PositionContext:
@@ -138,3 +145,9 @@ class PositionContext:
             f"func_arg={self.function_arg_index}",
         ]
         return " ".join(parts)
+
+    def new(self, **args) -> PositionContext:
+        """
+        Convenience method to take us to this class definition.
+        """
+        return dataclasses.replace(self, **args)
