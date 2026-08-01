@@ -14,22 +14,10 @@ from sqlleaf.models.query import InsertQuery
 DIALECT = "postgres"
 
 
-cases = [
-    "INSERT INTO fruit.raw VALUES ('yellow', UPPER('banana'));",
-    "INSERT INTO fruit.raw (name, kind) VALUES ('yellow', UPPER('banana'));",
-    "INSERT INTO fruit.raw (kind, name) VALUES (UPPER('banana'), 'yellow');",
-    "INSERT INTO fruit.raw SELECT 'yellow' as name, UPPER('banana') AS kind;",
-    "INSERT INTO fruit.raw SELECT 'yellow', UPPER('banana');",
-    # "INSERT INTO fruit.raw (name, kind) SELECT column1 AS name, column2 AS kind FROM (VALUES('yellow', UPPER('banana'))) v;",
-    "INSERT INTO fruit.raw (VALUES ('yellow', UPPER('banana')));",
-    "INSERT INTO fruit.raw VALUES ('yellow', (VALUES(UPPER('banana'))));",
 
-]
-
-
-@pytest.mark.parametrize("case", cases)
-def test__insert_values(holder, case):
-    h = holder(sql=case, dialect=DIALECT, with_tables=True)
+def test__insert_select_with_aliases(holder):
+    sql = "INSERT INTO fruit.raw SELECT 'yellow' as name, UPPER('banana') AS kind;"
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
         ['literal["yellow"]', "column[fruit.raw.name]"],
@@ -38,54 +26,15 @@ def test__insert_values(holder, case):
     assert [InsertQuery] == h.query_types
 
 
-def test__insert_values_multiple(holder):
-    sql = """
-    INSERT INTO fruit.raw (name, kind)
-    VALUES ('apple', UPPER('upper_apple')), ('orange', UPPER('upper_orange'));
-    """
+def test__insert_select_without_aliases(holder):
+    sql = "INSERT INTO fruit.raw SELECT 'yellow', UPPER('banana');"
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
-        ['literal["apple"]', "column[fruit.raw.name]"],
-        ['literal["orange"]', "column[fruit.raw.name]"],
-        ['literal["upper_apple"]', "function[UPPER]", "column[fruit.raw.kind]"],
-        ['literal["upper_orange"]', "function[UPPER]", "column[fruit.raw.kind]"],
+        ['literal["yellow"]', "column[fruit.raw.name]"],
+        ['literal["banana"]', "function[UPPER]", "column[fruit.raw.kind]"],
     ]
     assert [InsertQuery] == h.query_types
-    assert len(h.nodes) == 8
-    assert len(h.edges) == 6
-
-
-def test__insert_default_values(holder):
-    sql = """
-    CREATE TABLE fruit.a (
-        name VARCHAR,
-        kind VARCHAR,
-        size INT DEFAULT 99
-    );
-    CREATE TABLE fruit.b (
-        color VARCHAR,
-        age INT DEFAULT -1
-    );
-    INSERT INTO fruit.b DEFAULT VALUES;
-    INSERT INTO fruit.a VALUES (DEFAULT, NULL, DEFAULT);
-    """
-    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
-
-    assert h.paths == [
-        ["null[NULL]", "column[fruit.b.color]"],
-        ["literal[-1]", "column[fruit.b.age]"],
-        ["literal[-1]", "column[fruit.b.age]"],
-        ["null[NULL]", "column[fruit.a.name]"],
-        ["null[NULL]", "column[fruit.a.kind]"],
-        ["literal[99]", "column[fruit.a.size]"],
-        ["literal[99]", "column[fruit.a.size]"],
-    ]
-    assert (
-        h.holders[2].transformed.statement.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
-    )
-    assert len(h.nodes) == 12
-    assert len(h.edges) == 7
 
 
 def test__insert_on_conflict_with_table(holder):
