@@ -88,4 +88,40 @@ def test__json_subscript_nested(holder):
 #     assert h.paths == [['literal["shipped"]', "column[target.data]"]]
 
 
-# FIELDS
+def test__json_each_text(holder):
+    sql = """
+    CREATE TABLE source (data jsonb);
+    CREATE TABLE target (first VARCHAR, last VARCHAR);
+
+    INSERT INTO target
+    SELECT * FROM json_each_text('{"a":"x"}'::json);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.holders[2].transformed.statement.sql(dialect=DIALECT) == """INSERT INTO target (first, last) SELECT json_each_text.key AS first, json_each_text.value AS last FROM JSON_EACH_TEXT(CAST('{"a":"x"}' AS JSON)) AS json_each_text(key, value)"""
+
+
+def test__json_each_text_alias(holder):
+    sql = """
+    CREATE TABLE source (data jsonb);
+    CREATE TABLE target (first VARCHAR, last VARCHAR);
+
+    INSERT INTO target
+    SELECT * FROM json_each_text('{"a":"x"}'::json) AS t(k, v);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.holders[2].transformed.statement.sql(dialect=DIALECT) == """INSERT INTO target (first, last) SELECT t.k AS first, t.v AS last FROM JSON_EACH_TEXT(CAST('{"a":"x"}' AS JSON)) AS t(k, v)"""
+
+
+def test__json_each_text_alias_no_columns(holder):
+    sql = """
+    CREATE TABLE source (data jsonb);
+    CREATE TABLE target (first VARCHAR, last VARCHAR);
+
+    INSERT INTO target
+    SELECT * FROM json_each_text('{"a":"x"}'::json) AS t;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.holders[2].transformed.statement.sql(dialect=DIALECT) == """INSERT INTO target (first, last) SELECT t.key AS first, t.value AS last FROM JSON_EACH_TEXT(CAST('{"a":"x"}' AS JSON)) AS t(key, value)"""

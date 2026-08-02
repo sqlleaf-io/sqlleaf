@@ -12,6 +12,7 @@ from sqlleaf.models.query import Q, TableQuery
 from sqlleaf.processors.transformer import udf
 from sqlleaf.processors.transformer.expressions import simplify_row
 from sqlleaf.typing import E, SqlObjectType
+from sqlleaf.settings import system_functions as get_system_functions
 
 logger = logging.getLogger("sqlleaf")
 
@@ -420,6 +421,62 @@ class BaseQueryTransformer:
         """
         return [r for r in RULES if getattr(r, "__name__", None) not in exclude_rules]
 
+    def _qualify_function_columns(self, statement: E) -> E:
+        """
+        Look for table functions used in FROM whose names are known
+        and ensure they have a TableAlias with the correct default column list.
+
+        This enables sqlglot.qualify() to expand '*' based on alias columns without
+        rewriting the select list ourselves.
+
+        For example,
+            SELECT * FROM JSON_EACH_TEXT()
+        ->
+            SELECT * FROM JSON_EACH_TEXT() AS JSON_EACH_TEXT(key, value)
+        """
+        fn_columns_map: dict[str, t.List[str]] = get_system_functions(self.query.dialect)
+        if not fn_columns_map:
+            return statement
+
+        # Iterate over SELECT statements and inspect their FROM clauses
+        for select in statement.find_all(exp.Select):
+            from_clause = select.args.get("from_") or select.args.get("from")
+            if not from_clause:
+                continue
+
+            # Build a list of Table nodes: include direct FROM.this and any nested ones (JOIN/LATERAL)
+            tables: list[exp.Table] = []
+            root_tbl = getattr(from_clause, "this", None)
+            if isinstance(root_tbl, exp.Table):
+                tables.append(root_tbl)
+            tables.extend(list(from_clause.find_all(exp.Table)))
+
+            for tbl in tables:
+                this_expr = tbl.this
+                # Identify table functions represented as Anonymous function calls
+                if not isinstance(this_expr, exp.Anonymous):
+                    continue
+
+                function_name = str(this_expr.this).lower()
+                cols = fn_columns_map.get(function_name)
+                if not cols:
+                    continue
+
+                # Ensure there is a TableAlias with the correct column list
+                alias: exp.TableAlias | None = tbl.args.get("alias")
+                if alias is None:
+                    tbl.set(
+                        "alias",
+                        exp.TableAlias(
+                            this=exp.to_identifier(function_name),
+                            columns=[exp.to_identifier(c) for c in cols],
+                        ),
+                    )
+                elif not getattr(alias, "columns", None):
+                    alias.set("columns", [exp.to_identifier(c) for c in cols])
+
+        return statement
+
     @_validate_syntax
     def _apply_optimizations(self, statement: E, add_column_names: bool = True) -> E:
         """
@@ -449,7 +506,8 @@ class BaseQueryTransformer:
             # Prevent overwriting known types to 'UNKNOWN' (sqlglot can't resolve non-table sources)
             exclude_rules += ["annotate_types"]
 
-        # TODO: override sqlglot's function that generates table aliases (e.g. _0, _1, etc) into one that handles UDFs (by assigning the alias as the table name)
+        # Pre-qualification: attach alias columns for Postgres JSON SRFs in FROM
+        statement = self._qualify_function_columns(statement)
 
         qualify.qualify(
             statement,
