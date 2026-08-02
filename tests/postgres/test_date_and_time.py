@@ -154,6 +154,34 @@ def test__datetime_time_with_time_zone_at_local(holder):
     assert e.value.args[0].startswith("Expecting ). Line 1, Col: 85.")
 
 
+def test__datetime_overlaps(holder):
+    sql = "INSERT INTO test_source (name) SELECT CAST((TIMESTAMP '2026-07-17', TIMESTAMP '2026-07-18') OVERLAPS (TIMESTAMP '2026-07-19', TIMESTAMP '2026-07-20') AS text)"
+
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+    assert h.nodes_full == [
+        'literal[name="2026-07-17" type=VARCHAR position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=4 func_arg=0]]',
+        'literal[name="2026-07-18" type=VARCHAR position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=4 func_arg=1]]',
+        'literal[name="2026-07-19" type=VARCHAR position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=4 func_arg=1]]',
+        'literal[name="2026-07-20" type=VARCHAR position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=4 func_arg=2]]',
+        "function[name=CAST type=TEXT position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]",
+        "function[name=CAST type=TIMESTAMP position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=3 func_arg=0]]",
+        "function[name=CAST type=TIMESTAMP position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=3 func_arg=1]]",
+        "function[name=CAST type=TIMESTAMP position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=3 func_arg=2]]",
+        "function[name=OVERLAPS type=UNKNOWN position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=1 func_arg=0]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=test_source]]",
+    ]
+    # Most of these edges are re-used
+    assert h.paths == [
+        ['literal["2026-07-17"]', "function[CAST]", "function[OVERLAPS]", "function[CAST]", "column[test_source.name]"],
+        ['literal["2026-07-18"]', "function[CAST]", "function[OVERLAPS]", "function[CAST]", "column[test_source.name]"],
+        ['literal["2026-07-18"]', "function[CAST]", "function[OVERLAPS]", "function[CAST]", "column[test_source.name]"],
+        ['literal["2026-07-19"]', "function[CAST]", "function[OVERLAPS]", "function[CAST]", "column[test_source.name]"],
+        ['literal["2026-07-19"]', "function[CAST]", "function[OVERLAPS]", "function[CAST]", "column[test_source.name]"],
+        ['literal["2026-07-20"]', "function[CAST]", "function[OVERLAPS]", "function[CAST]", "column[test_source.name]"],
+    ]
+    assert len(h.edges) == 10
+
+
 def test__datetime_transaction_timestamp(holder):
     sql = "INSERT INTO fruit.processed (name) SELECT transaction_timestamp()::text"
     holder(sql=sql, dialect=DIALECT, with_tables=True)

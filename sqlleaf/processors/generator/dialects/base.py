@@ -91,6 +91,9 @@ class BaseGenerator:
     @process.register(exp.ColumnDef)
     @process.register(exp.Table)
     def skip(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
+        """
+        This causes tree traversal to stop.
+        """
         logger.debug(f"Skipping expression: {type(expr)} {str(expr)}")
         yield EdgeToCreate(None, None)
 
@@ -134,6 +137,14 @@ class BaseGenerator:
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
         grandparents = util.get_function_args(expr=expr)
+        yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
+
+    @process.register
+    def process_tuple(
+        self, expr: exp.Tuple, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
+        parent = gen_ctx.child_node
+        grandparents = expr.expressions
         yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
 
     @process.register
