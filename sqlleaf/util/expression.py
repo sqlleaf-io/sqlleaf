@@ -145,8 +145,15 @@ def get_function_args(expr: exp.Func) -> t.List[exp.Expr]:
     function_args = list(expr.args.values())
     function_args = util.flatten(function_args)
     exclude = (exp.TableAlias,)  # SELECT FROM UNNEST() AS u
-    function_args = [arg for arg in function_args if arg and isinstance(arg, exp.Expr) and not isinstance(arg, exclude)]
-    return function_args
+    result = []
+    for arg in function_args:
+        if arg and isinstance(arg, exp.Expr) and not isinstance(arg, exclude):
+            if isinstance(arg, exp.Order):
+                # STRING_AGG(Order(Column)) -> Column
+                result.append(arg.this)
+            else:
+                result.append(arg)
+    return result
 
 
 def rename_if_stage(source: SourceExprType, target: TargetExprType) -> None:

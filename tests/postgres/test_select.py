@@ -499,6 +499,24 @@ def test__select_table_as_table(holder):
     assert len(h.collected_queries.unsupported) == 2
 
 
+def test__select_order_by_in_string_add(holder):
+    sql = """
+    CREATE TABLE t1(name1 VARCHAR, name2 VARCHAR);
+    CREATE TABLE t2(name1 VARCHAR, name2 VARCHAR, name3 VARCHAR);
+
+    INSERT INTO t2 (name1)
+    SELECT string_agg(name1, ',' ORDER BY name2) FROM t1;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[t1.name1]", "function[GROUP_CONCAT]", "column[t2.name1]"],
+        ['literal[","]', "function[GROUP_CONCAT]", "column[t2.name1]"],
+    ]
+    assert len(h.nodes) == 4
+    assert len(h.edges) == 3
+
+
 # TODO:
 #  CREATE TABLE a.b;
 #  -- works, but should not; problem with trie
