@@ -1,6 +1,8 @@
 import os
 import sys
 
+import pytest
+
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -17,13 +19,7 @@ def test__json_one_selector(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.paths == [
-        [
-            "column[fruit.raw.jsonblob]",
-            "jsonpath[.fruits]",
-            "column[fruit.processed.name]",
-        ]
-    ]
+    assert h.paths == [["column[fruit.raw.jsonblob]", "jsonpath[.fruits]", "column[fruit.processed.name]"]]
     assert h.nodes_full == [
         "jsonpath[name=.fruits properties=[depth=1]]",
         "column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]",
@@ -42,6 +38,22 @@ def test__json_two_selectors(holder):
     assert h.paths == [["column[fruit.raw.jsonblob]", "jsonpath[.fruits.apple]", "column[fruit.processed.name]"]]
     assert h.nodes_full == [
         "jsonpath[name=.fruits.apple properties=[depth=2]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]",
+        "column[name=jsonblob type=JSONB properties=[kind=table table=raw schema=fruit]]",
+    ]
+
+
+def test__json_one_selector_integer(holder):
+    sql = """
+    INSERT INTO fruit.processed
+    SELECT jsonblob ->> 2 AS name
+    FROM fruit.raw;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [["column[fruit.raw.jsonblob]", "jsonpath[2]", "column[fruit.processed.name]"]]
+    assert h.nodes_full == [
+        "jsonpath[name=2 properties=[depth=1]]",
         "column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]",
         "column[name=jsonblob type=JSONB properties=[kind=table table=raw schema=fruit]]",
     ]
@@ -98,7 +110,10 @@ def test__json_each_text(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.holders[2].transformed.statement.sql(dialect=DIALECT) == """INSERT INTO target (first, last) SELECT json_each_text.key AS first, json_each_text.value AS last FROM JSON_EACH_TEXT(CAST('{"a":"x"}' AS JSON)) AS json_each_text(key, value)"""
+    assert (
+        h.holders[2].transformed.statement.sql(dialect=DIALECT)
+        == """INSERT INTO target (first, last) SELECT json_each_text.key AS first, json_each_text.value AS last FROM JSON_EACH_TEXT(CAST('{"a":"x"}' AS JSON)) AS json_each_text(key, value)"""
+    )
 
 
 def test__json_each_text_alias(holder):
@@ -111,7 +126,10 @@ def test__json_each_text_alias(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.holders[2].transformed.statement.sql(dialect=DIALECT) == """INSERT INTO target (first, last) SELECT t.k AS first, t.v AS last FROM JSON_EACH_TEXT(CAST('{"a":"x"}' AS JSON)) AS t(k, v)"""
+    assert (
+        h.holders[2].transformed.statement.sql(dialect=DIALECT)
+        == """INSERT INTO target (first, last) SELECT t.k AS first, t.v AS last FROM JSON_EACH_TEXT(CAST('{"a":"x"}' AS JSON)) AS t(k, v)"""
+    )
 
 
 def test__json_each_text_alias_no_columns(holder):
@@ -124,4 +142,7 @@ def test__json_each_text_alias_no_columns(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.holders[2].transformed.statement.sql(dialect=DIALECT) == """INSERT INTO target (first, last) SELECT t.key AS first, t.value AS last FROM JSON_EACH_TEXT(CAST('{"a":"x"}' AS JSON)) AS t(key, value)"""
+    assert (
+        h.holders[2].transformed.statement.sql(dialect=DIALECT)
+        == """INSERT INTO target (first, last) SELECT t.key AS first, t.value AS last FROM JSON_EACH_TEXT(CAST('{"a":"x"}' AS JSON)) AS t(key, value)"""
+    )

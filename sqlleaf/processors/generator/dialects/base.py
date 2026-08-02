@@ -78,7 +78,8 @@ class BaseGenerator:
 
     @singledispatchmethodlogger
     def process(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
-        raise exception.SqlLeafException(message=f"Unhandled expression type: {type(expr)}")
+        # See the functions below for correct examples.
+        raise exception.SqlLeafException(message=f"Type is not yet registered with a method: {type(expr)}")
 
     def __init_subclass__(cls, **kwargs):
         """Automatically registers subclasses when they are defined."""
@@ -358,6 +359,7 @@ class BaseGenerator:
             gen_ctx = gen_ctx.new(expr=ex, child_node=parent)
             yield from self.process(ex, gen_ctx, pos_ctx)
 
+    @process.register(exp.JSONExtractScalar)
     @process.register(exp.JSONExtract)
     @process.register(exp.JSONBExtract)
     def process_json(

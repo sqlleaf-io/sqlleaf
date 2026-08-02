@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import typing as t
 
 from sqlglot import exp
 
 from sqlleaf.models.context import GeneratorContext, PositionContext
 from sqlleaf.models.node import NodeAttributes
+
+logger = logging.getLogger("sqlleaf")
 
 
 class JsonPathNode(NodeAttributes):
@@ -28,15 +31,24 @@ class JsonPathNode(NodeAttributes):
         produces
             ['a', 'b']
         """
-        elements = list(expr.expression.find_all(exp.JSONPathKey))
+        methods = {
+            # Mapping of expression -> attribute getter
+            exp.JSONPathKey: None,
+            exp.JSONPathSubscript: "this",
+        }
+        elements = list(expr.expression.find_all(tuple(methods)))
 
         left = expr.left
         while isinstance(left, (exp.JSONExtract, exp.JSONExtractScalar)):
-            elements.extend(list(left.expression.find_all(exp.JSONPathKey)))
+            elements.extend(list(left.expression.find_all(tuple(methods))))
             left = left.left
         elements.reverse()
 
-        return elements
+        result = []
+        for elem in elements:
+            getter = methods[type(elem)]
+            result.append(getattr(elem, getter) if getter else elem)
+        return result
 
     def fields(self) -> dict[str, str]:
         return {"depth": str(self.selector_depth)}
