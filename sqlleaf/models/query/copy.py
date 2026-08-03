@@ -100,7 +100,7 @@ class CopyQuery(Query):
             target_info=TargetInfo(expression=target, type=target_type),
         )
         self.parameters = self.get_params()
-        self.qualify_and_annotate()
+        util.qualify_and_annotate(self.source_info.expression, self.dialect, self.object_mapping)
 
     def get_params(
         self,

@@ -10,6 +10,7 @@ from sqlleaf.util.expression import (
     get_table,
     get_udf_name,
     is_row_function,
+    qualify_and_annotate,
     rename_if_stage,
     str_to_column_def,
     unwrap_expression,

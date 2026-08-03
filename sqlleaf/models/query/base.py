@@ -8,7 +8,6 @@ if t.TYPE_CHECKING:
 
 from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
-from sqlglot.optimizer.qualify import qualify
 
 from sqlleaf import exception, mappings, util
 from sqlleaf.typing import SourceExprType, SourceInfo, SqlObjectType, TargetExprType, TargetInfo
@@ -120,22 +119,6 @@ class Query:
             raise exception.SqlLeafException(f"Unknown source/target object type in query: {type(expr)}")
 
         return _type
-
-    def qualify_and_annotate(self):
-        qualify(
-            self.source_info.expression,
-            schema=self.object_mapping,
-            expand_stars=True,
-            expand_alias_refs=False,
-            qualify_columns=True,
-            infer_schema=False,
-            dialect=self.dialect,
-            isolate_tables=False,
-            validate_qualify_columns=False,
-            quote_identifiers=False,
-        )
-
-        annotate_types(self.source_info.expression, dialect=self.dialect, schema=self.object_mapping)
 
     def get_original_self(self) -> Query:
         return self.holder.original

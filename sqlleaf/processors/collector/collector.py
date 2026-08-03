@@ -734,48 +734,22 @@ def _process_views_and_ctas(
     to extract the table and column details.
     """
     _unnest_values_inside_select(statement, dialect)
+    util.qualify_and_annotate(statement, dialect, object_mapping, remove_added_aliases=True)
+    col_defs = _determine_column_defs(statement, dialect, object_mapping)
 
-    # Expand any stars into column names so that they can be tracked in the mapping
-    stmt = qualify(
-        statement,
-        schema=object_mapping,
-        expand_stars=True,
-        expand_alias_refs=False,
-        qualify_columns=True,
-        infer_schema=False,
-        dialect=dialect,
-        isolate_tables=False,
-        validate_qualify_columns=False,
-        quote_identifiers=False,
-    )
-
-    # Rename the aliases automatically added by sqlglot
-    if not isinstance(stmt.expression, exp.Values):
-        named_columns = stmt.args["this"].expressions
-        for i, ins in enumerate(named_columns):
-            # Overwrite the aliases because sqlglot may have added incorrect ones
-            if isinstance(ins, exp.ColumnDef):
-                ins = ins.this
-            stmt.selects[i] = stmt.selects[i].as_(ins)
-
-    # Add types from the mapping if available. Views often have unknown column types.
-    stmt = annotate_types(stmt, dialect=dialect, schema=object_mapping)
-
-    col_defs = _determine_column_defs(stmt, dialect, object_mapping)
-
-    if stmt.kind == "VIEW":
+    if statement.kind == "VIEW":
         # CREATE VIEW ...
         query = ViewQuery(
-            expr=stmt,
+            expr=statement,
             dialect=dialect,
             object_mapping=object_mapping,
             columns=col_defs,
             statement_index=statement_index,
         )
-    elif stmt.kind == "TABLE":
+    elif statement.kind == "TABLE":
         # CREATE TABLE AS ...
         query = CTASQuery(
-            expr=stmt,
+            expr=statement,
             dialect=dialect,
             object_mapping=object_mapping,
             columns=col_defs,
@@ -783,7 +757,7 @@ def _process_views_and_ctas(
         )
         query.system_column_defs = settings.system_columns(dialect)
     else:
-        raise exception.SqlLeafException(message=f"Unhandled situation for query: {stmt.kind}")
+        raise exception.SqlLeafException(message=f"Unhandled situation for query: {statement.kind}")
 
     object_mapping.add_table_query(
         query=query,

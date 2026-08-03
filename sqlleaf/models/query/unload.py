@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import sqlglot
 from sqlglot import TokenType, exp
 
-from sqlleaf import exception, mappings
+from sqlleaf import exception, mappings, util
 from sqlleaf.models.query.base import Query
 from sqlleaf.typing import SourceInfo, TargetInfo
 
@@ -34,7 +34,7 @@ class UnloadQuery(Query):
             target_info=TargetInfo(expression=target, type=target_type),
         )
         self.parameters = UnloadQueryParameters(file_format="UNKNOWN")
-        self.qualify_and_annotate()
+        util.qualify_and_annotate(self.source_info.expression, self.dialect, self.object_mapping)
 
     def get_source_and_target_expressions(self, statement: exp.Command) -> t.Tuple[exp.Select, exp.Literal]:
         """

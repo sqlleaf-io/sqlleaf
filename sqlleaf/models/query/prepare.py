@@ -3,12 +3,11 @@ from __future__ import annotations
 import logging
 import re
 import typing as t
-from dataclasses import dataclass
 
 import sqlglot
-from sqlglot import TokenType, exp
+from sqlglot import  exp
 
-from sqlleaf import exception, mappings
+from sqlleaf import exception, mappings, util
 from sqlleaf.models.query.base import Query
 from sqlleaf.typing import SourceInfo, SqlObjectType, TargetInfo
 
@@ -32,7 +31,7 @@ class PrepareQuery(Query):
             source_info=SourceInfo(expression=source, type=source_type),
             target_info=TargetInfo(expression=target, type=target_type),
         )
-        self.qualify_and_annotate()
+        util.qualify_and_annotate(self.source_info.expression, self.dialect, self.object_mapping)
         self.parameter_count = self._count_parameters(source)
 
     def _count_parameters(self, source: exp.Expr) -> int:

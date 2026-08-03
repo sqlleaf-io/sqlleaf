@@ -1,8 +1,10 @@
 import typing as t
 
 from sqlglot import exp
+from sqlglot.optimizer.annotate_types import annotate_types
+from sqlglot.optimizer.qualify import qualify
 
-from sqlleaf import exception, util
+from sqlleaf import exception, util, mappings
 from sqlleaf.typing import E, SourceExprType, TargetExprType
 from sqlleaf.util.iterators import default_column_index_iterator
 
@@ -218,3 +220,30 @@ def is_row_function(expr: exp.Expr) -> bool:
     Returns True if the given expression is the ROW() function.
     """
     return isinstance(expr, exp.Anonymous) and expr.this.upper() == "ROW"
+
+
+def qualify_and_annotate(expr: exp.Expr, dialect: str, object_mapping: mappings.ObjectMapping, remove_added_aliases: bool = False)-> None:
+    stmt = qualify(
+        expr,
+        schema=object_mapping,
+        expand_stars=True,
+        expand_alias_refs=False,
+        qualify_columns=True,
+        infer_schema=False,
+        dialect=dialect,
+        isolate_tables=False,
+        validate_qualify_columns=False,
+        quote_identifiers=False,
+    )
+
+    # Rename the aliases automatically added by sqlglot
+    if remove_added_aliases:
+        if not isinstance(stmt.expression, exp.Values):
+            named_columns = stmt.args["this"].expressions
+            for i, ins in enumerate(named_columns):
+                # Overwrite the aliases because sqlglot may have added incorrect ones
+                if isinstance(ins, exp.ColumnDef):
+                    ins = ins.this
+                stmt.selects[i] = stmt.selects[i].as_(ins)
+
+    annotate_types(stmt, dialect=dialect, schema=object_mapping)
