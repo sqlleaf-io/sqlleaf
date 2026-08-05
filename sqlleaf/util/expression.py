@@ -193,9 +193,6 @@ def convert_values_to_select(
     Convert an exp.Values into an exp.Select or exp.Union.
     """
     values_lists: t.List[exp.Tuple] = expression.expressions
-    if not values_lists:
-        return exp.select("*")
-
     if not column_names:
         column_names = list(default_column_index_iterator(dialect, values_lists[0].expressions))
 

@@ -246,10 +246,3 @@ class Query:
             "index": self.statement_index,
         }
         return result
-
-
-# why can't I start building logic for every Query type
-# that extracts the Source, Target and the columns?
-# There's so much code that is trying to calculate the right
-# values from the source/target, but there are too many exceptions
-# related to INSERT, COPY, etc

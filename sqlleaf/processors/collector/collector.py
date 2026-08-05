@@ -6,9 +6,7 @@ from dataclasses import dataclass, field
 import sqlglot
 from sqlglot import TokenType, exp
 from sqlglot.expressions import ColumnDef
-from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
-from sqlglot.optimizer.qualify import qualify
 
 from sqlleaf import exception, mappings, util, settings
 from sqlleaf.models.query import (

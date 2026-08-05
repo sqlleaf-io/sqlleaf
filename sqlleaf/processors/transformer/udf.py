@@ -47,8 +47,6 @@ def _get_alias(node: exp.Expr) -> t.Optional[str]:
     if not alias:
         if isinstance(node.parent, exp.Table):
             alias = node.parent.alias
-        elif isinstance(node.parent, exp.Lateral):
-            alias = node.parent.alias
 
     if not alias and hasattr(node, "this"):
         alias = node.this
@@ -60,9 +58,6 @@ def create_subquery_with_alias(
     replacement_expr: exp.Expr, query: UserDefinedFunctionQuery, alias: str = "t"
 ) -> exp.Subquery:
     """Creates a Subquery with a table alias and the UDF's return columns."""
-    if not alias:
-        alias = "t"
-
     return exp.Subquery(
         this=replacement_expr,
         alias=exp.TableAlias(
@@ -70,37 +65,6 @@ def create_subquery_with_alias(
             columns=[c.this if isinstance(c, exp.ColumnDef) else exp.to_identifier(c) for c in query.return_columns],
         ),
     )
-
-
-def create_lateral_replacement(
-    target_node: exp.Expr, replacement_expr: exp.Expr, query: UserDefinedFunctionQuery, alias: str = None
-) -> None:
-    """
-    Wraps a replacement expression for use in a LATERAL context and applies it.
-
-    Example:
-        Before: `SELECT * FROM table1, LATERAL hello()`
-        After: `SELECT * FROM table1, LATERAL (SELECT * FROM (SELECT ...) AS hello(name, age))`
-        where hello() returns (name, age)
-    """
-    if query.return_columns:
-        if not alias:
-            alias = _get_alias(target_node) or "t"
-
-        # Reconstruct the desired structure manually to avoid sqlglot's select().from_() overhead
-        subquery_replacement = create_subquery_with_alias(replacement_expr, query, alias=alias)
-        replacement = exp.Paren(
-            this=exp.Select(
-                expressions=[exp.Star()],
-                from_=exp.From(this=subquery_replacement),
-            )
-        )
-    else:
-        # For non-table returning UDFs in LATERAL context
-        # (though LATERAL usually implies table-returning)
-        replacement = exp.Paren(this=replacement_expr)
-
-    target_node.replace(replacement)
 
 
 def transform_udf_to_subquery_if_table_reference(
@@ -116,48 +80,8 @@ def transform_udf_to_subquery_if_table_reference(
     if query.return_columns:
         alias = _get_alias(node) or "t"
         replacement_expr = create_subquery_with_alias(replacement_expr, query, alias=alias)
-    else:
-        if isinstance(replacement_expr, (exp.Select, exp.Values)):
-            replacement_expr = exp.Paren(this=replacement_expr)
 
-    if isinstance(node.parent, exp.Lateral):
-        create_lateral_replacement(node, replacement_expr, query, alias=alias)
-    else:
-        node.parent.replace(replacement_expr)
-
-
-def get_dot_node(target_node: exp.Expr) -> t.Optional[exp.Dot]:
-    """
-    Identifies if the UDF call is followed by a member access (Dot).
-    """
-    parent = target_node.parent
-    if isinstance(parent, exp.Dot):
-        # Case: hello('John').name
-        return parent
-    if isinstance(parent, exp.Paren) and isinstance(parent.parent, exp.Dot):
-        # Case: (hello('John')).name
-        return parent.parent
-    return None
-
-
-def transform_field_access_to_subquery(
-    dot_node: exp.Dot, replacement_expr: exp.Expr, query: UserDefinedFunctionQuery
-) -> None:
-    """
-    Transforms a UDF with a field access into a subquery with the field selected.
-
-    Example:
-        Before: `(hello('John')).name`
-        After: `(SELECT name FROM (SELECT 'John', 50) AS hello(name, age))`
-
-    This is necessary because SQL doesn't allow direct field access on a subquery/UDF call
-    without treating it as a table source or using a subquery. Returning a Subquery
-    ensures the field access is correctly scoped and valid SQL.
-    """
-    field_name = dot_node.expression.name
-    alias = _get_alias(dot_node.this) or "t"
-    subquery = exp.select(field_name).from_(create_subquery_with_alias(replacement_expr, query, alias=alias))
-    dot_node.replace(exp.Paren(this=subquery))
+    node.parent.replace(replacement_expr)
 
 
 def replace_scalar_call(target_node: exp.Expr, replacement_expr: exp.Expr) -> None:
@@ -202,9 +126,6 @@ def resolve_returning_to_select(
         → SELECT people.age FROM people
     """
     returning_node = stmt.args.get("returning")
-    if not returning_node:
-        return exp.select("*")
-
     if isinstance(stmt, exp.Insert) and isinstance(stmt.expression, exp.Values):
         # For INSERT ... VALUES ... RETURNING, select the RETURNING columns from the target table.
         # This avoids exposing the VALUES union to the graph generator.
@@ -213,21 +134,6 @@ def resolve_returning_to_select(
         return substitute.substitute_parameters(returning_select, query, param_map, positional_map)
 
     col_to_val = {}
-    if isinstance(stmt, exp.Insert):
-        # Extract insert columns. If 'this' is a Schema, it has expressions (columns)
-        schema = stmt.this
-        insert_cols = []
-        if isinstance(schema, exp.Schema):
-            insert_cols = [c.name for c in schema.expressions]
-
-        values_node = stmt.find(exp.Values)
-        values_literals = []
-        if values_node and values_node.expressions:
-            # Get the first row of values
-            values_literals = values_node.expressions[0].expressions
-
-        col_to_val = dict(zip(insert_cols, values_literals))
-
     resolved = []
     for ret_col in returning_node.expressions:
         col_name = ret_col.name if isinstance(ret_col, exp.Column) else ret_col.alias_or_name
@@ -293,10 +199,6 @@ def build_replacement_exprs(node: exp.Anonymous, query: UserDefinedFunctionQuery
     # Collect all child queries from the holder
     for child in query.holder.downstream_holders:
         stmt = child.original.statement
-
-        if isinstance(stmt, (exp.Insert, exp.Update)) and not stmt.args.get("returning"):
-            stmt = stmt.expression
-
         stmt = util.copy_expression(stmt)
         replacement_exprs.append(transform_inner_query(stmt, param_map, query, positional_map))
 
@@ -330,18 +232,10 @@ def apply_replacement(target_node: exp.Expr, replacement_expr: exp.Expr, query: 
             → SELECT (SELECT 'Greetings!' AS greeting) AS hello
     """
     logger.debug(f"Applying replacement for UDF: {query.name}")
-    dot_node = get_dot_node(target_node)
 
-    if isinstance(target_node.parent, exp.Lateral):
-        logger.debug("Applying LATERAL replacement")
-        alias = _get_alias(target_node) or "t"
-        create_lateral_replacement(target_node, replacement_expr, query, alias=alias)
-    elif isinstance(target_node.parent, exp.Table):
+    if isinstance(target_node.parent, exp.Table):
         logger.debug("Applying Table reference replacement")
         transform_udf_to_subquery_if_table_reference(target_node, replacement_expr, query)
-    elif bool(query.return_columns and dot_node):  # A field
-        logger.debug(f"Applying Field access replacement for field: {dot_node.expression.name}")
-        transform_field_access_to_subquery(dot_node, replacement_expr, query)
     else:
         logger.debug("Applying Scalar call replacement")
         replace_scalar_call(target_node, replacement_expr)
