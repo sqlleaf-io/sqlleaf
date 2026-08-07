@@ -5,7 +5,6 @@ InsertTransformer — handles INSERT (and MERGE → INSERT) statement transforma
 from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
 
-from sqlleaf import util
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
 from sqlleaf.typing import E
 
@@ -14,15 +13,10 @@ class InsertTransformer(BaseQueryTransformer):
     """Transformer for INSERT statements."""
 
     def transform(self, statement: exp.Insert) -> exp.Insert:
-        # Note: _convert_table_to_select and FILTER/WHERE removal are performed by
-        # _transform_statement before delegating here; statement is already clean.
-        statement = self._convert_insert_defaults_to_values(statement)
-        if statement.expression:
-            stmt_converted = self._convert_values_to_select(statement.expression, statement)
-            if isinstance(stmt_converted, exp.Insert):
-                statement = stmt_converted
-
-        statement = self._convert_nested_values_in_subqueries(statement)
+        # Note: _convert_table_to_select, FILTER/WHERE removal, DEFAULT VALUES expansion,
+        # and VALUES->SELECT conversion are all performed by preprocess() (via
+        # BaseQueryTransformer.normalize_all_values) before delegating here; statement
+        # is already clean of any exp.Values nodes.
         statement = self._add_information_from_merge(statement)
         statement = self._add_information_from_multitable_insert(statement)
         statement = self._process_inner_ctes(statement)
@@ -34,57 +28,6 @@ class InsertTransformer(BaseQueryTransformer):
         #  Revisit proper type annotation so that every query (not just Inserts) has its types populated to enable UDF resolution.
         statement = annotate_types(statement, dialect=self.query.dialect, schema=self.query.object_mapping)
         return super().postprocess(statement)
-
-    def _convert_insert_defaults_to_values(self, statement: exp.Insert) -> exp.Insert:
-        """
-        Transform the query:
-            INSERT INTO x DEFAULT VALUES
-        into:
-            INSERT INTO x VALUES (DEFAULT, DEFAULT)
-        and then:
-            INSERT INTO x VALUES (NULL, 42)
-        according to the table's default column values.
-        """
-        query = self.query
-        child_table = query.get_target_as_table()
-        is_default_values = statement.args.get("default", False)
-        values = statement.expression
-
-        if not (isinstance(values, exp.Values) or is_default_values):
-            return statement
-
-        table_query = query.object_mapping.lookup_table_query(table=child_table)
-        if not table_query:
-            return statement
-
-        table_columns = table_query.get_column_defs()
-
-        if is_default_values:
-            # Transform 'DEFAULT VALUES' into 'VALUES (DEFAULT,)'
-            values = exp.Values(expressions=[exp.Tuple(expressions=[exp.Var(this="DEFAULT") for _ in table_columns])])
-            statement.set("expression", values)
-            statement.set("default", False)
-
-        if not isinstance(values, exp.Values):
-            return statement
-
-        named_columns = util.get_selected_column_names(statement)
-
-        if not named_columns:
-            # Use the associated column names from the mapping
-            named_columns = list(table_columns)[: len(values.expressions[0].expressions)]
-            named_columns = [n.name for n in named_columns]
-
-        for value_expr in values.expressions:
-            if isinstance(value_expr, exp.Tuple):
-                for i, tuple_expr in enumerate(value_expr.expressions):
-                    if isinstance(tuple_expr, exp.Var) and tuple_expr.name.upper() == "DEFAULT":
-                        self._replace_default_with_value(
-                            expression=tuple_expr,
-                            column_name=named_columns[i],
-                            table_columns=table_columns,
-                        )
-        return statement
 
     def _add_information_from_merge(self, statement: exp.Insert) -> exp.Insert:
         """

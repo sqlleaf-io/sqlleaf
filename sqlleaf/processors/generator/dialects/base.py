@@ -348,7 +348,7 @@ class BaseGenerator:
 
             if source_table:
                 if not isinstance(
-                    source_table, (exp.Table, exp.Values, exp.Subquery, exp.Select, exp.Lateral, exp.Unnest)
+                    source_table, (exp.Table, exp.Subquery, exp.Select, exp.Union, exp.Lateral, exp.Unnest),
                 ):
                     raise exception.SqlLeafException(message=f"Unexpected source type: {type(source_table)}")
 
@@ -394,25 +394,6 @@ class BaseGenerator:
     ) -> t.Iterator[EdgeToCreate]:
         parent = IntervalNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx)
         yield EdgeToCreate(parent, gen_ctx.child_node)
-
-    @process.register
-    def process_values(
-        self, expr: exp.Values, gen_ctx: GeneratorContext, pos_ctx: PositionContext
-    ) -> t.Iterator[EdgeToCreate]:
-        """
-        SELECT FROM (VALUES ())
-        """
-        selected_column: exp.Column = t.cast(exp.Column, gen_ctx.get_child_node().expr)
-
-        # Select the correct values from the list according to the column's position in the alias
-        if isinstance(expr.parent, exp.From):
-            table_alias = expr.args["alias"]
-            col_idx = [c.name for c in table_alias.columns].index(selected_column.name)
-            value_exprs = [tup_expr.expressions[col_idx] for tup_expr in expr.expressions]
-
-            grandparents = value_exprs
-            parent = gen_ctx.child_node
-            yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
 
     @process.register
     def process_bracket(

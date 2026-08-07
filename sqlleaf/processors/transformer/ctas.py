@@ -11,11 +11,11 @@ class CTASTransformer(BaseQueryTransformer):
     """Transformer for CTAS (CREATE TABLE AS) statements."""
 
     def transform(self, statement: exp.Create) -> exp.Create:
+        # Note: VALUES->SELECT conversion is already performed by preprocess() (via
+        # BaseQueryTransformer.normalize_all_values); statement.expression is already
+        # clean of any exp.Values nodes.
         if statement.expression:
             statement = self._convert_substituted_table_to_select(statement)
-            converted = self._convert_values_to_select(statement.expression, statement=statement)
-            if isinstance(converted, exp.Create):
-                statement = converted
         return statement
 
     def _convert_substituted_table_to_select(self, statement: exp.Create) -> exp.Create:

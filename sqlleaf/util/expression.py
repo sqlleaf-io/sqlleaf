@@ -6,7 +6,6 @@ from sqlglot.optimizer.qualify import qualify
 
 from sqlleaf import exception, util, mappings
 from sqlleaf.typing import E, SourceExprType, TargetExprType
-from sqlleaf.util.iterators import default_column_index_iterator
 
 
 def unwrap_expression(expr: E) -> exp.Expr:
@@ -182,34 +181,6 @@ def get_selected_column_names(statement: exp.Expr) -> t.List[str]:
     if isinstance(statement.expression, exp.Values):
         return [s.name for s in statement.this.expressions]
     return [s.alias_or_name for s in statement.selects]
-
-
-def convert_values_to_select(
-    expression: exp.Values,
-    dialect: str,
-    column_names: t.Optional[t.List[str]] = None,
-) -> exp.Expr:
-    """
-    Convert an exp.Values into an exp.Select or exp.Union.
-    """
-    values_lists: t.List[exp.Tuple] = expression.expressions
-    if not column_names:
-        column_names = list(default_column_index_iterator(dialect, values_lists[0].expressions))
-
-    selects = []
-    for val_list in values_lists:
-        values = val_list.expressions
-        cols = [exp.alias_(val, str(col)) for col, val in zip(column_names, values)]
-        selects.append(cols)
-
-    if len(selects) > 1:
-        new_selects = [exp.select(*select) for select in selects]
-        return_expr = exp.union(*new_selects, distinct=False)
-    else:
-        return_expr = exp.select(*selects[0])
-
-    # Wrap the query in a subquery if it's not a top-level statement
-    return return_expr.subquery() if expression.parent_select else return_expr
 
 
 def is_row_function(expr: exp.Expr) -> bool:

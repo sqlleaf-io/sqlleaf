@@ -225,7 +225,7 @@ def test__udf_table_join_same_table(holder):
 
     insert_query_1 = h.holders[2]
     insert_after_1 = [
-        "INSERT INTO target (name1, name2, name3, name4) SELECT h.property AS name1, h.value AS name2, i.property AS name3, i.value AS name4 FROM (SELECT 'prop' AS property, 'val' AS value) AS h CROSS JOIN (SELECT 'prop' AS property, 'val' AS value) AS i"
+        "INSERT INTO target (name1, name2, name3, name4) SELECT h.property AS name1, h.value AS name2, i.property AS name3, i.value AS name4 FROM (SELECT 'prop' AS property, 'val' AS value) AS h(property, value) CROSS JOIN (SELECT 'prop' AS property, 'val' AS value) AS i(property, value)"
     ]
     actual_after_1 = [insert_query_1.transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1

@@ -26,7 +26,7 @@ class ColumnNode(NodeAttributes):
         column: str,
         gen_ctx: GeneratorContext,
         pos_ctx: PositionContext,
-        source: TableOrScopeType | exp.Values | exp.Select | exp.Subquery | exp.Lateral | None = None,
+        source: TableOrScopeType | exp.Select | exp.Subquery | exp.Lateral | None = None,
     ):
         super().__init__(gen_ctx, pos_ctx, name=column)
         self.catalog = catalog
@@ -55,7 +55,7 @@ class ColumnNode(NodeAttributes):
         })
         return d
 
-    def _apply_rename(self, source: exp.Table | exp.Values | exp.Select | exp.Lateral, dialect: str) -> None:
+    def _apply_rename(self, source: exp.Table | exp.Select | exp.Lateral, dialect: str) -> None:
         """
         Change the column's source table to be its fully qualified name, not its alias,
         so that the ColumnNode is provided complete information.
@@ -88,7 +88,7 @@ class ColumnNode(NodeAttributes):
         schema: str,
         table: str,
         gen_ctx: GeneratorContext,
-        source: TableOrScopeType | exp.Values | exp.Select | exp.Subquery | exp.Lateral | None = None,
+        source: TableOrScopeType | exp.Select | exp.Subquery | exp.Lateral | None = None,
     ) -> None:
         """
         Figure out the table's kind (view, table, etc) and its subkind (temp, recursive, etc) by
@@ -128,7 +128,7 @@ class ColumnNode(NodeAttributes):
 
     def _set_kind_of_derived_table(
         self,
-        source: TableOrScopeType | exp.Values | exp.Select | exp.Subquery | exp.Lateral | None,
+        source: TableOrScopeType | exp.Select | exp.Subquery | exp.Lateral | None,
         table: str,
         gen_ctx: GeneratorContext,
     ) -> bool:
@@ -136,9 +136,6 @@ class ColumnNode(NodeAttributes):
         Identify if the source is a logical entity such as a CTE, UDTF, or derived table and set its properties.
         """
         if isinstance(source, Scope):
-            if isinstance(source.expression, exp.Values):
-                self.parent_kind = TableType.DERIVED_TABLE
-                return True
 
             if source.scope_type == ScopeType.CTE:
                 self._set_cte_properties(source, table, gen_ctx)
@@ -156,7 +153,7 @@ class ColumnNode(NodeAttributes):
             self.parent_kind = TableType.DERIVED_TABLE
             return True
 
-        if isinstance(source, (exp.Select, exp.Subquery, exp.Values)):
+        if isinstance(source, (exp.Select, exp.Subquery)):
             self.parent_kind = TableType.DERIVED_TABLE
             return True
 
@@ -204,7 +201,7 @@ class ColumnNode(NodeAttributes):
         catalog: str,
         schema: str,
         table: str,
-        source: TableOrScopeType | exp.Values | exp.Select | exp.Subquery | exp.Lateral | None,
+        source: TableOrScopeType | exp.Select | exp.Subquery | exp.Lateral | None,
         gen_ctx: GeneratorContext,
     ) -> None:
         """

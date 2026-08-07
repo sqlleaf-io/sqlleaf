@@ -401,10 +401,7 @@ def get_expression_for_column(column: exp.Column | int, expr: E) -> E:
         # The index of the query in "SELECT 1 UNION SELECT 2"
         select = getattr(expr, "selects")[column]
     else:
-        if isinstance(expr, exp.Values):
-            # SELECT FROM (VALUES ())
-            selects = [expr]
-        elif isinstance(expr, exp.Lateral):
+        if isinstance(expr, exp.Lateral):
             selects = [expr]
         else:
             # Common path

@@ -5,6 +5,7 @@ UpdateTransformer — handles UPDATE (and MERGE → UPDATE, ON CONFLICT) stateme
 from sqlglot import exp
 
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
+from sqlleaf.processors.transformer.expressions import _convert_values_to_select
 
 
 class UpdateTransformer(BaseQueryTransformer):
@@ -35,13 +36,17 @@ class UpdateTransformer(BaseQueryTransformer):
         if not isinstance(statement, exp.OnConflict):
             return statement
 
+        # Note: this holder's `preprocess()`/`normalize_all_values()` only walks
+        # descendants of `statement` (the OnConflict node itself), so it never sees the
+        # sibling VALUES living under the ancestor Insert/Create's `.expression` in this
+        # holder's own copy of the tree. That conversion must still happen here.
         parent_insert_expr = None
         if statement.parent and isinstance(statement.parent, (exp.Insert, exp.Create)) and statement.parent.expression:
             if isinstance(statement.parent.expression, exp.Values):
-                converted = self._convert_values_to_select(
-                    expression=statement.parent.expression,
-                    statement=statement.parent,
-                )
+                converted = _convert_values_to_select(self.query,
+                                                      expression=statement.parent.expression,
+                                                      statement=statement.parent,
+                                                      )
                 if isinstance(converted, (exp.Insert, exp.Create)):
                     parent_insert_expr = converted
                     statement = parent_insert_expr.args["conflict"]

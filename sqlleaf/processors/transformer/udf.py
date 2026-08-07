@@ -6,6 +6,7 @@ from sqlglot import exp
 from sqlleaf import mappings, util
 from sqlleaf.models.query import UserDefinedFunctionQuery
 from sqlleaf.processors.collector import substitute
+from sqlleaf.processors.transformer.expressions import convert_values_to_select
 from sqlleaf.processors.transformer.expressions.row import transform_row_function_to_subquery
 
 logger = logging.getLogger("sqlleaf")
@@ -121,14 +122,23 @@ def resolve_returning_to_select(
     resolves each RETURNING expression (handling parameter substitution
     and column-to-literal mapping for INSERT) and returns a SELECT expression.
 
+    Notes on INSERT ... VALUES ... RETURNING:
+    - Even after the unified VALUES normalization pass (which converts VALUES →
+      SELECT/UNION during preprocess for regular statements), UDF inner bodies are
+      transformed here independently.
+    - We intentionally resolve INSERT ... VALUES ... RETURNING by selecting the
+      requested columns from the target table rather than from the VALUES-derived
+      UNION. This preserves the semantics that RETURNING reflects the post-insert
+      target-row shape and also avoids leaking the VALUES union into the generator.
+
     Example:
         INSERT INTO people (age) VALUES (5), (2) RETURNING age
         → SELECT people.age FROM people
     """
     returning_node = stmt.args.get("returning")
     if isinstance(stmt, exp.Insert) and isinstance(stmt.expression, exp.Values):
-        # For INSERT ... VALUES ... RETURNING, select the RETURNING columns from the target table.
-        # This avoids exposing the VALUES union to the graph generator.
+        # For INSERT ... VALUES ... RETURNING, select the RETURNING columns from the
+        # target table. See the note in the docstring above for the rationale.
         table = stmt.this.this if isinstance(stmt.this, exp.Schema) else stmt.this
         returning_select = exp.select(*[r.copy() for r in returning_node.expressions]).from_(table.copy())
         return substitute.substitute_parameters(returning_select, query, param_map, positional_map)
@@ -166,7 +176,7 @@ def transform_inner_query(
         return resolve_returning_to_select(stmt, param_map, query, positional_map)
 
     if isinstance(stmt, exp.Values):
-        stmt = util.convert_values_to_select(stmt, query.dialect)
+        stmt = convert_values_to_select(stmt, query.dialect)
 
     logger.debug(f"Transforming inner query: {stmt.sql()}")
     replacement_expr = substitute.substitute_parameters(stmt, query, param_map, positional_map)

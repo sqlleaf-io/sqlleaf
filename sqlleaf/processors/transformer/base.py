@@ -11,6 +11,7 @@ from sqlleaf import exception, util
 from sqlleaf.models.query import Q, TableQuery
 from sqlleaf.processors.transformer import udf
 from sqlleaf.processors.transformer.expressions import simplify_row
+from sqlleaf.processors.transformer.expressions import normalize_all_values, _convert_values_to_select
 from sqlleaf.typing import E, SqlObjectType
 from sqlleaf.settings import system_functions as get_system_functions
 
@@ -43,6 +44,7 @@ class BaseQueryTransformer:
         """
         return statement
 
+    @t.final
     def preprocess(self, statement: E) -> E:
         """
         Run a set of transformations over every statement
@@ -60,8 +62,14 @@ class BaseQueryTransformer:
             where_expr.pop()
 
         simplify_row(statement, self.query)
+
+        if isinstance(statement, exp.Insert):
+            statement = self._convert_insert_defaults_to_values(statement)
+
+        statement = normalize_all_values(self.query, statement)
         return statement
 
+    @t.final
     def postprocess(self, statement: E) -> E:
         """
         Run a set of transformations over every statement
@@ -70,6 +78,8 @@ class BaseQueryTransformer:
         statement = self._apply_udf_substitutions(statement)
         statement = self._add_aliases_to_udfs(statement)
         statement = self._apply_optimizations(statement)
+        if statement.find(exp.Values):
+            raise exception.SqlLeafException(f"VALUES() found in expression but should have been transformed: {statement.sql(self.query.dialect)}")
         return statement
 
     def _expand_to_query(self, statement: E) -> E:
@@ -212,6 +222,7 @@ class BaseQueryTransformer:
         as the UDF if it doesn't already exist. This prevents sqlglot from adding its own
         custom aliases (_0, _1, etc).
         """
+        # TODO: support other dialects; this logic is only for Postgres
         query = self.query
         for node in statement.find_all(exp.Anonymous):
             udf_query = udf.lookup_udf_call(node, query.object_mapping)
@@ -279,7 +290,7 @@ class BaseQueryTransformer:
                 from_ = cte_expr.this.args["from_"].this
 
                 if isinstance(from_, exp.Values):
-                    values_expr = self._convert_values_to_select(expression=from_, statement=cte_expr)
+                    values_expr = _convert_values_to_select(self.query, expression=from_, statement=cte_expr)
                     cte_expr.this.replace(values_expr)
 
             # Rename the columns and replace the INSERT with the SELECT
@@ -287,115 +298,58 @@ class BaseQueryTransformer:
 
         return statement
 
-    def _convert_nested_values_in_subqueries(self, statement: E) -> E:
+    def _convert_insert_defaults_to_values(self, statement: exp.Insert) -> exp.Insert:
         """
-        Convert any Subquery nodes that directly wrap a Values expression into
-        a Subquery that wraps a Select/Union built from those values.
+        Transform the query:
+            INSERT INTO x DEFAULT VALUES
+        into:
+            INSERT INTO x VALUES (DEFAULT, DEFAULT)
+        and then:
+            INSERT INTO x VALUES (NULL, 42)
+        according to the table's default column values.
 
-        Example:
-        In:  SELECT a FROM (VALUES('x')) v
-        Out: SELECT a FROM (SELECT 'x' AS column1) v
+        Promoted from InsertTransformer so it can run inside preprocess() before
+        the unified normalize_all_values() pass, for every exp.Insert statement.
         """
-        # Handle VALUES nodes that appear under a SELECT (e.g., FROM (VALUES(...)) AS v)
-        for values in statement.find_all(exp.Values):
-            # IMPORTANT: Skip VALUES inside CTEs. Inner CTE handling has its own
-            # conversion path that assigns the correct column names from the CTE
-            # alias list (e.g., WITH cte(a,b) AS (VALUES ...)). If we convert
-            # here, we end up creating a nested SELECT that then requires
-            # projecting _values.columnN AS alias, which is not desired.
-            if values.find_ancestor(exp.CTE) is not None:
-                continue
+        query = self.query
+        child_table = query.get_target_as_table()
+        is_default_values = statement.args.get("default", False)
+        values = statement.expression
 
-            # Find an enclosing Subquery like: FROM (VALUES (...)) AS t(...)
-            outer_subquery = values.find_ancestor(exp.Subquery)
-            if outer_subquery is None or outer_subquery.this is not values:
-                # Only handle VALUES that are directly wrapped by a Subquery in FROM
-                continue
-
-            # Build SELECT/UNION from VALUES
-            converted = util.convert_values_to_select(
-                expression=values,
-                dialect=self.query.dialect,
-            )
-
-            # Ensure we replace the subquery's inner expression, preserving
-            # the outer alias and column list. Avoid nesting Subquery(Subquery(...)).
-            if isinstance(converted, exp.Subquery):
-                converted = converted.this  # unwrap
-            outer_subquery.set("this", converted)
-
-        return statement
-
-    def _convert_values_to_select(
-        self,
-        expression: exp.Values,
-        statement: E,
-    ) -> E:
-        """
-        Convert a `VALUES(...)` clause into a `SELECT ... UNION ALL SELECT ...` form
-        and rewrite the parent statement in-place.
-        """
-        if not isinstance(expression, exp.Values):
+        if not (isinstance(values, exp.Values) or is_default_values):
             return statement
 
-        # Resolved the column names
-        if isinstance(statement, exp.CTE):
-            columns = statement.alias_column_names
-            if not columns:
-                columns = [e.name for e in statement.root().this.expressions]
-        elif not isinstance(statement, exp.Values):
-            columns = [e.name for e in statement.this.expressions]
-        else:
-            columns = []
+        table_query = query.object_mapping.lookup_table_query(table=child_table)
+        if not table_query:
+            return statement
 
-        # Fallback: look up from object mapping
-        query = self.query
-        values_lists: t.List[exp.Tuple] = expression.expressions
-        child_table = None
+        table_columns = table_query.get_column_defs()
 
-        if not columns:
-            try:
-                child_table = query.get_target_as_table()
-                cols = query.object_mapping.find_columns_for_table(child_table)
-                columns = list(cols)[: len(values_lists[0].expressions)]
-            except exception.SqlLeafException:
-                pass
+        if is_default_values:
+            # Transform 'DEFAULT VALUES' into 'VALUES (DEFAULT,)'
+            values = exp.Values(expressions=[exp.Tuple(expressions=[exp.Var(this="DEFAULT") for _ in table_columns])])
+            statement.set("expression", values)
+            statement.set("default", False)
 
-        if not child_table:
-            try:
-                child_table = query.get_target_as_table()
-            except exception.SqlLeafException:
-                pass
+        if not isinstance(values, exp.Values):
+            return statement
 
-        # Build the 'SELECT ... UNION ALL SELECT ...'
-        new_statement = util.convert_values_to_select(
-            expression=expression,
-            dialect=query.dialect,
-            column_names=columns,
-        )
+        named_columns = util.get_selected_column_names(statement)
 
-        # Rewrite the parent statement
-        if isinstance(statement, exp.Insert):
-            insert_expr = exp.insert(
-                expression=new_statement,
-                columns=statement.this.expressions,
-                into=child_table or statement.this,
-                returning=statement.args.get("returning"),
-            )
-            insert_expr.set("conflict", statement.args.get("conflict"))
-            statement.replace(insert_expr)
-            statement = insert_expr
-        elif isinstance(statement, exp.Create):
-            expression.pop()
-            statement.set("expression", new_statement)
-        elif isinstance(statement, exp.CTE):
-            expression.pop()
-            statement.set("this", new_statement)
-        elif isinstance(statement, exp.Values):
-            statement = new_statement
-        else:
-            raise exception.SqlLeafException(message=f"Unknown statement type: {statement.__class__}")
+        if not named_columns:
+            # Use the associated column names from the mapping
+            named_columns = list(table_columns)[: len(values.expressions[0].expressions)]
+            named_columns = [n.name for n in named_columns]
 
+        for value_expr in values.expressions:
+            if isinstance(value_expr, exp.Tuple):
+                for i, tuple_expr in enumerate(value_expr.expressions):
+                    if isinstance(tuple_expr, exp.Var) and tuple_expr.name.upper() == "DEFAULT":
+                        self._replace_default_with_value(
+                            expression=tuple_expr,
+                            column_name=named_columns[i],
+                            table_columns=table_columns,
+                        )
         return statement
 
     def _replace_default_with_value(
@@ -480,13 +434,9 @@ class BaseQueryTransformer:
     @_validate_syntax
     def _apply_optimizations(self, statement: E, add_column_names: bool = True) -> E:
         """
-        1. We pass infer_schema=True to source unqualified columns from the source table (if missing from `schema` param)
-            e.g. so that
-                INSERT INTO my.other
-                SELECT name
-                FROM my.table
-            produces
-                my.table.name -> my.other.name
+        Call sqlglot's optimization functions, which qualify and simplify a range of expressions.
+        This also includes functions to make the expressions well-formed, such as adding column names
+        to the INSERT expressions, and adding our own aliases to prevent sqlglot using its own aliases.
         """
         query = self.query
         validate_columns = True
@@ -504,11 +454,14 @@ class BaseQueryTransformer:
 
         if not validate_columns:
             # Prevent overwriting known types to 'UNKNOWN' (sqlglot can't resolve non-table sources)
+            # This occurs when we've already added the types after the conversion from COPY into INSERT
             exclude_rules += ["annotate_types"]
 
         # Pre-qualification: attach alias columns for Postgres JSON SRFs in FROM
         statement = self._qualify_function_columns(statement)
 
+        # We pass infer_schema=True to source unqualified columns from the source table (if missing from `schema` param)
+        # so that e.g. `INSERT INTO my.other SELECT name FROM my.table` produces `my.table.name -> my.other.name`
         qualify.qualify(
             statement,
             schema=query.object_mapping,
@@ -524,7 +477,9 @@ class BaseQueryTransformer:
         if add_column_names and isinstance(statement, exp.Insert):
             self._add_column_names_to_insert(statement)
 
-        # Selectively apply sqlglot's optimization rules.
+        statement = self._add_missing_table_alias_columns(statement)
+
+        # Selectively apply sqlglot's optimization rules
         statement = optimize(
             expression=statement,
             dialect=query.dialect,
@@ -535,6 +490,60 @@ class BaseQueryTransformer:
         # We don't want to merge the CTEs as they provide useful info to the user
         # so we skip merge_ctes() and call its sibling function below directly instead
         statement = merge_derived_tables(statement)
+        return statement
+
+    def _add_missing_table_alias_columns(self, statement: E) -> E:
+        """
+        Populate any missing column lists on exp.TableAlias nodes by copying the
+        output column names from the aliased expression (typically a Subquery).
+
+        Example:
+            FROM (SELECT 'x' AS column1, UPPER('y') AS column2) AS v
+        becomes:
+            FROM (SELECT 'x' AS column1, UPPER('y') AS column2) AS v(column1, column2)
+        """
+        def _is_subquery_a_from(subquery: exp.Expr) -> bool:
+            """Return True if the subquery is used in a table position (FROM/JOIN/LATERAL).
+
+            Scalar subqueries used as value expressions may also carry a TableAlias,
+            but SQL does not allow a column list there, so we must skip those.
+            """
+            if not isinstance(subquery, exp.Subquery):
+                return False
+
+            p = subquery.parent
+            # Walk up until we hit a boundary that tells us our role
+            while p is not None and not isinstance(p, (exp.Select, exp.From, exp.Join, exp.Lateral)):
+                p = p.parent
+            return isinstance(p, (exp.From, exp.Join, exp.Lateral))
+
+        for tbl_alias in statement.find_all(exp.TableAlias):
+            parent = tbl_alias.parent
+            if not _is_subquery_a_from(parent):
+               continue
+
+            inner = parent.this
+            # Determine a representative SELECT to read output names from
+            sel: exp.Select | None = None
+            if isinstance(inner, exp.Select):
+                sel = inner
+            elif isinstance(inner, exp.Union):
+                sel = inner.find(exp.Select)
+
+            projected_column_names = [s.alias_or_name for s in sel.selects]
+
+            # Skip if columns already present
+            existing_cols = tbl_alias.columns
+            existing_column_names = {str(c.name) for c in existing_cols}
+            missing = [n for n in projected_column_names if n and n not in existing_column_names]
+            if not missing:
+                continue
+
+            logger.debug(f"Adding missing columns to table alias {tbl_alias.name}: {missing}")
+            # Append missing identifiers to the alias column list
+            new_cols = existing_cols + [exp.to_identifier(n) for n in missing]
+            tbl_alias.set("columns", new_cols)
+
         return statement
 
     def _rename_returning_columns(self, statement: exp.CTE, child_table: exp.Table) -> exp.CTE:
@@ -586,8 +595,6 @@ class BaseQueryTransformer:
             new_select = exp.select(*returning_expr.expressions).from_(child_table).join(using, on=on)
         else:
             new_select = exp.select(*returning_expr.expressions).from_(child_table)
-
-        new_select = self._apply_optimizations(new_select, add_column_names=False)
 
         statement.set("this", new_select)
         return statement
@@ -727,12 +734,10 @@ class BaseQueryTransformer:
     def _extract_value_lists(expression: exp.Expression) -> t.List[t.List[exp.Expression]]:
         """
         Promoted from InsertTransformer._get_insert_values.
-        Handles exp.Values, exp.Tuple, exp.Select, and exp.Union.
+        Handles exp.Tuple, exp.Select, and exp.Union.
         """
         values_lists = []
-        if isinstance(expression, exp.Values):
-            values_lists = [t.expressions for t in expression.expressions]
-        elif isinstance(expression, exp.Tuple):
+        if isinstance(expression, exp.Tuple):
             values_lists = [expression.expressions]
         elif isinstance(expression, exp.Select):
             values_lists = [[s.unalias() for s in expression.expressions]]

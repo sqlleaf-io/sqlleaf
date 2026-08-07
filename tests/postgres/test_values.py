@@ -1,8 +1,10 @@
 import os
 import sys
 
+import pytest
 from sqlglot import exp
 
+from sqlleaf.exception import SqlLeafException
 from sqlleaf.models.query import InsertQuery, ValuesQuery
 from tests.new_fixtures import holder as holder
 
@@ -66,9 +68,10 @@ def test__values_standalone_multiple_two(holder):
 
 
 def test__values_parenthesized(holder):
-    sql = "INSERT INTO fruit.raw (VALUES ('yellow', UPPER('banana')));"
+    sql = "INSERT INTO fruit.raw (name, kind) (VALUES ('yellow', UPPER('banana')));"
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
+    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (name, kind) SELECT 'yellow' AS name, UPPER('banana') AS kind"
     assert h.paths == [
         ['literal["yellow"]', "column[fruit.raw.name]"],
         ['literal["banana"]', "function[UPPER]", "column[fruit.raw.kind]"],
@@ -87,6 +90,7 @@ def test__values_nested_values(holder):
     assert [InsertQuery] == h.query_types
 
 
+# TODO: print the transformed query for each to ensure correctness
 def test__values_multiple(holder):
     sql = """
     INSERT INTO fruit.raw (name, kind)
@@ -138,13 +142,45 @@ def test__values_with_reordered_columns(holder):
     assert [InsertQuery] == h.query_types
 
 
-# def test__insert_select_from_values(holder):
-#     sql = "INSERT INTO fruit.raw (name, kind) SELECT column1 AS name, column2 AS kind FROM (VALUES('yellow', UPPER('banana'))) v;"
-#     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
-#
-#     assert h.paths == [
-#         ['literal["yellow"]', "column[fruit.raw.name]"],
-#         ['literal["banana"]', "function[UPPER]", "column[fruit.raw.kind]"],
-#     ]
-#     assert [InsertQuery] == h.query_types
-#
+def test__values_with_alias_no_columns(holder):
+    sql = """
+    INSERT INTO fruit.raw (name, kind)
+    SELECT *
+    FROM (VALUES('yellow', UPPER('banana'))) v;
+"""
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (name, kind) SELECT v.column1 AS name, v.column2 AS kind FROM (SELECT 'yellow' AS column1, UPPER('banana') AS column2) AS v(column1, column2)"
+    assert h.paths == [
+        ['literal["yellow"]', 'column[v.column1]', "column[fruit.raw.name]"],
+        ['literal["banana"]', "function[UPPER]", 'column[v.column2]', "column[fruit.raw.kind]"],
+    ]
+    assert [InsertQuery] == h.query_types
+
+
+def test__values_with_alias_one_column(holder):
+    sql = """
+    INSERT INTO fruit.raw (name, kind)
+    SELECT *
+    FROM (VALUES('yellow', UPPER('banana'))) v(column1);
+"""
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (name, kind) SELECT v.column1 AS name, v.column2 AS kind FROM (SELECT 'yellow' AS column1, UPPER('banana') AS column2) AS v(column1, column2)"
+    assert h.paths == [
+        ['literal["yellow"]', 'column[v.column1]', "column[fruit.raw.name]"],
+        ['literal["banana"]', "function[UPPER]", 'column[v.column2]', "column[fruit.raw.kind]"],
+    ]
+    assert [InsertQuery] == h.query_types
+
+
+def test__values_with_alias_one_column_fails(holder):
+    with pytest.raises(SqlLeafException) as e:
+        sql = """
+        INSERT INTO fruit.raw (name, kind)
+        SELECT *
+        FROM (VALUES('yellow', UPPER('banana'))) v(column2);
+        """
+        holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert e.value.args[0] == "Column reference 'v.column2' is ambiguous (2 possible options)"

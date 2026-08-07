@@ -5,7 +5,7 @@ from sqlglot import exp
 
 from sqlleaf import util
 from sqlleaf.exception import SqlLeafException
-from sqlleaf.models.query import Query, UserDefinedFunctionQuery
+from sqlleaf.models.query import Q, UserDefinedFunctionQuery
 
 logger = logging.getLogger("sqlleaf")
 
@@ -25,7 +25,7 @@ def simplify_row_in_values(values_expr: exp.Values, dialect: str) -> None:
                     tuple_node.set("expressions", [e.copy() for e in inner.expressions])
 
 
-def simplify_row(statement: exp.Expr, query: Query) -> None:
+def simplify_row(statement: exp.Expr, query: Q) -> None:
     """
     Simplify occurrences of the ROW() function.
 
@@ -48,7 +48,7 @@ def _collect_row_functions(statement: exp.Expr) -> t.Set[exp.Anonymous]:
     return {node for node in statement.find_all(exp.Anonymous) if node.name.upper() == "ROW"}
 
 
-def _expand_row_cast_aliases(row_nodes: t.Set[exp.Anonymous], statement: exp.Expr, query: Query) -> None:
+def _expand_row_cast_aliases(row_nodes: t.Set[exp.Anonymous], statement: exp.Expr, query: Q) -> None:
     """
     Expand ROWs with casts into lists of columns, as well as expressions of the form '(alias_name).field'.
 
@@ -85,7 +85,7 @@ def _expand_row_cast_aliases(row_nodes: t.Set[exp.Anonymous], statement: exp.Exp
         _expand_to_select_list(alias_node, row_exprs, fields)
 
 
-def _simplify_field_access(row_nodes: t.Set[exp.Anonymous], statement: exp.Expr, query: Query) -> None:
+def _simplify_field_access(row_nodes: t.Set[exp.Anonymous], statement: exp.Expr, query: Q) -> None:
     """
     Simplify field access patterns on ROW casts.
 
@@ -146,7 +146,7 @@ def _simplify_column_field_access(dot: exp.Dot, column: exp.Column, field: exp.I
     dot.replace(new_col)
 
 
-def _resolve_field_index(cast_node: exp.Cast, field_name: str, query: Query) -> t.Optional[t.Tuple[t.List[str], int]]:
+def _resolve_field_index(cast_node: exp.Cast, field_name: str, query: Q) -> t.Optional[t.Tuple[t.List[str], int]]:
     """
     Look up the field index for `field_name` in the composite type of `cast_node`.
     Returns (fields, index) or None if the type or field is unknown.
@@ -165,7 +165,7 @@ def _resolve_field_index(cast_node: exp.Cast, field_name: str, query: Query) -> 
     return fields, fields.index(field_name)
 
 
-def _simplify_field_of_row(dot: exp.Dot, cast_node: exp.Cast, right: exp.Expr, query: Query) -> None:
+def _simplify_field_of_row(dot: exp.Dot, cast_node: exp.Cast, right: exp.Expr, query: Q) -> None:
     """
     Handle (ROW(...)::my_type).field or (ROW(...)::my_type).* patterns.
 
@@ -190,7 +190,7 @@ def _simplify_field_of_case_row(
     dot: exp.Dot,
     case_node: exp.Case,
     right: exp.Identifier,
-    query: Query,
+    query: Q,
     row_node_set: t.Set[exp.Anonymous],
 ) -> None:
     """Simplify CASE statements when a field selector is used on its result.
@@ -331,7 +331,7 @@ def _is_inside_unnest(node: exp.Expr) -> bool:
     return node.find_ancestor(exp.Unnest, exp.Array) is not None
 
 
-def _lookup_type_fields(type_name: str, query: Query) -> t.List[str]:
+def _lookup_type_fields(type_name: str, query: Q) -> t.List[str]:
     """
     Return ordered field names for a composite type.
 
