@@ -39,15 +39,6 @@ def test__select_parens(holder, case):
     assert len(h.edges) == 1
 
 
-@pytest.mark.skip(reason="todo")
-def test__select_with_ordinality(holder):
-    sql = """
-    INSERT INTO fruit.processed
-    SELECT * FROM unnest(ARRAY['apple', 'banana']) WITH ORDINALITY AS t(name, age);
-    """
-    holder(sql=sql, dialect=DIALECT, with_tables=True)
-
-
 distinct = ["DISTINCT ON (num)", ""]
 
 
@@ -305,9 +296,9 @@ def test__select_join_to_self(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
     assert h.paths == [
-        ["column[fruit.processed.name]", "column[fruit.processed.name]"],
         ["column[fruit.raw.color]", "column[fruit.processed.kind]"],
         ["column[fruit.raw.age]", "column[fruit.processed.age]"],
+        ["column[fruit.processed.name]", "column[fruit.processed.name]"],
     ]
     assert len(h.nodes) == 5
     assert len(h.edges) == 3

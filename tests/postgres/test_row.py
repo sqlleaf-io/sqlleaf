@@ -322,4 +322,6 @@ def test__row_update_set_row(holder):
     assert h.paths == [
         ["literal[10]", "function[MUL]", "column[t1.a]", "function[MUL]"],
         ['literal["!"]', "function[DPIPE]", "column[t1.b]", "function[DPIPE]"],
+        ["column[t1.a]", "function[MUL]", "column[t1.a]"],
+        ["column[t1.b]", "function[DPIPE]", "column[t1.b]"],
     ]

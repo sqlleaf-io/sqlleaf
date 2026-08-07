@@ -6,7 +6,7 @@ from sqlglot import exp
 from sqlleaf import mappings, util
 from sqlleaf.models.query import UserDefinedFunctionQuery
 from sqlleaf.processors.collector import substitute
-from sqlleaf.processors.transformer.expressions import convert_values_to_select
+from sqlleaf.processors.transformer.expressions import normalize_values
 from sqlleaf.processors.transformer.expressions.row import transform_row_function_to_subquery
 
 logger = logging.getLogger("sqlleaf")
@@ -176,7 +176,7 @@ def transform_inner_query(
         return resolve_returning_to_select(stmt, param_map, query, positional_map)
 
     if isinstance(stmt, exp.Values):
-        stmt = convert_values_to_select(stmt, query.dialect)
+        stmt = normalize_values(query, stmt)
 
     logger.debug(f"Transforming inner query: {stmt.sql()}")
     replacement_expr = substitute.substitute_parameters(stmt, query, param_map, positional_map)

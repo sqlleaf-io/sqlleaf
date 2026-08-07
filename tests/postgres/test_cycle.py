@@ -251,8 +251,8 @@ def test__cycle_one_selfloop_at_start(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[letter.a]", "column[letter.a]"],
         ["column[letter.a]", "column[letter.b]", "column[letter.c]"],
+        ["column[letter.a]", "column[letter.a]"],
     ]
     assert len(h.nodes) == 3
     assert len(h.edges) == 3
@@ -277,8 +277,8 @@ def test__cycle_one_selfloop_at_start_reversed(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[letter.c]", "column[letter.c]"],
         ["column[letter.c]", "column[letter.b]", "column[letter.a]"],
+        ["column[letter.c]", "column[letter.c]"],
     ]
     assert len(h.nodes) == 3
     assert len(h.edges) == 3
@@ -303,8 +303,8 @@ def test__cycle_one_selfloop_at_middle(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[letter.b]", "column[letter.b]"],
         ["column[letter.a]", "column[letter.b]", "column[letter.c]"],
+        ["column[letter.b]", "column[letter.b]"],
     ]
     assert len(h.nodes) == 3
     assert len(h.edges) == 3
@@ -329,8 +329,8 @@ def test__cycle_one_selfloop_at_end(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[letter.c]", "column[letter.c]"],
         ["column[letter.a]", "column[letter.b]", "column[letter.c]"],
+        ["column[letter.c]", "column[letter.c]"],
     ]
     assert len(h.nodes) == 3
     assert len(h.edges) == 3
@@ -360,10 +360,10 @@ def test__cycle_selfloop_at_each_node(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
+        ["column[letter.a]", "column[letter.b]", "column[letter.c]"],
         ["column[letter.a]", "column[letter.a]"],
         ["column[letter.b]", "column[letter.b]"],
         ["column[letter.c]", "column[letter.c]"],
-        ["column[letter.a]", "column[letter.b]", "column[letter.c]"],
     ]
     assert len(h.nodes) == 3
     assert len(h.edges) == 5

@@ -99,7 +99,7 @@ def get_cycles(graph: nx.MultiDiGraph):
             first_column = columns[0]
             idx = cycle.index(first_column)
             new_cycle = cycle[idx:] + cycle[:idx] + [first_column]
-            logger.debug(f"Found cycle: {new_cycle}")
+            logger.debug(f"Found valid cycle in graph: {new_cycle}")
             cycle = new_cycle
         else:
             if len(columns) == 0:

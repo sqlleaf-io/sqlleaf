@@ -14,7 +14,6 @@ from sqlleaf.models.query import InsertQuery
 DIALECT = "postgres"
 
 
-
 def test__insert_select_with_aliases(holder):
     sql = "INSERT INTO fruit.raw SELECT 'yellow' as name, UPPER('banana') AS kind;"
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
@@ -66,18 +65,36 @@ def test__insert_on_conflict_with_values(holder):
     DO UPDATE SET
         created_at = EXCLUDED.created_at,
         name = LOWER(EXCLUDED.name),
-        kind = EXCLUDED.kind;
+        kind = UPPER(EXCLUDED.kind);
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert (
+        h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (name, created_at) "
+        "SELECT 'pear' AS name, CURRENT_TIMESTAMP AS created_at "
+        "ON CONFLICT(name) "
+        "DO UPDATE SET "
+        "created_at = excluded.created_at, "
+        "name = LOWER(excluded.name), "
+        "kind = UPPER(excluded.kind)"
+    )
+    # The inner UPDATE query
+    assert (
+        h.holders[0].downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed (created_at, name, kind) "
+        "SELECT CURRENT_TIMESTAMP AS created_at, LOWER('pear') AS name, UPPER(processed.kind) AS kind "
+        "FROM fruit.processed AS processed"
+    )
 
     assert h.paths == [
         ['literal["pear"]', "column[fruit.processed.name]"],
         ["function[CURRENT_TIMESTAMP]", "column[fruit.processed.created_at]"],
-        ["function[CURRENT_TIMESTAMP]", "column[fruit.processed.created_at]"],
         ['literal["pear"]', "function[LOWER]", "column[fruit.processed.name]"],
+        ["function[CURRENT_TIMESTAMP]", "column[fruit.processed.created_at]"],
+        ["column[fruit.processed.kind]", "function[UPPER]", "column[fruit.processed.kind]"],
     ]
-    assert len(h.nodes) == 6
-    assert len(h.edges) == 5
+    assert len(h.nodes) == 9
+    assert len(h.edges) == 7
 
 
 def test__insert_on_conflict_do_nothing(holder):

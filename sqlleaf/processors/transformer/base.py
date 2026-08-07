@@ -10,7 +10,7 @@ from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 from sqlleaf import exception, util
 from sqlleaf.models.query import Q, TableQuery
 from sqlleaf.processors.transformer import udf
-from sqlleaf.processors.transformer.expressions import _convert_values_to_select, normalize_all_values, simplify_row
+from sqlleaf.processors.transformer.expressions import normalize_values, simplify_row, _rewrite_values_statement
 from sqlleaf.settings import system_functions as get_system_functions
 from sqlleaf.typing import E, SqlObjectType
 
@@ -64,7 +64,7 @@ class BaseQueryTransformer:
         if isinstance(statement, exp.Insert):
             statement = self._convert_insert_defaults_to_values(statement)
 
-        statement = normalize_all_values(self.query, statement)
+        statement = normalize_values(self.query, statement)
         return statement
 
     @t.final
@@ -293,9 +293,16 @@ class BaseQueryTransformer:
                 # VALUES() has already been transformed into SELECT * FROM (VALUES())
                 from_ = cte_expr.this.args["from_"].this
 
+                values_node = None
                 if isinstance(from_, exp.Values):
-                    values_expr = _convert_values_to_select(self.query, expression=from_, statement=cte_expr)
-                    cte_expr.this.replace(values_expr)
+                    values_node = from_
+                elif isinstance(from_, exp.Subquery) and isinstance(from_.this, exp.Values):
+                    values_node = from_.this
+
+                if values_node is not None:
+                    _rewrite_values_statement(self.query, expression=values_node, statement=cte_expr)
+                else:
+                    normalize_values(self.query, cte_expr.this)
 
             # Rename the columns and replace the INSERT with the SELECT
             self._rename_returning_columns(statement=cte_expr, child_table=cte_expr.find(exp.Table))
@@ -313,7 +320,7 @@ class BaseQueryTransformer:
         according to the table's default column values.
 
         Promoted from InsertTransformer so it can run inside preprocess() before
-        the unified normalize_all_values() pass, for every exp.Insert statement.
+        the unified normalize_values() pass, for every exp.Insert statement.
         """
         query = self.query
         child_table = query.get_target_as_table()

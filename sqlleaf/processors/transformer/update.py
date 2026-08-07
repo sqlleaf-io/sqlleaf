@@ -5,7 +5,7 @@ UpdateTransformer — handles UPDATE (and MERGE → UPDATE, ON CONFLICT) stateme
 from sqlglot import exp
 
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
-from sqlleaf.processors.transformer.expressions import _convert_values_to_select
+from sqlleaf.processors.transformer.expressions import normalize_values
 
 
 class UpdateTransformer(BaseQueryTransformer):
@@ -43,13 +43,9 @@ class UpdateTransformer(BaseQueryTransformer):
         parent_insert_expr = None
         if statement.parent and isinstance(statement.parent, (exp.Insert, exp.Create)) and statement.parent.expression:
             if isinstance(statement.parent.expression, exp.Values):
-                converted = _convert_values_to_select(
-                    self.query,
-                    expression=statement.parent.expression,
-                    statement=statement.parent,
-                )
-                if isinstance(converted, (exp.Insert, exp.Create)):
-                    parent_insert_expr = converted
+                new_parent = normalize_values(self.query, statement.parent)
+                if isinstance(new_parent, (exp.Insert, exp.Create)):
+                    parent_insert_expr = new_parent
                     statement = parent_insert_expr.args["conflict"]
             elif isinstance(statement.parent.expression, exp.Select):
                 parent_insert_expr = statement.parent
@@ -67,10 +63,11 @@ class UpdateTransformer(BaseQueryTransformer):
             for col in eq_expr.right.find_all(exp.Column):
                 if col.table.upper() == "EXCLUDED":
                     if parent_insert_expr is None or col.name not in parent_insert_expr.named_selects:
-                        # Use the column's default (Postgres)
-                        eq_expr.pop()
+                        # The outer INSERT did not provide a value for this column; reference the existing column
+                        replacement = exp.column(col.name)
+                        col.replace(replacement)
                     else:
-                        # Set it to the unaliased expression
+                        # Set it to the unaliased expression from the outer INSERT/SELECT
                         select_expr = [
                             alias_expr for alias_expr in parent_insert_expr.selects if alias_expr.alias == col.name
                         ][0]

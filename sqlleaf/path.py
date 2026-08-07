@@ -81,6 +81,10 @@ def find_all_paths(graph: nx.MultiDiGraph) -> t.Generator[LineagePath]:
                 if not path:
                     continue
 
+                if path[0].parent.id == path[0].child.id:
+                    # Skip selfloops; these are covered in the dedicated loop below
+                    continue
+
                 logger.debug(
                     "Found edge path using root: %s --- %s",
                     [e.id for e in path],
@@ -89,17 +93,16 @@ def find_all_paths(graph: nx.MultiDiGraph) -> t.Generator[LineagePath]:
                 lineage_path = LineagePath(hops=path)
                 yield lineage_path
 
-    else:
-        # The graph is a column selfloop that goes through another node (e.g. a function)
-        for cycle in cycles:
-            for path in find_edges_along_cycle_path(graph, cycle):
-                logger.debug(
-                    "Found edge path from cycle: %s --- %s",
-                    [e.id for e in path],
-                    [(e.parent.friendly_name, e.child.friendly_name) for e in path],
-                )
-                lineage_path = LineagePath(hops=path)
-                yield lineage_path
+    # Check for selfloops (e.g. a column that goes through another node, such as a function)
+    for cycle in cycles:
+        for path in find_edges_along_cycle_path(graph, cycle):
+            logger.debug(
+                "Found edge path from cycle: %s --- %s",
+                [e.id for e in path],
+                [(e.parent.friendly_name, e.child.friendly_name) for e in path],
+            )
+            lineage_path = LineagePath(hops=path)
+            yield lineage_path
 
 
 def find_edges_along_cycle_path(

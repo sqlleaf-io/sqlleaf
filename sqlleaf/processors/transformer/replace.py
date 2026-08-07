@@ -1,7 +1,7 @@
 import sqlglot
 from sqlglot import exp
 
-from sqlleaf.processors.transformer.expressions import normalize_all_values
+from sqlleaf.processors.transformer.expressions import normalize_values
 from sqlleaf.processors.transformer.insert import InsertTransformer
 
 
@@ -18,6 +18,6 @@ class ReplaceTransformer(InsertTransformer):
         # had DEFAULT VALUES expansion or VALUES->SELECT normalization applied yet.
         if isinstance(statement, exp.Insert):
             statement = self._convert_insert_defaults_to_values(statement)
-        statement = normalize_all_values(self.query, statement)
+        statement = normalize_values(self.query, statement)
 
         return super().transform(statement)

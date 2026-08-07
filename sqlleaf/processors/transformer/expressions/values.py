@@ -1,77 +1,79 @@
 from __future__ import annotations
 
+import logging
 import typing as t
 
 from sqlglot import exp
 
 from sqlleaf import exception
 from sqlleaf.models.query import Q
-from sqlleaf.typing import E
+from sqlleaf.typing import E, SqlObjectType
 from sqlleaf.util import default_column_index_iterator
 
+logger = logging.getLogger("sqlleaf")
 
-def normalize_all_values(query, statement: E) -> E:
+
+def normalize_values(query: Q, expr: exp.Expr) -> exp.Expr:
     """
-    Converts VALUES() expressions into SELECT/UNION ALL expressions.
+    Convert a VALUES() statement into a SELECT .. UNION statement.
+    This handles two cases:
+    - When it is a top-level query (e.g. INSERT .. VALUES, CTAS .. VALUES)
+    - When it is inside another query, e.g. nested in an expression
     """
+    if isinstance(expr, exp.Values):
+        return _rewrite_values_statement(query, expression=expr, statement=expr)
+
     unresolved_ids: t.Set[int] = set()
 
+    # Walk the subtree and rewrite all Values occurrences
     while True:
-        # Pick the next actionable VALUES node
-        values = _pick_next_values_node(statement, unresolved_ids)
+        values = _pick_next_values_node(expr, unresolved_ids)
         if values is None:
             break
 
         # Determine if there is a CTE ancestor within the current statement scope
-        cte = _cte_ancestor_in_scope(statement, values)
-
-        # Case 1: VALUES is nested inside a writable CTE – defer to inner-CTE flow
+        cte = _cte_ancestor_in_scope(expr, values)
         if cte is not None:
             unresolved_ids.add(id(values))
             continue
 
-        # Case 2: VALUES is directly the expression of an INSERT
+        # VALUES is directly the expression of an INSERT
         parent = values.parent
         if isinstance(parent, exp.Insert) and parent.expression is values:
-            new_stmt = _handle_values_in_insert(values, parent, parent is statement, query)
+            new_stmt = _handle_values_in_insert(values, parent, parent is expr, query)
             if new_stmt is not None:
-                statement = new_stmt
+                expr = new_stmt
             continue
 
-        # Case 3: VALUES is directly the expression of a CREATE ... AS
+        # VALUES is directly the expression of a CREATE ... AS
         if isinstance(parent, exp.Create) and parent.expression is values:
             _handle_values_in_create(values, parent, query)
             continue
 
-        # Case 4 & 5: VALUES in a table position (wrapped by Subquery or direct FROM)
+        # VALUES in a table position (wrapped by Subquery or direct FROM)
         if values.find_ancestor(exp.Subquery) is not None or values.parent_select:
             _rewrite_values_in_table_position(values, query.dialect)
             continue
 
-        # Otherwise: leave untouched for now
         unresolved_ids.add(id(values))
 
-    return statement
+    return expr
 
 
 def _pick_next_values_node(statement: exp.Expr, unresolved: set[int]) -> exp.Values | None:
     """
     Return the next exp.Values node in the statement not present in `unresolved`.
-
-    This intentionally re-scans the tree every iteration because prior conversions
-    can introduce new Values nodes.
     """
     for candidate in statement.find_all(exp.Values):
         if id(candidate) not in unresolved:
-            return t.cast(exp.Values, candidate)
+            return candidate
     return None
 
 
 def _cte_ancestor_in_scope(statement: exp.Expr, values: exp.Values) -> exp.CTE | None:
-    """Return the enclosing CTE only if it belongs to the current statement's subtree.
-
-    Avoids erroneously picking a CTE that is outside the current `statement` root
-    (a ghost ancestor through parent links), which would misclassify VALUES shape.
+    """
+    Return the enclosing CTE only if it belongs to the current statement's subtree.
+    This is to prevent us from using a CTE that does not enclose us.
     """
     cte = values.find_ancestor(exp.CTE)
     if cte is None:
@@ -81,22 +83,22 @@ def _cte_ancestor_in_scope(statement: exp.Expr, values: exp.Values) -> exp.CTE |
     if id(cte) not in ctes_in_scope:
         return None
 
-    return t.cast(exp.CTE, cte)
+    return cte
 
 
 def _handle_values_in_insert(
     values: exp.Values,
     parent: exp.Insert,
     is_top_level: bool,
-    query,
+    query: Q,
 ) -> t.Optional[exp.Expr]:
     """
     Handle VALUES directly under an INSERT expression.
 
     Returns a possibly updated top-level statement when the INSERT itself is
-    replaced and it is the top-level statement; otherwise returns None.
+    replaced and it is the top-level statement.
     """
-    converted = _convert_values_to_select(query, values, parent)
+    converted = _rewrite_values_statement(query, values, parent)
     if isinstance(converted, exp.Insert) and is_top_level:
         return converted
     return None
@@ -105,12 +107,12 @@ def _handle_values_in_insert(
 def _handle_values_in_create(
     values: exp.Values,
     parent: exp.Create,
-    query,
+    query: Q,
 ) -> None:
     """
     Handle VALUES directly under a CREATE ... AS expression.
     """
-    _convert_values_to_select(query, values, parent)
+    _rewrite_values_statement(query, values, parent)
 
 
 def _rewrite_values_in_table_position(values: exp.Values, dialect: str) -> None:
@@ -118,15 +120,14 @@ def _rewrite_values_in_table_position(values: exp.Values, dialect: str) -> None:
     Rewrite VALUES used in FROM/JOIN/LATERAL positions.
 
     Supports both:
-    - Subquery(VALUES ...) shapes, updating the inner expression and preserving
-      the outer alias/columns.
-    - Direct 'FROM (VALUES ...)' shapes, converting and transferring aliases.
+    - Subquery(Values), which updates the inner expression and preserves the outer alias/columns.
+    - Direct 'From(Values)', which converts and transfers aliases.
     """
     # SELECT (VALUES ...)
     outer_subquery = values.find_ancestor(exp.Subquery)
     if outer_subquery is not None and outer_subquery.this is values:
-        converted = convert_values_to_select(
-            expression=values,
+        converted = _values_to_select_expr(
+            values=values,
             dialect=dialect,
         )
         if isinstance(converted, exp.Subquery):
@@ -138,8 +139,8 @@ def _rewrite_values_in_table_position(values: exp.Values, dialect: str) -> None:
     parent_select = values.parent_select
     from_ = parent_select and parent_select.args.get("from_")
     if from_ and from_.this is values:
-        converted = convert_values_to_select(
-            expression=values,
+        converted = _values_to_select_expr(
+            values=values,
             dialect=dialect,
         )
         # Set the table alias
@@ -150,45 +151,51 @@ def _rewrite_values_in_table_position(values: exp.Values, dialect: str) -> None:
             from_.set("this", converted)
 
 
-def _convert_values_to_select(query: Q, expression: exp.Values, statement: E) -> E:
+def _resolve_values_column_names(values: exp.Values, container: exp.Expr, query: Q) -> list[str]:
     """
-    Convert a `VALUES(...)` clause into a `SELECT ... UNION ALL SELECT ...` form
+    Resolve column names for the expressions inside VALUES() based on its surrounding expressions.
+    """
+    columns = []
+    if isinstance(container, exp.CTE):
+        columns = container.alias_column_names
+        if not columns:
+            columns = [e.name for e in container.root().this.expressions]
+
+    elif not isinstance(container, exp.Values):
+        columns = [e.name for e in container.this.expressions]
+
+    if not columns:
+        # Fall back to the mapping
+        # TODO: remove after downstream bug found
+        child_table = query.target_info.expression
+        if isinstance(child_table, exp.Table):
+            cols = query.object_mapping.find_columns_for_table(child_table)
+            values_lists: t.List[exp.Tuple] = values.expressions
+            columns = list(cols)[: len(values_lists[0].expressions)]
+
+    # Returning empty will populate dialect defaults
+    return list(columns)
+
+
+def _rewrite_values_statement(query: Q, expression: exp.Values, statement: E) -> E:
+    """
+    Convert a `VALUES(...)` statement into a `SELECT ... UNION ALL SELECT ...` statement
     and rewrite the parent statement in-place.
     """
     if not isinstance(expression, exp.Values):
         return statement
 
-    # Resolve the column names
-    if isinstance(statement, exp.CTE):
-        columns = statement.alias_column_names
-        if not columns:
-            columns = [e.name for e in statement.root().this.expressions]
-    elif not isinstance(statement, exp.Values):
-        columns = [e.name for e in statement.this.expressions]
+    columns = _resolve_values_column_names(expression, statement, query)
+
+    # Determine target table for INSERT/CREATE rewriting where needed
+    if query.target_info.type == SqlObjectType.TABLE:
+        child_table = query.target_info.expression
     else:
-        columns = []
-
-    # Fallback: look up from object mapping
-    values_lists: t.List[exp.Tuple] = expression.expressions
-    child_table = None
-
-    if not columns:
-        try:
-            child_table = query.get_target_as_table()
-            cols = query.object_mapping.find_columns_for_table(child_table)
-            columns = list(cols)[: len(values_lists[0].expressions)]
-        except exception.SqlLeafException:
-            pass
-
-    if not child_table:
-        try:
-            child_table = query.get_target_as_table()
-        except exception.SqlLeafException:
-            pass
+        child_table = statement.this
 
     # Build the 'SELECT ... UNION ALL SELECT ...'
-    new_statement = convert_values_to_select(
-        expression=expression,
+    new_statement = _values_to_select_expr(
+        values=expression,
         dialect=query.dialect,
         column_names=columns,
     )
@@ -198,7 +205,7 @@ def _convert_values_to_select(query: Q, expression: exp.Values, statement: E) ->
         insert_expr = exp.insert(
             expression=new_statement,
             columns=statement.this.expressions,
-            into=child_table or statement.this,
+            into=child_table,
             returning=statement.args.get("returning"),
         )
         insert_expr.set("conflict", statement.args.get("conflict"))
@@ -218,22 +225,22 @@ def _convert_values_to_select(query: Q, expression: exp.Values, statement: E) ->
     return statement
 
 
-def convert_values_to_select(
-    expression: exp.Values,
+def _values_to_select_expr(
+    values: exp.Values,
     dialect: str,
     column_names: t.Optional[t.List[str]] = None,
 ) -> exp.Expr:
     """
     Convert an exp.Values into an exp.Select or exp.Union.
     """
-    values_lists: t.List[exp.Tuple] = expression.expressions
+    values_lists: t.List[exp.Tuple] = values.expressions
     if not column_names:
         column_names = list(default_column_index_iterator(dialect, values_lists[0].expressions))
 
     selects = []
     for val_list in values_lists:
-        values = val_list.expressions
-        cols = [exp.alias_(val, str(col)) for col, val in zip(column_names, values)]
+        row_vals = val_list.expressions
+        cols = [exp.alias_(val, str(col)) for col, val in zip(column_names, row_vals)]
         selects.append(cols)
 
     if len(selects) > 1:
@@ -243,4 +250,4 @@ def convert_values_to_select(
         return_expr = exp.select(*selects[0])
 
     # Wrap the query in a subquery if it's not a top-level statement
-    return return_expr.subquery() if expression.parent_select else return_expr
+    return return_expr.subquery() if values.parent_select else return_expr
