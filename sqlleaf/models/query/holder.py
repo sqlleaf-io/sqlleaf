@@ -47,4 +47,3 @@ class QueryHolder:
     def set_transformed_query(self, query: Q) -> None:
         self.transformed = query
         self.transformed.set_holder(self)
-

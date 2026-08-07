@@ -1,5 +1,4 @@
 import typing as t
-from functools import cache
 
 from sqlglot import exp
 

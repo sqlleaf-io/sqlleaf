@@ -1,6 +1,8 @@
-from sqlleaf.models.query.base import Query
-from sqlleaf.typing import SourceInfo, TargetInfo, SqlObjectType
 from sqlglot import exp
+
+from sqlleaf.models.query.base import Query
+from sqlleaf.typing import SourceInfo, SqlObjectType, TargetInfo
+
 
 class ValuesQuery(Query):
     KIND = "values"

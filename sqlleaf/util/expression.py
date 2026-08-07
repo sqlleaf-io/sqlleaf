@@ -4,7 +4,7 @@ from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.qualify import qualify
 
-from sqlleaf import exception, util, mappings
+from sqlleaf import exception, mappings, util
 from sqlleaf.typing import E, SourceExprType, TargetExprType
 
 
@@ -190,7 +190,9 @@ def is_row_function(expr: exp.Expr) -> bool:
     return isinstance(expr, exp.Anonymous) and expr.this.upper() == "ROW"
 
 
-def qualify_and_annotate(expr: exp.Expr, dialect: str, object_mapping: mappings.ObjectMapping, remove_added_aliases: bool = False)-> None:
+def qualify_and_annotate(
+    expr: exp.Expr, dialect: str, object_mapping: mappings.ObjectMapping, remove_added_aliases: bool = False
+) -> None:
     stmt = qualify(
         expr,
         schema=object_mapping,

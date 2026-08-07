@@ -305,9 +305,7 @@ def _is_row_cast(node: exp.Expr) -> bool:
     Check if a node is a Cast of a ROW() to a USERDEFINED type.
     """
     return (
-        isinstance(node, exp.Cast)
-        and util.is_row_function(node.this)
-        and node.to.this == exp.DataType.Type.USERDEFINED
+        isinstance(node, exp.Cast) and util.is_row_function(node.this) and node.to.this == exp.DataType.Type.USERDEFINED
     )
 
 

@@ -4,9 +4,9 @@ import typing as t
 from dataclasses import dataclass
 
 import sqlglot
-from sqlglot import TokenType, exp
+from sqlglot import exp
 
-from sqlleaf import exception, mappings
+from sqlleaf import mappings
 from sqlleaf.models.query.base import Query
 from sqlleaf.typing import SqlObjectType, TargetInfo
 
@@ -52,11 +52,13 @@ class ExecuteQuery(Query):
             statement_index=statement_index,
             object_mapping=object_mapping,
             source_info=None,
-            target_info=TargetInfo(expression=exp.to_table(self.parameters.name), type=SqlObjectType.PREPARED_STATEMENT),
+            target_info=TargetInfo(
+                expression=exp.to_table(self.parameters.name), type=SqlObjectType.PREPARED_STATEMENT
+            ),
         )
 
     @property
-    def name(self)-> str:
+    def name(self) -> str:
         return self.parameters.name
 
     @property

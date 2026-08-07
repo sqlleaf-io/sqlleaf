@@ -5,7 +5,7 @@ from sqlglot import exp
 
 from sqlleaf import mappings, util
 from sqlleaf.exception import SqlLeafException
-from sqlleaf.models.query import FunctionParam, UserDefinedFunctionQuery, CallQuery, ExecuteQuery, CTASQuery
+from sqlleaf.models.query import CallQuery, CTASQuery, ExecuteQuery, FunctionParam, UserDefinedFunctionQuery
 
 logger = logging.getLogger("sqlleaf")
 
@@ -99,9 +99,8 @@ def transform_arguments(
 
             # If the parameter is a table type and the argument is a ROW expression without a cast,
             # we need to add the cast to the expected type.
-            if (
-                util.is_row_function(arg_expr)
-                and (isinstance(param.type, exp.DataType) and param.type.this == exp.DataType.Type.USERDEFINED)
+            if util.is_row_function(arg_expr) and (
+                isinstance(param.type, exp.DataType) and param.type.this == exp.DataType.Type.USERDEFINED
             ):
                 arg_expr = exp.Cast(
                     this=arg_expr,
@@ -294,7 +293,9 @@ def substitute_call(query: CallQuery) -> t.List[exp.Expr]:
     return replacement_exprs
 
 
-def substitute_execute_with_plan(execute_name: str, execute_arguments: t.List[exp.Literal], object_mapping: mappings.ObjectMapping) -> t.List[exp.Expr]:
+def substitute_execute_with_plan(
+    execute_name: str, execute_arguments: t.List[exp.Literal], object_mapping: mappings.ObjectMapping
+) -> t.List[exp.Expr]:
     """
     Example:
         PREPARE stmt AS SELECT 1;
@@ -396,7 +397,7 @@ def substitute_session_variables(
                     # FROM IDENTIFIER($b) → FROM my_table
                     # Here we modify the parent Table node's 'this' arg
                     node.parent.set("this", exp.to_identifier(resolved_name.upper()))
-                    return node # It's already disconnected or about to be ignored
+                    return node  # It's already disconnected or about to be ignored
                 else:
                     # SELECT IDENTIFIER($col) → SELECT col_name
                     return exp.column(resolved_name.upper())

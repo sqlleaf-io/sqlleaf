@@ -18,6 +18,7 @@ class SetQuery(Query):
     This class extracts these variables and stores them in the ObjectMapping
     so they can be substituted into subsequent queries in the same session.
     """
+
     KIND = "set"
 
     def __init__(self, expr: exp.Set, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):

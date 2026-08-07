@@ -26,7 +26,7 @@ class Query:
         object_mapping: mappings.ObjectMapping,
         source_info: SourceInfo | None,
         target_info: TargetInfo,
-        skip_type_annotation: bool = False
+        skip_type_annotation: bool = False,
     ):
         self.kind = self.KIND
         self.dialect = dialect

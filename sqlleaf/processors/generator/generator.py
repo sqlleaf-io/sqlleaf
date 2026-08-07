@@ -201,7 +201,13 @@ def walk_query_scope(column: exp.Column | int, scope: Scope) -> t.Generator[Scop
         expression=select.unalias(),
         scope=scope,
     )
-    logger.debug("Yielding standard expression: '%s', Type: %s, Expr: %s, Id: %s", column, type(select.unalias()), select.sql(), id(st))
+    logger.debug(
+        "Yielding standard expression: '%s', Type: %s, Expr: %s, Id: %s",
+        column,
+        type(select.unalias()),
+        select.sql(),
+        id(st),
+    )
     yield st
 
 

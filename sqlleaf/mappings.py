@@ -8,8 +8,16 @@ from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
 
 from sqlleaf import exception
-from sqlleaf.exception import SqlLeafException
-from sqlleaf.models.query import CTASQuery, DatabaseQuery, PrepareQuery, ProcedureQuery, Q, SchemaQuery, TypeQuery, ViewQuery
+from sqlleaf.models.query import (
+    CTASQuery,
+    DatabaseQuery,
+    PrepareQuery,
+    ProcedureQuery,
+    Q,
+    SchemaQuery,
+    TypeQuery,
+    ViewQuery,
+)
 
 if t.TYPE_CHECKING:
     from sqlleaf.models.query import SequenceQuery, StageQuery, TableQuery, TriggerQuery, UserDefinedFunctionQuery

@@ -25,6 +25,7 @@ class SqlObjectType(StrEnum):
     """
     The types of models that represent a 'source' or 'target' in an SQL statement.
     """
+
     NONE = auto()
 
     # Targets and sources
@@ -50,7 +51,15 @@ class SqlObjectType(StrEnum):
         """
         Return all the types that do not define any columns of their own.
         """
-        return not set(clses).isdisjoint({cls.DYNAMODB, cls.FILE, cls.PROGRAM, cls.STAGE, cls.STREAM, cls.PROCEDURE, cls.PREPARED_STATEMENT})
+        return not set(clses).isdisjoint({
+            cls.DYNAMODB,
+            cls.FILE,
+            cls.PROGRAM,
+            cls.STAGE,
+            cls.STREAM,
+            cls.PROCEDURE,
+            cls.PREPARED_STATEMENT,
+        })
 
 
 @dataclass(frozen=True)

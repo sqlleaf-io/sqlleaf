@@ -2,7 +2,7 @@ import logging
 
 from sqlglot import exp
 
-from sqlleaf import mappings, util
+from sqlleaf import util
 from sqlleaf.models.query import (
     CallQuery,
     CopyQuery,

@@ -8,7 +8,7 @@ from sqlglot import TokenType, exp
 from sqlglot.expressions import ColumnDef
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
-from sqlleaf import exception, mappings, util, settings
+from sqlleaf import exception, mappings, settings, util
 from sqlleaf.models.query import (
     CallQuery,
     CopyQuery,
@@ -43,8 +43,6 @@ from sqlleaf.processors.collector import substitute
 from sqlleaf.processors.transformer.expressions.row import simplify_row_in_values
 
 logger = logging.getLogger("sqlleaf")
-
-
 
 """
 Parses text for SQL statements and collects them into Query models.
@@ -282,8 +280,8 @@ def _collect_call_substitutions(
     and any query containing UDF call sites.
     The resulting inner statements are classified as Queries and attached as downstream holders.
     """
-    from sqlleaf.processors.transformer import udf
     from sqlleaf import typing
+    from sqlleaf.processors.transformer import udf
 
     subst_statements: t.List[exp.Expr] = []
 
@@ -291,10 +289,7 @@ def _collect_call_substitutions(
         subst_statements = substitute.substitute_call(query=query)
     elif isinstance(query, ExecuteQuery):
         subst_statements = substitute.substitute_execute(query=query)
-    elif (
-        isinstance(query, CTASQuery)
-        and query.source_info.type == typing.SqlObjectType.PREPARED_STATEMENT
-    ):
+    elif isinstance(query, CTASQuery) and query.source_info.type == typing.SqlObjectType.PREPARED_STATEMENT:
         subst_statements = [substitute.substitute_create_execute(query=query)]
     else:
         expression = util.copy_expression(query.statement)
@@ -646,16 +641,16 @@ def _get_properties_to_include(options: t.List[str]) -> t.Dict:
 
 
 _UNNAMED_TYPE_MAP: dict[type, type] = {
-    exp.Insert:            InsertQuery,
-    exp.Update:            UpdateQuery,
-    exp.Merge:             MergeQuery,
+    exp.Insert: InsertQuery,
+    exp.Update: UpdateQuery,
+    exp.Merge: MergeQuery,
     exp.MultitableInserts: MultitableInsertQuery,
-    exp.Delete:            DeleteQuery,
-    exp.Select:            SelectQuery,
-    exp.Copy:              CopyQuery,
-    exp.Values:            ValuesQuery,
-    exp.Put:               PutQuery,
-    exp.Set:               SetQuery,
+    exp.Delete: DeleteQuery,
+    exp.Select: SelectQuery,
+    exp.Copy: CopyQuery,
+    exp.Values: ValuesQuery,
+    exp.Put: PutQuery,
+    exp.Set: SetQuery,
 }
 
 

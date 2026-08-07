@@ -1,12 +1,13 @@
 from __future__ import annotations
-from dataclasses import dataclass
+
 import typing as t
+from dataclasses import dataclass
 
 from sqlglot import exp
 
 from sqlleaf import mappings, util
 from sqlleaf.models.query.base import Query
-from sqlleaf.typing import TargetInfo, SourceInfo
+from sqlleaf.typing import SourceInfo, TargetInfo
 
 
 @dataclass(frozen=True)
@@ -44,7 +45,7 @@ class TableQuery(Query):
             object_mapping=object_mapping,
             source_info=source,
             target_info=TargetInfo(expression=target, type=target_type),
-            skip_type_annotation=True
+            skip_type_annotation=True,
         )
         self.column_defs: t.List[exp.ColumnDef] = []
         self.system_column_defs: t.List[exp.ColumnDef] = []
@@ -57,7 +58,7 @@ class TableQuery(Query):
     def location(self) -> exp.LocationProperty | None:
         return self.properties.location
 
-    def is_external(self)-> bool:
+    def is_external(self) -> bool:
         return
 
     def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:

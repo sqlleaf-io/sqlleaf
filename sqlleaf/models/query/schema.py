@@ -43,5 +43,5 @@ class SchemaQuery(Query):
         self.properties = SchemaQueryParameters.from_expression(expr, dialect)
 
     @property
-    def location(self)-> str | None:
+    def location(self) -> str | None:
         return self.properties.location

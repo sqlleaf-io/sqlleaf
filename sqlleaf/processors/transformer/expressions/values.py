@@ -4,7 +4,7 @@ import typing as t
 
 from sqlglot import exp
 
-from sqlleaf import util, exception
+from sqlleaf import exception
 from sqlleaf.models.query import Q
 from sqlleaf.typing import E
 from sqlleaf.util import default_column_index_iterator

@@ -43,10 +43,11 @@ class UpdateTransformer(BaseQueryTransformer):
         parent_insert_expr = None
         if statement.parent and isinstance(statement.parent, (exp.Insert, exp.Create)) and statement.parent.expression:
             if isinstance(statement.parent.expression, exp.Values):
-                converted = _convert_values_to_select(self.query,
-                                                      expression=statement.parent.expression,
-                                                      statement=statement.parent,
-                                                      )
+                converted = _convert_values_to_select(
+                    self.query,
+                    expression=statement.parent.expression,
+                    statement=statement.parent,
+                )
                 if isinstance(converted, (exp.Insert, exp.Create)):
                     parent_insert_expr = converted
                     statement = parent_insert_expr.args["conflict"]

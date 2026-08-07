@@ -136,7 +136,6 @@ class ColumnNode(NodeAttributes):
         Identify if the source is a logical entity such as a CTE, UDTF, or derived table and set its properties.
         """
         if isinstance(source, Scope):
-
             if source.scope_type == ScopeType.CTE:
                 self._set_cte_properties(source, table, gen_ctx)
                 return True

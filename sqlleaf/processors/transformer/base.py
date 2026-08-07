@@ -10,13 +10,11 @@ from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 from sqlleaf import exception, util
 from sqlleaf.models.query import Q, TableQuery
 from sqlleaf.processors.transformer import udf
-from sqlleaf.processors.transformer.expressions import simplify_row
-from sqlleaf.processors.transformer.expressions import normalize_all_values, _convert_values_to_select
-from sqlleaf.typing import E, SqlObjectType
+from sqlleaf.processors.transformer.expressions import _convert_values_to_select, normalize_all_values, simplify_row
 from sqlleaf.settings import system_functions as get_system_functions
+from sqlleaf.typing import E, SqlObjectType
 
 logger = logging.getLogger("sqlleaf")
-
 
 EXCLUDE_OPTIMIZER_RULES = [
     "eliminate_ctes",  # Preserve CTEs
@@ -79,7 +77,9 @@ class BaseQueryTransformer:
         statement = self._add_aliases_to_udfs(statement)
         statement = self._apply_optimizations(statement)
         if statement.find(exp.Values):
-            raise exception.SqlLeafException(f"VALUES() found in expression but should have been transformed: {statement.sql(self.query.dialect)}")
+            raise exception.SqlLeafException(
+                f"VALUES() found in expression but should have been transformed: {statement.sql(self.query.dialect)}"
+            )
         return statement
 
     def _expand_to_query(self, statement: E) -> E:
@@ -197,7 +197,11 @@ class BaseQueryTransformer:
             try:
                 sqlglot.parse_one(result.sql(dialect=query.dialect), dialect=query.dialect)
             except sqlglot.errors.ParseError:
-                if query.dialect in ["athena", "redshift"] and isinstance(query, TableQuery) and query.property == "external":
+                if (
+                    query.dialect in ["athena", "redshift"]
+                    and isinstance(query, TableQuery)
+                    and query.property == "external"
+                ):
                     # Bug in sqlglot: parsing the output for CREATE EXTERNAL TABLE WITH (FORMAT=TEXTFILE) breaks the parser
                     pass
 
@@ -502,6 +506,7 @@ class BaseQueryTransformer:
         becomes:
             FROM (SELECT 'x' AS column1, UPPER('y') AS column2) AS v(column1, column2)
         """
+
         def _is_subquery_a_from(subquery: exp.Expr) -> bool:
             """Return True if the subquery is used in a table position (FROM/JOIN/LATERAL).
 
@@ -520,7 +525,7 @@ class BaseQueryTransformer:
         for tbl_alias in statement.find_all(exp.TableAlias):
             parent = tbl_alias.parent
             if not _is_subquery_a_from(parent):
-               continue
+                continue
 
             inner = parent.this
             # Determine a representative SELECT to read output names from

@@ -17,7 +17,7 @@ class AthenaSettings(BaseDialectSettings):
 
     @property
     def system_columns(self) -> t.List[exp.ColumnDef]:
-        return [exp.ColumnDef(
-            this=exp.to_identifier(name),
-            kind=exp.DataType.build(kind, self.DIALECT)
-        ) for name, kind in self.PSEUDOCOLUMNS.items()]
+        return [
+            exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(kind, self.DIALECT))
+            for name, kind in self.PSEUDOCOLUMNS.items()
+        ]

@@ -5,7 +5,7 @@ import re
 import typing as t
 
 import sqlglot
-from sqlglot import  exp
+from sqlglot import exp
 
 from sqlleaf import exception, mappings, util
 from sqlleaf.models.query.base import Query

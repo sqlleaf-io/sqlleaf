@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import typing as t
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from functools import singledispatchmethod
 
 from sqlglot import exp
@@ -348,7 +348,8 @@ class BaseGenerator:
 
             if source_table:
                 if not isinstance(
-                    source_table, (exp.Table, exp.Subquery, exp.Select, exp.Union, exp.Lateral, exp.Unnest),
+                    source_table,
+                    (exp.Table, exp.Subquery, exp.Select, exp.Union, exp.Lateral, exp.Unnest),
                 ):
                     raise exception.SqlLeafException(message=f"Unexpected source type: {type(source_table)}")
 
@@ -422,7 +423,9 @@ class BaseGenerator:
 
         # Update the scope to be the subquery itself, as it is a subscope
         scope = t.cast(Scope, gen_ctx.scope)
-        logger.debug(f"process_subquery: scope.subquery_scopes={len(scope.subquery_scopes)}, expr.this={expr.this.sql()[:40]}")
+        logger.debug(
+            f"process_subquery: scope.subquery_scopes={len(scope.subquery_scopes)}, expr.this={expr.this.sql()[:40]}"
+        )
         subquery_scope = [s for s in scope.subquery_scopes if s.expression == expr.this][0]
 
         height, width = gen_ctx.scope_positions.get_scope_for_expr(expr.this)

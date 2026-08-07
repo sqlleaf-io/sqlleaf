@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import typing as t
 
-import sqlglot
 from sqlglot import exp
 
 from sqlleaf import mappings, util
