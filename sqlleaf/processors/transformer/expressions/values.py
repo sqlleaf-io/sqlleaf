@@ -50,12 +50,15 @@ def normalize_values(query: Q, expr: exp.Expr) -> exp.Expr:
             _handle_values_in_create(values, parent, query)
             continue
 
-        # VALUES in a table position (wrapped by Subquery or direct FROM)
-        if values.find_ancestor(exp.Subquery) is not None or values.parent_select:
+        # VALUES in a table position (wrapped by Subquery or direct FROM on SELECT/UPDATE)
+        from_ancestor = values.find_ancestor(exp.From)
+        if (
+            values.find_ancestor(exp.Subquery) is not None
+            or values.parent_select
+            or (from_ancestor is not None and from_ancestor.this is values)
+        ):
             _rewrite_values_in_table_position(values, query.dialect)
             continue
-
-        unresolved_ids.add(id(values))
 
     return expr
 
@@ -135,7 +138,8 @@ def _rewrite_values_in_table_position(values: exp.Values, dialect: str) -> None:
         outer_subquery.set("this", converted)
         return
 
-    # SELECT FROM (VALUES ...)
+    # SELECT/UPDATE/DELETE FROM (VALUES ...)
+    # Case A: VALUES appears in a SELECT's FROM
     parent_select = values.parent_select
     from_ = parent_select and parent_select.args.get("from_")
     if from_ and from_.this is values:
@@ -143,12 +147,26 @@ def _rewrite_values_in_table_position(values: exp.Values, dialect: str) -> None:
             values=values,
             dialect=dialect,
         )
-        # Set the table alias
+        # Ensure we have a Subquery in FROM and preserve the alias/column names
         original_alias = values.args.get("alias")
-        if isinstance(converted, exp.Subquery):
-            if original_alias and not converted.args.get("alias"):
-                converted.set("alias", original_alias)
-            from_.set("this", converted)
+        if original_alias and not converted.args.get("alias"):
+            converted.set("alias", original_alias)
+        from_.set("this", converted)
+        return
+
+    # Case B: VALUES appears directly under a FROM of non-SELECT (e.g., UPDATE ... FROM (VALUES ...))
+    from_ancestor = values.find_ancestor(exp.From)
+    if from_ancestor is not None and from_ancestor.this is values:
+        converted = _values_to_select_expr(
+            values=values,
+            dialect=dialect,
+        )
+        original_alias = values.args.get("alias")
+        if not isinstance(converted, exp.Subquery):
+            converted = converted.subquery()
+        if original_alias and not converted.args.get("alias"):
+            converted.set("alias", original_alias)
+        from_ancestor.set("this", converted)
 
 
 def _resolve_values_column_names(values: exp.Values, container: exp.Expr, query: Q) -> list[str]:
@@ -158,9 +176,6 @@ def _resolve_values_column_names(values: exp.Values, container: exp.Expr, query:
     columns = []
     if isinstance(container, exp.CTE):
         columns = container.alias_column_names
-        if not columns:
-            columns = [e.name for e in container.root().this.expressions]
-
     elif not isinstance(container, exp.Values):
         columns = [e.name for e in container.this.expressions]
 

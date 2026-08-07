@@ -81,7 +81,8 @@ def get_root_nodes(graph: nx.MultiDiGraph) -> t.List[str]:
         # A selfloop
         (n in selfloops and view.degree(n) == 0)
     ]
-    logger.debug(f"Found selfloops: {selfloops}")
+    if selfloops:
+        logger.debug(f"Found selfloops: {selfloops}")
     return roots
 
 

@@ -1,6 +1,4 @@
-"""
-InsertTransformer — handles INSERT (and MERGE → INSERT) statement transformations.
-"""
+import typing as t
 
 from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
@@ -106,3 +104,15 @@ class InsertTransformer(BaseQueryTransformer):
 
         statement.replace(insert_expr)
         return insert_expr
+
+    @staticmethod
+    def _extract_value_lists(expression: exp.Expression) -> t.List[t.List[exp.Expression]]:
+        """
+        Handles exp.Tuple, exp.Select, and exp.Union.
+        """
+        values_lists = []
+        if isinstance(expression, exp.Tuple):
+            values_lists = [expression.expressions]
+        elif isinstance(expression, exp.Select):
+            values_lists = [[s.unalias() for s in expression.expressions]]
+        return values_lists

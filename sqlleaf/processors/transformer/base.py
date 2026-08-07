@@ -443,7 +443,7 @@ class BaseQueryTransformer:
         return statement
 
     @_validate_syntax
-    def _apply_optimizations(self, statement: E, add_column_names: bool = True) -> E:
+    def _apply_optimizations(self, statement: E) -> E:
         """
         Call sqlglot's optimization functions, which qualify and simplify a range of expressions.
         This also includes functions to make the expressions well-formed, such as adding column names
@@ -468,25 +468,12 @@ class BaseQueryTransformer:
             # This occurs when we've already added the types after the conversion from COPY into INSERT
             exclude_rules += ["annotate_types"]
 
-        # Pre-qualification: attach alias columns for Postgres JSON SRFs in FROM
         statement = self._qualify_function_columns(statement)
+        statement = self._qualify_expression(statement, validate_columns)
+        statement = self._add_aliases_to_pseudocolumns(statement)
 
-        # We pass infer_schema=True to source unqualified columns from the source table (if missing from `schema` param)
-        # so that e.g. `INSERT INTO my.other SELECT name FROM my.table` produces `my.table.name -> my.other.name`
-        qualify.qualify(
-            statement,
-            schema=query.object_mapping,
-            infer_schema=True,
-            dialect=query.dialect,
-            isolate_tables=False,
-            validate_qualify_columns=validate_columns,
-            quote_identifiers=False,
-        )
-
-        self._add_aliases_to_pseudocolumns(statement)
-
-        if add_column_names and isinstance(statement, exp.Insert):
-            self._add_column_names_to_insert(statement)
+        if isinstance(statement, exp.Insert):
+            statement = self._add_column_names_to_insert(statement)
 
         statement = self._add_missing_table_alias_columns(statement)
 
@@ -501,6 +488,26 @@ class BaseQueryTransformer:
         # We don't want to merge the CTEs as they provide useful info to the user
         # so we skip merge_ctes() and call its sibling function below directly instead
         statement = merge_derived_tables(statement)
+        return statement
+
+    @_validate_syntax
+    def _qualify_expression(self, statement: E, validate_columns: bool) -> E:
+        """
+        Run sqlglot's qualify() function against the statement for schema validation and
+        naming/aliasing population.
+
+        We pass infer_schema=True to source unqualified columns from the source table (if missing from `schema` param)
+        so that e.g. `INSERT INTO my.other SELECT name FROM my.table` produces `my.table.name -> my.other.name`
+        """
+        qualify.qualify(
+            statement,
+            schema=self.query.object_mapping,
+            infer_schema=True,
+            dialect=self.query.dialect,
+            isolate_tables=False,
+            validate_qualify_columns=validate_columns,
+            quote_identifiers=False,
+        )
         return statement
 
     def _add_missing_table_alias_columns(self, statement: E) -> E:
@@ -741,23 +748,6 @@ class BaseQueryTransformer:
             return []
 
         return [c.name for c in table_query.get_column_defs(include_system=include_system)]
-
-    @staticmethod
-    def _extract_value_lists(expression: exp.Expression) -> t.List[t.List[exp.Expression]]:
-        """
-        Promoted from InsertTransformer._get_insert_values.
-        Handles exp.Tuple, exp.Select, and exp.Union.
-        """
-        values_lists = []
-        if isinstance(expression, exp.Tuple):
-            values_lists = [expression.expressions]
-        elif isinstance(expression, exp.Select):
-            values_lists = [[s.unalias() for s in expression.expressions]]
-        elif isinstance(expression, exp.Union):
-            # Already converted to UNION of SELECTs by _convert_values_to_select
-            values_lists = [[s.unalias() for s in select.expressions] for select in expression.find_all(exp.Select)]
-
-        return values_lists
 
     def _convert_update_to_insert(self, statement: exp.Update) -> exp.Insert:
         """

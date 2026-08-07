@@ -14,7 +14,7 @@ DIALECT = "postgres"
 
 
 def to_sql(expressions: list[exp.Expr]) -> list[str]:
-    return [e.sql(dialect="postgres") for e in expressions]
+    return [e.sql(dialect=DIALECT) for e in expressions]
 
 
 def test__values_standalone_single(holder):

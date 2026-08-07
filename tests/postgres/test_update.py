@@ -150,31 +150,31 @@ def test__update_values(holder):
     assert len(h.edges) == 2
 
 
-# def test__update_from_values(holder):
-#     sql = """
-#     UPDATE fruit.processed p
-#     SET name = v.new_name, age = v.new_age
-#     FROM (
-#         VALUES ('apple', 10), ('banana', 20)
-#     ) AS v(new_name, new_age);
-#     """
-#     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
-#
-#     assert (
-#         h.holders[0].transformed.statement.sql(dialect=DIALECT)
-#         == "INSERT INTO fruit.processed AS p (name, age) SELECT v.new_name AS name, v.new_age AS age FROM (SELECT 'apple' AS column1, 10 AS column2 UNION SELECT 'banana' AS column1, 20 AS column2) AS v(new_name, new_age);"
-#     )
-#
-#     assert h.paths == [
-#         ['literal["apple"]', "column[v.new_name]", "column[fruit.processed.name]"],
-#         ['literal["banana"]', "column[v.new_name]", "column[fruit.processed.name]"],
-#         ["literal[10]", "column[v.new_age]", "column[fruit.processed.age]"],
-#         ["literal[20]", "column[v.new_age]", "column[fruit.processed.age]"],
-#     ]
-#     assert "column[name=new_age type=INT properties=[kind=derived_table table=v]]" in h.nodes_full
-#     assert "column[name=new_name type=VARCHAR properties=[kind=derived_table table=v]]" in h.nodes_full
-#     assert len(h.nodes_full) == 8
-#     assert len(h.edges) == 6
+def test__update_from_values(holder):
+    sql = """
+    UPDATE fruit.processed p
+    SET name = v.new_name, age = v.new_age
+    FROM (
+        VALUES ('apple', 10), ('banana', 20)
+    ) AS v(new_name, new_age);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert (
+        h.holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed AS p (name, age) SELECT v.new_name AS name, v.new_age AS age FROM (SELECT 'apple' AS new_name, 10 AS new_age UNION ALL SELECT 'banana' AS new_name, 20 AS new_age) AS v(new_name, new_age)"
+    )
+
+    assert h.paths == [
+        ['literal["apple"]', "column[v.new_name]", "column[fruit.processed.name]"],
+        ['literal["banana"]', "column[v.new_name]", "column[fruit.processed.name]"],
+        ["literal[10]", "column[v.new_age]", "column[fruit.processed.age]"],
+        ["literal[20]", "column[v.new_age]", "column[fruit.processed.age]"],
+    ]
+    assert "column[name=new_age type=INT properties=[kind=derived_table table=v]]" in h.nodes_full
+    assert "column[name=new_name type=VARCHAR properties=[kind=derived_table table=v]]" in h.nodes_full
+    assert len(h.nodes_full) == 8
+    assert len(h.edges) == 6
 
 
 def test__update_with_subquery_in_from(holder):
