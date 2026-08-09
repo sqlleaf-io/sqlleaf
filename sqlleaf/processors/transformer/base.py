@@ -73,9 +73,17 @@ class BaseQueryTransformer:
         Run a set of transformations over every statement
         AFTER the type-specific transformations.
         """
+        validate_columns, exclusion_rules = self._get_validation_and_exclusion_rules(statement)
+
         statement = self._apply_udf_substitutions(statement)
         statement = self._add_aliases_to_udfs(statement)
-        statement = self._apply_optimizations(statement)
+        statement = self._qualify_function_columns(statement)
+        statement = self._qualify_expression(statement, validate_columns)
+        statement = self._add_aliases_to_pseudocolumns(statement)
+        statement = self._add_column_names_to_insert(statement)
+        statement = self._add_missing_table_alias_columns(statement)
+        statement = self._apply_optimizations(statement, exclusion_rules)
+
         if statement.find(exp.Values):
             raise exception.SqlLeafException(
                 f"VALUES() found in expression but should have been transformed: {statement.sql(self.query.dialect)}"
@@ -442,19 +450,15 @@ class BaseQueryTransformer:
 
         return statement
 
-    @_validate_syntax
-    def _apply_optimizations(self, statement: E) -> E:
+    def _get_validation_and_exclusion_rules(self, statement: E) -> t.Tuple[bool, t.List[str]]:
         """
-        Call sqlglot's optimization functions, which qualify and simplify a range of expressions.
-        This also includes functions to make the expressions well-formed, such as adding column names
-        to the INSERT expressions, and adding our own aliases to prevent sqlglot using its own aliases.
+        Determine some settings used in the main transformer functions.
         """
-        query = self.query
         validate_columns = True
         exclude_rules = EXCLUDE_OPTIMIZER_RULES[:]
 
         # Do not validate the columns if the source is a non-table
-        if not query.source_info or SqlObjectType.type_has_no_column_defs(query.source_info.type):
+        if not self.query.source_info or SqlObjectType.type_has_no_column_defs(self.query.source_info.type):
             validate_columns = False
 
         # Do not validate columns for SELECT statements with no FROM clause (e.g. UDF body inner queries
@@ -468,25 +472,22 @@ class BaseQueryTransformer:
             # This occurs when we've already added the types after the conversion from COPY into INSERT
             exclude_rules += ["annotate_types"]
 
-        statement = self._qualify_function_columns(statement)
-        statement = self._qualify_expression(statement, validate_columns)
-        statement = self._add_aliases_to_pseudocolumns(statement)
+        return validate_columns, exclude_rules
 
-        if isinstance(statement, exp.Insert):
-            statement = self._add_column_names_to_insert(statement)
-
-        statement = self._add_missing_table_alias_columns(statement)
-
-        # Selectively apply sqlglot's optimization rules
+    @_validate_syntax
+    def _apply_optimizations(self, statement: E, exclusion_rules: t.List[str]) -> E:
+        """
+        Call sqlglot's optimization functions, which simplify a range of expressions.
+        """
         statement = optimize(
             expression=statement,
-            dialect=query.dialect,
-            schema=query.object_mapping,
-            rules=self._optimizer_rules(exclude_rules),
+            dialect=self.query.dialect,
+            schema=self.query.object_mapping,
+            rules=self._optimizer_rules(exclusion_rules),
         )
 
         # We don't want to merge the CTEs as they provide useful info to the user
-        # so we skip merge_ctes() and call its sibling function below directly instead
+        # so we skip merge_ctes() but call its sibling function below directly instead
         statement = merge_derived_tables(statement)
         return statement
 
@@ -652,7 +653,7 @@ class BaseQueryTransformer:
             "source": source,
         }
 
-    def _add_column_names_to_insert(self, statement: exp.Insert) -> exp.Insert:
+    def _add_column_names_to_insert(self, statement: exp.Expr) -> exp.Insert:
         """
         Add aliases to SELECTs that are missing them by looking at the corresponding INSERT column.
         This prevents sqlglot from assigning its own generated names as aliases.
