@@ -136,9 +136,10 @@ def _transform_statement(statement: E, query: Q) -> exp.Expr:
     transformer_cls = _TRANSFORMER_MAP.get(type(query), BaseQueryTransformer)
     transformer = transformer_cls(statement, query)
     stmt = transformer.preprocess(statement)
-    logger.debug(f"[Transformer] After pre-process: {type(stmt)} - {stmt.sql(dialect=query.dialect)}")
+    logger.debug(f"After pre-process: {type(stmt)} - {stmt.sql(dialect=query.dialect)}")
     stmt = transformer.transform(stmt)
-    logger.debug(f"[Transformer] After process: {type(stmt)} - {stmt.sql(dialect=query.dialect)}")
+    logger.debug(f"After process: {type(stmt)} - {stmt.sql(dialect=query.dialect)}")
     stmt = transformer.postprocess(stmt)
-    logger.debug(f"[Transformer] After post-process: {type(stmt)} - {stmt.sql(dialect=query.dialect)}")
+    logger.debug(f"After post-process: {type(stmt)} - {stmt.sql(dialect=query.dialect)}")
+    logger.debug("---- Transformer End ---")
     return stmt

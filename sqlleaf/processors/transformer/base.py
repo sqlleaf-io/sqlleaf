@@ -5,6 +5,7 @@ import typing as t
 import sqlglot
 from sqlglot import exp
 from sqlglot.optimizer import RULES, optimize, qualify
+from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, util
@@ -73,16 +74,18 @@ class BaseQueryTransformer:
         Run a set of transformations over every statement
         AFTER the type-specific transformations.
         """
+        statement = annotate_types(statement, dialect=self.query.dialect, schema=self.query.object_mapping)
+
         validate_columns, exclusion_rules = self._get_validation_and_exclusion_rules(statement)
 
         statement = self._apply_udf_substitutions(statement)
         statement = self._add_aliases_to_udfs(statement)
         statement = self._qualify_function_columns(statement)
-        statement = self._qualify_expression(statement, validate_columns)
+        statement = self._apply_qualify(statement, validate_columns)
         statement = self._add_aliases_to_pseudocolumns(statement)
         statement = self._add_column_names_to_insert(statement)
-        statement = self._add_missing_table_alias_columns(statement)
         statement = self._apply_optimizations(statement, exclusion_rules)
+        #statement = self._add_missing_table_alias_columns(statement)
 
         if statement.find(exp.Values):
             raise exception.SqlLeafException(
@@ -140,7 +143,7 @@ class BaseQueryTransformer:
                 INSERT INTO target (name) SELECT hello();
 
             The call site `hello()` is replaced with the inlined UDF body, producing:
-                INSERT INTO target (name) SELECT (SELECT 'Hello' AS Hello) AS name
+                INSERT INTO target (name) SELECT (SELECT 'Hello');
         """
         while True:
             annotated = statement
@@ -411,13 +414,13 @@ class BaseQueryTransformer:
         if not fn_columns_map:
             return statement
 
-        # Iterate over SELECT statements and inspect their FROM clauses
+        # Iterate over SELECT statements and inspect their FROM/JOIN clauses
         for select in statement.find_all(exp.Select):
             from_clause = select.args.get("from_") or select.args.get("from")
             if not from_clause:
                 continue
 
-            # Build a list of Table nodes: include direct FROM.this and any nested ones (JOIN/LATERAL)
+            # Collect tables nodes (e.g. FROM.this and any nested ones in JOIN/LATERAL)
             tables: list[exp.Table] = []
             root_tbl = getattr(from_clause, "this", None)
             if isinstance(root_tbl, exp.Table):
@@ -426,7 +429,8 @@ class BaseQueryTransformer:
 
             for tbl in tables:
                 this_expr = tbl.this
-                # Identify table functions represented as Anonymous function calls
+
+                # Existing behavior for other table functions represented as Anonymous
                 if not isinstance(this_expr, exp.Anonymous):
                     continue
 
@@ -445,7 +449,7 @@ class BaseQueryTransformer:
                             columns=[exp.to_identifier(c) for c in cols],
                         ),
                     )
-                elif not getattr(alias, "columns", None):
+                elif not alias.columns:
                     alias.set("columns", [exp.to_identifier(c) for c in cols])
 
         return statement
@@ -492,7 +496,7 @@ class BaseQueryTransformer:
         return statement
 
     @_validate_syntax
-    def _qualify_expression(self, statement: E, validate_columns: bool) -> E:
+    def _apply_qualify(self, statement: E, validate_columns: bool) -> E:
         """
         Run sqlglot's qualify() function against the statement for schema validation and
         naming/aliasing population.
@@ -522,37 +526,53 @@ class BaseQueryTransformer:
             FROM (SELECT 'x' AS column1, UPPER('y') AS column2) AS v(column1, column2)
         """
 
-        def _is_subquery_a_from(subquery: exp.Expr) -> bool:
-            """Return True if the subquery is used in a table position (FROM/JOIN/LATERAL).
+        def _in_from_join_lateral(node: exp.Expr | None) -> bool:
+            """Return True if the node appears in a table position (FROM/JOIN/LATERAL).
 
-            Scalar subqueries used as value expressions may also carry a TableAlias,
-            but SQL does not allow a column list there, so we must skip those.
+            Scalar/value subqueries should return False so no alias column list is attached there.
             """
-            if not isinstance(subquery, exp.Subquery):
-                return False
-
-            p = subquery.parent
+            p = node
             # Walk up until we hit a boundary that tells us our role
             while p is not None and not isinstance(p, (exp.Select, exp.From, exp.Join, exp.Lateral)):
                 p = p.parent
             return isinstance(p, (exp.From, exp.Join, exp.Lateral))
 
+        def _resolve_representative_select(inner: exp.Expr | None) -> exp.Select | None:
+            """Given an inner derived expression, return a Select to read output names from.
+
+            Handles Select, Subquery(Select/Union), and Union.
+            """
+            if inner is None:
+                return None
+            if isinstance(inner, exp.Select):
+                return inner
+            if isinstance(inner, exp.Subquery):
+                return _resolve_representative_select(inner.this)
+            if isinstance(inner, exp.Union):
+                return inner.find(exp.Select)
+            return None
+
         for tbl_alias in statement.find_all(exp.TableAlias):
             parent = tbl_alias.parent
-            if not _is_subquery_a_from(parent):
+
+            # Identify derived-table hosts we can read columns from
+            inner: exp.Expr | None = None
+            if isinstance(parent, exp.Subquery) and _in_from_join_lateral(parent):
+                inner = parent.this
+            elif isinstance(parent, exp.Lateral) and _in_from_join_lateral(parent):
+                inner = parent.this
+            else:
+                # Not a derived table alias in FROM/JOIN/LATERAL position
                 continue
 
-            inner = parent.this
             # Determine a representative SELECT to read output names from
-            sel: exp.Select | None = None
-            if isinstance(inner, exp.Select):
-                sel = inner
-            elif isinstance(inner, exp.Union):
-                sel = inner.find(exp.Select)
+            sel = _resolve_representative_select(inner)
+            if not sel:
+                continue
 
             projected_column_names = [s.alias_or_name for s in sel.selects]
 
-            # Skip if columns already present
+            # Skip if columns already present; only append truly missing ones
             existing_cols = tbl_alias.columns
             existing_column_names = {str(c.name) for c in existing_cols}
             missing = [n for n in projected_column_names if n and n not in existing_column_names]

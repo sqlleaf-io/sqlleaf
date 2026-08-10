@@ -43,7 +43,9 @@ def test__udf_variadic_parameter(holder):
 
     insert_query = h.holders[2]
     insert_after = [
-        "INSERT INTO target (name1) SELECT (SELECT 'Hi ' || STRING_AGG(unpacked_name.unpacked_name, ' and ') AS _col_0 FROM UNNEST(ARRAY['Alice', 'Bob', 'Charlie']) AS unpacked_name) AS name1"
+        "INSERT INTO target (name1) "
+        "SELECT (SELECT 'Hi ' || STRING_AGG(unpacked_name.unpacked_name, ' and ') AS _col_0 "
+        "FROM UNNEST(ARRAY['Alice', 'Bob', 'Charlie']) AS unpacked_name) AS name1"
     ]
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after, dialect=DIALECT) == insert_after

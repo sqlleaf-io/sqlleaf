@@ -162,7 +162,7 @@ def test__update_from_values(holder):
 
     assert (
         h.holders[0].transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO fruit.processed AS p (name, age) SELECT v.new_name AS name, v.new_age AS age FROM (SELECT 'apple' AS new_name, 10 AS new_age UNION ALL SELECT 'banana' AS new_name, 20 AS new_age) AS v(new_name, new_age)"
+        == "INSERT INTO fruit.processed AS p (name, age) SELECT v.new_name AS name, v.new_age AS age FROM (SELECT 'apple' AS new_name, 10 AS new_age UNION ALL SELECT 'banana' AS new_name, 20 AS new_age) AS v"
     )
 
     assert h.paths == [

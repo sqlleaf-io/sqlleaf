@@ -74,7 +74,7 @@ def test__udf_inout_parameter(holder):
     # Check substitution for the first INSERT
     insert_query_1 = h.holders[2]
     insert_after_1 = [
-        "INSERT INTO target (msg, bye) SELECT hello.username AS msg, hello.column2 AS bye FROM (SELECT 'Hi User' AS username, 'Goodbye User' AS column2) AS hello(username, column2)"
+        "INSERT INTO target (msg, bye) SELECT hello.username AS msg, hello.column2 AS bye FROM (SELECT 'Hi User' AS username, 'Goodbye User' AS column2) AS hello"
     ]
     actual_after_1 = [insert_query_1.transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -111,7 +111,7 @@ def test__udf_in_out_inout_parameters(holder):
     # Check substitution for the first INSERT
     insert_query_1 = h.holders[2]
     insert_after_1 = [
-        "INSERT INTO target (name1, name2) SELECT hello.middle_name AS name1, hello.last_name AS name2 FROM (SELECT UPPER('There') AS middle_name, LOWER('Hello') AS last_name) AS hello(middle_name, last_name)"
+        "INSERT INTO target (name1, name2) SELECT hello.middle_name AS name1, hello.last_name AS name2 FROM (SELECT UPPER('There') AS middle_name, LOWER('Hello') AS last_name) AS hello"
     ]
     actual_after_1 = [insert_query_1.transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -142,7 +142,7 @@ def test__udf_table_no_params(holder):
 
     insert_query_1 = h.holders[2]
     insert_after_1 = [
-        "INSERT INTO target (name1, name2) SELECT hello.property AS name1, hello.value AS name2 FROM (SELECT 'prop' AS property, 'val' AS value) AS hello(property, value)"
+        "INSERT INTO target (name1, name2) SELECT hello.property AS name1, hello.value AS name2 FROM (SELECT 'prop' AS property, 'val' AS value) AS hello"
     ]
     actual_after_1 = [insert_query_1.transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -173,7 +173,7 @@ def test__udf_table_and_values(holder):
 
     insert_query_1 = h.holders[2]
     insert_after_1 = [
-        "INSERT INTO target (name1, name2, age) SELECT hello.property AS name1, hello.value AS name2, 1 AS age FROM (SELECT 'greeting' AS property, 'Hello John' AS value) AS hello(property, value)"
+        "INSERT INTO target (name1, name2, age) SELECT hello.property AS name1, hello.value AS name2, 1 AS age FROM (SELECT 'greeting' AS property, 'Hello John' AS value) AS hello"
     ]
     actual_after_1 = [insert_query_1.transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -210,7 +210,7 @@ def test__udf_composite_type(holder):
     ]
 
     insert_after_1 = [
-        "INSERT INTO target (name, age) SELECT hello.name1 AS name, hello.age1 AS age FROM (SELECT 'John' AS name1, 50 AS age1) AS hello(name1, age1)"
+        "INSERT INTO target (name, age) SELECT hello.name1 AS name, hello.age1 AS age FROM (SELECT 'John' AS name1, 50 AS age1) AS hello"
     ]
     actual_after_1 = [h.holders[3].transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -248,7 +248,7 @@ def test__udf_type_return(holder):
 
     insert_query_1 = h.holders[3]
     insert_after_1 = [
-        "INSERT INTO target (name, age) SELECT hello.name1 AS name, hello.age1 AS age FROM (SELECT 'Bob' AS name1, 75 AS age1) AS hello(name1, age1)"
+        "INSERT INTO target (name, age) SELECT hello.name1 AS name, hello.age1 AS age FROM (SELECT 'Bob' AS name1, 75 AS age1) AS hello"
     ]
     actual_after_1 = [insert_query_1.transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -286,7 +286,7 @@ def test__udf_table_return(holder):
     ]
 
     insert_after_1 = [
-        "INSERT INTO target (name, age) SELECT hello.name AS name, hello.age AS age FROM (SELECT 'Mary' AS name, 25 AS age) AS hello(name, age)"
+        "INSERT INTO target (name, age) SELECT hello.name AS name, hello.age AS age FROM (SELECT 'Mary' AS name, 25 AS age) AS hello"
     ]
     actual_after_1 = [h.holders[3].transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -319,7 +319,7 @@ def test__udf_schema_table_return(holder):
     assert query.language == "sql"
 
     insert_after_1 = [
-        "INSERT INTO target (name, age) SELECT hello.name AS name, hello.age AS age FROM (SELECT 'Mary' AS name, 25 AS age) AS hello(name, age)"
+        "INSERT INTO target (name, age) SELECT hello.name AS name, hello.age AS age FROM (SELECT 'Mary' AS name, 25 AS age) AS hello"
     ]
     actual_after_1 = [h.holders[3].transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1

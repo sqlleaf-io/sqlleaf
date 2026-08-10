@@ -197,7 +197,7 @@ def qualify_and_annotate(
         expr,
         schema=object_mapping,
         expand_stars=True,
-        expand_alias_refs=False,
+        expand_alias_refs=True,
         qualify_columns=True,
         infer_schema=False,
         dialect=dialect,

@@ -508,6 +508,48 @@ def test__select_order_by_in_string_add(holder):
     assert len(h.edges) == 3
 
 
+def test__select_table_alias(holder):
+    sql = """
+    CREATE TABLE t1(name1 VARCHAR, name2 VARCHAR);
+
+    INSERT INTO t1 (name1, name2)
+    SELECT * FROM (SELECT 'A' AS a, 'B' AS b) AS t;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert (
+        h.holders[1].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO t1 (name1, name2) SELECT t.a AS name1, t.b AS name2 FROM (SELECT 'A' AS a, 'B' AS b) AS t"
+    )
+    assert h.paths == [
+        ['literal["A"]', "column[t.a]", "column[t1.name1]"],
+        ['literal["B"]', "column[t.b]", "column[t1.name2]"],
+    ]
+    assert len(h.nodes) == 6
+    assert len(h.edges) == 4
+
+
+def test__select_table_alias_one_column(holder):
+    sql = """
+    CREATE TABLE t1(name1 VARCHAR, name2 VARCHAR);
+
+    INSERT INTO t1 (name1, name2)
+    SELECT * FROM (SELECT 'A' AS a, 'B' AS b) AS t(x);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert (
+        h.holders[1].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO t1 (name1, name2) SELECT t.x AS name1, t.b AS name2 FROM (SELECT 'A' AS x, 'B' AS b) AS t"
+    )
+    assert h.paths == [
+        ['literal["A"]', "column[t.x]", "column[t1.name1]"],
+        ['literal["B"]', "column[t.b]", "column[t1.name2]"],
+    ]
+    assert len(h.nodes) == 6
+    assert len(h.edges) == 4
+
+
 # TODO:
 #  CREATE TABLE a.b;
 #  -- works, but should not; problem with trie
