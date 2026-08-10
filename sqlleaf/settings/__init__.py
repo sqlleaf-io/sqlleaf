@@ -57,6 +57,24 @@ class PostgresSettings(DialectSettings):
         ) for name, kind in self.PSEUDOCOLUMNS.items()]
 
 
+class AthenaSettings(DialectSettings):
+    DIALECT = "athena"
+    PSEUDOCOLUMNS = {
+        "$bucket": "BIGINT",
+        "$file_modified_time": "TIMESTAMP",
+        "$file_size": "BIGINT",
+        "$partition": "VARCHAR",
+        "$path": "VARCHAR",
+    }
+
+    @property
+    def system_columns(self) -> t.List[exp.ColumnDef]:
+        return [exp.ColumnDef(
+            this=exp.to_identifier(name),
+            kind=exp.DataType.build(kind, self.DIALECT)
+        ) for name, kind in self.PSEUDOCOLUMNS.items()]
+
+
 # sqlglot is missing pseudocolumns for Postgres
 postgres.Postgres.PSEUDOCOLUMNS = {c.upper() for c in PostgresSettings.PSEUDOCOLUMNS.keys()}
 postgres.Postgres.EXCLUDES_PSEUDOCOLUMNS_FROM_STAR = True
