@@ -37,7 +37,7 @@ def find_arg(args: t.List[exp.Expr], param: FunctionParam, index: int) -> t.Opti
         if arg_name == param_name:
             if param.is_variadic:
                 if isinstance(expr, exp.Array) and not is_variadic_call and not isinstance(expr, exp.Variadic):
-                    raise ValueError(
+                    raise SqlLeafException(
                         f"VARIADIC keyword must be used when passing an array to variadic parameter '{param.name}'"
                     )
                 if isinstance(expr, exp.Variadic):
@@ -55,7 +55,7 @@ def find_arg(args: t.List[exp.Expr], param: FunctionParam, index: int) -> t.Opti
         # If the parameter is variadic and the supplied argument is an array,
         # the keyword 'VARIADIC' must also be supplied.
         if isinstance(arg, exp.Array):
-            raise ValueError(
+            raise SqlLeafException(
                 f"VARIADIC keyword must be used when passing an array to variadic parameter '{param.name}'"
             )
 
@@ -195,23 +195,6 @@ def substitute_parameter_node(
     # 3. Handle member access (e.g. SELECT x.name)
     elif isinstance(node, exp.Dot):
         replace_dot_reference(node, param_map, positional_map)
-
-
-def is_table_from_params(table_name: str, param_map: t.Dict[str, exp.Expr]) -> bool:
-    """
-    Checks if a table name corresponds to one of the provided arguments.
-
-    Example:
-        `is_table_from_params("people", {"$1": people})` -> `True`
-    """
-    for arg in param_map.values():
-        if isinstance(arg, exp.Table) and arg.name == table_name:
-            return True
-        elif isinstance(arg, exp.Cast):
-            data_type = arg.args.get("to")
-            if isinstance(data_type, exp.DataType) and data_type.sql().lower() == table_name.lower():
-                return True
-    return False
 
 
 def replace_dot_reference(

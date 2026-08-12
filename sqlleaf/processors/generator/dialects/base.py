@@ -44,11 +44,10 @@ class SingleDispatchMethodLogger(singledispatchmethod):
     """
 
     def __get__(self, obj: t.Any, cls: t.Any = None) -> t.Any:
-        if obj is None:
-            return self
-
-        # Intercept execution and print the types
         def wrapper(*args: t.Any, **kwargs: t.Any) -> t.Any:
+            """
+            Intercept execution and print the function calls.
+            """
             target_type = type(args[0])
             actual_func = self.dispatcher.dispatch(target_type)
 
@@ -148,19 +147,6 @@ class BaseGenerator:
         yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
 
     @process.register
-    def process_placeholder(
-        self, expr: exp.Placeholder, gen_ctx: GeneratorContext, pos_ctx: PositionContext
-    ) -> t.Iterator[EdgeToCreate]:
-        """
-        CREATE PROCEDURE proc(v_amount INT) AS
-        SELECT v_amount     <-- placeholder
-        """
-        expr: exp.ColumnDef = expr.this
-        gen_ctx = gen_ctx.new(new_data_type=expr.kind)
-        parent = VariableNode(gen_ctx, pos_ctx)
-        yield EdgeToCreate(parent, gen_ctx.child_node)
-
-    @process.register
     def process_array(
         self, expr: exp.Array, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
@@ -219,16 +205,6 @@ class BaseGenerator:
         """
         parent = LiteralNode(name="-" + expr.name, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
         yield EdgeToCreate(parent, gen_ctx.child_node)
-
-    @process.register
-    def process_variadic(
-        self, expr: exp.Variadic, gen_ctx: GeneratorContext, pos_ctx: PositionContext
-    ) -> t.Iterator[EdgeToCreate]:
-        """
-        MLEAST(VARIADIC ARRAY[1, 2, 3])
-        """
-        gen_ctx = gen_ctx.new(expr=expr.this)
-        yield from self.process(expr.this, gen_ctx, pos_ctx)
 
     @process.register
     def process_anonymous(
@@ -334,10 +310,6 @@ class BaseGenerator:
     def process_column(
         self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
-        if is_node_a_placeholder(expr=expr, query=gen_ctx.query):
-            # The actual placeholder is processed elsewhere
-            return
-
         source_table = None
         if gen_ctx.scope and isinstance(gen_ctx.scope, Scope):
             # Lateral queries are processed differently
@@ -496,16 +468,6 @@ class BaseGenerator:
                     column=column_name,
                 )
 
-            case SqlObjectType.PROCEDURE:
-                return ColumnNode(
-                    catalog=expression.catalog if isinstance(expression, exp.Table) else "",
-                    schema=expression.db if isinstance(expression, exp.Table) else "",
-                    table=expression.name,
-                    column=column_name,
-                    gen_ctx=gen_ctx,
-                    pos_ctx=pos_ctx,
-                )
-
             case _:
                 raise exception.SqlLeafException(f"Unhandled case for type: {object_type}")
 
@@ -560,22 +522,3 @@ class BaseGenerator:
 
             if selected_node:
                 select_idx += 1
-
-
-def is_node_a_placeholder(expr: exp.Column, query: Q) -> bool:
-    """
-    Check if a Column is actually a Placeholder.
-
-    For example, given
-        CREATE PROCEDURE purchase(v_amount INT) AS
-            SELECT v_amount as amount
-
-    the 'v_amount' inside the SELECT will be a Column, but instead it should be a Placeholder.
-    """
-    if query.parent_query and isinstance(query.parent_query, ProcedureQuery):
-        args = query.parent_query.args
-        arg_names = [a["name"] for a in args]
-        if expr.name in arg_names:
-            logger.debug(f"Skipping Column {expr.name} as it is a Placeholder")
-            return True
-    return False

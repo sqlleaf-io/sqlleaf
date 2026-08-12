@@ -15,12 +15,14 @@ from sqlleaf.models.query import (
     ProcedureQuery,
     Q,
     SchemaQuery,
+    SequenceQuery,
+    StageQuery,
+    TableQuery,
+    TriggerQuery,
     TypeQuery,
+    UserDefinedFunctionQuery,
     ViewQuery,
 )
-
-if t.TYPE_CHECKING:
-    from sqlleaf.models.query import SequenceQuery, StageQuery, TableQuery, TriggerQuery, UserDefinedFunctionQuery
 
 ColumnMapping = t.Union[t.Dict, str, t.List]
 
@@ -276,7 +278,7 @@ def resolve_overloaded_function(
             matches.append(candidate)
 
     if not matches:
-        raise ValueError(f"No matching function signatures found for args: {args}")
+        raise exception.SqlLeafException(f"No matching function signatures found for args: {args}")
 
     if len(matches) == 1:
         return matches[0]
@@ -325,50 +327,6 @@ def match_function_arguments(args: t.List[exp.Expr], candidate: UserDefinedFunct
             if not match_type(arg, params[i].type):
                 return False
         return True
-
-    # Variadic function handling
-    # Variadic parameter must be the last one
-    if arg_count < param_count - 1:
-        return False
-
-    # Match mandatory non-variadic parameters
-    for i in range(param_count - 1):
-        if not match_type(args[i], params[i].type):
-            return False
-
-    # Match variadic parameters
-    variadic_param = params[-1]
-    # In Postgres, VARIADIC numeric[] matches foo(1, 2, 3) where each arg is numeric
-    # We need to extract the element type from the array type
-    variadic_type = variadic_param.type
-
-    element_type = variadic_type
-    if variadic_type.is_type(exp.DataType.Type.ARRAY):
-        # In sqlglot, ARRAY<INT> has INT as an expression in expressions t.List
-        if variadic_type.expressions:
-            element_type = variadic_type.expressions[0]
-        else:
-            # Fallback for simple ARRAY type
-            element_type = variadic_type.this
-
-    if isinstance(element_type, exp.DataType):
-        element_type = element_type.this
-
-    # If it's VARIADIC anyarray, it matches anything
-    is_anyarray = str(variadic_type).lower() == "anyarray"
-
-    for i in range(param_count - 1, arg_count):
-        if is_anyarray:
-            continue
-
-        target_el_type = (
-            exp.DataType.build(element_type) if not isinstance(element_type, exp.DataType) else element_type
-        )
-        if not match_type(args[i], target_el_type):
-            return False
-
-    return True
-
 
 def match_type(arg: exp.Expr, target_type: exp.DataType) -> bool:
     """Matches an argument expression to a target data type."""

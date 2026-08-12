@@ -236,11 +236,8 @@ def walk_expressions_and_build_graph(
             node_exists = gen_ctx.graph.has_node(parent_node.full_name)
             if not node_exists:
                 nodes_created.append(parent_node)
-            """
-            Considering Postgres inheritance operates 'behind the scenes' outside of the query's syntax), we are
-            justified in implementing this behaviour in our own way: by mapping each inherited column to the
-            query's columns.
-            """
+
+            # Include any inherited columns
             inherited_columns_of_parent = find_inherited_columns_for_parent(
                 column_node=parent_node, generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx
             )
