@@ -118,8 +118,8 @@ class RedshiftGenerator(BaseGenerator):
 
         if SqlObjectType.type_has_no_column_defs(source_info.type):
             # A filename from COPY/UNLOAD
-            gen_ctx = replace(
-                gen_ctx, expr=source_info.expression, new_data_type=gen_ctx.get_child_node().get_data_type()
+            gen_ctx = gen_ctx.replace(
+                expr=source_info.expression, new_data_type=gen_ctx.get_child_node().get_data_type()
             )
 
             node = self.create_node_from_type(

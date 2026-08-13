@@ -27,11 +27,10 @@ from sqlleaf.models.node import (
     StreamNode,
     TargetNodeType,
     UserDefinedFunctionNode,
-    VariableNode,
     VarNode,
     WindowNode,
 )
-from sqlleaf.models.query import ProcedureQuery, Q, TableQuery
+from sqlleaf.models.query import TableQuery
 from sqlleaf.typing import SourceExprType, SqlObjectType, TargetExprType
 
 logger = logging.getLogger("sqlleaf")
@@ -211,9 +210,9 @@ class BaseGenerator:
         self, expr: exp.Anonymous, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
         """
-        User-defined functions.
-
-        SELECT my.func()
+        Functions or user-defined functions, e.g. SELECT my.func()
+        sqlglot recognises most functions as 'Anonymous', so we assume they're functions
+        unless they're in the mapping.
         """
         schema, function = util.get_udf_name(expr)
         node_args = expr.expressions

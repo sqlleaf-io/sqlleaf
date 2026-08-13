@@ -102,8 +102,7 @@ def generate_lineage_for_columns(
         if default_node:
             constraint_expr = default_node.get_column_constraint_expression()
             if constraint_expr and constraint_expr.this:
-                constraint_ctx = replace(
-                    gen_ctx,
+                constraint_ctx = gen_ctx.replace(
                     expr=constraint_expr.this,
                     new_data_type=child_node.data_type,
                     child_node=child_node,
@@ -137,8 +136,7 @@ def walk_query_and_build_graph(
 
         height, width = gen_ctx.scope_positions.get_scope_for_expr(scope_traversal.scope.expression)
         child_ctx = pos_ctx.replace(query_depth=height, query_width=width)
-        gen_ctx = replace(
-            gen_ctx,
+        gen_ctx = gen_ctx.replace(
             expr=scope_traversal.expression,
             scope=scope_traversal.scope,
             child_node=child_node,
