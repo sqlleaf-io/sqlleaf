@@ -135,7 +135,7 @@ def test__udf_referencing_another(holder):
     actual_after = [h.holders[3].transformed.statement]
     assert to_sql(actual_after) == insert_after
 
-    assert h.paths == [['literal["Hello"]', "udf[MY_UNKNOWN]", "column[target.age]"]]
+    assert h.paths == [['literal["Hello"]', "function[MY_UNKNOWN]", "column[target.age]"]]
 
 
 def test__udf_overloading(holder):

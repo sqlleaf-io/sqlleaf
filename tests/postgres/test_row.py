@@ -62,9 +62,9 @@ def test__row_composite_column(holder):
         "INSERT INTO dest2 (val) SELECT CAST(ROW(t1.a, t1.b, t1.c) AS my_type) AS val FROM t1 AS t1"
     )
     assert h.paths == [
-        ["column[t1.a]", "udf[ROW]", "function[CAST]", "column[dest2.val]"],
-        ["column[t1.b]", "udf[ROW]", "function[CAST]", "column[dest2.val]"],
-        ["column[t1.c]", "udf[ROW]", "function[CAST]", "column[dest2.val]"],
+        ["column[t1.a]", "function[ROW]", "function[CAST]", "column[dest2.val]"],
+        ["column[t1.b]", "function[ROW]", "function[CAST]", "column[dest2.val]"],
+        ["column[t1.c]", "function[ROW]", "function[CAST]", "column[dest2.val]"],
     ]
 
 
@@ -80,29 +80,27 @@ def test__row_literal_values(holder):
         "INSERT INTO dest2 (val) SELECT CAST(ROW(1, 'x', 2.0) AS my_type) AS val UNION ALL SELECT CAST(ROW(3, 'y', 4.0) AS my_type) AS val"
     )
     assert h.paths == [
-        ["literal[1]", "udf[ROW]", "function[CAST]", "column[dest2.val]"],
-        ['literal["x"]', "udf[ROW]", "function[CAST]", "column[dest2.val]"],
-        ["literal[2.0]", "udf[ROW]", "function[CAST]", "column[dest2.val]"],
-        ["literal[3]", "udf[ROW]", "function[CAST]", "column[dest2.val]"],
-        ['literal["y"]', "udf[ROW]", "function[CAST]", "column[dest2.val]"],
-        ["literal[4.0]", "udf[ROW]", "function[CAST]", "column[dest2.val]"],
+        ["literal[1]", "function[ROW]", "function[CAST]", "column[dest2.val]"],
+        ['literal["x"]', "function[ROW]", "function[CAST]", "column[dest2.val]"],
+        ["literal[2.0]", "function[ROW]", "function[CAST]", "column[dest2.val]"],
+        ["literal[3]", "function[ROW]", "function[CAST]", "column[dest2.val]"],
+        ['literal["y"]', "function[ROW]", "function[CAST]", "column[dest2.val]"],
+        ["literal[4.0]", "function[ROW]", "function[CAST]", "column[dest2.val]"],
     ]
 
 
 def test__row_udf_argument(holder):
     sql = f"""
     {COMMON_SQL}
-    INSERT INTO dest SELECT get_a(ROW(a, b, c)::my_type) FROM t1;
+    INSERT INTO dest SELECT (ROW(a, b, c)::my_type).a FROM t1;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.holders[3].transformed.statement.sql(dialect=DIALECT) == (
-        "INSERT INTO dest (a) SELECT GET_A(CAST(ROW(t1.a, t1.b, t1.c) AS my_type)) AS a FROM t1 AS t1"
+        "INSERT INTO dest (a) SELECT t1.a AS a FROM t1 AS t1"
     )
     assert h.paths == [
-        ["column[t1.a]", "udf[ROW]", "function[CAST]", "udf[GET_A]", "column[dest.a]"],
-        ["column[t1.b]", "udf[ROW]", "function[CAST]", "udf[GET_A]", "column[dest.a]"],
-        ["column[t1.c]", "udf[ROW]", "function[CAST]", "udf[GET_A]", "column[dest.a]"],
+        ["column[t1.a]", "column[dest.a]"],
     ]
 
 
@@ -118,9 +116,9 @@ def test__row_array_agg(holder):
         "INSERT INTO dest3 (val) SELECT ARRAY_AGG(CAST(ROW(t1.a, t1.b, t1.c) AS my_type)) AS val FROM t1 AS t1"
     )
     assert h.paths == [
-        ["column[t1.a]", "udf[ROW]", "function[CAST]", "function[ARRAY_AGG]", "column[dest3.val]"],
-        ["column[t1.b]", "udf[ROW]", "function[CAST]", "function[ARRAY_AGG]", "column[dest3.val]"],
-        ["column[t1.c]", "udf[ROW]", "function[CAST]", "function[ARRAY_AGG]", "column[dest3.val]"],
+        ["column[t1.a]", "function[ROW]", "function[CAST]", "function[ARRAY_AGG]", "column[dest3.val]"],
+        ["column[t1.b]", "function[ROW]", "function[CAST]", "function[ARRAY_AGG]", "column[dest3.val]"],
+        ["column[t1.c]", "function[ROW]", "function[CAST]", "function[ARRAY_AGG]", "column[dest3.val]"],
     ]
 
 
@@ -136,10 +134,10 @@ def test__row_jsonb(holder):
         "INSERT INTO dest4 (val) SELECT JSONB_BUILD_OBJECT('data', CAST(ROW(t1.a, t1.b, t1.c) AS my_type)) AS val FROM t1 AS t1"
     )
     assert h.paths == [
-        ['literal["data"]', "udf[JSONB_BUILD_OBJECT]", "column[dest4.val]"],
-        ["column[t1.a]", "udf[ROW]", "function[CAST]", "udf[JSONB_BUILD_OBJECT]", "column[dest4.val]"],
-        ["column[t1.b]", "udf[ROW]", "function[CAST]", "udf[JSONB_BUILD_OBJECT]", "column[dest4.val]"],
-        ["column[t1.c]", "udf[ROW]", "function[CAST]", "udf[JSONB_BUILD_OBJECT]", "column[dest4.val]"],
+        ['literal["data"]', "function[JSONB_BUILD_OBJECT]", "column[dest4.val]"],
+        ["column[t1.a]", "function[ROW]", "function[CAST]", "function[JSONB_BUILD_OBJECT]", "column[dest4.val]"],
+        ["column[t1.b]", "function[ROW]", "function[CAST]", "function[JSONB_BUILD_OBJECT]", "column[dest4.val]"],
+        ["column[t1.c]", "function[ROW]", "function[CAST]", "function[JSONB_BUILD_OBJECT]", "column[dest4.val]"],
     ]
 
 
@@ -156,10 +154,10 @@ def test__row_nested_row(holder):
         "INSERT INTO dest5 (val) SELECT CAST(ROW(CAST(ROW(t1.a, t1.b, t1.c) AS my_type), CHR(39)) AS outer_type) AS val FROM t1 AS t1"
     )
     assert h.paths == [
-        ["column[t1.a]", "udf[ROW]", "function[CAST]", "udf[ROW]", "function[CAST]", "column[dest5.val]"],
-        ["column[t1.b]", "udf[ROW]", "function[CAST]", "udf[ROW]", "function[CAST]", "column[dest5.val]"],
-        ["column[t1.c]", "udf[ROW]", "function[CAST]", "udf[ROW]", "function[CAST]", "column[dest5.val]"],
-        ["literal[39]", "function[CHR]", "udf[ROW]", "function[CAST]", "column[dest5.val]"],
+        ["column[t1.a]", "function[ROW]", "function[CAST]", "function[ROW]", "function[CAST]", "column[dest5.val]"],
+        ["column[t1.b]", "function[ROW]", "function[CAST]", "function[ROW]", "function[CAST]", "column[dest5.val]"],
+        ["column[t1.c]", "function[ROW]", "function[CAST]", "function[ROW]", "function[CAST]", "column[dest5.val]"],
+        ["literal[39]", "function[CHR]", "function[ROW]", "function[CAST]", "column[dest5.val]"],
     ]
 
 
@@ -176,9 +174,9 @@ def test__row_scalar_subquery(holder):
         "INSERT INTO dest2 (val) SELECT CAST(ROW(_u_0._col_0, t1.b, t1.c) AS my_type) AS val FROM t1 AS t1 CROSS JOIN (SELECT MAX(t1.a) AS _col_0 FROM t1 AS t1) AS _u_0"
     )
     assert h.paths == [
-        ["column[t1.b]", "udf[ROW]", "function[CAST]", "column[dest2.val]"],
-        ["column[t1.c]", "udf[ROW]", "function[CAST]", "column[dest2.val]"],
-        ["column[t1.a]", "function[MAX]", "column[_u_0._col_0]", "udf[ROW]", "function[CAST]", "column[dest2.val]"],
+        ["column[t1.b]", "function[ROW]", "function[CAST]", "column[dest2.val]"],
+        ["column[t1.c]", "function[ROW]", "function[CAST]", "column[dest2.val]"],
+        ["column[t1.a]", "function[MAX]", "column[_u_0._col_0]", "function[ROW]", "function[CAST]", "column[dest2.val]"],
     ]
 
 

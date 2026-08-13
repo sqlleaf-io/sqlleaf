@@ -230,7 +230,7 @@ class BaseQueryTransformer:
         # TODO: support other dialects; this logic is only for Postgres
         query = self.query
         for node in statement.find_all(exp.Anonymous):
-            udf_query = udf.lookup_udf_call(node, query.object_mapping)
+            udf_query = query.object_mapping.lookup_udf_call(node)
             if not udf_query:
                 continue
 

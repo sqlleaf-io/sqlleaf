@@ -543,7 +543,6 @@ def test__cte_merge_inside_select(holder):
     assert len(h.edges) == 2
 
 
-# TODO: add function merge_action() as system function (not UDF)
 def test__cte_merge_inside_insert(holder):
     sql = """
     CREATE TABLE fruit (name VARCHAR, kind VARCHAR);
@@ -567,7 +566,7 @@ def test__cte_merge_inside_insert(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=False)
 
     assert h.paths == [
-        ["udf[MERGE_ACTION]", "column[cte.action]", "column[fruit_drink.action]"],
+        ["function[MERGE_ACTION]", "column[cte.action]", "column[fruit_drink.action]"],
         ["column[drink.name2]", "column[fruit.name]", "column[cte.name]", "column[fruit_drink.name]"],
         ["column[drink.name2]", "column[cte.name2]", "column[fruit_drink.name2]"],
         ["column[drink.kind2]", "column[fruit.kind]", "column[cte.kind]", "column[fruit_drink.kind]"],

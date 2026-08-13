@@ -2,8 +2,10 @@ import os
 import sys
 import typing as t
 
+import pytest
 from sqlglot import exp
 
+from sqlleaf.exception import SqlLeafException
 from sqlleaf.models.query import UserDefinedFunctionQuery
 from tests.new_fixtures import holder as holder
 
@@ -72,6 +74,18 @@ def test__udf_schema(holder):
     assert h.paths == [['literal["Hello"]', "column[target.name]"]]
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
+
+
+# TODO: we can distinguish between system and user functions yet
+# def test__udf_unknown_function_fails(holder):
+#     with pytest.raises(SqlLeafException) as e:
+#         sql = """
+#         CREATE TABLE target(name VARCHAR);
+#         INSERT INTO target (name) SELECT hello();
+#         """
+#         holder(sql=sql, dialect=DIALECT)
+#
+#     assert e.value.args[0] == "Could not find 'hello' of type 'udf' in mapping."
 
 
 def test__udf_schema_distinction(holder):

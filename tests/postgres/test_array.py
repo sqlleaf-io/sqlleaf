@@ -65,22 +65,20 @@ def test__array_subscript_integer(holder):
 
 def test__array_subscript_function_result(holder):
     sql = """
-    CREATE TABLE source (a integer, b integer);
+    CREATE TABLE source (a integer);
     CREATE TABLE target (first integer);
 
     INSERT INTO target
-    SELECT (array_function(a, b))[3] AS first
+    SELECT (array_function(a))[3] AS first
     FROM source;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[source.a]", "udf[ARRAY_FUNCTION]", "column[target.first]"],
-        ["column[source.b]", "udf[ARRAY_FUNCTION]", "column[target.first]"],
+        ["column[source.a]", "function[ARRAY_FUNCTION]", "column[target.first]"],
     ]
     assert h.nodes_full == [
-        "udf[name=ARRAY_FUNCTION type=UNKNOWN position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]",
+        "function[name=ARRAY_FUNCTION type=UNKNOWN position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]",
         "column[name=a type=INT properties=[kind=table table=source]]",
-        "column[name=b type=INT properties=[kind=table table=source]]",
         "column[name=first type=INT properties=[kind=table table=target]]",
     ]

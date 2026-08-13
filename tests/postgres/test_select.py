@@ -260,7 +260,6 @@ tests = [
     ("TRUE", "literal"),
     ("NULL", "null"),
     ("LOCALTIME()", "function"),
-    ("MY.FUNC()", "udf"),
 ]
 
 
@@ -368,14 +367,14 @@ def test__select_rows_from(holder):
         ["literal[{'x','y'}]", "function[UNNEST]", "column[x.name]", "column[fruit.processed.name]"],
         [
             'literal["[{"a":40,"b":"foo"}]"]',
-            "udf[JSON_TO_RECORDSET]",
+            "function[JSON_TO_RECORDSET]",
             "column[y.b]",
             "column[x.kind]",
             "column[fruit.processed.kind]",
         ],
         [
             'literal["[{"a":40,"b":"foo"}]"]',
-            "udf[JSON_TO_RECORDSET]",
+            "function[JSON_TO_RECORDSET]",
             "column[y.a]",
             "column[x.age]",
             "column[fruit.processed.age]",

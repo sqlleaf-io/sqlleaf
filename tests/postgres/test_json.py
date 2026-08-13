@@ -129,9 +129,19 @@ def test__json_each_text_alias(holder):
         == """INSERT INTO target (first, last) SELECT t.k AS first, t.v AS last FROM JSON_EACH_TEXT('{"a":"x"}') AS t(k, v)"""
     )
     assert h.paths == [
-        ['literal["{"a":"x"}"]', "udf[JSON_EACH_TEXT]", "column[t.k]", "column[target.first]"],
-        ['literal["{"a":"x"}"]', "udf[JSON_EACH_TEXT]", "column[t.v]", "column[target.last]"],
+        ['literal["{"a":"x"}"]', "function[JSON_EACH_TEXT]", "column[t.k]", "column[target.first]"],
+        ['literal["{"a":"x"}"]', "function[JSON_EACH_TEXT]", "column[t.v]", "column[target.last]"],
     ]
+    assert h.nodes_full == [
+         'literal[name="{"a":"x"}" type=VARCHAR position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=1 func_arg=0]]',
+         'literal[name="{"a":"x"}" type=VARCHAR position=[query_depth=0 query_width=0 statement=2 select=1 func_depth=1 func_arg=0]]',
+         'function[name=JSON_EACH_TEXT type=UNKNOWN position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]',
+         'function[name=JSON_EACH_TEXT type=UNKNOWN position=[query_depth=0 query_width=0 statement=2 select=1 func_depth=0 func_arg=0]]',
+         'column[name=k type=UNKNOWN properties=[kind=udtf table=t]]',
+         'column[name=v type=UNKNOWN properties=[kind=udtf table=t]]',
+         'column[name=first type=VARCHAR properties=[kind=table table=target]]',
+         'column[name=last type=VARCHAR properties=[kind=table table=target]]',
+     ]
 
 
 def test__json_each_text_alias_no_columns(holder):

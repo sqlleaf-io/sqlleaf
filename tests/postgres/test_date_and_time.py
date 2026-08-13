@@ -50,8 +50,8 @@ def test__datetime_age(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
-        ["column[fruit.processed.updated_at]", "udf[AGE]", "column[fruit.processed.age]"],
-        ["column[fruit.processed.created_at]", "udf[AGE]", "column[fruit.processed.age]"],
+        ["column[fruit.processed.updated_at]", "function[AGE]", "column[fruit.processed.age]"],
+        ["column[fruit.processed.created_at]", "function[AGE]", "column[fruit.processed.age]"],
     ]
 
 
@@ -91,9 +91,9 @@ def test__datetime_make_date(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
-        ["literal[2023]", "udf[MAKE_DATE]", "column[fruit.processed.inserted_at]"],
-        ["literal[1]", "udf[MAKE_DATE]", "column[fruit.processed.inserted_at]"],
-        ["literal[1]", "udf[MAKE_DATE]", "column[fruit.processed.inserted_at]"],
+        ["literal[2023]", "function[MAKE_DATE]", "column[fruit.processed.inserted_at]"],
+        ["literal[1]", "function[MAKE_DATE]", "column[fruit.processed.inserted_at]"],
+        ["literal[1]", "function[MAKE_DATE]", "column[fruit.processed.inserted_at]"],
     ]
 
 

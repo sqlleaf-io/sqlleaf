@@ -19,6 +19,8 @@ class FunctionNode(NodeAttributes):
             name = expr.key
         elif isinstance(expr, exp.Case):
             name = "CASE"
+        elif isinstance(expr, exp.Anonymous):
+            _, name = util.get_udf_name(expr)
         else:
             name = util.calculate_function_name(expr, gen_ctx.query.dialect)
 

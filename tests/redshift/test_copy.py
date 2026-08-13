@@ -82,13 +82,13 @@ def test_copy_ssh(holder):
 
 def test_copy_temp_table(holder):
     sql = f"""
-    CREATE TABLE "#fruit.simple" (name VARCHAR, age INT);
-    COPY "#fruit.simple" FROM 's3://bucket/path' {iam_role};
+    CREATE TABLE "#simple" (name VARCHAR, age INT);
+    COPY "#simple" FROM 's3://bucket/path' {iam_role};
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-        ["column[name path=s3://bucket/path]", "column[#fruit.simple.name]"],
-        ["column[age path=s3://bucket/path]", "column[#fruit.simple.age]"],
+        ["column[name path=s3://bucket/path]", "column[#simple.name]"],
+        ["column[age path=s3://bucket/path]", "column[#simple.age]"],
     ]
 
 

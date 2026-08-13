@@ -216,11 +216,15 @@ class BaseGenerator:
         SELECT my.func()
         """
         schema, function = util.get_udf_name(expr)
-
-        # Process a UDF
         node_args = expr.expressions
         # node_args = list(expr.flatten())
-        parent = UserDefinedFunctionNode(schema=schema, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
+
+        # A function has to be registered to be a UDF
+        udf_query = gen_ctx.query.object_mapping.lookup_udf_call(expr)
+        if udf_query:
+            parent = UserDefinedFunctionNode(schema=schema, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
+        else:
+            parent = FunctionNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx)
 
         # TODO: pass the type to the above
 

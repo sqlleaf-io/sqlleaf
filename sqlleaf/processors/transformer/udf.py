@@ -12,19 +12,7 @@ from sqlleaf.processors.transformer.expressions.row import transform_row_functio
 logger = logging.getLogger("sqlleaf")
 
 
-def lookup_udf_call(
-    node: exp.Anonymous, object_mapping: mappings.ObjectMapping
-) -> t.Optional[UserDefinedFunctionQuery]:
-    """
-    Looks up the UDF definition for a single exp.Anonymous node.
-    Returns the matched UDF definition, or None if not found.
-    """
-    function_schema, function_name = util.get_udf_name(node)
-    udf_object = exp.table_(table=function_name, db=function_schema)
-    candidates = object_mapping.lookup_udf_query(table=udf_object, raise_on_missing=False)
-    if not candidates:
-        return None
-    return mappings.resolve_overloaded_function(node, candidates)
+
 
 
 def find_next_udf_call(
@@ -35,7 +23,7 @@ def find_next_udf_call(
     Returns the call node and the matched UDF definition.
     """
     for node in expression.find_all(exp.Anonymous):
-        best_match = lookup_udf_call(node, object_mapping)
+        best_match = object_mapping.lookup_udf_call(node)
         if best_match:
             return node, best_match
 

@@ -96,7 +96,6 @@ class PostgresGenerator(BaseGenerator):
         SELECT my.func() or SELECT nextval('my_sequence')
         """
         schema, function = util.get_udf_name(expr)
-        full_name = ".".join([schema, function])
 
         # Process a sequence
         if not schema and function in [
@@ -105,20 +104,32 @@ class PostgresGenerator(BaseGenerator):
             "setval",
             # 'lastval()' is not supported since it requires tracking state
         ]:
-            seq_name_expr: exp.Literal = expr.args["expressions"][0]
-
-            # Ensure the sequence exists
-            seq_table = exp.table_(table=seq_name_expr.name, db=schema)
-            seq_query = gen_ctx.query.object_mapping.lookup_sequence_query(table=seq_table)
-            if not seq_query:
-                raise exception.SqlLeafException(f"Sequence '{full_name}' not found.")
-
-            subkind = seq_query.property if seq_query else ""
-            gen_ctx = gen_ctx.new(new_data_type=exp.DataType.build("INT"))
-            parent = SequenceNode(name=seq_name_expr.name, gen_ctx=gen_ctx, pos_ctx=pos_ctx, subkind=subkind)
-            yield EdgeToCreate(parent, gen_ctx.child_node)
+            yield from self._process_sequence(expr, gen_ctx, pos_ctx)
         else:
             yield from super().process(expr, gen_ctx, pos_ctx)
+
+    def _process_sequence(
+        self, expr: exp.Anonymous, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
+        """
+        Either user-defined functions or sequence functions.
+
+        SELECT my.func() or SELECT nextval('my_sequence')
+        """
+        seq_name_expr: exp.Literal = expr.args["expressions"][0]
+        schema, function = util.get_udf_name(expr)
+        full_name = ".".join([schema, function])
+
+        # Ensure the sequence exists
+        seq_table = exp.table_(table=seq_name_expr.name, db=schema)
+        seq_query = gen_ctx.query.object_mapping.lookup_sequence_query(table=seq_table)
+        if not seq_query:
+            raise exception.SqlLeafException(f"Sequence '{full_name}' not found.")
+
+        subkind = seq_query.property if seq_query else ""
+        gen_ctx = gen_ctx.new(new_data_type=exp.DataType.build("INT"))
+        parent = SequenceNode(name=seq_name_expr.name, gen_ctx=gen_ctx, pos_ctx=pos_ctx, subkind=subkind)
+        yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
     def process_column_def(

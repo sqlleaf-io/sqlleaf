@@ -7,7 +7,7 @@ from sqlglot.dialects.dialect import DialectType
 from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
 
-from sqlleaf import exception
+from sqlleaf import exception, util
 from sqlleaf.models.query import (
     CTASQuery,
     DatabaseQuery,
@@ -257,6 +257,22 @@ class ObjectMapping(MappingSchema):
 
         return child_object_query
 
+    def lookup_udf_call(
+        self,
+        node: exp.Anonymous,
+    ) -> t.Optional[UserDefinedFunctionQuery]:
+        """
+        Looks up the UDF definition for a single exp.Anonymous node.
+        Returns the matched UDF definition, or None if not found.
+        """
+        function_schema, function_name = util.get_udf_name(node)
+        udf_object = exp.table_(table=function_name, db=function_schema)
+        candidates = self.lookup_udf_query(table=udf_object, raise_on_missing=False)
+        if not candidates:
+            return None
+
+        return resolve_overloaded_function(node, candidates)
+
 
 def resolve_overloaded_function(
     node: exp.Anonymous, candidates: t.List[UserDefinedFunctionQuery]
@@ -357,3 +373,4 @@ def match_type(arg: exp.Expr, target_type: exp.DataType) -> bool:
             return True
 
     return exp.DataType.is_type(arg_type, target_type)
+

@@ -26,13 +26,13 @@ def test_type_composite(holder, case: str):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-        ['literal["apple"]', "udf[ROW]", "column[target.name]"],
-        ["literal[5]", "udf[ROW]", "column[target.name]"],
+        ['literal["apple"]', "function[ROW]", "column[target.name]"],
+        ["literal[5]", "function[ROW]", "column[target.name]"],
     ]
     assert h.nodes_full == [
         'literal[name="apple" type=VARCHAR position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=1 func_arg=0]]',
         "literal[name=5 type=INT position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=1 func_arg=1]]",
-        "udf[name=ROW type=UNKNOWN position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]",
+        "function[name=ROW type=UNKNOWN position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]",
         f"column[name=name type={case}fruit properties=[kind=table table=target]]",
     ]
     assert len(h.nodes) == 4
@@ -54,15 +54,15 @@ def test_type_composite_nested(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-        ['literal["apple"]', "udf[ROW]", "function[CAST]", "column[target.some]"],
-        ['literal["new"]', "udf[ROW]", "udf[ROW]", "function[CAST]", "column[target.some]"],
+        ['literal["apple"]', "function[ROW]", "function[CAST]", "column[target.some]"],
+        ['literal["new"]', "function[ROW]", "function[ROW]", "function[CAST]", "column[target.some]"],
     ]
     assert h.nodes_full == [
         'literal[name="apple" type=VARCHAR position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=2 func_arg=0]]',
         'literal[name="new" type=VARCHAR position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=3 func_arg=1]]',
         "function[name=CAST type=fruit position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=0 func_arg=0]]",
-        "udf[name=ROW type=UNKNOWN position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=1 func_arg=0]]",
-        "udf[name=ROW type=UNKNOWN position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=2 func_arg=1]]",
+        "function[name=ROW type=UNKNOWN position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=1 func_arg=0]]",
+        "function[name=ROW type=UNKNOWN position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=2 func_arg=1]]",
         "column[name=some type=fruit properties=[kind=table table=target]]",
     ]
     assert len(h.edges) == 5
