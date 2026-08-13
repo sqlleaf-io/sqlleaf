@@ -126,7 +126,7 @@ def walk_query_and_build_graph(
     Walk over each query (and its subqueries) to collect the expressions for each column.
     For any expression subtrees found, invoke an 'expression walker' to process them.
     """
-    gen_ctx = gen_ctx.new(scope=scope, child_node=child_node)
+    gen_ctx = gen_ctx.replace(scope=scope, child_node=child_node)
 
     for scope_traversal in walk_query_scope(
         column=t.cast(t.Union[exp.Column, int], child_node.expr),
@@ -136,7 +136,7 @@ def walk_query_and_build_graph(
         logger.debug(f"Child node: {child_node.full_name}")
 
         height, width = gen_ctx.scope_positions.get_scope_for_expr(scope_traversal.scope.expression)
-        child_ctx = pos_ctx.new(query_depth=height, query_width=width)
+        child_ctx = pos_ctx.replace(query_depth=height, query_width=width)
         gen_ctx = replace(
             gen_ctx,
             expr=scope_traversal.expression,
@@ -325,7 +325,7 @@ def find_inherited_columns(
     for inh_table in getattr(table_query, "inherited_by", []):
         col_def = [c for c in inh_table.get_column_defs() if c.name == column_node.name][0]
         col = util.column_def_to_column(column_def=col_def, parent_table=inh_table.get_target_as_table())
-        col_ctx = gen_ctx.new(expr=col, scope=None)  # Remove the node so that the column isn't renamed
+        col_ctx = gen_ctx.replace(expr=col, scope=None)  # Remove the node so that the column isn't renamed
         for edge in generator.process_column(col, col_ctx, pos_ctx):
             inh_node_attrs = edge.parent
             inherited_column_nodes.append(inh_node_attrs)
@@ -521,8 +521,8 @@ def check_for_external_table(generator: BaseGenerator, gen_ctx: GeneratorContext
 
         for child_node, _ in generator.iter_child_nodes(gen_ctx, pos_ctx):
             if child_node:
-                gen_ctx = gen_ctx.new(expr=location_expr, child_node=child_node)
-                pos_ctx = pos_ctx.new(select_index=child_node.ctx.select_index)
+                gen_ctx = gen_ctx.replace(expr=location_expr, child_node=child_node)
+                pos_ctx = pos_ctx.replace(select_index=child_node.ctx.select_index)
                 walk_expressions_and_build_graph(generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
         return True
     return False

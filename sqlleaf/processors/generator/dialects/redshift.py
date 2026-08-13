@@ -103,7 +103,7 @@ class RedshiftGenerator(BaseGenerator):
             and pivot.alias_or_name == expr.table
             and not isinstance(gen_ctx.child_node, UnpivotNode)  # Prevent infinite recursion
         ):
-            gen_ctx = gen_ctx.new(expr=pivot)
+            gen_ctx = gen_ctx.replace(expr=pivot)
             if pivot.unpivot:
                 yield from self.process_unpivot(pivot, gen_ctx, pos_ctx)
             else:

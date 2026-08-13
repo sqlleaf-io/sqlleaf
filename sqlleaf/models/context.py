@@ -108,7 +108,7 @@ class GeneratorContext[Q, N]:
             return t.cast(exp.DataType, expr.parent.type)
         return expr.type or exp.DType.UNKNOWN.into_expr()
 
-    def new(self, **args) -> GeneratorContext[Q, N]:
+    def replace(self, **args) -> GeneratorContext[Q, N]:
         """
         Convenience method to take us to this class definition.
         """
@@ -146,7 +146,7 @@ class PositionContext:
         ]
         return " ".join(parts)
 
-    def new(self, **args) -> PositionContext:
+    def replace(self, **args) -> PositionContext:
         """
         Convenience method to take us to this class definition.
         """

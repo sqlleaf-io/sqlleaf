@@ -120,12 +120,12 @@ class BaseGenerator:
         if parent is None:
             raise exception.SqlLeafException(message="A parent cannot be None when processing grandparents.")
         if parent.kind in ["function", "udf"]:
-            pos_ctx = pos_ctx.new(function_depth=pos_ctx.function_depth + 1)
+            pos_ctx = pos_ctx.replace(function_depth=pos_ctx.function_depth + 1)
 
         for grand_expr in grandparents:
-            gen_ctx = gen_ctx.new(expr=grand_expr, child_node=parent)
+            gen_ctx = gen_ctx.replace(expr=grand_expr, child_node=parent)
             yield from self.process(gen_ctx.expr, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
-            pos_ctx = pos_ctx.new(function_arg_index=pos_ctx.function_arg_index + 1)
+            pos_ctx = pos_ctx.replace(function_arg_index=pos_ctx.function_arg_index + 1)
 
     @process.register(exp.AtTimeZone)
     @process.register(exp.Func)
@@ -240,7 +240,7 @@ class BaseGenerator:
         """
         SELECT MODE() WITHIN GROUP (ORDER BY name DESC) AS name
         """
-        gen_ctx = gen_ctx.new(expr=expr.this)
+        gen_ctx = gen_ctx.replace(expr=expr.this)
         yield from self.process(expr.this, gen_ctx, pos_ctx)
 
     @process.register
@@ -286,12 +286,12 @@ class BaseGenerator:
             if isinstance(base, exp.Column):
                 # If the base is a Column, run it through normal Column handling.
                 logger.debug(f"Struct/Array access: processing base column {base.sql(dialect=self.dialect)}")
-                gen_ctx = gen_ctx.new(expr=base)
+                gen_ctx = gen_ctx.replace(expr=base)
                 yield from self.process(base, gen_ctx, pos_ctx)
             else:
                 # If the base isn't a Column (e.g., a schema-qualified routine),
                 # process only the right-hand side so that UDF/qualified-name dispatch still works
-                gen_ctx = gen_ctx.new(expr=expr.right if isinstance(expr, exp.Binary) else expr.this)
+                gen_ctx = gen_ctx.replace(expr=expr.right if isinstance(expr, exp.Binary) else expr.this)
                 yield from self.process(gen_ctx.expr, gen_ctx, pos_ctx)
         else:
             parent = FunctionNode(gen_ctx, pos_ctx)
@@ -359,7 +359,7 @@ class BaseGenerator:
         if isinstance(parent.source_scope, exp.Table):
             # Traverse into the table (esp. needed by "ROWS FROM")
             ex = parent.source_scope
-            gen_ctx = gen_ctx.new(expr=ex, child_node=parent)
+            gen_ctx = gen_ctx.replace(expr=ex, child_node=parent)
             yield from self.process(ex, gen_ctx, pos_ctx)
 
     @process.register(exp.JSONExtractScalar)
@@ -377,7 +377,7 @@ class BaseGenerator:
 
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
-        gen_ctx = gen_ctx.new(expr=source, child_node=parent)
+        gen_ctx = gen_ctx.replace(expr=source, child_node=parent)
         yield from self.process(source, gen_ctx, pos_ctx)
 
     @process.register
@@ -420,8 +420,8 @@ class BaseGenerator:
         subquery_scope = [s for s in scope.subquery_scopes if s.expression == expr.this][0]
 
         height, width = gen_ctx.scope_positions.get_scope_for_expr(expr.this)
-        child_ctx = pos_ctx.new(query_depth=height, query_width=width)
-        p_ctx = gen_ctx.new(expr=expr.selects[0], scope=subquery_scope)
+        child_ctx = pos_ctx.replace(query_depth=height, query_width=width)
+        p_ctx = gen_ctx.replace(expr=expr.selects[0], scope=subquery_scope)
         yield from self.process(p_ctx.expr, gen_ctx=p_ctx, pos_ctx=child_ctx)
 
     def create_node_from_type(
@@ -510,8 +510,8 @@ class BaseGenerator:
         for col_def in target_columns:
             selected_node = None
             default_node = None
-            gen_ctx = gen_ctx.new(expr=col_def)
-            pos_ctx = pos_ctx.new(select_index=select_idx)
+            gen_ctx = gen_ctx.replace(expr=col_def)
+            pos_ctx = pos_ctx.replace(select_index=select_idx)
 
             # logger.debug(f"Iter nodes - found node: {target_type}")
             child_node = self.create_node_from_type(
