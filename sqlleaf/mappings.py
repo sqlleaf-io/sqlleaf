@@ -209,9 +209,8 @@ class ObjectMapping(MappingSchema):
             The schema of the target table.
         """
         if kind not in self.kind_mapping:
-            # if raise_on_missing:
-            #     # TODO: ensure this works
-            #     raise SqlLeafException(f"Could not find '{table.this}' of type '{kind}' in mapping.")
+            if raise_on_missing:
+                raise exception.SqlLeafException(f"Could not find '{table.this}' of type '{kind}' in mapping.")
             return None
 
         parts = self.table_parts(table)[0 : len(self.supported_table_args)]

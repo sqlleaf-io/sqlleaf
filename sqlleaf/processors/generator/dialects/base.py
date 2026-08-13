@@ -311,12 +311,27 @@ class BaseGenerator:
         self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
         source_table = None
-        if gen_ctx.scope and isinstance(gen_ctx.scope, Scope):
+        scope = gen_ctx.scope
+
+        if scope and isinstance(scope, Scope):
             # Lateral queries are processed differently
-            if gen_ctx.scope.scope_type == ScopeType.UDTF and isinstance(gen_ctx.scope.expression, exp.Lateral):
-                source_table = dict(gen_ctx.scope.lateral_sources).get(expr.table)
+            if scope.scope_type == ScopeType.UDTF and isinstance(scope.expression, exp.Lateral):
+                source_table = dict(scope.lateral_sources).get(expr.table)
+
+            elif scope.scope_type == ScopeType.SUBQUERY and isinstance(expr, exp.Column):
+                source_table = dict(scope.references).get(expr.table)
+
+                if not source_table:
+                    # Check the scope's parents recursively for the actual source.
+                    # This occurs in a subquery, e.g. SELECT ((SELECT r.name)) FROM fruit.raw r
+                    parent = scope.parent
+                    while parent:
+                        source_table = dict(parent.references).get(expr.table)
+                        if source_table or parent.scope_type != ScopeType.SUBQUERY:
+                            break
+                        parent = parent.parent
             else:
-                source_table = dict(gen_ctx.scope.references).get(expr.table)
+                source_table = dict(scope.references).get(expr.table)
 
             if source_table:
                 if not isinstance(

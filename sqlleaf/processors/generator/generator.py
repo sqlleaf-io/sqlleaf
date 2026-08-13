@@ -481,7 +481,7 @@ def check_for_trigger(
     if not isinstance(table, exp.Table):
         return False
 
-    if trigger := object_mapping.lookup_trigger_query(table=table):
+    if trigger := object_mapping.lookup_trigger_query(table=table, raise_on_missing=False):
         if getattr(trigger, "timing", None) == "INSTEAD OF":
             logger.debug(
                 "Skipping lineage for all columns of table '%s' since trigger '%s' overrides it."

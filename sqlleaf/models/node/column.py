@@ -92,7 +92,7 @@ class ColumnNode(NodeAttributes):
     ) -> None:
         """
         Figure out the table's kind (view, table, etc) and its subkind (temp, recursive, etc) by
-        inspecting the query's scope and the mapping.
+        inspecting the query's scope and the table mapping.
         """
         scope = gen_ctx.scope
 
@@ -122,8 +122,7 @@ class ColumnNode(NodeAttributes):
         if self._set_kind_of_derived_table(logical_source, table, gen_ctx):
             return
 
-        # Determine physical properties from object mapping (TABLE, VIEW, etc.)
-        # Use 'source' (the exp.Expr) if available for physical name resolution
+        # Determine physical properties (TABLE, VIEW, etc.)
         self._set_kind_of_physical_table(catalog, schema, table, source or logical_source, gen_ctx)
 
     def _set_kind_of_derived_table(
@@ -150,6 +149,11 @@ class ColumnNode(NodeAttributes):
 
         if isinstance(source, exp.Table) and "rows_from" in source.args:
             self.parent_kind = TableType.DERIVED_TABLE
+            return True
+
+        if isinstance(source, exp.Table) and isinstance(source.this, exp.Anonymous):
+            # Table function, e.g. SELECT * FROM FUNCTION()
+            self.parent_kind = TableType.UDTF
             return True
 
         if isinstance(source, (exp.Select, exp.Subquery)):
@@ -218,7 +222,7 @@ class ColumnNode(NodeAttributes):
             return
 
         tab = exp.to_table(name, dialect=gen_ctx.query.dialect)
-        query = gen_ctx.query.object_mapping.get_table_or_stage(table=tab, raise_on_missing=False)
+        query = gen_ctx.query.object_mapping.get_table_or_stage(table=tab, raise_on_missing=True)
 
         if not query or query.kind == "ctas":
             self.parent_kind = TableType.TABLE

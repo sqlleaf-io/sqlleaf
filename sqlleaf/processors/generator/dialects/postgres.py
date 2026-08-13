@@ -35,66 +35,44 @@ class PostgresGenerator(BaseGenerator):
         for table functions.
         """
         if "rows_from" in expr.args:
-            """
-            Example:
-                SELECT * FROM ROWS FROM
-                (
-                    unnest(ARRAY['x', 'y']),
-                    json_to_recordset('[{"a":40,"b":"foo"}]')
-                        AS y(a INTEGER, b TEXT),
-                    generate_series(1, 3)
-                ) AS x (name, age, kind, amount)
-            """
-            downstream_exprs = []
-            for table_function in expr.args["rows_from"]:
-                # Determine the immediate children of the expression.
-                # These are either table functions or aliases to table functions (ColumnDefs)
-                cols = list(table_function.find_all(exp.ColumnDef))
-                downstream_exprs.extend(cols if cols else [table_function])
-
-            # Get the expression associated with the column name
-            child_column_name = gen_ctx.get_child_node().expr.name
-            for i, col in enumerate(expr.alias_column_names):
-                if col == child_column_name:
-                    # Returns ColumnDef | Function | Table
-                    down_expr = downstream_exprs[i]
-                    if isinstance(down_expr, exp.Table) and down_expr.arg_key == "rows_from":
-                        # A table function inside a 'ROWS FROM'
-                        down_expr = down_expr.this
-
-                    gen_ctx = gen_ctx.new(expr=down_expr)
-                    yield from self.process(down_expr, gen_ctx, pos_ctx)
-                    break
+            yield from self._process_rows_from(expr, gen_ctx, pos_ctx)
+        elif isinstance(expr.this, exp.Anonymous):
+            yield from super().process(expr.this, gen_ctx.new(expr=expr.this), pos_ctx)
         else:
             yield from super().process(expr, gen_ctx, pos_ctx)
 
-    @process.register
-    def process_table_column(
+    def _process_rows_from(
         self, expr: exp.TableColumn, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
         """
-        SELECT my.func(people)
-                       ^------- A table
+        SELECT * FROM ROWS FROM
+        (
+            unnest(ARRAY['x', 'y']),
+            json_to_recordset('[{"a":40,"b":"foo"}]')
+                AS y(a INTEGER, b TEXT),
+            generate_series(1, 3)
+        ) AS x (name, age, kind, amount)
         """
-        table_name = expr.this.name
-        table = exp.table_(table=table_name)
-        # We need to find the query that defines this table to get its columns
-        table_query = gen_ctx.query.object_mapping.lookup_table_query(table=table, raise_on_missing=False)
-        if table_query:
-            target_table = table_query.target_info.expression
-            for col_def in table_query.get_column_defs():
-                parent = ColumnNode(
-                    catalog=target_table.catalog,
-                    schema=target_table.db,
-                    table=target_table.name,
-                    column=col_def.name,
-                    gen_ctx=gen_ctx,
-                    pos_ctx=pos_ctx,
-                )
-                yield EdgeToCreate(parent, gen_ctx.child_node)
-        else:
-            logger.debug(f"Skipping expression: {type(expr)} {str(expr)}")
-            yield EdgeToCreate(None, None)
+        downstream_exprs = []
+        for table_function in expr.args["rows_from"]:
+            # Determine the immediate children of the expression.
+            # These are either table functions or aliases to table functions (ColumnDefs)
+            cols = list(table_function.find_all(exp.ColumnDef))
+            downstream_exprs.extend(cols if cols else [table_function])
+
+        # Get the expression associated with the column name
+        child_column_name = gen_ctx.get_child_node().expr.name
+        for i, col in enumerate(expr.alias_column_names):
+            if col == child_column_name:
+                # Returns ColumnDef | Function | Table
+                down_expr = downstream_exprs[i]
+                if isinstance(down_expr, exp.Table) and down_expr.arg_key == "rows_from":
+                    # A table function inside a 'ROWS FROM'
+                    down_expr = down_expr.this
+
+                gen_ctx = gen_ctx.new(expr=down_expr)
+                yield from self.process(down_expr, gen_ctx, pos_ctx)
+                return
 
     @process.register
     def process_lateral(
@@ -179,6 +157,8 @@ class PostgresGenerator(BaseGenerator):
         """
         COPY x FROM/TO y
         """
+        # TODO: create a new Node called column[kind=table subkind=function] for table functions
+        #  (JSON_EACH_TEXT, UNNEST, UDFs that return sets)
         source_info: SourceInfo = gen_ctx.query.source_info
 
         if SqlObjectType.type_has_no_column_defs(source_info.type):

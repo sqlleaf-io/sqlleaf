@@ -43,6 +43,31 @@ class BaseQueryTransformer:
         """
         return statement
 
+    def _validate_syntax(func):
+        """
+        Ensure that the transformed query is parseable.
+        """
+
+        @functools.wraps(func)
+        def wrapper(self, *args, **kwargs) -> E:
+            statement = args[0] if args else kwargs.get("statement", self.statement)
+            query = self.query
+
+            if LOG_TRANSFORMATIONS:
+                logger.debug(f"Function: {func.__name__}")
+
+            result = func(self, *args, **kwargs)
+
+            in_statement = statement.sql(dialect=query.dialect)
+            out_statement = result.sql(dialect=query.dialect)
+
+            if result and (in_statement != out_statement):
+                logger.debug(f"Function: {func.__name__} transformed: {out_statement}")
+
+            return result
+
+        return wrapper
+
     @t.final
     def preprocess(self, statement: E) -> E:
         """
@@ -74,7 +99,8 @@ class BaseQueryTransformer:
         Run a set of transformations over every statement
         AFTER the type-specific transformations.
         """
-        statement = annotate_types(statement, dialect=self.query.dialect, schema=self.query.object_mapping)
+        # TODO: ideally this is done here, but it would overwrite the types manually added for COPY, UNLOAD etc
+        #statement = annotate_types(statement, dialect=self.query.dialect, schema=self.query.object_mapping)
 
         validate_columns, exclusion_rules = self._get_validation_and_exclusion_rules(statement)
 
@@ -130,6 +156,7 @@ class BaseQueryTransformer:
 
         return statement
 
+    @_validate_syntax
     def _apply_udf_substitutions(self, statement: E) -> E:
         """
         Replaces UDF call sites in the transformed statement with their inlined body.
@@ -181,45 +208,7 @@ class BaseQueryTransformer:
             udf.apply_replacement(target_node, replacement_exprs[0], matched_udf)
         return statement
 
-    def _validate_syntax(func):
-        """
-        Ensure that the transformed query is parseable.
-        """
-
-        @functools.wraps(func)
-        def wrapper(self, *args, **kwargs) -> E:
-            statement = args[0] if args else kwargs.get("statement", self.statement)
-            query = self.query
-
-            if LOG_TRANSFORMATIONS:
-                logger.debug(f"Function: {func.__name__}, Input:  {statement.sql(dialect=query.dialect)}")
-
-            result = func(self, *args, **kwargs)
-
-            if LOG_TRANSFORMATIONS:
-                logger.debug(f"Function: {func.__name__}, Output: {result.sql(dialect=query.dialect)}")
-
-            if result and (statement.sql(dialect=query.dialect) != result.sql(dialect=query.dialect)):
-                logger.debug(f"Transformed by {func}.")
-
-            if result is None:
-                return result
-
-            try:
-                sqlglot.parse_one(result.sql(dialect=query.dialect), dialect=query.dialect)
-            except sqlglot.errors.ParseError:
-                if (
-                    query.dialect in ["athena", "redshift"]
-                    and isinstance(query, TableQuery)
-                    and query.property == "external"
-                ):
-                    # Bug in sqlglot: parsing the output for CREATE EXTERNAL TABLE WITH (FORMAT=TEXTFILE) breaks the parser
-                    pass
-
-            return result
-
-        return wrapper
-
+    @_validate_syntax
     def _convert_table_to_select(self, statement: E) -> E:
         """
         Convert the statement "TABLE x" to "SELECT * FROM x"
@@ -231,6 +220,7 @@ class BaseQueryTransformer:
                 statement.set("expression", exp.select("*").from_(table))
         return statement
 
+    @_validate_syntax
     def _add_aliases_to_udfs(self, statement: E) -> E:
         """
         Iterate over the query looking for UDFs and add an alias to them with the same name
@@ -266,6 +256,7 @@ class BaseQueryTransformer:
 
         return statement
 
+    @_validate_syntax
     def _add_aliases_to_pseudocolumns(self, statement: E) -> E:
         """
         Given a query:
@@ -286,6 +277,7 @@ class BaseQueryTransformer:
 
         return statement
 
+    @_validate_syntax
     def _process_inner_ctes(self, statement: E) -> E:
         """
         Transform any inner CTE statements.
@@ -320,6 +312,7 @@ class BaseQueryTransformer:
 
         return statement
 
+    @_validate_syntax
     def _convert_insert_defaults_to_values(self, statement: exp.Insert) -> exp.Insert:
         """
         Transform the query:
@@ -352,9 +345,6 @@ class BaseQueryTransformer:
             values = exp.Values(expressions=[exp.Tuple(expressions=[exp.Var(this="DEFAULT") for _ in table_columns])])
             statement.set("expression", values)
             statement.set("default", False)
-
-        if not isinstance(values, exp.Values):
-            return statement
 
         named_columns = util.get_selected_column_names(statement)
 
@@ -397,6 +387,7 @@ class BaseQueryTransformer:
         """
         return [r for r in RULES if getattr(r, "__name__", None) not in exclude_rules]
 
+    @_validate_syntax
     def _qualify_function_columns(self, statement: E) -> E:
         """
         Look for table functions used in FROM whose names are known
@@ -515,6 +506,7 @@ class BaseQueryTransformer:
         )
         return statement
 
+    @_validate_syntax
     def _add_missing_table_alias_columns(self, statement: E) -> E:
         """
         Populate any missing column lists on exp.TableAlias nodes by copying the
@@ -586,6 +578,7 @@ class BaseQueryTransformer:
 
         return statement
 
+    @_validate_syntax
     def _rename_returning_columns(self, statement: exp.CTE, child_table: exp.Table) -> exp.CTE:
         """
         Given an (INSERT .. RETURNING *) statement, expand the star to the table's column names
@@ -673,6 +666,7 @@ class BaseQueryTransformer:
             "source": source,
         }
 
+    @_validate_syntax
     def _add_column_names_to_insert(self, statement: exp.Expr) -> exp.Insert:
         """
         Add aliases to SELECTs that are missing them by looking at the corresponding INSERT column.
@@ -770,6 +764,7 @@ class BaseQueryTransformer:
 
         return [c.name for c in table_query.get_column_defs(include_system=include_system)]
 
+    @_validate_syntax
     def _convert_update_to_insert(self, statement: exp.Update) -> exp.Insert:
         """
         Taken from extract_select_from_update() at datahub/metadata-ingestion/src/datahub/sql_parsing/sqlglotlineage.py

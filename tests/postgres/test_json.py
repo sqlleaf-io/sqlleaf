@@ -1,8 +1,6 @@
 import os
 import sys
 
-import pytest
-
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -122,14 +120,18 @@ def test__json_each_text_alias(holder):
     CREATE TABLE target (first VARCHAR, last VARCHAR);
 
     INSERT INTO target
-    SELECT * FROM json_each_text('{"a":"x"}'::json) AS t(k, v);
+    SELECT * FROM json_each_text('{"a":"x"}') AS t(k, v);
     """
     h = holder(sql=sql, dialect=DIALECT)
 
     assert (
         h.holders[2].transformed.statement.sql(dialect=DIALECT)
-        == """INSERT INTO target (first, last) SELECT t.k AS first, t.v AS last FROM JSON_EACH_TEXT(CAST('{"a":"x"}' AS JSON)) AS t(k, v)"""
+        == """INSERT INTO target (first, last) SELECT t.k AS first, t.v AS last FROM JSON_EACH_TEXT('{"a":"x"}') AS t(k, v)"""
     )
+    assert h.paths == [
+        ['literal["{"a":"x"}"]', "udf[JSON_EACH_TEXT]", "column[t.k]", "column[target.first]"],
+        ['literal["{"a":"x"}"]', "udf[JSON_EACH_TEXT]", "column[t.v]", "column[target.last]"],
+    ]
 
 
 def test__json_each_text_alias_no_columns(holder):
@@ -138,11 +140,11 @@ def test__json_each_text_alias_no_columns(holder):
     CREATE TABLE target (first VARCHAR, last VARCHAR);
 
     INSERT INTO target
-    SELECT * FROM json_each_text('{"a":"x"}'::json) AS t;
+    SELECT * FROM json_each_text('{"a":"x"}') AS t;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
     assert (
         h.holders[2].transformed.statement.sql(dialect=DIALECT)
-        == """INSERT INTO target (first, last) SELECT t.key AS first, t.value AS last FROM JSON_EACH_TEXT(CAST('{"a":"x"}' AS JSON)) AS t(key, value)"""
+        == """INSERT INTO target (first, last) SELECT t.key AS first, t.value AS last FROM JSON_EACH_TEXT('{"a":"x"}') AS t(key, value)"""
     )

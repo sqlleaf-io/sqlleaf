@@ -3,6 +3,7 @@ import sys
 
 import pytest
 
+from sqlleaf.exception import SqlLeafException
 from sqlleaf.models.query import InsertQuery, TableQuery
 from tests.new_fixtures import holder as holder
 from tests.new_fixtures import to_sql
@@ -61,6 +62,26 @@ def test__select_values(holder, case):
     assert len(h.edges) == 6
 
 
+def test__select_unknown_target_table_fails(holder):
+    with pytest.raises(SqlLeafException) as e:
+        sql = """
+        INSERT INTO unknown_table (name) SELECT 1;
+        """
+        holder(sql=sql, dialect=DIALECT)
+
+    assert e.value.args[0] == "Could not find 'unknown_table' of type 'table' in mapping."
+
+
+def test__select_unknown_source_table_fails(holder):
+    with pytest.raises(SqlLeafException) as e:
+        sql = """
+        INSERT INTO fruit.processed (name) SELECT name FROM unknown_table;
+        """
+        h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert e.value.args[0] == "Unknown table"
+
+
 def test__select_dpipe_cte(holder):
     sql = """
     WITH cte AS (
@@ -81,17 +102,17 @@ def test__select_dpipe_cte(holder):
 
 def test__select_subquery(holder):
     sql = """
-    INSERT INTO fruit.processed (age) SELECT (SELECT r.age * 2 AS age) AS age FROM fruit.raw AS r;
+    INSERT INTO fruit.processed (age) SELECT (SELECT (SELECT r.age * 2 AS age) AS age1) AS age FROM fruit.raw AS r;
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     insert_query = h.holders[0]
-    insert_after = ["INSERT INTO fruit.processed (age) SELECT (SELECT r.age * 2 AS age) AS age FROM fruit.raw AS r"]
+    insert_after = ["INSERT INTO fruit.processed (age) SELECT (SELECT (SELECT r.age * 2 AS age) AS age1) AS age FROM fruit.raw AS r"]
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after, dialect=DIALECT) == insert_after
 
     assert h.paths == [
-        ["column[r.age]", "function[MUL]", "column[fruit.processed.age]"],
+        ["column[fruit.raw.age]", "function[MUL]", "column[fruit.processed.age]"],
         ["literal[2]", "function[MUL]", "column[fruit.processed.age]"],
     ]
     assert len(h.nodes) == 4
