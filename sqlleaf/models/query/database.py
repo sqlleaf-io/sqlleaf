@@ -10,7 +10,7 @@ from sqlleaf.typing import SqlObjectType, TargetInfo
 
 
 @dataclass(frozen=True)
-class DatabaseQueryParameters:
+class DatabaseQueryProperties:
     location: str | None
 
     @classmethod
@@ -41,7 +41,7 @@ class DatabaseQuery(Query):
             target_info=TargetInfo(expression=target, type=SqlObjectType.DATABASE),
         )
 
-        self.properties = DatabaseQueryParameters.from_expression(expr, dialect)
+        self.properties = DatabaseQueryProperties.from_expression(expr, dialect)
 
     @property
     def location(self) -> str | None:

@@ -12,7 +12,7 @@ from sqlleaf.typing import SqlObjectType, TargetInfo
 
 
 @dataclass(frozen=True)
-class ExecuteQueryParameters:
+class ExecuteQueryProperties:
     name: str
     arguments: t.List[exp.Literal]
 
@@ -44,7 +44,7 @@ class ExecuteQuery(Query):
         object_mapping: mappings.ObjectMapping,
         statement_index: int,
     ):
-        self.parameters = ExecuteQueryParameters.from_expression(expr, dialect)
+        self.parameters = ExecuteQueryProperties.from_expression(expr, dialect)
 
         super().__init__(
             dialect=dialect,

@@ -10,7 +10,7 @@ from sqlleaf.typing import SourceInfo, TargetInfo
 
 
 @dataclass(frozen=True)
-class PutQueryParameters:
+class PutQueryProperties:
     file_format: str
 
 
@@ -35,4 +35,4 @@ class PutQuery(Query):
             target_info=TargetInfo(expression=target, type=target_type),
             skip_type_annotation=True,
         )
-        self.parameters = PutQueryParameters(file_format="TEXT")
+        self.parameters = PutQueryProperties(file_format="TEXT")

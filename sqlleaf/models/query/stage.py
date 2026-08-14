@@ -11,14 +11,14 @@ from sqlleaf.typing import SourceInfo, TargetInfo
 
 
 @dataclass(frozen=True)
-class StageQueryParameters:
+class StageQueryProperties:
     path: str
     is_temporary: bool
 
     @classmethod
     def from_expression(
         cls, expr: exp.Create, source_info: SourceInfo, target_info: TargetInfo, dialect: str
-    ) -> StageQueryParameters:
+    ) -> StageQueryProperties:
         is_temporary = expr.find(exp.TemporaryProperty) is not None
 
         path = ""
@@ -61,7 +61,7 @@ class StageQuery(Query):
         target.this.set("this", "@" + str(target.this))
         target.this.set("quoted", False)
 
-        self.properties = StageQueryParameters.from_expression(
+        self.properties = StageQueryProperties.from_expression(
             self.statement, self.source_info, self.target_info, dialect
         )
 

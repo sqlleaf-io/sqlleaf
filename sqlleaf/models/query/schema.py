@@ -10,7 +10,7 @@ from sqlleaf.typing import SqlObjectType, TargetInfo
 
 
 @dataclass(frozen=True)
-class SchemaQueryParameters:
+class SchemaQueryProperties:
     location: str | None
 
     @classmethod
@@ -40,7 +40,7 @@ class SchemaQuery(Query):
             source_info=source,
             target_info=TargetInfo(expression=target, type=SqlObjectType.SCHEMA),
         )
-        self.properties = SchemaQueryParameters.from_expression(expr, dialect)
+        self.properties = SchemaQueryProperties.from_expression(expr, dialect)
 
     @property
     def location(self) -> str | None:

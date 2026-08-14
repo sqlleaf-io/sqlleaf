@@ -11,7 +11,7 @@ from sqlleaf.typing import SourceInfo, TargetInfo
 
 
 @dataclass(frozen=True)
-class TableQueryParameters:
+class TableQueryProperties:
     location: exp.LocationProperty | None
 
     @classmethod
@@ -26,7 +26,7 @@ class TableQuery(Query):
     KIND = "table"
 
     def __init__(self, expr: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
-        self.properties = TableQueryParameters.from_expression(expr, dialect)
+        self.properties = TableQueryProperties.from_expression(expr, dialect)
 
         if self.properties.location:
             location_literal = self.properties.location.this

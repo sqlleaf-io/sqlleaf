@@ -12,7 +12,7 @@ from sqlleaf.typing import SourceInfo, TargetInfo
 
 
 @dataclass(frozen=True)
-class UnloadQueryParameters:
+class UnloadQueryProperties:
     file_format: str
 
 
@@ -33,7 +33,7 @@ class UnloadQuery(Query):
             source_info=SourceInfo(expression=source, type=source_type),
             target_info=TargetInfo(expression=target, type=target_type),
         )
-        self.parameters = UnloadQueryParameters(file_format="UNKNOWN")
+        self.parameters = UnloadQueryProperties(file_format="UNKNOWN")
         util.qualify_and_annotate(self.source_info.expression, self.dialect, self.object_mapping)
 
     def get_source_and_target_expressions(self, statement: exp.Command) -> t.Tuple[exp.Select, exp.Literal]:

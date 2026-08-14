@@ -14,7 +14,7 @@ logger = logging.getLogger("sqlleaf")
 
 
 @dataclass(frozen=True)
-class CopyQueryParameters:
+class CopyQueryProperties:
     file_format: str = "TEXT"
     load_data: bool = True
     is_a_job: bool = False
@@ -23,7 +23,7 @@ class CopyQueryParameters:
     job_auto_run: bool = True
 
     @classmethod
-    def from_expression(cls, expr: exp.Copy, source_info: SourceInfo, target_info: TargetInfo) -> CopyQueryParameters:
+    def from_expression(cls, expr: exp.Copy, source_info: SourceInfo, target_info: TargetInfo) -> CopyQueryProperties:
         """
         Extract the parameters of the COPY statement.
 
@@ -104,8 +104,8 @@ class CopyQuery(Query):
 
     def get_params(
         self,
-    ) -> CopyQueryParameters:
-        return CopyQueryParameters.from_expression(self.statement, self.source_info, self.target_info)
+    ) -> CopyQueryProperties:
+        return CopyQueryProperties.from_expression(self.statement, self.source_info, self.target_info)
 
     def is_query_active(self) -> bool:
         logger.debug(self.parameters)

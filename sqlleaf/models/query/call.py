@@ -15,13 +15,13 @@ if t.TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class CallQueryParameters:
+class CallQueryProperties:
     schema: t.Optional[str]
     procedure: str
     args: t.List[exp.Expr]
 
     @classmethod
-    def from_expression(cls, statement: exp.Command, dialect: str) -> CallQueryParameters:
+    def from_expression(cls, statement: exp.Command, dialect: str) -> CallQueryProperties:
         # The 'expression' part of the command contains the procedure call
         # e.g., CALL hello('world') -> expression is "hello('world')"
         call_str = statement.args.get("expression").this
@@ -65,7 +65,7 @@ class CallQuery(Query):
         object_mapping: mappings.ObjectMapping,
         statement_index: int,
     ):
-        self.properties = CallQueryParameters.from_expression(statement, dialect)
+        self.properties = CallQueryProperties.from_expression(statement, dialect)
 
         # We can represent the procedure being called as the target
         target_info = TargetInfo(
