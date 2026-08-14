@@ -63,7 +63,6 @@ class Lineage:
             graph.graph["attrs"].add_query_to_graph(parent_holder)
             self.merge_graph(graph)
             self.graph.graph["attrs"].add_query_to_graph(parent_holder)
-        logger.debug("---- Generator End ----")
 
     def merge_graph(self, subgraph: nx.MultiDiGraph):
         """

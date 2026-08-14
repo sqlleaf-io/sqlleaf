@@ -62,6 +62,19 @@ def test__select_values(holder, case):
     assert len(h.edges) == 6
 
 
+def test__select_basic(holder):
+    sql = """
+    CREATE TABLE source(name VARCHAR);
+
+    SELECT * FROM source;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+    assert h.holders[1].transformed.statement.sql(dialect=DIALECT) == "SELECT source.name AS name FROM source AS source"
+    assert h.paths == []
+    assert h.nodes_full == []
+
+
+
 def test__select_unknown_target_table_fails(holder):
     with pytest.raises(SqlLeafException) as e:
         sql = """
@@ -77,7 +90,7 @@ def test__select_unknown_source_table_fails(holder):
         sql = """
         INSERT INTO fruit.processed (name) SELECT name FROM unknown_table;
         """
-        h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+        holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert e.value.args[0] == "Unknown table"
 

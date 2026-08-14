@@ -75,6 +75,7 @@ def generate_lineage_for_query(
 
     generate_lineage_for_columns(generator, gen_ctx, pos_ctx)
 
+    logger.debug("---- Generator End ----")
     return graph
 
 

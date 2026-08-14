@@ -4,7 +4,7 @@ from sqlglot import exp
 
 from sqlleaf import mappings
 from sqlleaf.models.query.base import Query
-from sqlleaf.typing import SourceInfo
+from sqlleaf.typing import SourceInfo, TargetInfo, SqlObjectType
 
 
 class SelectQuery(Query):
@@ -12,8 +12,6 @@ class SelectQuery(Query):
 
     def __init__(self, expr: exp.Select, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
         source = expr
-        target = None
-
         source_type = self._determine_expression_type(source, dialect)
 
         super().__init__(
@@ -22,7 +20,7 @@ class SelectQuery(Query):
             statement_index=statement_index,
             object_mapping=object_mapping,
             source_info=SourceInfo(expression=source, type=source_type),
-            target_info=target,
+            target_info=TargetInfo(expression=None, type=SqlObjectType.NONE)
         )
 
     def get_ctes(self):
