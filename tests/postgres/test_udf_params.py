@@ -154,7 +154,7 @@ def test__udf_return_parameter(holder):
     sql = """
     CREATE FUNCTION hello(username TEXT) RETURNS TEXT LANGUAGE SQL RETURN $1;
 
-    CREATE TABLE target(age INT);
+    CREATE TABLE target(age TEXT);
     INSERT INTO target (age) SELECT hello('World');
     """
     h = holder(sql=sql, dialect=DIALECT)
@@ -172,7 +172,6 @@ def test__udf_return_parameter(holder):
     assert len(h.edges) == 1
 
     insert_query = h.holders[2]
-    # Expect: INSERT INTO target (age) SELECT (SELECT 'World') AS age;
     insert_after = ["INSERT INTO target (age) SELECT (SELECT 'World' AS World) AS age"]
 
     actual_after = [insert_query.transformed.statement]
@@ -213,7 +212,7 @@ def test__udf_null_on_null_input(holder, case: str):
     {case}
     LANGUAGE SQL;
 
-    CREATE TABLE target(age INT);
+    CREATE TABLE target(age TEXT);
     INSERT INTO target (age) SELECT hello(null);
     """
     h = holder(sql=sql, dialect=DIALECT)
@@ -235,7 +234,7 @@ def test__udf_parameter_column_precedence(holder):
         SELECT name FROM people;
     $$ LANGUAGE sql;
 
-    CREATE TABLE target(name INT);
+    CREATE TABLE target(name TEXT);
     INSERT INTO target (name) SELECT hello('World');
     """
     h = holder(sql=sql, dialect=DIALECT)

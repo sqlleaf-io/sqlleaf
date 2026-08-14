@@ -25,7 +25,7 @@ def test__udf_cte(holder):
         SELECT msg FROM cte;
     $$ LANGUAGE sql;
 
-    CREATE TABLE target(age INT);
+    CREATE TABLE target(age TEXT);
     INSERT INTO target (age) SELECT hello('Alice');
     """
     h = holder(sql=sql, dialect=DIALECT)
@@ -55,7 +55,7 @@ def test__udf_multi_statement_params(holder):
         SELECT 'Hello ' || username;
     $$ LANGUAGE sql;
 
-    CREATE TABLE target(age INT);
+    CREATE TABLE target(age TEXT);
     INSERT INTO target (age) SELECT hello('Alice');
     """
     h = holder(sql=sql, dialect=DIALECT)
@@ -82,7 +82,7 @@ def test__udf_nested_invocation(holder):
         SELECT 'Hello ' || username;
     $$ LANGUAGE sql;
 
-    CREATE TABLE target(age INT);
+    CREATE TABLE target(age TEXT);
     INSERT INTO target (age) SELECT hello(hello('There'));
     """
     h = holder(sql=sql, dialect=DIALECT)
@@ -297,12 +297,14 @@ def test__udf_row_parameter(holder):
     assert query.parameters[0].type.this == exp.DataType.Type.USERDEFINED
     assert query.parameters[0].type.args.get("kind").this == "people"
 
-    insert_after = ["INSERT INTO target (age) SELECT (SELECT CAST(ROW(2) AS people).age * 2 AS age) AS age"]
+    insert_after = [
+        "INSERT INTO target (age) SELECT (SELECT (CAST(ROW(2) AS people)).age * 2 AS age) AS age"
+    ]
     actual_after_1 = [h.holders[3].transformed.statement]
     assert to_sql(actual_after_1) == insert_after
 
     insert_after_from = [
-        "INSERT INTO target (age) SELECT (SELECT CAST(ROW(2) AS people).age * 2 AS age) AS age FROM people AS people"
+        "INSERT INTO target (age) SELECT (SELECT (CAST(ROW(2) AS people)).age * 2 AS age) AS age FROM people AS people"
     ]
     actual_after_from = [h.holders[4].transformed.statement]
     assert to_sql(actual_after_from) == insert_after_from

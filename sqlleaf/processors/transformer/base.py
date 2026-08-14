@@ -5,13 +5,12 @@ import typing as t
 import sqlglot
 from sqlglot import exp
 from sqlglot.optimizer import RULES, optimize, qualify
-from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, util
-from sqlleaf.models.query import Q, TableQuery
+from sqlleaf.models.query import Q
 from sqlleaf.processors.transformer import udf
-from sqlleaf.processors.transformer.expressions import normalize_values, simplify_row, _rewrite_values_statement
+from sqlleaf.processors.transformer.expressions import add_parens_for_composite_field_access, normalize_values, simplify_row, _rewrite_values_statement
 from sqlleaf.settings import system_functions as get_system_functions
 from sqlleaf.typing import E, SqlObjectType
 
@@ -484,6 +483,10 @@ class BaseQueryTransformer:
         # We don't want to merge the CTEs as they provide useful info to the user
         # so we skip merge_ctes() but call its sibling function below directly instead
         statement = merge_derived_tables(statement)
+
+        # Add surrounding parens to some expressions (optimize() removes them)
+        statement = add_parens_for_composite_field_access(statement)
+
         return statement
 
     @_validate_syntax

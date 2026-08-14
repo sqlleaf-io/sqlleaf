@@ -198,7 +198,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
             queries[_id] = holder
             counts[kind] += 1
 
-    logger.debug("Found statements: %s", +counts)
+    logger.debug("Found statements: %s", dict(+counts))
     if unknown:
         logger.warning("Unknown statements: %s", dict(unknown.items()))
     if unsupported:
