@@ -37,7 +37,7 @@ class PostgresGenerator(BaseGenerator):
         if "rows_from" in expr.args:
             yield from self._process_rows_from(expr, gen_ctx, pos_ctx)
         elif isinstance(expr.this, exp.Anonymous):
-            yield from super().process(expr.this, gen_ctx.replace(expr=expr.this), pos_ctx)
+            yield from super().process(expr.this, gen_ctx.replace(expr=expr.this), pos_ctx.replace(select_index=0))
         else:
             yield from super().process(expr, gen_ctx, pos_ctx)
 

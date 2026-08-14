@@ -77,13 +77,66 @@ def test__positions_values(holder):
         "column[name=a type=INT properties=[kind=table table=num]]",
         "column[name=b type=INT properties=[kind=table table=num]]",
     ]
-    assert h.paths == [
-        ["literal[1]", "column[num.a]"],
-        ["literal[1]", "column[num.a]"],
-        ["literal[1]", "column[num.b]"],
-        ["literal[1]", "column[num.b]"],
+    assert h.paths_full == [
+        [
+            'literal[name=1 type=INT position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]',
+            'column[name=a type=INT properties=[kind=table table=num]]',
+        ],
+        [
+            'literal[name=1 type=INT position=[query_depth=1 query_width=1 statement=1 select=0 func_depth=0 func_arg=0]]',
+            'column[name=a type=INT properties=[kind=table table=num]]',
+        ],
+        [
+            'literal[name=1 type=INT position=[query_depth=1 query_width=0 statement=1 select=1 func_depth=0 func_arg=0]]',
+            'column[name=b type=INT properties=[kind=table table=num]]',
+        ],
+        [
+            'literal[name=1 type=INT position=[query_depth=1 query_width=1 statement=1 select=1 func_depth=0 func_arg=0]]',
+            'column[name=b type=INT properties=[kind=table table=num]]',
+        ],
     ]
     assert len(h.edges) == 4
+
+
+def test__positions_cte_swapped(holder):
+    sql = """
+    CREATE TABLE num (a INT, b INT, c INT);
+
+    WITH cte AS (
+        SELECT 'a' AS a, 'a' AS b
+    )
+    INSERT INTO num (a, b, c)
+    SELECT 'a' AS a, cte.b AS b, cte.a AS c FROM cte;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.holders[1].transformed.statement.sql(dialect=DIALECT) == "WITH cte AS (SELECT 'a' AS a, 'a' AS b) INSERT INTO num (a, b, c) SELECT 'a' AS a, cte.b AS b, cte.a AS c FROM cte AS cte"
+    assert h.nodes_full == [
+        'literal[name="a" type=VARCHAR position=[query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]',
+        'literal[name="a" type=VARCHAR position=[query_depth=1 query_width=0 statement=1 select=1 func_depth=0 func_arg=0]]',
+        'literal[name="a" type=VARCHAR position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]',
+        'column[name=a type=VARCHAR properties=[kind=cte table=cte statement=1]]',
+        'column[name=b type=VARCHAR properties=[kind=cte table=cte statement=1]]',
+        'column[name=a type=INT properties=[kind=table table=num]]',
+        'column[name=b type=INT properties=[kind=table table=num]]',
+        'column[name=c type=INT properties=[kind=table table=num]]',
+     ]
+    assert h.paths_full == [
+         [
+             'literal[name="a" type=VARCHAR position=[query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]',
+             'column[name=a type=INT properties=[kind=table table=num]]'
+         ],
+         [
+             'literal[name="a" type=VARCHAR position=[query_depth=1 query_width=0 statement=1 select=1 func_depth=0 func_arg=0]]',
+             'column[name=b type=VARCHAR properties=[kind=cte table=cte statement=1]]',
+             'column[name=b type=INT properties=[kind=table table=num]]'
+         ],
+         [
+             'literal[name="a" type=VARCHAR position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]',
+             'column[name=a type=VARCHAR properties=[kind=cte table=cte statement=1]]',
+             'column[name=c type=INT properties=[kind=table table=num]]'
+         ],
+     ]
 
 
 def test__subquery_function(holder):

@@ -418,7 +418,7 @@ class BaseGenerator:
         )
         subquery_scope = [s for s in scope.subquery_scopes if s.expression == expr.this][0]
 
-        height, width = gen_ctx.scope_positions.get_scope_for_expr(expr.this)
+        height, width = gen_ctx.scope_positions.get_position_for_expr(expr.this)
         child_ctx = pos_ctx.replace(query_depth=height, query_width=width)
         p_ctx = gen_ctx.replace(expr=expr.selects[0], scope=subquery_scope)
         yield from self.process(p_ctx.expr, gen_ctx=p_ctx, pos_ctx=child_ctx)

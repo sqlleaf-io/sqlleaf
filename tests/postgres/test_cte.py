@@ -129,8 +129,16 @@ def test__cte_duplicate_columns(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.paths == 2 * [["literal[1]", "column[cte_names.number]", "function[ADD]", "column[fruit.processed.age]"]]
-    assert len(h.nodes) == 4
+    assert h.paths == [
+        ["literal[1]", "column[cte_names.number]", "function[ADD]", "column[fruit.processed.age]"],
+        ["literal[1]", "column[cte_names.number]", "function[ADD]", "column[fruit.processed.age]"]
+    ]
+    assert h.nodes_full == [
+         'literal[name=1 type=INT position=[query_depth=1 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]',
+         'function[name=ADD type=INT position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]',
+         'column[name=number type=INT properties=[kind=cte table=cte_names statement=0]]',
+         'column[name=age type=INT properties=[kind=table table=processed schema=fruit]]',
+     ]
     assert len(h.edges) == 4
 
 

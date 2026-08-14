@@ -91,7 +91,7 @@ def generate_lineage_for_columns(
 
     # Process the selected columns
     for selected_node, default_node in generator.iter_child_nodes(gen_ctx, pos_ctx):
-        child_node: TargetNodeType | None = selected_node or default_node
+        child_node = selected_node or default_node
         if not child_node:
             break
 
@@ -111,7 +111,8 @@ def generate_lineage_for_columns(
                 walk_expressions_and_build_graph(generator=generator, gen_ctx=constraint_ctx, pos_ctx=pos_ctx)
 
         if selected_node:
-            walk_query_and_build_graph(generator, child_node, scope, gen_ctx, child_node.ctx)
+            child_pos_ctx = child_node.ctx
+            walk_query_and_build_graph(generator, child_node, scope, gen_ctx, child_pos_ctx)
 
 
 def walk_query_and_build_graph(
@@ -134,8 +135,8 @@ def walk_query_and_build_graph(
         logger.debug(f"Processing node expr: {scope_traversal.expression}, Id: {id(scope_traversal)}")
         logger.debug(f"Child node: {child_node.full_name}")
 
-        height, width = gen_ctx.scope_positions.get_scope_for_expr(scope_traversal.scope.expression)
-        child_ctx = pos_ctx.replace(query_depth=height, query_width=width)
+        height, width = gen_ctx.scope_positions.get_position_for_expr(scope_traversal.scope.expression)
+        child_ctx = pos_ctx.replace(query_depth=height, query_width=width, select_index=scope_traversal.select_index)
         gen_ctx = gen_ctx.replace(
             expr=scope_traversal.expression,
             scope=scope_traversal.scope,
@@ -194,14 +195,16 @@ def walk_query_scope(column: exp.Column | int, scope: Scope) -> t.Generator[Scop
             return
 
     # Get the associated expression for the column name
-    select = get_expression_for_column(column, scope.expression)
+    select, select_index = get_expression_for_column(column, scope.expression)
     st = ScopeTraversal(
         expression=select.unalias(),
         scope=scope,
+        select_index=select_index,
     )
     logger.debug(
-        "Yielding standard expression: '%s', Type: %s, Expr: %s, Id: %s",
+        "Yielding standard expression: '%s', Idx: %s, Type: %s, Expr: %s, Id: %s",
         column,
+        select_index,
         type(select.unalias()),
         select.sql(),
         id(st),
@@ -341,45 +344,46 @@ def add_nodes_with_edge_to_graph(
     """
     Add two node and an edge between them to the graph.
     """
-    p_attrs = add_node_if_not_exists(parent_node, graph)
-    c_attrs = add_node_if_not_exists(child_node, graph)
+    p_attrs, p_created = add_node_if_not_exists(parent_node, graph)
+    c_attrs, c_created = add_node_if_not_exists(child_node, graph)
 
     if p_attrs and c_attrs:
         p_full_name = p_attrs.full_name
         c_full_name = c_attrs.full_name
-
         edge_attrs = EdgeAttributes(
             parent=p_attrs,
             child=c_attrs,
             query=query,
-            select_idx=pos_ctx.select_index,
+            select_idx=pos_ctx.select_index,    # TODO: this doesn't make sense here; it's a node property
             path_idx=-1,  # -1 is temp
         )
         graph.add_edge(p_full_name, c_full_name, attrs=edge_attrs)
         logger.debug(f"Added edge between {p_full_name} [{id(p_attrs)}] -> {c_full_name} [{id(c_attrs)}]")
-    else:
-        logger.debug("Skipping edge creation as both node already exist.")
 
 
-def add_node_if_not_exists(node_attrs: N | None, graph: nx.MultiDiGraph) -> N | None:
+def add_node_if_not_exists(node_attrs: N | None, graph: nx.MultiDiGraph) -> tuple[N | None, bool]:
     """
     Add a node to the graph if it doesn't already exist.
 
     We need to re-use the existing node attributes so that the edge attribute models don't refer to
     different-but-same-named node attributes.
     """
+    created = False
+
     if not node_attrs:
-        return None
+        return None, created
 
     node_name = node_attrs.full_name
 
     if graph.has_node(node_name):
         logger.debug(f"Re-using Node: {node_attrs.__class__.__name__}, Name: {node_attrs.full_name}")
-        return graph.nodes[node_name]["attrs"]
+        return graph.nodes[node_name]["attrs"], created
 
     graph.add_node(node_name, attrs=node_attrs)
     logger.debug(f"Created Node: {node_attrs.__class__.__name__}, Name: {node_attrs.full_name}")
-    return node_attrs
+    created = True
+
+    return node_attrs, created
 
 
 def get_scope(statement: exp.Expr) -> Scope:
@@ -393,36 +397,39 @@ def get_scope(statement: exp.Expr) -> Scope:
     return scope
 
 
-def get_expression_for_column(column: exp.Column | int, expr: E) -> E:
+def get_expression_for_column(column: exp.Column | int, expr: exp.Expr) -> tuple[exp.Expr, int]:
     """
-    Get the expression that matches the given column name.
+    Get the expression that matches the given column name, along with its index (position) in the SELECT.
     e.g. given "SELECT 1 AS a, 2 AS b", column 'b' maps to expression 2.
     """
     if isinstance(column, int):
         # The index of the query in "SELECT 1 UNION SELECT 2"
         select = getattr(expr, "selects")[column]
+        idx = column
     else:
         if isinstance(expr, exp.Lateral):
-            selects = [expr]
+            selects = [(expr, 0)]
         else:
             # Common path
-            selects = [select for select in getattr(expr, "selects") if select.alias_or_name == column.name]
+            selects = [(select, idx) for idx, select in enumerate(getattr(expr, "selects")) if select.alias_or_name == column.name]
 
         if len(selects) > 1:
             message = f"Column reference '{column}' is ambiguous ({len(selects)} possible options)"
             raise exception.SqlLeafException(message)
 
         if selects:
-            select = selects[0]
+            select, idx = selects[0]
         else:
             select = expr
-    return t.cast(E, select)
+            idx = -1
+    return select, idx
 
 
 @dataclass(frozen=True)
 class ScopeTraversal:
     expression: exp.Expr
     scope: TableOrScopeType
+    select_index: int
 
 
 def get_column_index(column: exp.Column | int, expr: exp.Expr):

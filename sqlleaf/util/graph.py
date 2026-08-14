@@ -8,6 +8,9 @@ from sqlleaf import util
 logger = logging.getLogger("sqlleaf")
 
 
+# TODO: add a function called 'find_unique_paths' to prevent traversal of duplicate edges
+
+
 def find_edges_downward(g: nx.MultiDiGraph, node: str, seen: t.Optional[t.Set[str]] = None, depth: int = 0):
     """
     Traverse the graph, returning any unseen edges.

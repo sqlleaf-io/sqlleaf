@@ -19,7 +19,7 @@ class ScopePositions:
     def __init__(self):
         self.positions: t.Dict[int, t.Dict[int, int]] = {}
 
-    def get_scope_for_expr(self, expr: exp.Expr) -> dict[int, int]:
+    def get_position_for_expr(self, expr: exp.Expr) -> dict[int, int]:
         return self.positions[id(expr)]
 
     def calculate(self, scope: Scope) -> None:

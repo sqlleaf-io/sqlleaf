@@ -95,7 +95,16 @@ def test__select_dpipe_cte(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.paths == 2 * [['literal["hello"]', "column[cte.other]", "function[DPIPE]", "column[fruit.processed.kind]"]]
+    assert h.nodes_full == [
+         'literal[name="hello" type=VARCHAR position=[query_depth=1 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]',
+         'function[name=DPIPE type=VARCHAR position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]',
+         'column[name=other type=VARCHAR properties=[kind=cte table=cte statement=0]]',
+         'column[name=kind type=VARCHAR properties=[kind=table table=processed schema=fruit]]',
+     ]
+    assert h.paths == [
+        ['literal["hello"]', "column[cte.other]", "function[DPIPE]", "column[fruit.processed.kind]"],
+        ['literal["hello"]', "column[cte.other]", "function[DPIPE]", "column[fruit.processed.kind]"]
+    ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 4
 
@@ -137,9 +146,11 @@ def test__select_dpipe(holder):
     # expect: b -> dpipe1 -> dpipe2
     # expect: c -> dpipe2
 
-    assert h.paths == 2 * [
+    assert h.paths == [
         ["column[fruit.raw.name]", "function[DPIPE]", "function[DPIPE]", "column[fruit.processed.kind]"],
-    ] + [["column[fruit.raw.name]", "function[UPPER]", "function[DPIPE]", "column[fruit.processed.kind]"]]
+        ["column[fruit.raw.name]", "function[DPIPE]", "function[DPIPE]", "column[fruit.processed.kind]"],
+        ["column[fruit.raw.name]", "function[UPPER]", "function[DPIPE]", "column[fruit.processed.kind]"]
+    ]
     assert len(h.nodes) == 5
     assert len(h.edges) == 6
 
