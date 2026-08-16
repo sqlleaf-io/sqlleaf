@@ -1,13 +1,6 @@
 # sqlleaf
-### Trace your data
-sqlleaf analyses your SQL statements to understand how your data flows across your data systems.
-It never runs your queries; it only looks at their structure and syntax.
-
-For the full roadmap and types of queries that are supported, visit https://sqlleaf.io
-
-## Development
-The project uses the `sqlglot` multi-dialect SQL parser under the hood, which supports over 30 SQL dialects. sqlleaf thus inherits this capability.
-However, as sqlleaf is only young, it does not yet support all the features of every dialect. Only Postgres is supported as of now, and more dialects are coming!
+## Trace your data
+sqlleaf is a tool to help you to understand how your data flows across your data systems by producing detailed, column-level lineage across any SQL query and dialect.
 
 ## Example
 
@@ -34,3 +27,6 @@ Output:
 column[logins.name] -> function[LOWER] -> column[users.name]
 function[CURRENT_TIMESTAMP] -> column[users.birthday]
 ```
+
+## Development
+This project is under heavy development; version 0.1 will be released soon.
