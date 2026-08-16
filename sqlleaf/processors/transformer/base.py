@@ -10,7 +10,13 @@ from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 from sqlleaf import exception, util
 from sqlleaf.models.query import Q
 from sqlleaf.processors.transformer import udf
-from sqlleaf.processors.transformer.expressions import add_parens_for_composite_field_access, normalize_values, simplify_row, _rewrite_values_statement
+from sqlleaf.processors.transformer.expressions import (
+    add_parens_for_composite_field_access,
+    normalize_values,
+    rewrite_functional_notation_columns,
+    simplify_row,
+    _rewrite_values_statement,
+)
 from sqlleaf.settings import system_functions as get_system_functions
 from sqlleaf.typing import E, SqlObjectType
 
@@ -107,6 +113,7 @@ class BaseQueryTransformer:
         statement = self._add_aliases_to_udfs(statement)
         statement = self._qualify_function_columns(statement)
         statement = self._apply_qualify(statement, validate_columns)
+        statement = rewrite_functional_notation_columns(statement)
         statement = self._add_aliases_to_pseudocolumns(statement)
         statement = self._add_column_names_to_insert(statement)
         statement = self._apply_optimizations(statement, exclusion_rules)
