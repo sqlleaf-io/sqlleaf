@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing as t
+from dataclasses import asdict
 
 from sqlglot import exp
 
@@ -89,23 +90,17 @@ class NodeAttributes:
 
     @property
     def id(self) -> str:
-        # TODO: add correct fields
-        fields_dict = self.fields()
-        fields = [self.name, type(self.expr).__name__.lower()]
-        # Add values from fields_dict to the hash
-        for k, v in sorted(fields_dict.items()):
-            fields.append(f"{k}={v}")
-
-        name = "node:" + util.short_sha256_hash(":".join(fields))
+        name = "node:" + util.short_sha256_hash(self.full_name)
         return name
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "full_name": self.full_name,
+            "kind": self.kind,
             "name": self.name,
             "data_type": self.data_type,
-            "kind": self.kind,
+            **self.fields(),
+            "position": asdict(self.ctx) if self.with_positions else {},
         }
 
 
@@ -115,41 +110,26 @@ class EdgeAttributes:
         parent: NodeAttributes,
         child: NodeAttributes,
         query: Q,
-        select_idx: int,
         path_idx: int,
     ):
         self.parent = parent
         self.child = child
         self.query = query
-
-        # The position of this column inside a set of selected columns (e.g. SELECT 'a', 'b', 'c')
-        self.select_idx = select_idx
-
-        # The position of this edge inside a set of identical edges (e.g. two edges between node A->B).
-        # This can occur if the same query is used across multiple files.
-        # <TODO: can I rely on the query hash instead?>
-        self.path_idx = path_idx
-
-        self.path_id: str | None = None
-        self.path_hop: int | None = None
+        self.path_idx = path_idx  # The sequence number if a duplicate path
 
     @property
-    def id(self):
-        # TODO: get the correct prefix from the parent queries
-        prefix = "todo_sp_or_udf"
+    def id(self) -> str:
         edge_id = ":".join([
             str(s)
             for s in [
-                prefix,
                 self.parent.full_name,
                 self.child.full_name,
-                self.select_idx,
                 self.path_idx,
             ]
         ])
         return "edge:" + util.short_sha256_hash(edge_id)
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         result = {
             "id": self.id,
             "parent": {
@@ -160,10 +140,7 @@ class EdgeAttributes:
                 "id": self.child.id,
                 "full_name": self.child.full_name,
             },
-            "indices": {
-                "select_idx": self.select_idx,
-                "path_idx": self.path_idx,
-            },
+            "path_idx": self.path_idx,
             "query": {"id": self.query.id},
         }
         return result

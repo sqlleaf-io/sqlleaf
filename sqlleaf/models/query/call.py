@@ -101,10 +101,6 @@ class CallQuery(Query):
     def name(self):
         return ".".join([var for var in [self.schema, self.procedure] if var])
 
-    @property
-    def id(self):
-        return "call:" + util.short_sha256_hash(self.statement.sql() + ":" + str(self.statement_index))
-
     def to_dict(self):
         return {
             "id": self.id,

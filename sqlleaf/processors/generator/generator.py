@@ -257,7 +257,6 @@ def walk_expressions_and_build_graph(
                         child,
                         gen_ctx.graph,
                         gen_ctx.query,
-                        pos_ctx,
                     )
     return nodes_created
 
@@ -343,7 +342,6 @@ def add_nodes_with_edge_to_graph(
     child_node: N | None,
     graph: nx.MultiDiGraph,
     query: Q,
-    pos_ctx: PositionContext,
 ):
     """
     Add two node and an edge between them to the graph.
@@ -351,15 +349,19 @@ def add_nodes_with_edge_to_graph(
     p_attrs, p_created = add_node_if_not_exists(parent_node, graph)
     c_attrs, c_created = add_node_if_not_exists(child_node, graph)
 
+
     if p_attrs and c_attrs:
         p_full_name = p_attrs.full_name
         c_full_name = c_attrs.full_name
+
+        edges = graph.get_edge_data(p_full_name, c_full_name) or {}
+        if edges:
+            pass
         edge_attrs = EdgeAttributes(
             parent=p_attrs,
             child=c_attrs,
             query=query,
-            select_idx=pos_ctx.select_index,    # TODO: this doesn't make sense here; it's a node property
-            path_idx=-1,  # -1 is temp
+            path_idx=len(edges),
         )
         graph.add_edge(p_full_name, c_full_name, attrs=edge_attrs)
         logger.debug(f"Added edge between {p_full_name} [{id(p_attrs)}] -> {c_full_name} [{id(c_attrs)}]")
@@ -381,7 +383,7 @@ def add_node_if_not_exists(node_attrs: N | None, graph: nx.MultiDiGraph) -> tupl
 
     if graph.has_node(node_name):
         logger.debug(f"Re-using Node: {node_attrs.__class__.__name__}, Name: {node_attrs.full_name}")
-        return graph.nodes[node_name]["attrs"], created
+        return t.cast(N, graph.nodes[node_name]["attrs"]), created
 
     graph.add_node(node_name, attrs=node_attrs)
     logger.debug(f"Created Node: {node_attrs.__class__.__name__}, Name: {node_attrs.full_name}")
@@ -514,7 +516,7 @@ def check_for_put(generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: 
         # Short-circuit this function; it's not an insert
         for edge in generator.process(expr, gen_ctx, pos_ctx):
             file_node, stage_node = edge.parent, edge.child
-            add_nodes_with_edge_to_graph(file_node, stage_node, graph, query, pos_ctx)
+            add_nodes_with_edge_to_graph(file_node, stage_node, graph, query)
             return True
     return False
 

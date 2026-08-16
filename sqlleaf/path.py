@@ -14,23 +14,22 @@ logger = logging.getLogger("sqlleaf")
 class LineagePath:
     def __init__(self, hops: t.List[EdgeAttributes]):
         self.hops = hops
-        self.path_length = len(hops)
-        self.path_id = "path:" + util.short_sha256_hash(":".join(self.get_edge_ids()))
+        self.length = len(hops)
 
-        for i, edge in enumerate(self.hops):
-            edge.path_id = self.path_id
-            edge.path_hop = i
+    @property
+    def id(self) -> str:
+        return "path:" + util.short_sha256_hash(":".join(self.get_edge_ids()))
 
     def node_hops(self) -> t.List[N]:
         """
-        Return the list of node in this path.
+        Return the list of nodes on this path.
         """
         hops = [self.hops[0].parent]
         for hop in self.hops:
             hops.append(hop.child)
         return hops
 
-    def get_edge_ids(self):
+    def get_edge_ids(self) -> list[str]:
         """
         In order to distinguish between multiple edges that are part of the same path,
         we need to create a unique id based off data that differentiates them.
@@ -38,9 +37,9 @@ class LineagePath:
         """
         return [edge.id for edge in self.hops]
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return {
-            "id": self.path_id,
+            "id": self.id,
             "length": len(self.hops),
             "hops": [edge.id for edge in self.hops],
         }

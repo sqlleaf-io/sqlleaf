@@ -59,10 +59,6 @@ class ProcedureQuery(Query):
             stmt for stmt in inner_statements if not isinstance(stmt, (exp.EndStatement, exp.Column, exp.Identifier))
         ]
 
-    @property
-    def id(self):
-        return "procedure:" + util.short_sha256_hash(self.statement.sql())
-
     def to_dict(self):
         return {
             "id": self.id,
