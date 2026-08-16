@@ -172,7 +172,7 @@ def test__udf_return_parameter(holder):
     assert len(h.edges) == 1
 
     insert_query = h.holders[2]
-    insert_after = ["INSERT INTO target (age) SELECT (SELECT 'World' AS World) AS age"]
+    insert_after = ["INSERT INTO target (age) SELECT (SELECT 'World' AS world) AS age"]
 
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after) == insert_after

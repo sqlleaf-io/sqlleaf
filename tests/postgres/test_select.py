@@ -14,6 +14,20 @@ import sqlglot
 
 DIALECT = "postgres"
 
+# TODO:
+#  postgres=# create table f as select 'a';
+# SELECT 1
+# postgres=# table f;
+#  ?column?
+# ----------
+#  a
+#
+# -- Must be accessed using double quotes
+# select "?column?" from f;
+#  ?column?
+# ----------
+#  a
+
 
 literal_ones = [
     "(1)",

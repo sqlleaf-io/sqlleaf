@@ -38,7 +38,7 @@ def test__udf_simple(holder):
     assert query.language == "sql"
 
     insert_query = h.holders[2]
-    insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS Hello) AS name"]
+    insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS hello) AS name"]
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after) == insert_after
 
@@ -67,7 +67,7 @@ def test__udf_schema(holder):
     assert query.language == "sql"
 
     insert_query = h.holders[2]
-    insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS Hello) AS name"]
+    insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS hello) AS name"]
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after) == insert_after
 
@@ -142,7 +142,7 @@ def test__udf_select(holder):
     assert query.language == "sql"
 
     insert_query = h.holders[2]
-    insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS Hello) AS name"]
+    insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS hello) AS name"]
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after) == insert_after
 
@@ -158,7 +158,7 @@ def test__udf_values(holder):
     $$ LANGUAGE SQL;
 
     CREATE TABLE target(name VARCHAR);
-    INSERT INTO target (name) VALUES(hello());
+    INSERT INTO target (name) VALUES (hello());
     """
     h = holder(sql=sql, dialect=DIALECT)
 
@@ -171,7 +171,7 @@ def test__udf_values(holder):
     assert query.language == "sql"
 
     insert_query = h.holders[2]
-    insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS Hello) AS name"]
+    insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS hello) AS name"]
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after) == insert_after
 

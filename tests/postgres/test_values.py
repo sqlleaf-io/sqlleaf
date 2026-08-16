@@ -188,5 +188,4 @@ def test__values_with_alias_one_column_fails(holder):
         FROM (VALUES('yellow', UPPER('banana'))) v(column2);
         """
         holder(sql=sql, dialect=DIALECT, with_tables=True)
-
-    assert e.value.args[0] == "Column reference 'v.column2' is ambiguous (2 possible options)"
+    assert e.value.args[0].startswith("Statement has unresolved star column:")

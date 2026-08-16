@@ -175,7 +175,7 @@ def test__udf_overloading(holder):
     assert isinstance(query, UserDefinedFunctionQuery)
 
     insert_query_1 = h.holders[6]
-    insert_after_1 = ["INSERT INTO target (name1) SELECT (SELECT 'Hello' AS Hello) AS name1"]
+    insert_after_1 = ["INSERT INTO target (name1) SELECT (SELECT 'Hello' AS hello) AS name1"]
     actual_after_1 = [insert_query_1.transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1
 

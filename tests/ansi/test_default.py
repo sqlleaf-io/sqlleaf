@@ -1,18 +1,12 @@
 import os
 import sys
 
-import pytest
 
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-import sqlglot
-
-from sqlleaf.models.query import InsertQuery
-
-DIALECT = "postgres"
-
+DIALECT = ""
 
 
 def test__table_with_default_columns(holder):

@@ -5,7 +5,7 @@ from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-DIALECT = "postgres"
+DIALECT = ""
 
 
 def test__database(holder):

@@ -167,7 +167,7 @@ def test__datetime_overlaps(holder):
         "function[name=CAST type=TIMESTAMP position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=3 func_arg=0]]",
         "function[name=CAST type=TIMESTAMP position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=3 func_arg=1]]",
         "function[name=CAST type=TIMESTAMP position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=3 func_arg=2]]",
-        "function[name=OVERLAPS type=UNKNOWN position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=1 func_arg=0]]",
+        "function[name=OVERLAPS type=BOOLEAN position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=1 func_arg=0]]",
         "column[name=name type=VARCHAR properties=[kind=table table=test_source]]",
     ]
     # Most of these edges are re-used

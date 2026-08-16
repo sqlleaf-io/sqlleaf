@@ -7,7 +7,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from sqlleaf.models.query import InsertQuery, UpdateQuery
 
-DIALECT = "postgres"
+DIALECT = ""
 
 
 def test__merge_only_update(holder):
