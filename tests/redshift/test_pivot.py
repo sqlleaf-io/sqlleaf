@@ -32,7 +32,7 @@ def test__select_pivot_no_alias(holder):
     assert h.nodes_full == [
         "pivot[name= properties=[target=john statement=2]]",
         "function[name=SUM type=BIGINT position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]",
-        "column[name=amount type=INT properties=[kind=derived_table table=_0]]",
+        "column[name=amount type=INT properties=[kind=derived_table table=_0 statement=2]]",
         "column[name=amount type=INT properties=[kind=table table=source]]",
         "column[name=john_total type=INT properties=[kind=table table=target]]",
     ]
@@ -72,8 +72,8 @@ def test__select_pivot_alias(holder):
         "function[name=AVG type=DOUBLE position=[query_depth=0 query_width=0 statement=2 select=3 func_depth=0 func_arg=0]]",
         "function[name=SUM type=BIGINT position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]",
         "function[name=SUM type=BIGINT position=[query_depth=0 query_width=0 statement=2 select=2 func_depth=0 func_arg=0]]",
-        "column[name=age type=INT properties=[kind=derived_table table=_0]]",
-        "column[name=amount type=INT properties=[kind=derived_table table=_0]]",
+        "column[name=age type=INT properties=[kind=derived_table table=_0 statement=2]]",
+        "column[name=amount type=INT properties=[kind=derived_table table=_0 statement=2]]",
         "column[name=age type=INT properties=[kind=table table=source]]",
         "column[name=amount type=INT properties=[kind=table table=source]]",
         "column[name=john_average type=DECIMAL(10, 2) properties=[kind=table table=target]]",

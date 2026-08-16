@@ -67,8 +67,8 @@ def test__update_from_values(holder):
         ["literal[10]", "column[v.new_age]", "column[fruit.processed.age]"],
         ["literal[20]", "column[v.new_age]", "column[fruit.processed.age]"],
     ]
-    assert "column[name=new_age type=INT properties=[kind=derived_table table=v]]" in h.nodes_full
-    assert "column[name=new_name type=VARCHAR properties=[kind=derived_table table=v]]" in h.nodes_full
+    assert "column[name=new_age type=INT properties=[kind=derived_table table=v statement=0]]" in h.nodes_full
+    assert "column[name=new_name type=VARCHAR properties=[kind=derived_table table=v statement=0]]" in h.nodes_full
     assert len(h.nodes_full) == 8
     assert len(h.edges) == 6
 

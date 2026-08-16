@@ -71,7 +71,7 @@ class PostgresGenerator(BaseGenerator):
                     down_expr = down_expr.this
 
                 gen_ctx = gen_ctx.replace(expr=down_expr)
-                yield from self.process(down_expr, gen_ctx, pos_ctx)
+                yield from self.process(down_expr, gen_ctx, pos_ctx.replace(select_index=i))
                 return
 
     @process.register
@@ -138,28 +138,20 @@ class PostgresGenerator(BaseGenerator):
         gen_ctx = gen_ctx.replace(new_data_type=expr.kind)
 
         if isinstance(expr.parent, exp.TableAlias):
-            # An alias to a table function inside 'ROWS FROM'
-            table_alias = expr.parent.alias_or_name
-            if not table_alias:
-                # The table alias isn't found - e.g. the "a" in "a(x, y)"
-                (before, token, after) = expr.parent.sql().partition("(")
-                table_alias = f"{token}{after}"
-                raise exception.SqlLeafException(f"The table alias '{table_alias}' must have a name.")
-
+            # A table alias inside a 'ROWS FROM' cannot have a name
             parent = ColumnNode(
                 catalog="",
                 schema="",
-                table=table_alias,
+                table="",
                 column=expr.name,
                 gen_ctx=gen_ctx,
                 pos_ctx=pos_ctx,
             )
             yield EdgeToCreate(parent, gen_ctx.child_node)
 
-            # Process the table function
-            # TODO: why is this needed? It's 2 levels up
+            # Process the inner table function of the table alias
             table_function: exp.Table = t.cast(exp.Table, expr.parent.parent)
-            yield from self.do_grandparents([table_function.this], parent, gen_ctx, pos_ctx)
+            yield from self.do_grandparents([table_function.this], parent, gen_ctx, pos_ctx.replace(select_index=0))
 
     @process.register
     def process_column(

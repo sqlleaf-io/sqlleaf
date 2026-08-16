@@ -71,7 +71,7 @@ def test__select_values(holder, case):
         ['literal["one"]', "column[t.letter]", "column[fruit.processed.kind]"],
         ['literal["two"]', "column[t.letter]", "column[fruit.processed.kind]"],
     ]
-    assert "column[name=letter type=VARCHAR properties=[kind=derived_table table=t]]" in h.nodes_full
+    assert "column[name=letter type=VARCHAR properties=[kind=derived_table table=t statement=0]]" in h.nodes_full
     assert len(h.nodes) == 8
     assert len(h.edges) == 6
 
@@ -86,7 +86,6 @@ def test__select_basic(holder):
     assert h.holders[1].transformed.statement.sql(dialect=DIALECT) == "SELECT source.name AS name FROM source AS source"
     assert h.paths == []
     assert h.nodes_full == []
-
 
 
 def test__select_unknown_target_table_fails(holder):
@@ -123,14 +122,14 @@ def test__select_dpipe_cte(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.nodes_full == [
-         'literal[name="hello" type=VARCHAR position=[query_depth=1 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]',
-         'function[name=DPIPE type=VARCHAR position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]',
-         'column[name=other type=VARCHAR properties=[kind=cte table=cte statement=0]]',
-         'column[name=kind type=VARCHAR properties=[kind=table table=processed schema=fruit]]',
-     ]
+        'literal[name="hello" type=VARCHAR position=[query_depth=1 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]',
+        "function[name=DPIPE type=VARCHAR position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]",
+        "column[name=other type=VARCHAR properties=[kind=cte table=cte statement=0]]",
+        "column[name=kind type=VARCHAR properties=[kind=table table=processed schema=fruit]]",
+    ]
     assert h.paths == [
         ['literal["hello"]', "column[cte.other]", "function[DPIPE]", "column[fruit.processed.kind]"],
-        ['literal["hello"]', "column[cte.other]", "function[DPIPE]", "column[fruit.processed.kind]"]
+        ['literal["hello"]', "column[cte.other]", "function[DPIPE]", "column[fruit.processed.kind]"],
     ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 4
@@ -143,7 +142,9 @@ def test__select_subquery(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     insert_query = h.holders[0]
-    insert_after = ["INSERT INTO fruit.processed (age) SELECT (SELECT (SELECT r.age * 2 AS age) AS age1) AS age FROM fruit.raw AS r"]
+    insert_after = [
+        "INSERT INTO fruit.processed (age) SELECT (SELECT (SELECT r.age * 2 AS age) AS age1) AS age FROM fruit.raw AS r"
+    ]
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after, dialect=DIALECT) == insert_after
 
@@ -176,7 +177,7 @@ def test__select_dpipe(holder):
     assert h.paths == [
         ["column[fruit.raw.name]", "function[DPIPE]", "function[DPIPE]", "column[fruit.processed.kind]"],
         ["column[fruit.raw.name]", "function[DPIPE]", "function[DPIPE]", "column[fruit.processed.kind]"],
-        ["column[fruit.raw.name]", "function[UPPER]", "function[DPIPE]", "column[fruit.processed.kind]"]
+        ["column[fruit.raw.name]", "function[UPPER]", "function[DPIPE]", "column[fruit.processed.kind]"],
     ]
     assert len(h.nodes) == 5
     assert len(h.edges) == 6
@@ -386,7 +387,6 @@ def test__select_assorted(holder):
     assert len(h.edges) == 3
 
 
-# TODO: add JSON_TO_RECORDSET() as a Postgres functions in sqlglot
 def test__select_rows_from(holder):
     sql = """
     INSERT INTO fruit.processed (name, age, kind, amount)
@@ -394,38 +394,66 @@ def test__select_rows_from(holder):
     FROM ROWS FROM
         (
             unnest(ARRAY['x', 'y']),
-            json_to_recordset('[{"a":40,"b":"foo"}]')
-                AS y(a INTEGER, b TEXT),
+            json_to_recordset('[{"a":40,"b":"foo"}]') AS (a INTEGER, b TEXT),
             generate_series(1, 3)
         ) AS x (name, age, kind, amount)
     ORDER BY age;
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+    assert h.nodes_full == [
+        'literal[name="[{"a":40,"b":"foo"}]" type=VARCHAR position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=1 func_arg=0]]',
+        "literal[name=1 type=INT position=[query_depth=0 query_width=0 statement=0 select=3 func_depth=1 func_arg=0]]",
+        "literal[name=3 type=INT position=[query_depth=0 query_width=0 statement=0 select=3 func_depth=1 func_arg=1]]",
+        "function[name=GENERATE_SERIES type=UNKNOWN position=[query_depth=0 query_width=0 statement=0 select=3 func_depth=0 func_arg=0]]",
+        "function[name=UNNEST type=VARCHAR position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]",
+        "column[name=a type=INT properties=[kind=derived_table statement=0]]",
+        "column[name=b type=TEXT properties=[kind=derived_table statement=0]]",
+        "function[name=JSON_TO_RECORDSET type=UNKNOWN position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]",
+        "literal[name={'x','y'} type=ARRAY<VARCHAR> position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=1 func_arg=0]]",
+        "column[name=age type=UNKNOWN properties=[kind=derived_table table=x statement=0]]",
+        "column[name=amount type=UNKNOWN properties=[kind=derived_table table=x statement=0]]",
+        "column[name=kind type=UNKNOWN properties=[kind=derived_table table=x statement=0]]",
+        "column[name=name type=UNKNOWN properties=[kind=derived_table table=x statement=0]]",
+        "column[name=age type=INT properties=[kind=table table=processed schema=fruit]]",
+        "column[name=amount type=INT properties=[kind=table table=processed schema=fruit]]",
+        "column[name=kind type=VARCHAR properties=[kind=table table=processed schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]",
+    ]
+    # TODO: bug in duplicate paths for JSON_TO_RECORDSET?
     assert h.paths == [
         ["literal[{'x','y'}]", "function[UNNEST]", "column[x.name]", "column[fruit.processed.name]"],
         [
             'literal["[{"a":40,"b":"foo"}]"]',
+            'function[JSON_TO_RECORDSET]',
+            'column[a]',
+            'column[x.age]',
+            'column[fruit.processed.age]',
+        ],
+        [
+            'literal["[{"a":40,"b":"foo"}]"]',
             "function[JSON_TO_RECORDSET]",
-            "column[y.b]",
+            "column[b]",
             "column[x.kind]",
             "column[fruit.processed.kind]",
         ],
         [
             'literal["[{"a":40,"b":"foo"}]"]',
             "function[JSON_TO_RECORDSET]",
-            "column[y.a]",
+            "column[a]",
             "column[x.age]",
             "column[fruit.processed.age]",
+        ],
+        [
+            'literal["[{"a":40,"b":"foo"}]"]',
+            "function[JSON_TO_RECORDSET]",
+            "column[b]",
+            "column[x.kind]",
+            "column[fruit.processed.kind]",
         ],
         ["literal[1]", "function[GENERATE_SERIES]", "column[x.amount]", "column[fruit.processed.amount]"],
         ["literal[3]", "function[GENERATE_SERIES]", "column[x.amount]", "column[fruit.processed.amount]"],
     ]
-    assert "column[name=age type=UNKNOWN properties=[kind=derived_table table=x]]" in h.nodes_full
-    assert "column[name=a type=INT properties=[kind=derived_table table=y]]" in h.nodes_full
-    # TODO: bug - duplicate node (literals and udfs)
-    # assert len(h.node) == 17     # Correct
-
-    assert len(h.nodes) == 19
+    assert len(h.nodes) == 17
     assert len(h.edges) == 15
 
 

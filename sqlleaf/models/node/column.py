@@ -278,7 +278,7 @@ class ColumnNode(NodeAttributes):
         if self.parent_kind == TableType.CTE and self.parent_subkind == TableSubtype.RECURSIVE:
             f["member"] = self.member
 
-        if self.parent_kind == TableType.CTE:
+        if self.parent_kind in [TableType.CTE, TableType.DERIVED_TABLE]:
             f["statement"] = str(self.ctx.statement_index)
 
         return f
