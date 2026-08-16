@@ -161,6 +161,9 @@ def walk_query_scope(column: exp.Column | int, scope: Scope) -> t.Generator[Scop
     # Subqueries, unions, etc are the first layers
     if isinstance(scope.expression, exp.Subquery):
         sources = scope.subquery_scopes
+        if not sources:
+            # Occurs during "INSERT .. (WITH cte .. ) SELECT FROM cte"
+            sources = [scope.sources[""]]
         for source in sources:
             logger.debug("Yielding from first subquery scope")
             yield from walk_query_scope(
