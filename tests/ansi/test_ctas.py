@@ -1,7 +1,4 @@
-import pytest
-
 from tests.new_fixtures import holder as holder
-
 
 DIALECT = ""
 

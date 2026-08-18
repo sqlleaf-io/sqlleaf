@@ -131,7 +131,6 @@ def test__update_with_subquery_in_from(holder):
     assert [UpdateQuery] == h.query_types
 
 
-
 def test__update_multiple_columns(holder):
     sql = """
     UPDATE fruit.processed

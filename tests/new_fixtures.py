@@ -60,7 +60,8 @@ class LineageHolderDummy:
             query = holder.original
             if not (
                 isinstance(query, TableQuery)
-                and exp.table_name(query.get_target_as_table()).lower() in ["test_source", "fruit.raw", "fruit.processed"]
+                and exp.table_name(query.get_target_as_table()).lower()
+                in ["test_source", "fruit.raw", "fruit.processed"]
             ):
                 new_holders.append(holder)
         return new_holders

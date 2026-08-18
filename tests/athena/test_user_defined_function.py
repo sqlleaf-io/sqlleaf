@@ -1,8 +1,6 @@
 import os
 import sys
 
-import pytest
-
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -25,11 +23,11 @@ def test__user_defined_function_lambda(holder):
 
 def test__user_defined_function_sagemaker(holder):
     sql = """
-    USING EXTERNAL FUNCTION predict_customer_registration(age INTEGER) 
+    USING EXTERNAL FUNCTION predict_customer_registration(age INTEGER)
         RETURNS DOUBLE
-        SAGEMAKER 'xgboost-2019-09-20-04-49-29-303' 
-    SELECT predict_customer_registration(age) AS probability_of_enrolling, customer_id 
-         FROM "sampledb"."ml_test_dataset" 
+        SAGEMAKER 'xgboost-2019-09-20-04-49-29-303'
+    SELECT predict_customer_registration(age) AS probability_of_enrolling, customer_id
+         FROM "sampledb"."ml_test_dataset"
          WHERE predict_customer_registration(age) < 0.5;
     """
     h = holder(sql=sql, dialect=DIALECT)

@@ -15,7 +15,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 DIALECT = "postgres"
 
 
-
 def test__ctas_with_no_data(holder):
     sql = """
     CREATE TABLE fruit.cooked AS

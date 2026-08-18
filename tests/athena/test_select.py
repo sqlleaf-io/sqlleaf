@@ -111,19 +111,33 @@ def test__cte_with_row_complex(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ['literal["Bob"]', 'function[ROW]', 'function[CAST]', 'column[dataset.people]', 'column[target.first]'],
-        ['literal["Bob"]', 'function[ROW]', 'function[CAST]', 'column[dataset.people]', 'column[target.last]'],
-        ['literal["Smith"]', 'function[ROW]', 'function[ROW]', 'function[CAST]', 'column[dataset.people]', 'column[target.first]'],
-        ['literal["Smith"]', 'function[ROW]', 'function[ROW]', 'function[CAST]', 'column[dataset.people]', 'column[target.last]'],
+        ['literal["Bob"]', "function[ROW]", "function[CAST]", "column[dataset.people]", "column[target.first]"],
+        ['literal["Bob"]', "function[ROW]", "function[CAST]", "column[dataset.people]", "column[target.last]"],
+        [
+            'literal["Smith"]',
+            "function[ROW]",
+            "function[ROW]",
+            "function[CAST]",
+            "column[dataset.people]",
+            "column[target.first]",
+        ],
+        [
+            'literal["Smith"]',
+            "function[ROW]",
+            "function[ROW]",
+            "function[CAST]",
+            "column[dataset.people]",
+            "column[target.last]",
+        ],
     ]
     assert h.nodes_full == [
         'literal[name="Bob" type=VARCHAR position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=2 func_arg=0]]',
         'literal[name="Smith" type=VARCHAR position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=3 func_arg=1]]',
-        'function[name=CAST type=STRUCT<first_name VARCHAR, other STRUCT<last_name VARCHAR>> position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]',
-        'function[name=ROW type=STRUCT<VARCHAR, STRUCT<VARCHAR>> position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=1 func_arg=0]]',
-        'function[name=ROW type=STRUCT<VARCHAR> position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=2 func_arg=1]]',
-        'column[name=people type=STRUCT<first_name VARCHAR, other STRUCT<last_name VARCHAR>> properties=[kind=cte table=dataset statement=1]]',
-        'column[name=first type=VARCHAR properties=[kind=table table=target]]',
-        'column[name=last type=VARCHAR properties=[kind=table table=target]]',
+        "function[name=CAST type=STRUCT<first_name VARCHAR, other STRUCT<last_name VARCHAR>> position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]",
+        "function[name=ROW type=STRUCT<VARCHAR, STRUCT<VARCHAR>> position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=1 func_arg=0]]",
+        "function[name=ROW type=STRUCT<VARCHAR> position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=2 func_arg=1]]",
+        "column[name=people type=STRUCT<first_name VARCHAR, other STRUCT<last_name VARCHAR>> properties=[kind=cte table=dataset statement=1]]",
+        "column[name=first type=VARCHAR properties=[kind=table table=target]]",
+        "column[name=last type=VARCHAR properties=[kind=table table=target]]",
     ]
     assert len(h.edges) == 7

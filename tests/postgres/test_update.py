@@ -5,7 +5,7 @@ from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from sqlleaf.models.query import TableQuery, UpdateQuery
+from sqlleaf.models.query import UpdateQuery
 
 DIALECT = "postgres"
 
@@ -71,6 +71,7 @@ def test__update_from_values(holder):
     assert "column[name=new_name type=VARCHAR properties=[kind=derived_table table=v statement=0]]" in h.nodes_full
     assert len(h.nodes_full) == 8
     assert len(h.edges) == 6
+
 
 def test__update_inheritance_only(holder):
     sql = """

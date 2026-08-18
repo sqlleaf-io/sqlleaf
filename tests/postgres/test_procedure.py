@@ -17,7 +17,6 @@ def to_sql(expressions: t.List[exp.Expr]) -> t.List[str]:
     return [e.sql(dialect="postgres") for e in expressions]
 
 
-
 def test_call_procedure_multi(holder):
     sql = """
     CREATE TABLE target (name TEXT);
@@ -47,7 +46,10 @@ def test_call_procedure_multi(holder):
     # first inner statement: VALUES (5)
     # second inner statement: INSERT INTO target ...
     assert isinstance(downstream_holders[1].original, InsertQuery)
-    assert downstream_holders[1].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
+    assert (
+        downstream_holders[1].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name) SELECT 'world' AS name"
+    )
 
     assert h.paths == [['literal["world"]', "column[target.name]"]]
     assert h.nodes_full == [
@@ -106,7 +108,10 @@ def test_call_procedure(holder):
     downstream_holders = h.holders[2].downstream_holders
     assert len(downstream_holders) == 1
     assert isinstance(downstream_holders[0].original, InsertQuery)
-    assert downstream_holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
+    assert (
+        downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name) SELECT 'world' AS name"
+    )
 
     assert h.paths == [['literal["world"]', "column[target.name]"]]
     assert h.nodes_full == [
@@ -146,7 +151,10 @@ def test_call_schema_procedure(holder):
     downstream_holders = h.holders[2].downstream_holders
     assert len(downstream_holders) == 1
     assert isinstance(downstream_holders[0].original, InsertQuery)
-    assert downstream_holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
+    assert (
+        downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name) SELECT 'world' AS name"
+    )
 
     assert h.paths == [['literal["world"]', "column[target.name]"]]
     assert h.nodes_full == [
@@ -183,7 +191,10 @@ def test_call_procedure_with_params(holder):
 
     downstream_holder = h.holders[2].downstream_holders[0]
     assert isinstance(downstream_holder.original, InsertQuery)
-    assert downstream_holder.transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
+    assert (
+        downstream_holder.transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name) SELECT 'world' AS name"
+    )
 
 
 def test_call_procedure_positional_param(holder):
@@ -213,7 +224,10 @@ def test_call_procedure_positional_param(holder):
 
     downstream_holder = h.holders[2].downstream_holders[0]
     assert isinstance(downstream_holder.original, InsertQuery)
-    assert downstream_holder.transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
+    assert (
+        downstream_holder.transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name) SELECT 'world' AS name"
+    )
 
 
 def test_call_procedure_default_value(holder):
@@ -244,7 +258,10 @@ def test_call_procedure_default_value(holder):
 
     downstream_holder = h.holders[2].downstream_holders[0]
     assert isinstance(downstream_holder.original, InsertQuery)
-    assert downstream_holder.transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'world' AS name"
+    assert (
+        downstream_holder.transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name) SELECT 'world' AS name"
+    )
 
 
 def test_procedure_begin_atomic(holder):
@@ -308,7 +325,10 @@ def test_call_procedure_positional_notation(holder):
     assert len(h.holders) == 3
     downstream_holder = h.holders[2].downstream_holders[0]
     assert isinstance(downstream_holder.original, InsertQuery)
-    assert downstream_holder.transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (a, b) SELECT 10 AS a, 20 AS b"
+    assert (
+        downstream_holder.transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (a, b) SELECT 10 AS a, 20 AS b"
+    )
 
 
 def test_call_procedure_mixed_notation(holder):
@@ -326,7 +346,10 @@ def test_call_procedure_mixed_notation(holder):
     assert len(h.holders) == 3
     downstream_holder = h.holders[2].downstream_holders[0]
     assert isinstance(downstream_holder.original, InsertQuery)
-    assert downstream_holder.transformed.statement.sql(dialect=DIALECT) == "INSERT INTO target (a, b) SELECT 10 AS a, 20 AS b"
+    assert (
+        downstream_holder.transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (a, b) SELECT 10 AS a, 20 AS b"
+    )
 
 
 def test_call_procedure_in_out_params(holder):
@@ -356,6 +379,7 @@ def test_call_procedure_in_out_params(holder):
 
     downstream_holder = h.holders[1].downstream_holders[0]
     assert downstream_holder.transformed.statement.sql(dialect=DIALECT) == 'SELECT 10 AS "10"'
+
 
 #
 # TODO: test chained procs

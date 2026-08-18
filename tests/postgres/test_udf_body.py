@@ -297,9 +297,7 @@ def test__udf_row_parameter(holder):
     assert query.parameters[0].type.this == exp.DataType.Type.USERDEFINED
     assert query.parameters[0].type.args.get("kind").this == "people"
 
-    insert_after = [
-        "INSERT INTO target (age) SELECT (SELECT (CAST(ROW(2) AS people)).age * 2 AS age) AS age"
-    ]
+    insert_after = ["INSERT INTO target (age) SELECT (SELECT (CAST(ROW(2) AS people)).age * 2 AS age) AS age"]
     actual_after_1 = [h.holders[3].transformed.statement]
     assert to_sql(actual_after_1) == insert_after
 

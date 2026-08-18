@@ -27,11 +27,11 @@ def test__table_external(holder):
         ["column[age path=s3://my-bucket/new/fruit/]", "column[fruit.ext.age]"],
     ]
     assert h.nodes_full == [
-         'column[name=age type=UNKNOWN properties=[kind=file format=TEXTFILE path=s3://my-bucket/new/fruit/]]',
-         'column[name=name type=UNKNOWN properties=[kind=file format=TEXTFILE path=s3://my-bucket/new/fruit/]]',
-         'column[name=age type=INT properties=[kind=table subkind=external table=ext schema=fruit]]',
-         'column[name=name type=VARCHAR properties=[kind=table subkind=external table=ext schema=fruit]]',
-     ]
+        "column[name=age type=UNKNOWN properties=[kind=file format=TEXTFILE path=s3://my-bucket/new/fruit/]]",
+        "column[name=name type=UNKNOWN properties=[kind=file format=TEXTFILE path=s3://my-bucket/new/fruit/]]",
+        "column[name=age type=INT properties=[kind=table subkind=external table=ext schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table subkind=external table=ext schema=fruit]]",
+    ]
 
     assert len(h.nodes) == 4
     assert len(h.edges) == 2

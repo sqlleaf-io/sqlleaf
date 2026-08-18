@@ -16,7 +16,7 @@ def test__unload_fails(holder):
     with pytest.raises(sqlglot.errors.ParseError) as e:
         sql = """
         CREATE TABLE source(name VARCHAR, amount INT);
-    
+
         UNLOAD ('SELECT * FROM source')
         TO 's3://object-path/name-prefix'
         IAM_ROLE 'arn:aws:iam::0123456789012:role/MyRedshiftRole';

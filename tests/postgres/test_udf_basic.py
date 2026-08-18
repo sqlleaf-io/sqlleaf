@@ -2,10 +2,8 @@ import os
 import sys
 import typing as t
 
-import pytest
 from sqlglot import exp
 
-from sqlleaf.exception import SqlLeafException
 from sqlleaf.models.query import UserDefinedFunctionQuery
 from tests.new_fixtures import holder as holder
 

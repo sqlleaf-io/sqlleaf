@@ -176,7 +176,14 @@ def test__row_scalar_subquery(holder):
     assert h.paths == [
         ["column[t1.b]", "function[ROW]", "function[CAST]", "column[dest2.val]"],
         ["column[t1.c]", "function[ROW]", "function[CAST]", "column[dest2.val]"],
-        ["column[t1.a]", "function[MAX]", "column[_u_0._col_0]", "function[ROW]", "function[CAST]", "column[dest2.val]"],
+        [
+            "column[t1.a]",
+            "function[MAX]",
+            "column[_u_0._col_0]",
+            "function[ROW]",
+            "function[CAST]",
+            "column[dest2.val]",
+        ],
     ]
 
 

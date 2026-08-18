@@ -1,7 +1,6 @@
 import os
 import sys
 
-
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -60,7 +59,6 @@ def test__insert_default_values(holder):
     assert len(h.edges) == 7
 
 
-
 def test__update_with_default(holder):
     sql = """
     CREATE TABLE source(age INT DEFAULT 3);
@@ -76,4 +74,3 @@ def test__update_with_default(holder):
     ]
     assert len(h.nodes_full) == 2
     assert len(h.edges) == 2
-

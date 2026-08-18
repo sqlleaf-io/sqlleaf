@@ -74,7 +74,10 @@ def test__values_parenthesized(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (name, kind) SELECT 'yellow' AS name, UPPER('banana') AS kind"
+    assert (
+        h.holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.raw (name, kind) SELECT 'yellow' AS name, UPPER('banana') AS kind"
+    )
     assert h.paths == [
         ['literal["yellow"]', "column[fruit.raw.name]"],
         ['literal["banana"]', "function[UPPER]", "column[fruit.raw.kind]"],
@@ -156,10 +159,13 @@ def test__values_with_alias_no_columns(holder):
 """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (name, kind) SELECT v.column1 AS name, v.column2 AS kind FROM (SELECT 'yellow' AS column1, UPPER('banana') AS column2) AS v"
+    assert (
+        h.holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.raw (name, kind) SELECT v.column1 AS name, v.column2 AS kind FROM (SELECT 'yellow' AS column1, UPPER('banana') AS column2) AS v"
+    )
     assert h.paths == [
-        ['literal["yellow"]', 'column[v.column1]', "column[fruit.raw.name]"],
-        ['literal["banana"]', "function[UPPER]", 'column[v.column2]', "column[fruit.raw.kind]"],
+        ['literal["yellow"]', "column[v.column1]", "column[fruit.raw.name]"],
+        ['literal["banana"]', "function[UPPER]", "column[v.column2]", "column[fruit.raw.kind]"],
     ]
     assert [InsertQuery] == h.query_types
 
@@ -172,10 +178,13 @@ def test__values_with_alias_one_column(holder):
 """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (name, kind) SELECT v.column1 AS name, v.column2 AS kind FROM (SELECT 'yellow' AS column1, UPPER('banana') AS column2) AS v"
+    assert (
+        h.holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.raw (name, kind) SELECT v.column1 AS name, v.column2 AS kind FROM (SELECT 'yellow' AS column1, UPPER('banana') AS column2) AS v"
+    )
     assert h.paths == [
-        ['literal["yellow"]', 'column[v.column1]', "column[fruit.raw.name]"],
-        ['literal["banana"]', "function[UPPER]", 'column[v.column2]', "column[fruit.raw.kind]"],
+        ['literal["yellow"]', "column[v.column1]", "column[fruit.raw.name]"],
+        ['literal["banana"]', "function[UPPER]", "column[v.column2]", "column[fruit.raw.kind]"],
     ]
     assert [InsertQuery] == h.query_types
 

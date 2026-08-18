@@ -59,10 +59,7 @@ def test__to_query_parameterized_bind_variables(holder):
     assert h.holders[2].transformed.statement.sql(dialect=DIALECT) == (
         "INSERT INTO TARGET (AGE, NAME) SELECT SOURCE.AGE AS AGE, SOURCE.NAME AS NAME FROM SOURCE AS SOURCE"
     )
-    assert h.paths == [
-        ["column[SOURCE.AGE]", "column[TARGET.AGE]"],
-        ["column[SOURCE.NAME]", "column[TARGET.NAME]"]
-    ]
+    assert h.paths == [["column[SOURCE.AGE]", "column[TARGET.AGE]"], ["column[SOURCE.NAME]", "column[TARGET.NAME]"]]
 
 
 def test__to_query_numeric_bind_variables(holder):
@@ -78,10 +75,8 @@ def test__to_query_numeric_bind_variables(holder):
     assert h.holders[2].transformed.statement.sql(dialect=DIALECT) == (
         "INSERT INTO TARGET (AGE, NAME) SELECT SOURCE.AGE AS AGE, SOURCE.NAME AS NAME FROM SOURCE AS SOURCE"
     )
-    assert h.paths == [
-        ["column[SOURCE.AGE]", "column[TARGET.AGE]"],
-        ["column[SOURCE.NAME]", "column[TARGET.NAME]"]
-    ]
+    assert h.paths == [["column[SOURCE.AGE]", "column[TARGET.AGE]"], ["column[SOURCE.NAME]", "column[TARGET.NAME]"]]
+
 
 #
 # def test__to_query_session_variable(holder):

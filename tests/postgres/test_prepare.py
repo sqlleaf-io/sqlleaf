@@ -3,8 +3,9 @@ import sys
 
 import pytest
 import sqlglot
+
 from sqlleaf.exception import SqlLeafException
-from sqlleaf.models.query import PrepareQuery, ExecuteQuery, InsertQuery
+from sqlleaf.models.query import ExecuteQuery, InsertQuery, PrepareQuery
 from sqlleaf.typing import SqlObjectType
 from tests.new_fixtures import holder as holder
 
@@ -66,7 +67,10 @@ def test__execute(holder):
     assert execute_query.target_info.type == SqlObjectType.PREPARED_STATEMENT
 
     insert_query: InsertQuery = execute_query.holder.downstream_holders[0].transformed
-    assert insert_query.statement.sql(dialect=DIALECT) == "INSERT INTO target (name, amount) SELECT source.name AS name, source.amount AS amount FROM source AS source"
+    assert (
+        insert_query.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name, amount) SELECT source.name AS name, source.amount AS amount FROM source AS source"
+    )
     assert insert_query.source_info.type == SqlObjectType.SELECT
     assert insert_query.target_info.type == SqlObjectType.TABLE
 
@@ -111,7 +115,9 @@ def test__execute_missing_parameter_fails(holder):
     PREPARE my_plan AS INSERT INTO target(name) SELECT $1;
     EXECUTE my_plan;
     """
-    with pytest.raises(SqlLeafException, match=r"Wrong number of parameters for prepared statement \(expected: 1, actual: 0\)"):
+    with pytest.raises(
+        SqlLeafException, match=r"Wrong number of parameters for prepared statement \(expected: 1, actual: 0\)"
+    ):
         holder(sql=sql, dialect=DIALECT)
 
 

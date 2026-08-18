@@ -3,7 +3,7 @@ import sys
 
 import sqlglot
 
-from sqlleaf.models.query import TableQuery, ReplaceQuery
+from sqlleaf.models.query import ReplaceQuery, TableQuery
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -19,10 +19,7 @@ def test_replace(holder):
     h = holder(sql=sql, dialect=DIALECT)
     assert h.query_types == [TableQuery, ReplaceQuery]
 
-    assert h.paths == [
-        ["literal[1]", "column[users.id]"],
-        ['literal["Alice"]', "column[users.name]"]
-    ]
+    assert h.paths == [["literal[1]", "column[users.id]"], ['literal["Alice"]', "column[users.name]"]]
 
 
 def test_replace_unsupported(holder):

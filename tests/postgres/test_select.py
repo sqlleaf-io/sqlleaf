@@ -424,10 +424,10 @@ def test__select_rows_from(holder):
         ["literal[{'x','y'}]", "function[UNNEST]", "column[x.name]", "column[fruit.processed.name]"],
         [
             'literal["[{"a":40,"b":"foo"}]"]',
-            'function[JSON_TO_RECORDSET]',
-            'column[a]',
-            'column[x.age]',
-            'column[fruit.processed.age]',
+            "function[JSON_TO_RECORDSET]",
+            "column[a]",
+            "column[x.age]",
+            "column[fruit.processed.age]",
         ],
         [
             'literal["[{"a":40,"b":"foo"}]"]',

@@ -100,8 +100,6 @@ def test__table_like_table_generated(holder):
     assert len(h.edges) == 5
 
 
-
-
 # TODO: LIKE + INHERITS with same columns
 
 

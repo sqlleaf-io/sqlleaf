@@ -7,7 +7,7 @@ from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from sqlleaf.models.query import SetQuery, SelectQuery
+from sqlleaf.models.query import SelectQuery, SetQuery
 
 DIALECT = "snowflake"
 
@@ -123,7 +123,6 @@ def test___identifier_in_insert_target(holder):
     INSERT INTO IDENTIFIER($tbl) SELECT col FROM src;
     """
     h = holder(sql=sql, dialect=DIALECT)
-
 
     actual_sql = h.holders[3].transformed.statement.sql(dialect=DIALECT)
     assert actual_sql == "INSERT INTO DEST (COL) SELECT SRC.COL AS COL FROM SRC AS SRC"
