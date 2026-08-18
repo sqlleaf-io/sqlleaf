@@ -91,23 +91,3 @@ class TableSubtype(StrEnum):
     TEMPORARY = auto()
     EXTERNAL = auto()
     MATERIALIZED = auto()
-
-
-class IncludeNodesArgs(t.TypedDict, total=False):
-    # These are placeholders and currently not implemented.
-    include_literals: bool
-    include_functions: bool
-    include_nulls: bool
-    include_vars: bool
-    include_variables: bool
-    include_ctes: bool
-    include_derived_tables: bool
-    include_pivots: bool
-    include_system_tables: bool
-    include_defaults: bool
-    include_udfs: bool
-    include_stars: bool
-    include_sequences: bool
-    include_stages: bool
-    include_windows: bool
-    include_intervals: bool

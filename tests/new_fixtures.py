@@ -92,8 +92,10 @@ class LineageHolderDummy:
 
 @pytest.fixture(scope="function")
 def holder():
-    def _create_holder(sql: str, dialect: str, with_tables: bool = False) -> LineageHolderDummy:
+    def _create_holder(sql: str, dialect: str, with_tables: bool = False, hooks: dict | None = None) -> LineageHolderDummy:
         h = LineageHolderDummy()
+        if hooks:
+            h.lineage.register_hooks(hooks)
         if with_tables:
             h.generate(sql=COMMON_TABLES, dialect=dialect)
         h.generate(sql=sql, dialect=dialect)

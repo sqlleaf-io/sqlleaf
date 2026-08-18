@@ -41,20 +41,20 @@ class SnowflakeGenerator(BaseGenerator):
 
         stage_query = gen_ctx.query.object_mapping.get_table_or_stage(table=target, raise_on_missing=False)
 
-        file_node = FileColumnNode(
+        file_node = self.create_node(FileColumnNode(
             column="?",
             file_format=file_format,
             file_path=source.name,
             gen_ctx=file_ctx,
             pos_ctx=pos_ctx,
-        )
-        stage_node = StageColumnNode(
+        ))
+        stage_node = self.create_node(StageColumnNode(
             column="?",
             stage=target,
             gen_ctx=stage_ctx,
             pos_ctx=pos_ctx,
             path=stage_query.path,
-        )
+        ))
 
         yield EdgeToCreate(file_node, stage_node)
 
@@ -78,13 +78,13 @@ class SnowflakeGenerator(BaseGenerator):
             stage_query = query.object_mapping.get_table_or_stage(table=stage_expr, raise_on_missing=False)
             stage_path = stage_query.path
 
-            parent = StageColumnNode(
+            parent = self.create_node(StageColumnNode(
                 column=expr.name,
                 stage=stage_name,
                 gen_ctx=gen_ctx,
                 pos_ctx=pos_ctx,
                 path=stage_path,
-            )
+            ))
             yield EdgeToCreate(parent, gen_ctx.child_node)
         else:
             yield from super().process_column(expr, gen_ctx, pos_ctx)

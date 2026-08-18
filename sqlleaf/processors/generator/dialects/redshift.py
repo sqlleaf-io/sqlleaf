@@ -56,13 +56,14 @@ class RedshiftGenerator(BaseGenerator):
         for pivot_alias in pivot_field.expressions:
             pivot_value = pivot_alias.args[arg]
 
-            unpivot_node = UnpivotNode(
+            unpivot_node = self.create_node(UnpivotNode(
                 gen_ctx=gen_ctx,
                 pos_ctx=pos_ctx,
-            )
-            source = pivot_value.name if arg == "this" else ""  # Only columns are sources for now
-            unpivot_node.set(source=source, target=selected_column.name)
-            yield EdgeToCreate(unpivot_node, gen_ctx.child_node)
+            ))
+            if unpivot_node:
+                source = pivot_value.name if arg == "this" else ""  # Only columns are sources for now
+                unpivot_node.set(source=source, target=selected_column.name)
+                yield EdgeToCreate(unpivot_node, gen_ctx.child_node)
 
             yield from self.do_grandparents([pivot_value], unpivot_node, gen_ctx, pos_ctx)
 
@@ -82,12 +83,13 @@ class RedshiftGenerator(BaseGenerator):
         column_and_expr = pivot_column_mapping[selected_column.name]
         pivot_expr = column_and_expr["expression"]
 
-        pivot_node = PivotNode(
+        pivot_node = self.create_node(PivotNode(
             gen_ctx=gen_ctx,
             pos_ctx=pos_ctx,
-        )
-        pivot_node.set(source=pivot_expr.alias_or_name, target=selected_column.alias_or_name)
-        yield EdgeToCreate(pivot_node, gen_ctx.child_node)
+        ))
+        if pivot_node:
+            pivot_node.set(source=pivot_expr.alias_or_name, target=selected_column.alias_or_name)
+            yield EdgeToCreate(pivot_node, gen_ctx.child_node)
 
         grandparents = [pivot_expr]
         yield from self.do_grandparents(grandparents, pivot_node, gen_ctx, pos_ctx)
@@ -148,13 +150,13 @@ class RedshiftGenerator(BaseGenerator):
         file_format_property = gen_ctx.query.statement.args["properties"].find(exp.FileFormatProperty)
         file_format = file_format_property.this.name if file_format_property else ""
 
-        column_node = FileColumnNode(
+        column_node = self.create_node(FileColumnNode(
             column=child_node.name,
             file_format=file_format,
             file_path=location.name,
             gen_ctx=gen_ctx,
             pos_ctx=pos_ctx,
-        )
+        ))
 
         yield EdgeToCreate(column_node, child_node)
 

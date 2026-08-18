@@ -34,12 +34,12 @@ class AthenaGenerator(BaseGenerator):
         file_format_property = gen_ctx.query.statement.args["properties"].find(exp.FileFormatProperty)
         file_format = file_format_property.this.name if file_format_property else ""
 
-        column_node = FileColumnNode(
+        column_node = self.create_node(FileColumnNode(
             column=child_node.name,
             file_format=file_format,
             file_path=location.name,
             gen_ctx=gen_ctx,
             pos_ctx=pos_ctx,
-        )
+        ))
 
         yield EdgeToCreate(column_node, child_node)

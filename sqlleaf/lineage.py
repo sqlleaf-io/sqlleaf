@@ -38,8 +38,9 @@ class Lineage:
         self.paths: t.Dict[str, t.List[LineagePath]] = {}  # The paths throughout the graph
         self.object_mapping: ObjectMapping | None = None
         self.collected_queries: collector.CollectQueryResult | None = None
+        self.user_defined_hooks = {}
 
-    def generate(self, sql: str, dialect: str, **opts: t.Unpack[typing.IncludeNodesArgs]):
+    def generate(self, sql: str, dialect: str):
         """
         Generate lineage for one or more SQL statements.
         """
@@ -49,15 +50,15 @@ class Lineage:
         for parent_holder in self.collected_queries.queries:
             # A parent holder wraps a top-level query, possibly containing downstream holders
             graph = new_graph()
-            all_holders = parent_holder.get_all_holders()
+            query_holders = parent_holder.get_all_holders()
 
-            for holder in all_holders:
+            for holder in query_holders:
                 transformer.transform_query(holder)
 
-            for holder in all_holders:
+            for holder in query_holders:
                 # Transform and produce lineage only for certain queries
                 if query_has_lineage(holder.original):
-                    generator.generate_lineage_for_query(holder, graph)
+                    generator.generate_lineage_for_query(holder, graph, self.user_defined_hooks)
 
             # Associate the query with the graph even if it has no lineage
             graph.graph["attrs"].add_query_to_graph(parent_holder)
@@ -242,6 +243,32 @@ class Lineage:
         if self.object_mapping is None:
             self.object_mapping = mappings.ObjectMapping(dialect=dialect)
         return self.object_mapping
+
+    def register_hooks(self, hooks: dict[N, t.Callable[[N], N | None]]) -> None:
+        """
+        Register user-defined hooks.
+
+        A hook allows a user to provide their own logic to control how nodes are created.
+        They consist of a node class mapped to a function that returns the node to be created.
+
+        A hook runs after a node has been created, but before the node is added to the graph.
+        This gives the user maximum control over the node's properties, exposing attributes
+        such as the object's name and its underlying SQL expression for inspection.
+
+        When we attempt to create the path [A -> B -> C] in the graph, if we have a hook that
+        prevents the creation of B, then we set A is the previous node, and C as the next,
+        resulting in the path [A -> C].
+
+        Examples:
+            ### 1. Never create a FunctionNode.
+            hooks = {FunctionNode: lambda n: None}
+
+            ### 2. Only create a FunctionNode if its name is 'SUM'.
+            def my_func(N: node):
+                return node if node.name == "SUM" else None
+            hooks = {FunctionNode: my_func}
+        """
+        self.user_defined_hooks |= hooks
 
 
 def new_graph() -> nx.MultiDiGraph:

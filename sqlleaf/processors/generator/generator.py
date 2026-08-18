@@ -17,7 +17,7 @@ from sqlleaf.models.node import (
     ColumnNode,
     EdgeAttributes,
     N,
-    TargetNodeType,
+    TargetNodeType, FunctionNode,
 )
 from sqlleaf.models.query import (
     PutQuery,
@@ -33,8 +33,9 @@ logger = logging.getLogger("sqlleaf")
 
 
 def generate_lineage_for_query(
-    holder: QueryHolder,
+    query_holder: QueryHolder,
     graph: nx.MultiDiGraph,
+    hooks: dict
 ) -> nx.MultiDiGraph:
     """
     Calculate the lineage for an SQL query.
@@ -45,7 +46,7 @@ def generate_lineage_for_query(
 
     Everything is extracted: columns, literals, functions, etc.
     """
-    query = holder.transformed
+    query = query_holder.transformed
 
     logger.debug("---- Generator ----")
     logger.debug(f"Generating for: {type(query)}")
@@ -63,6 +64,7 @@ def generate_lineage_for_query(
         scope=None,
     )
     generator = BaseGenerator.from_dialect(query.dialect)
+    generator.add_hooks(hooks)
 
     if check_for_put(generator, gen_ctx, pos_ctx):
         return graph

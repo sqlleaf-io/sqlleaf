@@ -61,15 +61,15 @@ The form is `INSERT .. SELECT`.
 """
 
 
-def transform_query(holder: QueryHolder) -> None:
+def transform_query(query_holder: QueryHolder) -> None:
     """
     1. Transform the original query's AST (DML flattening, qualification, etc.).
     2. If the original query contains UDF call sites, replace each call with an
        inline subquery built from the output columns of the last transformed
        downstream holder for that call — producing `holder.transformed`.
     """
-    transformed_query = _transform_query_instance(query=holder.original)
-    holder.set_transformed_query(query=transformed_query)
+    transformed_query = _transform_query_instance(query=query_holder.original)
+    query_holder.set_transformed_query(query=transformed_query)
 
 
 def _transform_query_instance(query: Q) -> Q:
