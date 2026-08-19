@@ -232,18 +232,6 @@ class ColumnNode(NodeAttributes):
         if query and query.property:
             self.parent_subkind = TableSubtype(query.property)
 
-    def get_column_constraint_expression(self) -> exp.ColumnConstraintKind | None:
-        """
-        Get the DEFAULT or GENERATED expression for this column, if it exists.
-        There is only one, but this
-        """
-        types = (exp.DefaultColumnConstraint, exp.ComputedColumnConstraint)
-        expr = t.cast(exp.ColumnDef, self.expr)
-        constraints = [
-            c.kind for c in expr.constraints if isinstance(c, exp.ColumnConstraint) and isinstance(c.kind, types)
-        ]
-        return t.cast(exp.ColumnConstraintKind, constraints[0]) if constraints else None
-
     @property
     def friendly_name(self) -> str:
         tokens = [self.catalog, self.schema, self.table, self.name]

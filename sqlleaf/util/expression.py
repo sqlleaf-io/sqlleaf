@@ -268,3 +268,15 @@ def get_column_index(column: exp.Column | int, expr: exp.Expr) -> int:
         col_name = column if isinstance(column, int) else column.name
         raise exception.SqlLeafException(message=f"Could not find {col_name} in {expr}")
     return index
+
+
+def get_column_constraint_expression(expr: exp.ColumnDef) -> exp.ColumnConstraintKind | None:
+    """
+    Get the DEFAULT or GENERATED expression for this column, if it exists.
+    There is only one, but this
+    """
+    types = (exp.DefaultColumnConstraint, exp.ComputedColumnConstraint)
+    constraints = [
+        c.kind for c in expr.constraints if isinstance(c, exp.ColumnConstraint) and isinstance(c.kind, types)
+    ]
+    return t.cast(exp.ColumnConstraintKind, constraints[0]) if constraints else None

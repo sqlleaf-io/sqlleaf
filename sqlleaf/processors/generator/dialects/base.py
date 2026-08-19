@@ -559,7 +559,7 @@ class BaseGenerator:
             if (
                 process_defaults
                 and isinstance(child_node, ColumnNode)
-                and child_node.get_column_constraint_expression()
+                and util.get_column_constraint_expression(child_node.expr)
             ):
                 default_node = child_node
                 # TODO: unset all index positions, set 'default=true' as position

@@ -329,17 +329,19 @@ class BaseQueryTransformer:
             INSERT INTO x VALUES (NULL, 42)
         according to the table's default column values.
 
+        The column names are also added from the mapping.
+
         Promoted from InsertTransformer so it can run inside preprocess() before
         the unified normalize_values() pass, for every exp.Insert statement.
         """
         query = self.query
-        child_table = query.get_target_as_table()
         is_default_values = statement.args.get("default", False)
         values = statement.expression
 
         if not (isinstance(values, exp.Values) or is_default_values):
             return statement
 
+        child_table = query.get_target_as_table()
         table_query = query.object_mapping.lookup_table_query(table=child_table)
         if not table_query:
             return statement
@@ -382,8 +384,8 @@ class BaseQueryTransformer:
         col_def = [col for col in table_columns if col.name == column_name]
         if col_def:
             col_def = col_def[0]
-            if default_expr := col_def.find(exp.DefaultColumnConstraint):
-                expression.replace(default_expr.this)
+            if default_constraint := util.get_column_constraint_expression(col_def):
+                expression.replace(default_constraint.this.copy())
             else:
                 expression.replace(exp.Null())
 

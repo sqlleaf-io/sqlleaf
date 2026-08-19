@@ -100,7 +100,7 @@ def generate_lineage_for_columns(
         # A column may have both lineage and a default expression; process both.
         # TODO: make this a CLI flag for whether to include these exprs in lineage
         if default_node:
-            constraint_expr = default_node.get_column_constraint_expression()
+            constraint_expr = util.get_column_constraint_expression(default_node.expr)
             if constraint_expr and constraint_expr.this:
                 constraint_ctx = gen_ctx.replace(
                     expr=constraint_expr.this,

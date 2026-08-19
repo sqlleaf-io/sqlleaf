@@ -5,9 +5,9 @@ import typing as t
 
 from sqlglot import exp
 
-from sqlleaf import exception
+from sqlleaf import exception, util
 from sqlleaf.models.query import Q
-from sqlleaf.typing import E, SqlObjectType
+from sqlleaf.typing import E
 from sqlleaf.util import default_column_index_iterator
 
 logger = logging.getLogger("sqlleaf")
@@ -192,6 +192,82 @@ def _resolve_values_column_names(values: exp.Values, container: exp.Expr, query:
     return list(columns)
 
 
+def _substitute_default_column_references(query: Q, values: exp.Values, target_table: exp.Table | None) -> None:
+    """
+    Replace the column names used inside `INSERT ... VALUES (...)` statements
+    with the referenced column's DEFAULT expression (or NULL), per MySQL's semantics for
+    VALUES(column_name).
+
+    This also applies when the column reference is nested inside another expression,
+    e.g. VALUES(UPPER(name), age * 2).
+
+    Example [given name's default is 5]:
+        INSERT INTO (name) VALUES (name)
+    ->
+        INSERT INTO (name) SELECT 5 AS name
+    """
+    if target_table is None:
+        return
+
+    table_query = query.object_mapping.lookup_table_query(table=target_table, raise_on_missing=False)
+    if not table_query:
+        return
+
+    table_columns = table_query.get_column_defs()
+    table_column_names = {col.name for col in table_columns}
+
+    for value_expr in values.expressions:
+        if not isinstance(value_expr, exp.Tuple):
+            continue
+
+        # Replace each column with its default/generated expression
+        for tuple_expr in value_expr.expressions:
+            for column_ref in list(tuple_expr.find_all(exp.Column)):
+                if column_ref.name in table_column_names:
+                    col_def = next(c for c in table_columns if c.name == column_ref.name)
+                    if default_constraint := util.get_column_constraint_expression(col_def):
+                        column_ref.replace(default_constraint.this.copy())
+                    else:
+                        column_ref.replace(exp.Null())
+
+
+def _rewrite_empty_values_or_values_with_column_names(
+    query: Q, expression: exp.Values, statement: E, columns: t.List[str]
+) -> t.List[str]:
+    """
+    MySQL-only handling for INSERT ... VALUES lists:
+    - Expand empty VALUES() to refer to all target columns so DEFAULTs can be applied.
+    - Replace target column-name references in VALUES(...) with that column's DEFAULT (or NULL).
+
+    Example:
+      CREATE TABLE t(a INT DEFAULT 5, b INT);
+      INSERT INTO t () VALUES();            -> SELECT 5 AS a, NULL AS b
+      INSERT INTO t (a,b) VALUES(a, UPPER(b)) -> SELECT 5 AS a, UPPER(NULL) AS b
+    """
+    if isinstance(statement, exp.Insert) and query.dialect == "mysql":
+        into_table = statement.find(exp.Table)
+
+        # Expand an empty tuple to reference all target columns so substitution can occur
+        if (
+            expression.expressions
+            and isinstance(expression.expressions[0], exp.Tuple)
+            and len(expression.expressions[0].expressions) == 0
+        ):
+            table_query = (
+                query.object_mapping.lookup_table_query(table=into_table, raise_on_missing=False)
+                if into_table is not None
+                else None
+            )
+            if table_query:
+                # Replace the empty tuple values with references to each column name
+                columns = [c.name for c in table_query.get_column_defs()]
+                expression.expressions[0].set("expressions", [exp.column(c) for c in columns])
+
+        _substitute_default_column_references(query, expression, into_table)
+
+    return columns
+
+
 def _rewrite_values_statement(query: Q, expression: exp.Values, statement: E) -> E:
     """
     Convert a `VALUES(...)` statement into a `SELECT ... UNION ALL SELECT ...` statement
@@ -201,12 +277,7 @@ def _rewrite_values_statement(query: Q, expression: exp.Values, statement: E) ->
         return statement
 
     columns = _resolve_values_column_names(expression, statement, query)
-
-    # Determine target table for INSERT/CREATE rewriting where needed
-    if query.target_info.type == SqlObjectType.TABLE:
-        child_table = query.target_info.expression
-    else:
-        child_table = statement.this
+    columns = _rewrite_empty_values_or_values_with_column_names(query, expression, statement, columns)
 
     # Build the 'SELECT ... UNION ALL SELECT ...'
     new_statement = _values_to_select_expr(
@@ -215,12 +286,15 @@ def _rewrite_values_statement(query: Q, expression: exp.Values, statement: E) ->
         column_names=columns,
     )
 
-    # Rewrite the parent statement
+    # Rewrite the parent statement with the existing column list
     if isinstance(statement, exp.Insert):
+        into_table = statement.find(exp.Table)
+        insert_columns = statement.this.expressions
+
         insert_expr = exp.insert(
             expression=new_statement,
-            columns=statement.this.expressions,
-            into=child_table,
+            columns=insert_columns,
+            into=into_table or statement.this,
             returning=statement.args.get("returning"),
         )
         insert_expr.set("conflict", statement.args.get("conflict"))
