@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import typing as t
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 import networkx as nx
 from sqlglot import exp
@@ -17,7 +17,7 @@ from sqlleaf.models.node import (
     ColumnNode,
     EdgeAttributes,
     N,
-    TargetNodeType, FunctionNode,
+    TargetNodeType,
 )
 from sqlleaf.models.query import (
     PutQuery,
@@ -27,16 +27,13 @@ from sqlleaf.models.query import (
     UpdateQuery,
 )
 from sqlleaf.processors.generator.dialects.base import BaseGenerator
-from sqlleaf.typing import E, TableOrScopeType, TableType
+from sqlleaf.typing import TableOrScopeType, TableType
+from sqlleaf.util.expression import get_column_index, get_expression_for_column
 
 logger = logging.getLogger("sqlleaf")
 
 
-def generate_lineage_for_query(
-    query_holder: QueryHolder,
-    graph: nx.MultiDiGraph,
-    hooks: dict
-) -> nx.MultiDiGraph:
+def generate_lineage_for_query(query_holder: QueryHolder, graph: nx.MultiDiGraph, hooks: dict) -> nx.MultiDiGraph:
     """
     Calculate the lineage for an SQL query.
 
@@ -351,7 +348,6 @@ def add_nodes_with_edge_to_graph(
     p_attrs, p_created = add_node_if_not_exists(parent_node, graph)
     c_attrs, c_created = add_node_if_not_exists(child_node, graph)
 
-
     if p_attrs and c_attrs:
         p_full_name = p_attrs.full_name
         c_full_name = c_attrs.full_name
@@ -405,54 +401,11 @@ def get_scope(statement: exp.Expr) -> Scope:
     return scope
 
 
-def get_expression_for_column(column: exp.Column | int, expr: exp.Expr) -> tuple[exp.Expr, int]:
-    """
-    Get the expression that matches the given column name, along with its index (position) in the SELECT.
-    e.g. given "SELECT 1 AS a, 2 AS b", column 'b' maps to expression 2.
-    """
-    if isinstance(column, int):
-        # The index of the query in "SELECT 1 UNION SELECT 2"
-        select = getattr(expr, "selects")[column]
-        idx = column
-    else:
-        if isinstance(expr, exp.Lateral):
-            selects = [(expr, 0)]
-        else:
-            # Common path
-            selects = [(select, idx) for idx, select in enumerate(getattr(expr, "selects")) if select.alias_or_name == column.name]
-
-        if len(selects) > 1:
-            message = f"Column reference '{column}' is ambiguous ({len(selects)} possible options)"
-            raise exception.SqlLeafException(message)
-
-        if selects:
-            select, idx = selects[0]
-        else:
-            select = expr
-            idx = -1
-    return select, idx
-
-
 @dataclass(frozen=True)
 class ScopeTraversal:
     expression: exp.Expr
     scope: TableOrScopeType
     select_index: int
-
-
-def get_column_index(column: exp.Column | int, expr: exp.Expr):
-    index = (
-        column
-        if isinstance(column, int)
-        else next(
-            (i for i, sel in enumerate(getattr(expr, "selects")) if sel.alias_or_name == column.name),
-            -1,  # mypy will not allow a None here, but a negative index should never be returned
-        )
-    )
-    if index == -1:
-        col_name = column if isinstance(column, int) else column.name
-        raise exception.SqlLeafException(message=f"Could not find {col_name} in {expr}")
-    return index
 
 
 # def set_cte_properties(path: t.List[ScopeTraversal]) -> None:

@@ -4,6 +4,7 @@ UpdateTransformer — handles UPDATE (and MERGE → UPDATE, ON CONFLICT) stateme
 
 from sqlglot import exp
 
+from sqlleaf import exception
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
 from sqlleaf.processors.transformer.expressions import normalize_values
 
@@ -41,31 +42,58 @@ class UpdateTransformer(BaseQueryTransformer):
         # sibling VALUES living under the ancestor Insert/Create's `.expression` in this
         # holder's own copy of the tree. That conversion must still happen here.
         parent_insert_expr = None
-        if statement.parent and isinstance(statement.parent, (exp.Insert, exp.Create)) and statement.parent.expression:
-            if isinstance(statement.parent.expression, exp.Values):
-                new_parent = normalize_values(self.query, statement.parent)
-                if isinstance(new_parent, (exp.Insert, exp.Create)):
-                    parent_insert_expr = new_parent
-                    statement = parent_insert_expr.args["conflict"]
-            elif isinstance(statement.parent.expression, exp.Select):
-                parent_insert_expr = statement.parent
+        values_alias_name: str | None = None
+        parent = statement.parent
+        parent_expr = statement.parent.expression
 
         update_expr = exp.update(table=self.query.get_target_as_table())
-        update_expr.set("expressions", statement.expressions)
+        parent_table = parent_expr.args.get("from_", None)
+        if parent_table:
+            update_expr = update_expr.from_(parent_table.this)
 
-        parent_table = None
-        if statement.parent and isinstance(statement.parent, (exp.Insert, exp.Create)) and statement.parent.expression:
-            parent_table = statement.parent.expression.args.get("from_", None)
-            if parent_table:
-                update_expr = update_expr.from_(parent_table.this)
+        if isinstance(parent_expr, exp.Values):
+            # Capture the VALUES alias (used in MySQL: VALUES (...) AS <alias>) before we rewrite it
+            alias_expr = parent_expr.args.get("alias")
 
-        for eq_expr in list(update_expr.expressions):
-            for col in eq_expr.right.find_all(exp.Column):
-                if col.table.upper() == "EXCLUDED":
-                    if parent_insert_expr is None or col.name not in parent_insert_expr.named_selects:
+            if alias_expr is not None:
+                # exp.TableAlias typically exposes the alias via `.alias`; fallback to `.name` if needed
+                values_alias_name = alias_expr.alias_or_name
+
+            parent_insert_expr = normalize_values(self.query, parent)
+            statement = parent_insert_expr.args["conflict"]
+
+        elif isinstance(parent_expr, exp.Select):
+            parent_insert_expr = parent
+
+
+        # Rewrite the expressions in the UPDATE
+        for eq_expr in list(statement.expressions):
+            right_expr = eq_expr.right
+
+            if self.query.dialect == "mysql" and isinstance(right_expr, exp.Anonymous) and right_expr.name.upper() == "VALUES":
+                # Replace the VALUES() expression with its associated expression in the SELECT.
+                # The inner column is a reference to the SELECT expression in the INSERT list, not the column itself.
+                # e.g. INSERT INTO users (id, name) SELECT 'a', 'b' ... UPDATE SET name = VALUES(name)
+                # would replace VALUES(name) with 'b'
+                values_col = right_expr.expressions[0].name
+                column_names = self._extract_insert_columns(parent, self.query.target_info.expression, include_system=False)
+                if values_col not in column_names:
+                    raise exception.SqlLeafException(f"Column '{values_col}' does not exist in the expression list or the columns for table '{str(parent.this.this)}'")
+
+                column_index = column_names.index(values_col)
+                select_expr = parent_insert_expr.selects[column_index]
+                right_expr.replace(select_expr.copy())
+
+            for col in right_expr.find_all(exp.Column):
+                # Transform any aliased columns into their correct expressions.
+                # Examples:
+                # - ON CONFLICT DO UPDATE ... EXCLUDED.col
+                # - ON DUPLICATE KEY UPDATE ... new_alias.col
+                table_name = (col.table or "").upper()
+                if table_name == "EXCLUDED" or (values_alias_name and col.table == values_alias_name):
+                    if col.name not in parent_insert_expr.named_selects:
                         # The outer INSERT did not provide a value for this column; reference the existing column
-                        replacement = exp.column(col.name)
-                        col.replace(replacement)
+                        col.replace(exp.column(col.name))
                     else:
                         # Set it to the unaliased expression from the outer INSERT/SELECT
                         select_expr = [
@@ -77,6 +105,8 @@ class UpdateTransformer(BaseQueryTransformer):
                             new_expr.set("table", exp.to_identifier(parent_table.alias_or_name))
 
                         col.replace(new_expr)
+
+        update_expr.set("expressions", statement.expressions)
 
         return update_expr
 

@@ -576,6 +576,19 @@ def test__select_table_as_table(holder):
     assert len(h.collected_queries.unsupported) == 2
 
 
+def test__select_table_union_table_fails(holder):
+    with pytest.raises(sqlglot.errors.ParseError) as e:
+        sql = """
+        CREATE TABLE t1(name1 VARCHAR, name2 VARCHAR);
+        CREATE TABLE t2(name1 VARCHAR, name2 VARCHAR);
+        CREATE TABLE t3(name1 VARCHAR, name2 VARCHAR);
+
+        INSERT INTO t1 TABLE t2 UNION TABLE t3;
+        """
+        holder(sql=sql, dialect=DIALECT)
+    assert e.value.args[0].startswith("Invalid expression / Unexpected token. Line 6, Col: 37.")
+
+
 def test__select_order_by_in_string_add(holder):
     sql = """
     CREATE TABLE t1(name1 VARCHAR, name2 VARCHAR);

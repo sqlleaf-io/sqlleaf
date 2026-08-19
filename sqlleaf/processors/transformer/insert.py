@@ -4,6 +4,7 @@ from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
 
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
+from sqlleaf.processors.transformer.expressions import normalize_values
 from sqlleaf.typing import E
 
 
@@ -11,13 +12,11 @@ class InsertTransformer(BaseQueryTransformer):
     """Transformer for INSERT statements."""
 
     def transform(self, statement: exp.Insert) -> exp.Insert:
-        # Note: _convert_table_to_select, FILTER/WHERE removal, DEFAULT VALUES expansion,
-        # and VALUES->SELECT conversion are all performed by preprocess() (via
-        # BaseQueryTransformer.normalize_all_values) before delegating here; statement
-        # is already clean of any exp.Values nodes.
         statement = self._add_information_from_merge(statement)
         statement = self._add_information_from_multitable_insert(statement)
         statement = self._process_inner_ctes(statement)
+        statement = normalize_values(self.query, statement)
+        statement = self._remove_on_conflict(statement)
 
         return statement
 
@@ -26,6 +25,14 @@ class InsertTransformer(BaseQueryTransformer):
         #  Revisit proper type annotation so that every query (not just Inserts) has its types populated to enable UDF resolution.
         statement = annotate_types(statement, dialect=self.query.dialect, schema=self.query.object_mapping)
         return super().postprocess(statement)
+
+    def _remove_on_conflict(self, statement: exp.Insert) -> exp.Insert:
+        """
+        Remove the 'ON CONFLICT ...' clause from the INSERT statement.
+        """
+        if conflict := statement.args.get("conflict"):
+            conflict.pop()
+        return statement
 
     @BaseQueryTransformer._validate_syntax
     def _add_information_from_merge(self, statement: exp.Insert) -> exp.Insert:

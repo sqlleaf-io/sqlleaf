@@ -38,6 +38,9 @@ def test__insert_on_conflict_with_table(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
+    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (name, kind) SELECT r.name AS name, 'apple' AS kind FROM fruit.raw AS r"
+    assert h.holders[0].downstream_holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (kind) SELECT 'apple' || r.kind AS kind FROM fruit.raw AS r"
+
     assert h.paths == [
         ["column[fruit.raw.name]", "column[fruit.processed.name]"],
         ['literal["apple"]', "column[fruit.processed.kind]"],
@@ -61,13 +64,7 @@ def test__insert_on_conflict_with_values(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert (
-        h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (name, created_at) "
-        "SELECT 'pear' AS name, CURRENT_TIMESTAMP AS created_at "
-        "ON CONFLICT(name) "
-        "DO UPDATE SET "
-        "created_at = excluded.created_at, "
-        "name = LOWER(excluded.name), "
-        "kind = UPPER(excluded.kind)"
+        h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (name, created_at) SELECT 'pear' AS name, CURRENT_TIMESTAMP AS created_at"
     )
     # The inner UPDATE query
     assert (
@@ -96,6 +93,8 @@ def test__insert_on_conflict_do_nothing(holder):
     DO NOTHING;
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.processed (name) SELECT 'john' AS name"
 
     assert h.paths == [['literal["john"]', "column[fruit.processed.name]"]]
     assert len(h.nodes) == 2

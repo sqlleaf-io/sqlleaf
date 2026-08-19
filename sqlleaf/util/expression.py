@@ -217,3 +217,54 @@ def qualify_and_annotate(
                 stmt.selects[i] = stmt.selects[i].as_(ins)
 
     annotate_types(stmt, dialect=dialect, schema=object_mapping)
+
+
+def get_expression_for_column(column: exp.Column | int, expr: exp.Expr) -> tuple[exp.Expr, int]:
+    """
+    Get the expression that matches the given column name, along with its index (position) in the SELECT.
+    For example, given "SELECT 1 AS a, 2 AS b", column 'b' maps to expression 2.
+    """
+    if isinstance(column, int):
+        # The index of the query in "SELECT 1 UNION SELECT 2"
+        select = getattr(expr, "selects")[column]
+        idx = column
+    else:
+        if isinstance(expr, exp.Lateral):
+            selects = [(expr, 0)]
+        else:
+            # Common path
+            selects = [
+                (select, idx)
+                for idx, select in enumerate(getattr(expr, "selects"))
+                if select.alias_or_name == column.name
+            ]
+
+        if len(selects) > 1:
+            message = f"Column reference '{column}' is ambiguous ({len(selects)} possible options)"
+            raise exception.SqlLeafException(message)
+
+        if selects:
+            select, idx = selects[0]
+        else:
+            select = expr
+            idx = -1
+    return select, idx
+
+
+def get_column_index(column: exp.Column | int, expr: exp.Expr) -> int:
+    """
+    Return the positional index of a column within a SELECT list.
+    Raises if the column cannot be found.
+    """
+    index = (
+        column
+        if isinstance(column, int)
+        else next(
+            (i for i, sel in enumerate(getattr(expr, "selects")) if sel.alias_or_name == column.name),
+            -1,  # a negative index should never be returned on success
+        )
+    )
+    if index == -1:
+        col_name = column if isinstance(column, int) else column.name
+        raise exception.SqlLeafException(message=f"Could not find {col_name} in {expr}")
+    return index

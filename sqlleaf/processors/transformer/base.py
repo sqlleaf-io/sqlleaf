@@ -11,11 +11,11 @@ from sqlleaf import exception, util
 from sqlleaf.models.query import Q
 from sqlleaf.processors.transformer import udf
 from sqlleaf.processors.transformer.expressions import (
+    _rewrite_values_statement,
     add_parens_for_composite_field_access,
     normalize_values,
     rewrite_functional_notation_columns,
     simplify_row,
-    _rewrite_values_statement,
 )
 from sqlleaf.settings import system_functions as get_system_functions
 from sqlleaf.typing import E, SqlObjectType
@@ -105,7 +105,7 @@ class BaseQueryTransformer:
         AFTER the type-specific transformations.
         """
         # TODO: ideally this is done here, but it would overwrite the types manually added for COPY, UNLOAD etc
-        #statement = annotate_types(statement, dialect=self.query.dialect, schema=self.query.object_mapping)
+        # statement = annotate_types(statement, dialect=self.query.dialect, schema=self.query.object_mapping)
 
         validate_columns, exclusion_rules = self._get_validation_and_exclusion_rules(statement)
 
@@ -117,7 +117,7 @@ class BaseQueryTransformer:
         statement = self._add_aliases_to_pseudocolumns(statement)
         statement = self._add_column_names_to_insert(statement)
         statement = self._apply_optimizations(statement, exclusion_rules)
-        #statement = self._add_missing_table_alias_columns(statement)
+        # statement = self._add_missing_table_alias_columns(statement)
 
         if statement.find(exp.Values):
             raise exception.SqlLeafException(
@@ -754,6 +754,7 @@ class BaseQueryTransformer:
     ) -> t.List[str]:
         """
         Returns a list of column names for an exp.Insert statement.
+        If they are not found, fall back to the columns for table `target`.
         """
         if isinstance(statement.this, exp.Schema):
             return [s.name for s in statement.this.expressions]
