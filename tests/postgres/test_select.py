@@ -458,10 +458,6 @@ def test__select_rows_from(holder):
     assert len(h.edges) == 15
 
 
-# TODO: sqlglot parser breaks on 'LATERAL ROWS FROM'
-# TODO: support ROWS FROM without table alias
-
-
 def test__select_lateral(holder):
     sql = """
     CREATE TABLE fruit.new (name VARCHAR, age INT);
@@ -529,6 +525,23 @@ def test__select_lateral_table_function(holder):
         "column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]",
     ]
     assert len(h.edges) == 6
+
+
+def test__select_lateral_rows_from(holder):
+    with pytest.raises(sqlglot.errors.ParseError) as e:
+        sql = """
+        INSERT INTO fruit.processed (name, age, kind, amount)
+        SELECT x.*
+        FROM fruit.raw r,
+        LATERAL ROWS FROM
+        (
+            unnest(string_to_array(r.name, ',')),
+            json_to_recordset('[{"a":40,"b":"foo"}]') AS (a INTEGER, b TEXT),
+            generate_series(1, 3)
+        ) AS x (name, age, kind, amount);
+        """
+        holder(sql=sql, dialect=DIALECT, with_tables=True)
+    assert e.value.args[0].startswith("Invalid expression / Unexpected token. Line 5, Col: 25.")
 
 
 set_operations = ["EXCEPT", "INTERSECT", "UNION"]
