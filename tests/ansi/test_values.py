@@ -2,6 +2,7 @@ import os
 import sys
 
 import pytest
+import sqlglot.errors
 from sqlglot import exp
 
 from sqlleaf.exception import SqlLeafException
@@ -107,6 +108,7 @@ def test__values_multiple(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
+    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (name, kind) SELECT 'apple' AS name, UPPER('upper_apple') AS kind UNION ALL SELECT 'orange' AS name, UPPER('upper_orange') AS kind"
     assert h.paths == [
         ['literal["apple"]', "column[fruit.raw.name]"],
         ['literal["orange"]', "column[fruit.raw.name]"],
@@ -119,9 +121,13 @@ def test__values_multiple(holder):
 
 
 def test__values_basic(holder):
-    sql = "INSERT INTO fruit.raw VALUES ('yellow', UPPER('banana'));"
+    sql = """
+    INSERT INTO fruit.raw
+    VALUES ('yellow', UPPER('banana'));
+    """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
+    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (name, kind) SELECT 'yellow' AS name, UPPER('banana') AS kind"
     assert h.paths == [
         ['literal["yellow"]', "column[fruit.raw.name]"],
         ['literal["banana"]', "function[UPPER]", "column[fruit.raw.kind]"],
@@ -130,9 +136,13 @@ def test__values_basic(holder):
 
 
 def test__values_with_columns(holder):
-    sql = "INSERT INTO fruit.raw (name, kind) VALUES ('yellow', UPPER('banana'));"
+    sql = """
+    INSERT INTO fruit.raw (name, kind)
+    VALUES ('yellow', UPPER('banana'));
+    """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
+    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (name, kind) SELECT 'yellow' AS name, UPPER('banana') AS kind"
     assert h.paths == [
         ['literal["yellow"]', "column[fruit.raw.name]"],
         ['literal["banana"]', "function[UPPER]", "column[fruit.raw.kind]"],
@@ -141,9 +151,13 @@ def test__values_with_columns(holder):
 
 
 def test__values_with_reordered_columns(holder):
-    sql = "INSERT INTO fruit.raw (kind, name) VALUES (UPPER('banana'), 'yellow');"
+    sql = """
+    INSERT INTO fruit.raw (kind, name)
+    VALUES (UPPER('banana'), 'yellow');
+    """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
+    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (kind, name) SELECT UPPER('banana') AS kind, 'yellow' AS name"
     assert h.paths == [
         ['literal["yellow"]', "column[fruit.raw.name]"],
         ['literal["banana"]', "function[UPPER]", "column[fruit.raw.kind]"],
@@ -198,3 +212,26 @@ def test__values_with_alias_one_column_fails(holder):
         """
         holder(sql=sql, dialect=DIALECT, with_tables=True)
     assert e.value.args[0].startswith("Statement has unresolved star column:")
+
+
+def test__values_union_values(holder):
+    with pytest.raises(sqlglot.errors.ParseError) as e:
+        sql = """
+        INSERT INTO fruit.raw (name, kind)
+        VALUES('yellow') UNION VALUES ('orange');
+        """
+        holder(sql=sql, dialect=DIALECT, with_tables=True)
+    assert e.value.args[0].startswith("Invalid expression / Unexpected token. Line 3, Col: 30.")
+
+
+def test__values_union_values_simple(holder):
+    sql = """
+    INSERT INTO fruit.raw (name, age)
+    SELECT 'yellow', 1 UNION VALUES ('orange', 10);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (name, age) SELECT 'yellow' AS name, 1 AS age UNION SELECT _values.column1 AS column1, _values.column2 AS column2 FROM (SELECT 'orange' AS column1, 10 AS column2) AS _values"
+    #assert h.paths == []
+
+# select 5,4 union values (1,10) union values (2,20);
+# and inside a CTE
