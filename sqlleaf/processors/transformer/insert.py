@@ -4,7 +4,6 @@ from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
 
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
-from sqlleaf.processors.transformer.expressions import normalize_values
 from sqlleaf.typing import E
 
 
@@ -15,7 +14,6 @@ class InsertTransformer(BaseQueryTransformer):
         statement = self._add_information_from_merge(statement)
         statement = self._add_information_from_multitable_insert(statement)
         statement = self._process_inner_ctes(statement)
-        statement = normalize_values(self.query, statement)
         statement = self._remove_on_conflict(statement)
 
         return statement

@@ -107,17 +107,13 @@ def resolve_returning_to_select(
 ) -> exp.Select:
     """
     Given a statement with a RETURNING clause (INSERT, UPDATE, DELETE, MERGE),
-    resolves each RETURNING expression (handling parameter substitution
-    and column-to-literal mapping for INSERT) and returns a SELECT expression.
+    resolve each RETURNING expression and return a SELECT expression.
 
     Notes on INSERT ... VALUES ... RETURNING:
-    - Even after the unified VALUES normalization pass (which converts VALUES →
-      SELECT/UNION during preprocess for regular statements), UDF inner bodies are
-      transformed here independently.
     - We intentionally resolve INSERT ... VALUES ... RETURNING by selecting the
       requested columns from the target table rather than from the VALUES-derived
       UNION. This preserves the semantics that RETURNING reflects the post-insert
-      target-row shape and also avoids leaking the VALUES union into the generator.
+      target-row value.
 
     Example:
         INSERT INTO people (age) VALUES (5), (2) RETURNING age
@@ -125,9 +121,9 @@ def resolve_returning_to_select(
     """
     returning_node = stmt.args.get("returning")
     if isinstance(stmt, exp.Insert) and isinstance(stmt.expression, exp.Values):
-        # For INSERT ... VALUES ... RETURNING, select the RETURNING columns from the
-        # target table. See the note in the docstring above for the rationale.
-        table = stmt.this.this if isinstance(stmt.this, exp.Schema) else stmt.this
+        # TODO: this shouldn't be the select expr, but just direct lineage from the target column to the returning column
+        # For INSERT ... VALUES ... RETURNING, select the RETURNING columns from the target table.
+        table = stmt.find(exp.Table)
         returning_select = exp.select(*[r.copy() for r in returning_node.expressions]).from_(table.copy())
         return substitute.substitute_parameters(returning_select, query, param_map, positional_map)
 
