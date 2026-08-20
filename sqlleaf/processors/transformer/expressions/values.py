@@ -26,40 +26,49 @@ def normalize_values(query: Q, expr: exp.Expr) -> exp.Expr:
     unresolved_ids: t.Set[int] = set()
 
     # Walk the subtree and rewrite all Values occurrences
+    prev_value = None
     while True:
         values = _pick_next_values_node(expr, unresolved_ids)
+        if values and prev_value == values:
+            raise exception.SqlLeafException("Infinite loop detected while searching for the next VALUES() expression.")
+
         if values is None:
             break
 
         # Determine if there is a CTE ancestor within the current statement scope
         cte = _cte_ancestor_in_scope(expr, values)
         if cte is not None:
-            unresolved_ids.add(id(values))
-            continue
+            if cte.this is values:
+                _rewrite_values_statement(query, values, cte)
+            else:
+                unresolved_ids.add(id(values))
+        else:
+            # VALUES is directly the expression of an INSERT
+            parent = values.parent
+            if isinstance(parent, exp.Insert) and parent.expression is values:
+                new_stmt = _handle_values_in_insert(values, parent, parent is expr, query)
+                if new_stmt is not None:
+                    expr = new_stmt
 
-        # VALUES is directly the expression of an INSERT
-        parent = values.parent
-        if isinstance(parent, exp.Insert) and parent.expression is values:
-            new_stmt = _handle_values_in_insert(values, parent, parent is expr, query)
-            if new_stmt is not None:
-                expr = new_stmt
-            continue
+            # VALUES is directly the expression of a CREATE ... AS
+            elif isinstance(parent, exp.Create) and parent.expression is values:
+                _rewrite_values_statement(query, values, parent)
 
-        # VALUES is directly the expression of a CREATE ... AS
-        if isinstance(parent, exp.Create) and parent.expression is values:
-            _handle_values_in_create(values, parent, query)
-            continue
+            # VALUES is one of the sides of a UNION
+            elif isinstance(parent, exp.SetOperation):
+                _rewrite_values_statement(query, values, parent)
 
-        # VALUES in a table position (wrapped by Subquery or direct FROM on SELECT/UPDATE)
-        from_ancestor = values.find_ancestor(exp.From)
-        if (
-            values.find_ancestor(exp.Subquery) is not None
-            or values.parent_select
-            or (from_ancestor is not None and from_ancestor.this is values)
-        ):
-            _rewrite_values_in_table_position(values, query.dialect)
-            continue
+            else:
+                # VALUES in a table position (wrapped by Subquery or direct FROM on SELECT/UPDATE)
+                from_ancestor = values.find_ancestor(exp.From)
+                if (
+                    values.find_ancestor(exp.Subquery) is not None
+                    or values.parent_select
+                    or (from_ancestor is not None and from_ancestor.this is values)
+                ):
+                    _rewrite_values_in_table_position(values, query.dialect)
 
+        prev_value = values
     return expr
 
 
@@ -107,17 +116,6 @@ def _handle_values_in_insert(
     return None
 
 
-def _handle_values_in_create(
-    values: exp.Values,
-    parent: exp.Create,
-    query: Q,
-) -> None:
-    """
-    Handle VALUES directly under a CREATE ... AS expression.
-    """
-    _rewrite_values_statement(query, values, parent)
-
-
 def _rewrite_values_in_table_position(values: exp.Values, dialect: str) -> None:
     """
     Rewrite VALUES used in FROM/JOIN/LATERAL positions.
@@ -126,13 +124,14 @@ def _rewrite_values_in_table_position(values: exp.Values, dialect: str) -> None:
     - Subquery(Values), which updates the inner expression and preserves the outer alias/columns.
     - Direct 'From(Values)', which converts and transfers aliases.
     """
+    converted = _values_to_select_expr(
+        values=values,
+        dialect=dialect,
+    )
+
     # SELECT (VALUES ...)
     outer_subquery = values.find_ancestor(exp.Subquery)
     if outer_subquery is not None and outer_subquery.this is values:
-        converted = _values_to_select_expr(
-            values=values,
-            dialect=dialect,
-        )
         if isinstance(converted, exp.Subquery):
             converted = converted.this  # unwrap nested Subquery
         outer_subquery.set("this", converted)
@@ -143,10 +142,6 @@ def _rewrite_values_in_table_position(values: exp.Values, dialect: str) -> None:
     parent_select = values.parent_select
     from_ = parent_select and parent_select.args.get("from_")
     if from_ and from_.this is values:
-        converted = _values_to_select_expr(
-            values=values,
-            dialect=dialect,
-        )
         # Ensure we have a Subquery in FROM and preserve the alias/column names
         original_alias = values.args.get("alias")
         if original_alias and not converted.args.get("alias"):
@@ -157,10 +152,6 @@ def _rewrite_values_in_table_position(values: exp.Values, dialect: str) -> None:
     # Case B: VALUES appears directly under a FROM of non-SELECT (e.g., UPDATE ... FROM (VALUES ...))
     from_ancestor = values.find_ancestor(exp.From)
     if from_ancestor is not None and from_ancestor.this is values:
-        converted = _values_to_select_expr(
-            values=values,
-            dialect=dialect,
-        )
         original_alias = values.args.get("alias")
         if not isinstance(converted, exp.Subquery):
             converted = converted.subquery()
@@ -169,15 +160,15 @@ def _rewrite_values_in_table_position(values: exp.Values, dialect: str) -> None:
         from_ancestor.set("this", converted)
 
 
-def _resolve_values_column_names(values: exp.Values, container: exp.Expr, query: Q) -> list[str]:
+def _resolve_values_column_names(values: exp.Values, parent: exp.Expr, query: Q) -> list[str]:
     """
     Resolve column names for the expressions inside VALUES() based on its surrounding expressions.
     """
     columns = []
-    if isinstance(container, exp.CTE):
-        columns = container.alias_column_names
-    elif not isinstance(container, exp.Values):
-        columns = [e.name for e in container.this.expressions]
+    if isinstance(parent, exp.CTE):
+        columns = parent.alias_column_names
+    elif not isinstance(parent, exp.Values):
+        columns = [e.name for e in parent.this.expressions]
 
     if not columns:
         # Fall back to the mapping
@@ -311,6 +302,8 @@ def _rewrite_values_statement(query: Q, expression: exp.Values, statement: E) ->
         statement.set("this", new_statement)
     elif isinstance(statement, exp.Values):
         statement = new_statement
+    elif isinstance(statement, exp.SetOperation):
+        expression.replace(new_statement)
     else:
         raise exception.SqlLeafException(message=f"Unknown statement type: {statement.__class__}")
 

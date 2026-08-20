@@ -108,7 +108,10 @@ def test__values_multiple(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (name, kind) SELECT 'apple' AS name, UPPER('upper_apple') AS kind UNION ALL SELECT 'orange' AS name, UPPER('upper_orange') AS kind"
+    assert (
+        h.holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.raw (name, kind) SELECT 'apple' AS name, UPPER('upper_apple') AS kind UNION ALL SELECT 'orange' AS name, UPPER('upper_orange') AS kind"
+    )
     assert h.paths == [
         ['literal["apple"]', "column[fruit.raw.name]"],
         ['literal["orange"]', "column[fruit.raw.name]"],
@@ -127,7 +130,10 @@ def test__values_basic(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (name, kind) SELECT 'yellow' AS name, UPPER('banana') AS kind"
+    assert (
+        h.holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.raw (name, kind) SELECT 'yellow' AS name, UPPER('banana') AS kind"
+    )
     assert h.paths == [
         ['literal["yellow"]', "column[fruit.raw.name]"],
         ['literal["banana"]', "function[UPPER]", "column[fruit.raw.kind]"],
@@ -142,7 +148,10 @@ def test__values_with_columns(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (name, kind) SELECT 'yellow' AS name, UPPER('banana') AS kind"
+    assert (
+        h.holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.raw (name, kind) SELECT 'yellow' AS name, UPPER('banana') AS kind"
+    )
     assert h.paths == [
         ['literal["yellow"]', "column[fruit.raw.name]"],
         ['literal["banana"]', "function[UPPER]", "column[fruit.raw.kind]"],
@@ -157,7 +166,10 @@ def test__values_with_reordered_columns(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (kind, name) SELECT UPPER('banana') AS kind, 'yellow' AS name"
+    assert (
+        h.holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.raw (kind, name) SELECT UPPER('banana') AS kind, 'yellow' AS name"
+    )
     assert h.paths == [
         ['literal["yellow"]', "column[fruit.raw.name]"],
         ['literal["banana"]', "function[UPPER]", "column[fruit.raw.kind]"],
@@ -230,8 +242,13 @@ def test__values_union_values_simple(holder):
     SELECT 'yellow', 1 UNION VALUES ('orange', 10);
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
-    assert h.holders[0].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO fruit.raw (name, age) SELECT 'yellow' AS name, 1 AS age UNION SELECT _values.column1 AS column1, _values.column2 AS column2 FROM (SELECT 'orange' AS column1, 10 AS column2) AS _values"
-    #assert h.paths == []
-
-# select 5,4 union values (1,10) union values (2,20);
-# and inside a CTE
+    assert (
+        h.holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.raw (name, age) SELECT 'yellow' AS name, 1 AS age UNION SELECT 'orange' AS name, 10 AS age"
+    )
+    assert h.paths == [
+        ['literal["yellow"]', "column[fruit.raw.name]"],
+        ['literal["orange"]', "column[fruit.raw.name]"],
+        ["literal[1]", "column[fruit.raw.age]"],
+        ["literal[10]", "column[fruit.raw.age]"],
+    ]

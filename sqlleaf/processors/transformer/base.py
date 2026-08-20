@@ -745,9 +745,17 @@ class BaseQueryTransformer:
             )
             # logger.warning(message)
 
-        for i, ins in enumerate(insert_columns):
-            # Overwrite the aliases because sqlglot may have added incorrect ones
-            statement.selects[i] = statement.selects[i].as_(ins)
+        # Collect every SELECT expression
+        set_operation = statement.args.get("expression")
+        if isinstance(set_operation, exp.SetOperation):
+            selects = list(set_operation.iter_expressions())
+        else:
+            selects = [statement]
+
+        for select in selects:
+            for i, ins in enumerate(insert_columns):
+                # Overwrite the aliases because sqlglot may have added incorrect ones
+                select.selects[i] = select.selects[i].as_(ins)
 
         return statement
 

@@ -184,6 +184,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
 
         # Convert the statement to uppercase if the dialect supports it
         stmt = normalize_identifiers(stmt, dialect=dialect, store_original_column_identifiers=True)
+        _unnest_values_inside_select(stmt, dialect=dialect)
 
         # Substitute any Snowflake session variables ($var) in non-SET statements
         if kind != "set" and object_mapping.session_variables:
@@ -726,7 +727,6 @@ def _process_views_and_ctas(
     Convert a series of `CREATE VIEW/TABLE AS ...` SQL DDL statements into sqlglot's MappingSchema
     to extract the table and column details.
     """
-    _unnest_values_inside_select(statement, dialect)
     util.qualify_and_annotate(statement, dialect, object_mapping, remove_added_aliases=True)
     col_defs = _determine_column_defs(statement, dialect, object_mapping)
 
@@ -772,8 +772,15 @@ def _unnest_values_inside_select(statement: exp.Create, dialect: str):
             parent = parent.parent_select
 
         if parent and parent.parent:
-            values_expr.pop()
-            parent.parent.set("expression", values_expr)
+            # sqlglot converts "SELECT UNION VALUES" into "SELECT UNION SELECT * FROM (VALUES ()) AS _values"
+            # We undo that transformation (risky, as actual query may have that alias)
+            if alias := values_expr.args["alias"]:
+                if alias.name != "_values":
+                    return statement
+                alias.pop()
+            parent.replace(values_expr)
+
+    return statement
 
 
 def _determine_column_defs(

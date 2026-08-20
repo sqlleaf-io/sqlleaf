@@ -54,16 +54,17 @@ def test__select_parens(holder, case):
     assert len(h.edges) == 1
 
 
-distinct = ["DISTINCT ON (num)", ""]
-
-
-@pytest.mark.parametrize("case", distinct)
-def test__select_values(holder, case):
-    sql = f"""
+def test__select_values(holder):
+    sql = """
     INSERT INTO fruit.processed (name, kind)
-    SELECT {case} * FROM (VALUES (1, 'one'), (2, 'two')) AS t (num, letter);
+    SELECT DISTINCT ON (num) * FROM (VALUES (1, 'one'), (2, 'two')) AS t (num, letter);
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert (
+        h.holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed (name, kind) SELECT DISTINCT ON (t.num) t.num AS name, t.letter AS kind FROM (SELECT 1 AS num, 'one' AS letter UNION ALL SELECT 2 AS num, 'two' AS letter) AS t"
+    )
 
     assert h.paths == [
         ["literal[1]", "column[t.num]", "column[fruit.processed.name]"],
