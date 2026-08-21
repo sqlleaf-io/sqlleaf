@@ -36,17 +36,20 @@ class Lineage:
         self.graph = new_graph()  # The graph that contains all lineage
         self.subgraphs: t.List[nx.MultiDiGraph] = []  # The subgraphs that make up the main graph
         self.paths: t.Dict[str, t.List[LineagePath]] = {}  # The paths throughout the graph
-        self.object_mapping: ObjectMapping | None = None
         self.collected_queries: collector.CollectQueryResult | None = None
         self.user_defined_hooks = {}
+        self.object_mapping: mappings.ObjectMapping | None = None
 
     def generate(self, sql: str, dialect: str, on_error: str = "stop") -> None:
         """
         Generate lineage for one or more SQL statements.
         """
         exception.set_error_action(action=on_error)
-        object_mapping = self.init_mapping(dialect=dialect)
-        self.collected_queries = collector.collect_queries(sql, dialect, object_mapping)
+
+        if not self.object_mapping:
+            self.object_mapping = mappings.ObjectMapping(dialect=dialect)
+
+        self.collected_queries = collector.collect_queries(text=sql, dialect=dialect, object_mapping=self.object_mapping)
 
         for parent_holder in self.collected_queries.queries:
             # A parent holder wraps a top-level query, possibly containing downstream holders
@@ -239,11 +242,6 @@ class Lineage:
                 if i < len(nodes) - 1:
                     path += " -> "
             print(path)
-
-    def init_mapping(self, dialect: str) -> mappings.ObjectMapping:
-        if self.object_mapping is None:
-            self.object_mapping = mappings.ObjectMapping(dialect=dialect)
-        return self.object_mapping
 
     def register_hooks(self, hooks: dict[N, t.Callable[[N], N | None]]) -> None:
         """

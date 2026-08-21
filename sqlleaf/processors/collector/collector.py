@@ -54,6 +54,7 @@ class CollectQueryResult:
     queries: t.List[QueryHolder] = field(default_factory=list)  # Successfully collected queries
     unknown: t.Dict[str, int] = field(default_factory=dict)  # Unsupported by sqlleaf (no handler)
     unsupported: t.List[t.Tuple[int, exp.Expr]] = field(default_factory=list)  # Unsupported by sqlglot (no grammar)
+    object_mapping: mappings.ObjectMapping = None
 
 
 def _is_prepare_supported(stmt: exp.Command) -> bool:
@@ -132,7 +133,7 @@ def _classify_command(stmt: exp.Command, dialect: str) -> tuple[str, bool]:
     return "", False
 
 
-def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapping) -> CollectQueryResult:
+def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapping | None = None) -> CollectQueryResult:
     """
     Parse a series of SQL statements provided as text.
     This includes tables, views, procedures, functions, sequences, etc.
@@ -148,6 +149,9 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     unknown = {}
     unsupported = []
     counts: Counter[str] = Counter()
+
+    if not object_mapping:
+        object_mapping = mappings.ObjectMapping(dialect=dialect)
 
     # Parse the statements
     parsed = sqlglot.parse(text, dialect=dialect)
@@ -205,7 +209,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     if unsupported:
         logger.warning("Unsupported statements: %s", len(unsupported))
 
-    return CollectQueryResult(queries=list(queries.values()), unknown=unknown, unsupported=unsupported)
+    return CollectQueryResult(queries=list(queries.values()), unknown=unknown, unsupported=unsupported, object_mapping=object_mapping)
 
 
 def _determine_query_kind(statement: exp.Expr, dialect: str) -> t.Tuple[exp.Expr, str]:
