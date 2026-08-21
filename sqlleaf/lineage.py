@@ -1,10 +1,10 @@
+import json
 import logging
 import typing as t
 
 import networkx as nx
 
-from sqlleaf import mappings, path, typing, util, exception
-from sqlleaf.mappings import ObjectMapping
+from sqlleaf import exception, mappings, path, util
 from sqlleaf.models.node import EdgeAttributes, GraphAttributes, N
 from sqlleaf.models.query import (
     CopyQuery,
@@ -49,7 +49,9 @@ class Lineage:
         if not self.object_mapping:
             self.object_mapping = mappings.ObjectMapping(dialect=dialect)
 
-        self.collected_queries = collector.collect_queries(text=sql, dialect=dialect, object_mapping=self.object_mapping)
+        self.collected_queries = collector.collect_queries(
+            text=sql, dialect=dialect, object_mapping=self.object_mapping
+        )
 
         for parent_holder in self.collected_queries.queries:
             # A parent holder wraps a top-level query, possibly containing downstream holders
@@ -120,12 +122,6 @@ class Lineage:
         """
         return [q.transformed for q in self.graph.graph["attrs"].queries]
 
-    def get_stored_procedures(self):
-        """
-        Get the stored procedures from each of the edges.
-        """
-        return []
-
     def get_paths(self) -> t.Generator[LineagePath]:
         """
         paths: [
@@ -142,31 +138,31 @@ class Lineage:
         for p in path.find_all_paths(graph=self.graph):
             yield p
 
-    # def print_json(self):
-    #     nodes = self.get_nodes()
-    #     edges = self.get_edges()
-    #     queries = self.get_original_queries()
-    #     sps = self.get_stored_procedures()
-    #     paths = self.get_paths()
-    #
-    #     _nodes = [n.to_dict() for n in nodes]
-    #     _edges = [e.to_dict() for e in edges]
-    #     _queries = [q.to_dict() for q in queries]
-    #     _sps = [s.to_dict() for s in sps]
-    #     _paths = [p.to_dict() for p in paths]
-    #
-    #     print(
-    #         json.dumps(
-    #             {
-    #                 "node": _nodes,
-    #                 "edges": _edges,
-    #                 "queries": _queries,
-    #                 "stored_procedures": _sps,
-    #                 "paths": _paths,
-    #             },
-    #             indent=2,
-    #         )
-    #     )
+    def print_json(self):
+        """
+        Print the graph as JSON.
+        """
+        nodes = self.get_nodes()
+        edges = self.get_edges()
+        queries = self.get_original_queries()
+        paths = self.get_paths()
+
+        _nodes = [n.to_dict() for n in nodes]
+        _edges = [e.to_dict() for e in edges]
+        _queries = [q.to_dict() for q in queries]
+        _paths = [p.to_dict() for p in paths]
+
+        print(
+            json.dumps(
+                {
+                    "node": _nodes,
+                    "edges": _edges,
+                    "queries": _queries,
+                    "paths": _paths,
+                },
+                indent=2,
+            )
+        )
 
     def print_tree(self, full_name=False):
         """

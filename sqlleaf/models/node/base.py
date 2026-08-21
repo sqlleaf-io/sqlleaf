@@ -122,8 +122,8 @@ class EdgeAttributes:
         edge_id = ":".join([
             str(s)
             for s in [
-                self.parent.full_name,
-                self.child.full_name,
+                self.parent.id,
+                self.child.id,
                 self.path_idx,
             ]
         ])
@@ -132,16 +132,10 @@ class EdgeAttributes:
     def to_dict(self) -> dict:
         result = {
             "id": self.id,
-            "parent": {
-                "id": self.parent.id,
-                "full_name": self.parent.full_name,
-            },
-            "child": {
-                "id": self.child.id,
-                "full_name": self.child.full_name,
-            },
-            "path_idx": self.path_idx,
-            "query": {"id": self.query.id},
+            "source": self.parent.id,
+            "target": self.child.id,
+            "query": self.query.id,
+            "path_index": self.path_idx,
         }
         return result
 

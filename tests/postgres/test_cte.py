@@ -128,6 +128,7 @@ def test__cte_two_updates_inside_update(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
     h.lineage.print_tree()
+    h.lineage.print_json()
 
     assert h.paths == [
         ["column[fruit.raw.age]", "column[first_cte.age]", "column[fruit.processed.age]"],

@@ -243,6 +243,6 @@ class Query:
         result = {
             "id": self.id,
             "kind": self.kind,
-            "index": self.statement_index,
+            "statement_index": self.statement_index,
         }
         return result
