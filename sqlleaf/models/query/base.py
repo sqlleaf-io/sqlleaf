@@ -71,7 +71,7 @@ class Query:
             elif expr.name.lower() in ["program"]:
                 _type = SqlObjectType.PROGRAM
             else:
-                raise exception.SqlLeafException(f"Unknown object type identifier: {expr.name}")
+                raise exception.InvalidQueryError(f"Unknown object type identifier: {expr.name}")
 
         elif isinstance(expr, exp.Var):
             if dialect == "snowflake":
@@ -116,7 +116,7 @@ class Query:
             _type = SqlObjectType.DML
 
         else:
-            raise exception.SqlLeafException(f"Unknown source/target object type in query: {type(expr)}")
+            raise exception.InvalidQueryError(f"Unknown source/target object type in query: {type(expr)}")
 
         return _type
 
@@ -149,11 +149,11 @@ class Query:
         elif target_type == SqlObjectType.TABLE:
             object_with_columns = target_expr
         else:
-            raise exception.SqlLeafException(f"Unhandled target object type: {target_type}")
+            raise exception.InvalidQueryError(f"Unhandled target object type: {target_type}")
 
         column_defs = self._get_column_defs(object_with_columns)
         if not column_defs:
-            raise exception.SqlLeafException(f"Could not find any columns for expression: {object_with_columns}")
+            raise exception.InvalidQueryError(f"Could not find any columns for expression: {object_with_columns}")
 
         return column_defs
 
@@ -189,7 +189,7 @@ class Query:
         For functions that only accept tables.
         """
         if not isinstance(self.target_info.expression, exp.Table):
-            raise exception.SqlLeafException(
+            raise exception.InvalidQueryError(
                 message=f"Expected the target object to be a table but it is a {type(self.target_info.type)}"
             )
         return self.target_info.expression

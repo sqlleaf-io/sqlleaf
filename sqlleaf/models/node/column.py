@@ -186,7 +186,7 @@ class ColumnNode(NodeAttributes):
                 return
             else:
                 message = f"Table '{table}' is referenced but there is no FROM containing it."
-                raise exception.SqlLeafException(message=message)
+                raise exception.MappingError(message=message)
 
         for cte in source.parent.ctes:
             if cte.alias_or_name == selected_table.name:

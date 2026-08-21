@@ -3,22 +3,36 @@ class SqlGlotException(Exception):
         super().__init__(message)
 
         self.message = message
-        self.table = table
 
     def __str__(self):
-        if self.table:
-            return "%s (Table=%s)" % (self.message, self.table)
         return "%s" % (self.message,)
 
 
 class SqlLeafException(Exception):
-    def __init__(self, message, table=""):
+    def __init__(self, message):
         super().__init__(message)
 
         self.message = message
-        self.table = table
 
     def __str__(self):
-        if self.table:
-            return "%s (Table=%s)" % (self.message, self.table)
         return "%s" % (self.message,)
+
+
+class InvalidQueryError(SqlLeafException):
+    pass
+
+
+class UnsupportedFeatureError(SqlLeafException):
+    pass
+
+
+class MappingError(SqlLeafException):
+    pass
+
+
+class GeneratorError(SqlLeafException):
+    pass
+
+
+class GraphError(SqlLeafException):
+    pass

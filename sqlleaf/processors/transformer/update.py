@@ -78,7 +78,7 @@ class UpdateTransformer(BaseQueryTransformer):
                 values_col = right_expr.expressions[0].name
                 column_names = self._extract_insert_columns(parent, self.query.target_info.expression, include_system=False)
                 if values_col not in column_names:
-                    raise exception.SqlLeafException(f"Column '{values_col}' does not exist in the expression list or the columns for table '{str(parent.this.this)}'")
+                    raise exception.MappingError(f"Column '{values_col}' does not exist in the expression list or the columns for table '{str(parent.this.this)}'")
 
                 column_index = column_names.index(values_col)
                 select_expr = parent_insert_expr.selects[column_index]

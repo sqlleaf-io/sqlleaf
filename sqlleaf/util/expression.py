@@ -119,7 +119,7 @@ def str_to_column_def(name: str) -> exp.ColumnDef:
 def get_table(expr: exp.Expr) -> exp.Table:
     table = expr.find(exp.Table)
     if table is None:
-        raise exception.SqlLeafException(message=f"Could not find an exp.Table in expression: {expr.sql()}")
+        raise exception.InvalidQueryError(message=f"Could not find an exp.Table in expression: {expr.sql()}")
     return table
 
 
@@ -241,7 +241,7 @@ def get_expression_for_column(column: exp.Column | int, expr: exp.Expr) -> tuple
 
         if len(selects) > 1:
             message = f"Column reference '{column}' is ambiguous ({len(selects)} possible options)"
-            raise exception.SqlLeafException(message)
+            raise exception.MappingError(message)
 
         if selects:
             select, idx = selects[0]
@@ -266,7 +266,7 @@ def get_column_index(column: exp.Column | int, expr: exp.Expr) -> int:
     )
     if index == -1:
         col_name = column if isinstance(column, int) else column.name
-        raise exception.SqlLeafException(message=f"Could not find {col_name} in {expr}")
+        raise exception.MappingError(message=f"Could not find {col_name} in {expr}")
     return index
 
 

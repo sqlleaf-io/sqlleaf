@@ -30,7 +30,7 @@ def normalize_values(query: Q, expr: exp.Expr) -> exp.Expr:
     while True:
         values = _pick_next_values_node(expr, unresolved_ids)
         if values and prev_value == values:
-            raise exception.SqlLeafException("Infinite loop detected while searching for the next VALUES() expression.")
+            raise exception.InvalidQueryError("Infinite loop detected while searching for the next VALUES() expression.")
 
         if values is None:
             break
@@ -302,7 +302,7 @@ def _rewrite_values_statement(query: Q, expression: exp.Values, statement: E) ->
     elif isinstance(statement, exp.SetOperation):
         expression.replace(new_statement)
     else:
-        raise exception.SqlLeafException(message=f"Unknown statement type: {statement.__class__}")
+        raise exception.InvalidQueryError(message=f"Unknown statement type: {statement.__class__}")
 
     return statement
 

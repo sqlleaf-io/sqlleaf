@@ -68,7 +68,7 @@ def find_all_paths(graph: nx.MultiDiGraph) -> t.Generator[LineagePath]:
             cycles.append(cycle)
 
     if cycle_errors:
-        raise exception.SqlLeafException(message=f"Found {cycle_errors} errors with cycles in graph. Remove these.")
+        raise exception.GraphError(message=f"Found {cycle_errors} errors with cycles in graph. Remove these.")
 
     cycles = sorted(cycles)  # simple_cycles() underneath is non-deterministic
     root_columns = util.get_root_nodes(graph)

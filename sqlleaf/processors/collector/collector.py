@@ -66,7 +66,7 @@ def _is_prepare_supported(stmt: exp.Command) -> bool:
     tokens = sqlglot.tokenize(expression_name, dialect="postgres")
 
     if len(tokens) < 3:
-        raise exception.SqlLeafException(f"Invalid syntax for PREPARE expression: {stmt.sql(dialect='postgres')}")
+        raise exception.InvalidQueryError(f"Invalid syntax for PREPARE expression: {stmt.sql(dialect='postgres')}")
 
     # We cannot process arguments yet
     if tokens[1].token_type != TokenType.ALIAS or tokens[1].text.upper() != "AS":
@@ -76,7 +76,7 @@ def _is_prepare_supported(stmt: exp.Command) -> bool:
 
     # Ensure there's an 'AS' token
     if not any(t.token_type == TokenType.ALIAS and t.text.upper() == "AS" for t in tokens):
-        raise exception.SqlLeafException(f"Could not find 'AS' in PREPARE expression: {expression_name}")
+        raise exception.InvalidQueryError(f"Could not find 'AS' in PREPARE expression: {expression_name}")
 
     return True
 
@@ -94,7 +94,7 @@ def _is_execute_supported(stmt: exp.Command) -> bool:
     tokens = sqlglot.tokenize(expression_name, dialect="postgres")
 
     if not tokens or len(tokens) > 1:
-        raise exception.SqlLeafException(f"Invalid syntax for EXECUTE expression: {stmt.sql(dialect='postgres')}")
+        raise exception.InvalidQueryError(f"Invalid syntax for EXECUTE expression: {stmt.sql(dialect='postgres')}")
 
     return True
 
@@ -228,7 +228,7 @@ def _determine_query_kind(statement: exp.Expr, dialect: str) -> t.Tuple[exp.Expr
             kind = "ctas"
         else:
             message = f"Expression 'SELECT INTO' has not been implemented yet for dialect: {dialect}"
-            raise exception.SqlLeafException(message=message)
+            raise exception.UnsupportedFeatureError(message=message)
     else:
         kind = statement.key.lower()
 
@@ -503,9 +503,9 @@ def _set_column_defs(query: TableQuery):
             all_columns.extend(like_columns)
         elif isinstance(expression, exp.Identifier):
             # CREATE TABLE (a INT, b);
-            raise exception.SqlLeafException(message=f"Column '{expression.name}' must define a data type.")
+            raise exception.InvalidQueryError(message=f"Column '{expression.name}' must define a data type.")
         else:
-            raise exception.SqlLeafException(message=f"Unsupported column expression: {type(expression)}")
+            raise exception.InvalidQueryError(message=f"Unsupported column expression: {type(expression)}")
 
     if inherited_props := list(statement.find_all(exp.InheritsProperty)):
         inherited_columns = _collect_inherited_columns(inherited_props, query)
@@ -581,7 +581,7 @@ def _collect_like_columns(
                             referenced_parent_col_def = [c for c in parent_columns if c.name == inner_col.name][0]
                         except IndexError:
                             message = f"Column '{inner_col.name}' does not exist in table '{child_object}'."
-                            raise exception.SqlLeafException(message=message)
+                            raise exception.MappingError(message=message)
 
                         inner_col.set("catalog", exp.to_identifier(child_object.catalog))
                         inner_col.set("db", exp.to_identifier(child_object.db))
@@ -750,7 +750,7 @@ def _process_views_and_ctas(
         )
         query.system_column_defs = settings.system_columns(dialect)
     else:
-        raise exception.SqlLeafException(message=f"Unhandled situation for query: {statement.kind}")
+        raise exception.UnsupportedFeatureError(message=f"Unhandled situation for query: {statement.kind}")
 
     object_mapping.add_table_query(
         query=query,

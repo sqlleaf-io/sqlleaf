@@ -3,7 +3,7 @@ import typing as t
 
 import networkx as nx
 
-from sqlleaf import mappings, path, typing, util
+from sqlleaf import mappings, path, typing, util, exception
 from sqlleaf.mappings import ObjectMapping
 from sqlleaf.models.node import EdgeAttributes, GraphAttributes, N
 from sqlleaf.models.query import (
@@ -40,7 +40,7 @@ class Lineage:
         self.collected_queries: collector.CollectQueryResult | None = None
         self.user_defined_hooks = {}
 
-    def generate(self, sql: str, dialect: str):
+    def generate(self, sql: str, dialect: str, error_level: str = 'warn'):
         """
         Generate lineage for one or more SQL statements.
         """

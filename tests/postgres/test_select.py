@@ -102,11 +102,11 @@ def test__select_unknown_target_table_fails(holder):
 def test__select_unknown_source_table_fails(holder):
     with pytest.raises(SqlLeafException) as e:
         sql = """
-        INSERT INTO fruit.processed (name) SELECT name FROM unknown_table;
+        INSERT INTO fruit.processed (name) SELECT name FROM some_unknown;
         """
         holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert e.value.args[0] == "Unknown table"
+    assert e.value.args[0] == "Unknown table: some_unknown"
 
 
 def test__select_dpipe_cte(holder):

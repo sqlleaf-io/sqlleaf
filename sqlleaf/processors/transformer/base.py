@@ -120,7 +120,7 @@ class BaseQueryTransformer:
         # statement = self._add_missing_table_alias_columns(statement)
 
         if statement.find(exp.Values):
-            raise exception.SqlLeafException(
+            raise exception.InvalidQueryError(
                 f"VALUES() found in expression but should have been transformed: {statement.sql(self.query.dialect)}"
             )
         return statement
@@ -719,15 +719,13 @@ class BaseQueryTransformer:
 
         unknown_columns = [col for col in insert_columns if col not in table_columns]
         if unknown_columns:
-            raise exception.SqlLeafException(
+            raise exception.MappingError(
                 message=f"Unknown columns used in SELECT: {list(unknown_columns)}",
-                table=str(exp.table_name(child_table)),
             )
 
         if exp.Star() in selects:
-            raise exception.SqlLeafException(
+            raise exception.InvalidQueryError(
                 message=f"Statement has unresolved star column: {statement.sql(dialect=query.dialect)}",
-                table=str(exp.table_name(child_table)),
             )
 
         if len(insert_columns) != len(statement.selects):
@@ -735,7 +733,7 @@ class BaseQueryTransformer:
                 len(insert_columns),
                 len(statement.selects),
             )
-            raise exception.SqlLeafException(message=message, table=child_table)
+            raise exception.InvalidQueryError(message=message)
 
         aliases = util.get_selected_column_names(statement)
         if aliases != insert_columns:

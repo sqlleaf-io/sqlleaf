@@ -210,7 +210,7 @@ class ObjectMapping(MappingSchema):
         """
         if kind not in self.kind_mapping:
             if raise_on_missing:
-                raise exception.SqlLeafException(f"Could not find '{table.this}' of type '{kind}' in mapping.")
+                raise exception.MappingError(f"Could not find '{table.this}' of type '{kind}' in mapping.")
             return None
 
         parts = self.table_parts(table)[0 : len(self.supported_table_args)]
@@ -253,7 +253,7 @@ class ObjectMapping(MappingSchema):
             child_object_query = self.lookup_table_query(table=table_expr, raise_on_missing=raise_on_missing)
 
         if not child_object_query and raise_on_missing:
-            raise exception.SqlLeafException(message="Unknown table", table=str(table_expr))
+            raise exception.MappingError(message=f"Unknown table: {str(table_expr)}")
 
         return child_object_query
 
@@ -293,7 +293,7 @@ def resolve_overloaded_function(
             matches.append(candidate)
 
     if not matches:
-        raise exception.SqlLeafException(f"No matching function signatures found for args: {args}")
+        raise exception.MappingError(f"No matching function signatures found for args: {args}")
 
     if len(matches) == 1:
         return matches[0]

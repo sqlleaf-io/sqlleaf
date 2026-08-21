@@ -3,8 +3,7 @@ import typing as t
 
 from sqlglot import exp
 
-from sqlleaf import util
-from sqlleaf.exception import SqlLeafException
+from sqlleaf import util, exception
 from sqlleaf.models.query import Q, UserDefinedFunctionQuery
 
 logger = logging.getLogger("sqlleaf")
@@ -425,7 +424,7 @@ def transform_row_to_subquery(
     if not object_query:
         object_query = query.object_mapping.lookup_type_query(table=table, raise_on_missing=False)
         if not object_query:
-            raise SqlLeafException(message=f"Unknown table or type in cast to ROW(): {type_name}")
+            raise exception.MappingError(message=f"Unknown table or type in cast to ROW(): {type_name}")
 
     row_expr = node.this
 

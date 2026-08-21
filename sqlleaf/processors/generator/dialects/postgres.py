@@ -124,7 +124,7 @@ class PostgresGenerator(BaseGenerator):
         seq_table = exp.table_(table=seq_name_expr.name, db=schema)
         seq_query = gen_ctx.query.object_mapping.lookup_sequence_query(table=seq_table)
         if not seq_query:
-            raise exception.SqlLeafException(f"Sequence '{full_name}' not found.")
+            raise exception.MappingError(f"Sequence '{full_name}' not found.")
 
         subkind = seq_query.property if seq_query else ""
         gen_ctx = gen_ctx.replace(new_data_type=exp.DataType.build("INT"))

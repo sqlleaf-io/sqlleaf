@@ -80,7 +80,7 @@ class BaseGenerator:
     @singledispatchmethodlogger
     def process(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         # See the functions below for correct examples.
-        raise exception.SqlLeafException(message=f"Type is not yet registered with a method: {type(expr)}")
+        raise exception.GeneratorError(message=f"Type is not yet registered with a method: {type(expr)}")
 
     def __init_subclass__(cls, **kwargs):
         """Automatically registers subclasses when they are defined."""
@@ -128,7 +128,7 @@ class BaseGenerator:
         if parent is None:
             if gen_ctx.child_node is None:
                 # Catches programming errors when adding new visitors
-                raise exception.SqlLeafException(message="A parent cannot be None when processing grandparents.")
+                raise exception.GeneratorError(message="A parent cannot be None when processing grandparents.")
 
             # This may occur due to a user-provided hook function that turned the parent into None.
             # For example, perhaps we attempted to create the path [A -> B -> C] in the graph, but the hook prevented the
@@ -367,7 +367,7 @@ class BaseGenerator:
                     source_table,
                     (exp.Table, exp.Subquery, exp.Select, exp.Union, exp.Lateral, exp.Unnest),
                 ):
-                    raise exception.SqlLeafException(message=f"Unexpected source type: {type(source_table)}")
+                    raise exception.GeneratorError(message=f"Unexpected source type: {type(source_table)}")
 
         parent = ColumnNode(
             catalog=expr.catalog,
@@ -436,7 +436,7 @@ class BaseGenerator:
         (SELECT 2 ...) is part of SELECT 1 ...
         """
         if len(expr.selects) > 1 or isinstance(expr.this, exp.Union):
-            raise exception.SqlLeafException("A subquery must return only one column")
+            raise exception.GeneratorError("A subquery must return only one column")
 
         # Update the scope to be the subquery itself, as it is a subscope
         scope = t.cast(Scope, gen_ctx.scope)
@@ -514,7 +514,7 @@ class BaseGenerator:
                 )
 
             case _:
-                raise exception.SqlLeafException(f"Unhandled case for type: {object_type}")
+                raise exception.GeneratorError(f"Unhandled case for type: {object_type}")
 
         return self.create_node(new_node)
 

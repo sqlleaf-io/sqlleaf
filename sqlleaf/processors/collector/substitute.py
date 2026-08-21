@@ -3,8 +3,7 @@ import typing as t
 
 from sqlglot import exp
 
-from sqlleaf import mappings, util
-from sqlleaf.exception import SqlLeafException
+from sqlleaf import mappings, util, exception
 from sqlleaf.models.query import CallQuery, CTASQuery, ExecuteQuery, FunctionParam, UserDefinedFunctionQuery
 
 logger = logging.getLogger("sqlleaf")
@@ -37,7 +36,7 @@ def find_arg(args: t.List[exp.Expr], param: FunctionParam, index: int) -> t.Opti
         if arg_name == param_name:
             if param.is_variadic:
                 if isinstance(expr, exp.Array) and not is_variadic_call and not isinstance(expr, exp.Variadic):
-                    raise SqlLeafException(
+                    raise exception.MappingError(
                         f"VARIADIC keyword must be used when passing an array to variadic parameter '{param.name}'"
                     )
                 if isinstance(expr, exp.Variadic):
@@ -55,7 +54,7 @@ def find_arg(args: t.List[exp.Expr], param: FunctionParam, index: int) -> t.Opti
         # If the parameter is variadic and the supplied argument is an array,
         # the keyword 'VARIADIC' must also be supplied.
         if isinstance(arg, exp.Array):
-            raise SqlLeafException(
+            raise exception.MappingError(
                 f"VARIADIC keyword must be used when passing an array to variadic parameter '{param.name}'"
             )
 
@@ -290,12 +289,12 @@ def substitute_execute_with_plan(
     matched_prepare = object_mapping.lookup_prepare_query(plan_table, raise_on_missing=False)
 
     if not matched_prepare:
-        raise SqlLeafException(message=f"Could not find PREPARE statement for plan: {execute_name}")
+        raise exception.MappingError(message=f"Could not find PREPARE statement for plan: {execute_name}")
 
     expected = matched_prepare.parameter_count
     actual = len(execute_arguments)
     if expected > 0 and actual != expected:
-        raise SqlLeafException(
+        raise exception.MappingError(
             message=f"Wrong number of parameters for prepared statement (expected: {expected}, actual: {actual})"
         )
 

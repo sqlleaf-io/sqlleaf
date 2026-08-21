@@ -49,13 +49,13 @@ class UnloadQuery(Query):
         for i in range(len(expected_tokens)):
             if expected_tokens[i] != actual_tokens[i].token_type:
                 # This may be incorrect! Use the parser instead once available.
-                raise exception.SqlLeafException(
+                raise exception.InvalidQueryError(
                     message=f"Invalid syntax for UNLOAD expression: {statement.sql(dialect='redshift')}"
                 )
 
         select_expr = sqlglot.parse_one(actual_tokens[1].text, dialect="redshift")
         if not isinstance(select_expr, exp.Select):
-            raise exception.SqlLeafException(
+            raise exception.InvalidQueryError(
                 message=f"Invalid expression inside UNLOAD. Expected SELECT "
                 f"but got: {select_expr.sql(dialect='redshift')}"
             )
