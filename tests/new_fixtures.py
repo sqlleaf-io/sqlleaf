@@ -25,8 +25,8 @@ class LineageHolderDummy:
     def __init__(self):
         self.lineage = sqlleaf.Lineage()
 
-    def generate(self, sql: str, dialect: str):
-        self.lineage.generate(sql=sql, dialect=dialect)
+    def generate(self, sql: str, dialect: str, on_error: str):
+        self.lineage.generate(sql=sql, dialect=dialect, on_error=on_error)
 
         self._all_nodes = self.lineage.get_nodes()
         self._all_edges = self.lineage.get_edges()
@@ -92,13 +92,13 @@ class LineageHolderDummy:
 
 @pytest.fixture(scope="function")
 def holder():
-    def _create_holder(sql: str, dialect: str, with_tables: bool = False, hooks: dict | None = None) -> LineageHolderDummy:
+    def _create_holder(sql: str, dialect: str, with_tables: bool = False, hooks: dict | None = None, on_error: str = "stop") -> LineageHolderDummy:
         h = LineageHolderDummy()
         if hooks:
             h.lineage.register_hooks(hooks)
         if with_tables:
-            h.generate(sql=COMMON_TABLES, dialect=dialect)
-        h.generate(sql=sql, dialect=dialect)
+            h.generate(sql=COMMON_TABLES, dialect=dialect, on_error=on_error)
+        h.generate(sql=sql, dialect=dialect, on_error=on_error)
         return h
 
     return _create_holder

@@ -40,10 +40,11 @@ class Lineage:
         self.collected_queries: collector.CollectQueryResult | None = None
         self.user_defined_hooks = {}
 
-    def generate(self, sql: str, dialect: str, error_level: str = 'warn'):
+    def generate(self, sql: str, dialect: str, on_error: str = "stop") -> None:
         """
         Generate lineage for one or more SQL statements.
         """
+        exception.set_error_action(action=on_error)
         object_mapping = self.init_mapping(dialect=dialect)
         self.collected_queries = collector.collect_queries(sql, dialect, object_mapping)
 
@@ -65,7 +66,7 @@ class Lineage:
             self.merge_graph(graph)
             self.graph.graph["attrs"].add_query_to_graph(parent_holder)
 
-    def merge_graph(self, subgraph: nx.MultiDiGraph):
+    def merge_graph(self, subgraph: nx.MultiDiGraph) -> None:
         """
         Merge the subgraph into the main graph, and also track the individual subgraphs.
         """

@@ -667,6 +667,3 @@ def test__select_table_alias_one_column(holder):
 #  CREATE TABLE a.b;
 #  -- works, but should not; problem with trie
 #  SELECT * FROM b;
-
-# TODO: unnest([N...]) returns N columns named 'unnest', but sqlglot calls them 'offset'
-#  Undo sqlglot's column renaming of {col} => {col}.offset

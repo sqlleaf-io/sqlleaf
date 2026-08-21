@@ -724,7 +724,7 @@ class BaseQueryTransformer:
             )
 
         if exp.Star() in selects:
-            raise exception.InvalidQueryError(
+            exception.raise_error(exception.InvalidQueryError,
                 message=f"Statement has unresolved star column: {statement.sql(dialect=query.dialect)}",
             )
 

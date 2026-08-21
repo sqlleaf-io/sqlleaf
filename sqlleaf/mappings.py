@@ -162,36 +162,36 @@ class ObjectMapping(MappingSchema):
         )
 
     def lookup_prepare_query(self, table: exp.Table, raise_on_missing: bool = True) -> PrepareQuery | None:
-        return self._lookup_query(kind="prepare", table=table, raise_on_missing=raise_on_missing)
+        return self._lookup_query(kind="prepare", object=table, raise_on_missing=raise_on_missing)
 
     def lookup_procedure_query(self, table: exp.Table, raise_on_missing: bool = True) -> ProcedureQuery | None:
-        return self._lookup_query(kind="procedure", table=table, raise_on_missing=raise_on_missing)
+        return self._lookup_query(kind="procedure", object=table, raise_on_missing=raise_on_missing)
 
     def lookup_sequence_query(self, table: exp.Table, raise_on_missing: bool = True) -> SequenceQuery | None:
-        return self._lookup_query(kind="sequence", table=table, raise_on_missing=raise_on_missing)
+        return self._lookup_query(kind="sequence", object=table, raise_on_missing=raise_on_missing)
 
     def lookup_stage_query(self, table: exp.Table, raise_on_missing: bool = True) -> StageQuery | None:
-        return self._lookup_query(kind="stage", table=table, raise_on_missing=raise_on_missing)
+        return self._lookup_query(kind="stage", object=table, raise_on_missing=raise_on_missing)
 
     def lookup_table_query(self, table: exp.Table, raise_on_missing: bool = True) -> TableQuery | None:
-        return self._lookup_query(kind="table", table=table, raise_on_missing=raise_on_missing)
+        return self._lookup_query(kind="table", object=table, raise_on_missing=raise_on_missing)
 
     def lookup_trigger_query(self, table: exp.Table, raise_on_missing: bool = True) -> TriggerQuery | None:
-        return self._lookup_query(kind="trigger", table=table, raise_on_missing=raise_on_missing)
+        return self._lookup_query(kind="trigger", object=table, raise_on_missing=raise_on_missing)
 
     def lookup_type_query(self, table: exp.Table, raise_on_missing: bool = True) -> TypeQuery | None:
-        return self._lookup_query(kind="type", table=table, raise_on_missing=raise_on_missing)
+        return self._lookup_query(kind="type", object=table, raise_on_missing=raise_on_missing)
 
     def lookup_udf_query(
         self, table: exp.Table, raise_on_missing: bool = True
     ) -> t.List[UserDefinedFunctionQuery] | None:
         # A UDF can have multiple names but different types, thus we return a list
-        return self._lookup_query(kind="udf", table=table, raise_on_missing=raise_on_missing)
+        return self._lookup_query(kind="udf", object=table, raise_on_missing=raise_on_missing)
 
     def _lookup_query(
         self,
         kind: str,
-        table: exp.Table,
+        object: exp.Table,
         raise_on_missing: bool,
     ) -> Q | None:
         """
@@ -202,18 +202,18 @@ class ObjectMapping(MappingSchema):
 
         Args:
             kind: the expression's kind
-            table: the target table.
+            object: the target object.
             raise_on_missing: whether to raise in case the schema is not found.
 
         Returns:
-            The schema of the target table.
+            The schema of the target object.
         """
         if kind not in self.kind_mapping:
             if raise_on_missing:
-                raise exception.MappingError(f"Could not find '{table.this}' of type '{kind}' in mapping.")
+                raise exception.MappingError(f"Could not find '{object.this}' of type '{kind}' in mapping.")
             return None
 
-        parts = self.table_parts(table)[0 : len(self.supported_table_args)]
+        parts = self.table_parts(object)[0: len(self.supported_table_args)]
         resolved_parts = self._find_in_trie(parts, self.kind_mapping_trie[kind], raise_on_missing)
 
         if resolved_parts is None:
@@ -223,9 +223,9 @@ class ObjectMapping(MappingSchema):
         if not result:
             return None
         elif isinstance(result, dict):
-            # The mapping table has varying depth if some tables use a catalog and others don't
-            if table.name in result:
-                return result[table.name]
+            # The mapping object has varying depth if some objects use a catalog and others don't
+            if object.name in result:
+                return result[object.name]
             else:
                 return None
         else:
