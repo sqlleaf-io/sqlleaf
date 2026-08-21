@@ -35,6 +35,5 @@ class CTASTransformer(BaseQueryTransformer):
         expr = statement.expression
         if self.query.dialect == "postgres" and isinstance(expr, exp.Alias):
             if expr.this.name.upper() == "TABLE":
-                expr.pop()
-                statement.set("expression", exp.select("*").from_(expr.alias))
+                expr.replace(exp.select("*").from_(expr.alias))
         return statement

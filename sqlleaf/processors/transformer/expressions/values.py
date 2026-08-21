@@ -292,14 +292,11 @@ def _rewrite_values_statement(query: Q, expression: exp.Values, statement: E) ->
         statement.replace(insert_expr)
         statement = insert_expr
     elif isinstance(statement, exp.Create):
-        expression.pop()
-        statement.set("expression", new_statement)
+        expression.replace(new_statement)
     elif isinstance(statement, exp.CTE):
-        expression.pop()
         if isinstance(new_statement, exp.Subquery):
             new_statement = new_statement.this
-
-        statement.set("this", new_statement)
+        expression.replace(new_statement)
     elif isinstance(statement, exp.Values):
         statement = new_statement
     elif isinstance(statement, exp.SetOperation):
