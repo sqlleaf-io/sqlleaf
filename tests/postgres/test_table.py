@@ -2,6 +2,7 @@ import os
 import sys
 
 import pytest
+import sqlglot
 
 from sqlleaf.exception import SqlLeafException
 from tests.new_fixtures import holder as holder
@@ -291,3 +292,21 @@ def test__update_only_inherited(holder):
     assert h.paths == [["column[fruit.source_table.price]", "column[fruit.parent_table.price]"]]
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
+
+
+def test__table_except_table_fails(holder):
+    with pytest.raises(sqlglot.errors.ParseError) as e:
+        sql = """
+        INSERT INTO t1 TABLE t1 EXCEPT TABLE t2;
+        """
+        holder(sql=sql, dialect=DIALECT)
+    assert e.value.args[0].startswith("Invalid expression / Unexpected token. Line 2, Col: 38.")
+
+
+def test__select_inet_fails(holder):
+    with pytest.raises(sqlglot.errors.ParseError) as e:
+        sql = """
+        INSERT INTO t1 (name) SELECT '192.168.1.1'::inet <<= '192.168.1.0/24'::inet
+        """
+        holder(sql=sql, dialect=DIALECT)
+    assert e.value.args[0].startswith("Required keyword: 'expression' missing for")

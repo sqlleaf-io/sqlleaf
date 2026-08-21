@@ -55,18 +55,14 @@ _TRANSFORMER_MAP: dict[type, type[BaseQueryTransformer]] = {
 
 logger = logging.getLogger("sqlleaf")
 
-"""
-Transform an SQL query into a single canonical form that we can easily generate the lineage from.
-The form is `INSERT .. SELECT`.
-"""
-
 
 def transform_query(query_holder: QueryHolder) -> None:
     """
-    1. Transform the original query's AST (DML flattening, qualification, etc.).
-    2. If the original query contains UDF call sites, replace each call with an
-       inline subquery built from the output columns of the last transformed
-       downstream holder for that call — producing `holder.transformed`.
+    Transform an SQL query into a single, normalized form that we can easily generate lineage from.
+
+    This runs a series of transformations specific to each query type. Queries register their own
+    transformation functions to ensure that the query is fully qualified, with all columns added and
+    functions substituted so that they can be extracted into a graph by the generator.
     """
     transformed_query = _transform_query_instance(query=query_holder.original)
     query_holder.set_transformed_query(query=transformed_query)
