@@ -190,7 +190,7 @@ class Query:
         """
         if not isinstance(self.target_info.expression, exp.Table):
             raise exception.InvalidQueryError(
-                message=f"Expected the target object to be a table but it is a {type(self.target_info.type)}"
+                message=f"Expected the target object to be a table but it is a {repr(self.target_info.type)}"
             )
         return self.target_info.expression
 

@@ -46,9 +46,10 @@ def normalize_values(query: Q, expr: exp.Expr) -> exp.Expr:
             # VALUES is directly the expression of an INSERT
             parent = values.parent
             if isinstance(parent, exp.Insert) and parent.expression is values:
-                new_stmt = _handle_values_in_insert(values, parent, parent is expr, query)
-                if new_stmt is not None:
-                    expr = new_stmt
+                # Inline of _handle_values_in_insert
+                converted = _rewrite_values_statement(query, values, parent)
+                if isinstance(converted, exp.Insert) and (parent is expr):
+                    expr = converted
 
             # VALUES is directly the expression of a CREATE ... AS
             elif isinstance(parent, exp.Create) and parent.expression is values:
@@ -96,24 +97,6 @@ def _cte_ancestor_in_scope(statement: exp.Expr, values: exp.Values) -> exp.CTE |
         return None
 
     return cte
-
-
-def _handle_values_in_insert(
-    values: exp.Values,
-    parent: exp.Insert,
-    is_top_level: bool,
-    query: Q,
-) -> t.Optional[exp.Expr]:
-    """
-    Handle VALUES directly under an INSERT expression.
-
-    Returns a possibly updated top-level statement when the INSERT itself is
-    replaced and it is the top-level statement.
-    """
-    converted = _rewrite_values_statement(query, values, parent)
-    if isinstance(converted, exp.Insert) and is_top_level:
-        return converted
-    return None
 
 
 def _rewrite_values_in_table_position(values: exp.Values, dialect: str) -> None:

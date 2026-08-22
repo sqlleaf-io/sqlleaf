@@ -5,6 +5,7 @@ import typing as t
 import networkx as nx
 
 from sqlleaf import exception, mappings, path, util
+from sqlleaf.models.hook import Hook
 from sqlleaf.models.node import EdgeAttributes, GraphAttributes, N
 from sqlleaf.models.query import (
     CopyQuery,
@@ -37,7 +38,7 @@ class Lineage:
         self.subgraphs: t.List[nx.MultiDiGraph] = []  # The subgraphs that make up the main graph
         self.paths: t.Dict[str, t.List[LineagePath]] = {}  # The paths throughout the graph
         self.collected_queries: collector.CollectQueryResult | None = None
-        self.user_defined_hooks = {}
+        self.user_defined_hooks: list[Hook] = []
         self.object_mapping: mappings.ObjectMapping | None = None
 
     def generate(self, sql: str, dialect: str, on_error: str = "stop") -> None:
@@ -239,12 +240,15 @@ class Lineage:
                     path += " -> "
             print(path)
 
-    def register_hooks(self, hooks: dict[N, t.Callable[[N], N | None]]) -> None:
+    def register_hooks(self, hooks: list[Hook]) -> None:
         """
         Register user-defined hooks.
 
         A hook allows a user to provide their own logic to control how nodes are created.
-        They consist of a node class mapped to a function that returns the node to be created.
+        Each hook is represented by a Hook object which specifies:
+        - name: a unique identifier for the hook
+        - kind: the Node class the hook applies to
+        - func: a callable that accepts a Node instance and returns the Node to use, or None to skip it
 
         A hook runs after a node has been created, but before the node is added to the graph.
         This gives the user maximum control over the node's properties, exposing attributes
@@ -256,15 +260,20 @@ class Lineage:
 
         Examples:
             ### 1. Never create a FunctionNode.
-            hooks = {FunctionNode: lambda n: None}
+            hooks = [Hook(name="skip_all_functions", kind=FunctionNode, func=lambda n: None)]
 
             ### 2. Only create a FunctionNode if its name is 'SUM'.
-            def my_func(N: node):
+            def my_func(node):
                 return node if node.name == "SUM" else None
-            hooks = {FunctionNode: my_func}
+            hooks = [Hook(name="only_sum", kind=FunctionNode, func=my_func)]
         """
-        self.user_defined_hooks |= hooks
+        self.user_defined_hooks.extend(hooks)
 
+    def deregister_hooks(self, hooks: list[Hook]) -> None:
+        """
+        The inverse of `register_hooks()`: remove a hook (by name) from the list of user-defined hooks.
+        """
+        self.user_defined_hooks = [udh for udh in self.user_defined_hooks if udh not in hooks]
 
 def new_graph() -> nx.MultiDiGraph:
     """

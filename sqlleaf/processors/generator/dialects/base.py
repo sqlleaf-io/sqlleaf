@@ -11,6 +11,7 @@ from sqlglot.optimizer.scope import ScopeType
 
 from sqlleaf import exception, util
 from sqlleaf.models.context import GeneratorContext, PositionContext
+from sqlleaf.models.hook import Hook
 from sqlleaf.models.node import (
     ColumnNode,
     DynamoDbNode,
@@ -75,7 +76,7 @@ class BaseGenerator:
     dialect = ""
 
     def __init__(self):
-        self.hooks = None
+        self.hooks = {}
 
     @singledispatchmethodlogger
     def process(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
@@ -106,11 +107,11 @@ class BaseGenerator:
             return BaseGenerator()
         return target_class()
 
-    def add_hooks(self, hooks: dict[N, t.Callable[[N], N | None]]) -> None:
+    def add_hooks(self, hooks: list[Hook]) -> None:
         """
         Add user-defined hooks.
         """
-        self.hooks = hooks
+        self.hooks: dict[type, Hook] = {h.kind: h for h in hooks}
 
     def do_grandparents(
         self,
@@ -147,8 +148,8 @@ class BaseGenerator:
         # Run against the hooks
         hook = self.hooks.get(type(node))
         if hook:
-            logger.debug(f"Running hook '{hook.__name__}' on node type '{node.__class__.__name__}'")
-            result = hook(node)
+            logger.debug(f"Running hook '{hook.name}' on node type '{node.__class__.__name__}'")
+            result = hook.func(node)
             return result
         return node
 

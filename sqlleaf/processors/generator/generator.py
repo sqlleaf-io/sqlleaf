@@ -13,6 +13,7 @@ if t.TYPE_CHECKING:
 
 from sqlleaf import exception, mappings, util
 from sqlleaf.models.context import GeneratorContext, PositionContext
+from sqlleaf.models.hook import Hook
 from sqlleaf.models.node import (
     ColumnNode,
     EdgeAttributes,
@@ -33,7 +34,7 @@ from sqlleaf.util.expression import get_column_index, get_expression_for_column
 logger = logging.getLogger("sqlleaf")
 
 
-def generate_lineage_for_query(query_holder: QueryHolder, graph: nx.MultiDiGraph, hooks: dict) -> nx.MultiDiGraph:
+def generate_lineage_for_query(query_holder: QueryHolder, graph: nx.MultiDiGraph, hooks: list[Hook]) -> nx.MultiDiGraph:
     """
     Calculate the lineage for an SQL query.
 

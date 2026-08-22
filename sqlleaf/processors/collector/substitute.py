@@ -238,8 +238,14 @@ def replace_dot_reference(
 
 def substitute_call(query: CallQuery) -> t.List[exp.Expr]:
     """
-    Substitutes a CALL statement with the body of the procedure it calls.
+    Substitutes a CALL statement's arguments into the statmenets inside its body and returns them.
     Circular references in procedure-to-procedure calls could cause infinite recursion.
+
+    Example:
+        CREATE PROCEDURE hello() ... SELECT 3;
+        CALL hello();
+        ->
+        SELECT 3;
     """
     procedure_table = exp.Table(
         this=exp.to_identifier(query.procedure),
