@@ -2,6 +2,7 @@ import os
 import sys
 
 import pytest
+import sqlglot
 
 from sqlleaf.typing import SqlObjectType
 from tests.new_fixtures import holder as holder
@@ -124,3 +125,14 @@ def test___copy_to_and_from_stage(holder, case):
     assert query_2.source_info.type == SqlObjectType.TABLE
     assert query_2.target_info.type == SqlObjectType.STAGE
     # TODO: full names should include the stage's s3 file path
+
+
+def test__copy_into(holder):
+    with pytest.raises(sqlglot.errors.ParseError) as e:
+        sql = """
+        COPY FILES
+        INTO @trg_stage
+        FROM @src_stage;
+        """
+        holder(sql=sql, dialect=DIALECT)
+    assert e.value.args[0].startswith("Expected table name but got <Token token_type: TokenType.INTO")
