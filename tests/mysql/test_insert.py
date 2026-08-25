@@ -130,3 +130,13 @@ def test__insert_table(holder):
         ["column[other_users.id]", "column[users.id]"],
         ["column[other_users.name]", "column[users.name]"],
     ]
+
+
+def test__insert_from_dual(holder):
+    sql = """
+    CREATE TABLE users (id INT, name VARCHAR(255));
+    INSERT INTO users SELECT 'hello' AS name FROM dual;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [['literal["hello"]', 'column[users.id]']]

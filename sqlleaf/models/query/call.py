@@ -60,12 +60,12 @@ class CallQuery(Query):
 
     def __init__(
         self,
-        statement: exp.Command,
+        expr: exp.Command,
         dialect: str,
         object_mapping: mappings.ObjectMapping,
         statement_index: int,
     ):
-        self.properties = CallQueryProperties.from_expression(statement, dialect)
+        self.properties = CallQueryProperties.from_expression(expr, dialect)
 
         # We can represent the procedure being called as the target
         target_info = TargetInfo(
@@ -78,7 +78,7 @@ class CallQuery(Query):
 
         super().__init__(
             dialect=dialect,
-            statement=statement,
+            statement=expr,
             statement_index=statement_index,
             object_mapping=object_mapping,
             source_info=None,

@@ -6,9 +6,10 @@ from dataclasses import dataclass, field
 import sqlglot
 from sqlglot import TokenType, exp
 from sqlglot.expressions import ColumnDef
+from sqlleaf.processors.transformer import udf
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
-from sqlleaf import exception, mappings, settings, util
+from sqlleaf import exception, mappings, settings, util, typing
 from sqlleaf.models.query import (
     CallQuery,
     CopyQuery,
@@ -285,9 +286,6 @@ def _collect_call_substitutions(
     and any query containing UDF call sites.
     The resulting inner statements are classified as Queries and attached as downstream holders.
     """
-    from sqlleaf import typing
-    from sqlleaf.processors.transformer import udf
-
     subst_statements: t.List[exp.Expr] = []
 
     if isinstance(query, CallQuery):
@@ -492,159 +490,6 @@ def _collect_multitable_insert_children(
         parent_holder.add_downstream_holder(downstream_holder)
 
 
-def _set_column_defs(query: TableQuery):
-    """
-    Collect all the column definitions for this table.
-    """
-    statement = query.statement
-    all_columns = []
-
-    for expression in statement.this.expressions:
-        if isinstance(expression, exp.ColumnDef):
-            all_columns.append(expression)
-        elif isinstance(expression, exp.LikeProperty):
-            like_columns = _collect_like_columns(expression, query.object_mapping, query.get_target_as_table())
-            all_columns.extend(like_columns)
-        elif isinstance(expression, exp.Identifier):
-            # CREATE TABLE (a INT, b);
-            raise exception.InvalidQueryError(message=f"Column '{expression.name}' must define a data type.")
-        else:
-            raise exception.InvalidQueryError(message=f"Unsupported column expression: {type(expression)}")
-
-    if inherited_props := list(statement.find_all(exp.InheritsProperty)):
-        inherited_columns = _collect_inherited_columns(inherited_props, query)
-        all_columns = inherited_columns + all_columns
-
-    # Set the column's 'default' type to the column's own type (it is sometimes missing)
-    for col_def in all_columns:
-        if default := col_def.find(exp.DefaultColumnConstraint):
-            default.this.type = col_def.kind
-
-    query.column_defs = all_columns
-    query.system_column_defs = settings.system_columns(query.dialect)
-
-
-def _collect_inherited_columns(
-    inherits_properties: t.List[exp.InheritsProperty], query: TableQuery
-) -> t.List[exp.ColumnDef]:
-    """
-    Search for tables referenced as 'CREATE TABLE b INHERITS (a)' and collect all their columns.
-    A table can have multiple tables in an INHERITS clause.
-    """
-    column_defs = []
-
-    for inh_prop in inherits_properties:
-        for inh_table in inh_prop.expressions:
-            parent_table_query = t.cast(TableQuery, query.object_mapping.lookup_table_query(table=inh_table))
-            parent_table_query.inherited_by.append(query)
-            query.inherits.append(parent_table_query)
-
-            # Re-assign the columns to a copy of the correct table
-            expr = query.target_info.expression
-            if expr.parent:
-                schema = util.copy_expression(expr.parent)
-                for parent_col_def in parent_table_query.column_defs:
-                    col_def = parent_col_def.copy()
-                    schema.append("expressions", col_def)
-                    column_defs.append(col_def)
-
-    return column_defs
-
-
-def _collect_like_columns(
-    like_property: exp.LikeProperty, object_mapping: mappings.ObjectMapping, child_object: exp.Table
-) -> t.List[exp.ColumnDef]:
-    """
-    Search for tables referenced as 'CREATE TABLE b (LIKE a)'.
-    A table can have multiple LIKE clauses.
-    """
-    columns = []
-    property_names = []
-
-    for like_prop in like_property.expressions:
-        # sqlglot concats properties with '='
-        property_names.append(str(like_prop).replace("=", " "))
-
-    properties = _get_properties_to_include(property_names)
-
-    # Look up the like-table's columns and determine which properties to transfer
-    parent_table_query = t.cast(TableQuery, object_mapping.lookup_table_query(table=like_property.this))
-    parent_columns = parent_table_query.get_column_defs()
-
-    for parent_col_def in parent_columns:
-        new_col = parent_col_def.copy()
-        for prop_name, prop_attrs in properties.items():
-            prop_expr = new_col.find(prop_attrs["expr"])
-
-            if properties[prop_name]["include"]:
-                # Set the expression's parent to be the new table (it's missing)
-                if prop_expr:
-                    for inner_col in prop_expr.find_all(exp.Column):
-                        # A GENERATED column expression might refer to other columns
-                        try:
-                            referenced_parent_col_def = [c for c in parent_columns if c.name == inner_col.name][0]
-                        except IndexError:
-                            message = f"Column '{inner_col.name}' does not exist in table '{child_object}'."
-                            raise exception.MappingError(message=message)
-
-                        inner_col.set("catalog", exp.to_identifier(child_object.catalog))
-                        inner_col.set("db", exp.to_identifier(child_object.db))
-                        inner_col.set("table", exp.to_identifier(child_object.this))
-                        inner_col.type = referenced_parent_col_def.kind
-            else:
-                # Discard the column's expression
-                if prop_expr:
-                    prop_expr.parent.pop()
-
-        columns.append(new_col)
-
-    return columns
-
-
-def _get_properties_to_include(options: t.List[str]) -> t.Dict:
-    """
-    Determine which column properties to keep within a LIKE according to the rules below.
-
-    From the Postgres docs:
-        Specifying INCLUDING copies the property, specifying EXCLUDING omits the property.
-        EXCLUDING is the default. If multiple specifications are made for the same kind
-        of object, the last one is used. It could be useful to write individual EXCLUDING
-        clauses after INCLUDING ALL to select all but some specific options.
-    """
-    # All supported properties
-    properties = {
-        "DEFAULTS": {"include": False, "expr": exp.DefaultColumnConstraint},
-        "GENERATED": {"include": False, "expr": exp.ComputedColumnConstraint},
-        "IDENTITY": {"include": False, "expr": exp.GeneratedAsIdentityColumnConstraint},
-    }
-
-    for opt in options:
-        opt = opt.strip().upper()
-
-        if opt == "INCLUDING ALL":
-            for prop in properties:
-                properties[prop]["include"] = True
-            continue
-
-        if opt == "EXCLUDING ALL":
-            for prop in properties:
-                properties[prop]["include"] = False
-            continue
-
-        parts = opt.split()
-        action, prop = parts
-
-        if prop not in properties:
-            continue  # Ignore unknown properties
-
-        if action == "INCLUDING":
-            properties[prop]["include"] = True
-        elif action == "EXCLUDING":
-            properties[prop]["include"] = False
-
-    return properties
-
-
 _UNNAMED_TYPE_MAP: dict[type, type] = {
     exp.Insert: InsertQuery,
     exp.Update: UpdateQuery,
@@ -679,11 +524,11 @@ def _process_unnamed(
 
     if isinstance(statement, exp.Command) and statement.this.upper() == "CALL":
         return CallQuery(
-            statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
     if isinstance(statement, exp.Command) and statement.this.upper() == "EXECUTE":
         return ExecuteQuery(
-            statement=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
     if isinstance(statement, exp.Create):
         if statement.kind == "TABLE":
@@ -703,14 +548,14 @@ def _process_tables(
     """
     Process a 'CREATE TABLE' statement.
     """
-    query: Q | None = None
+    query = None
 
     if statement.kind == "TABLE":
         # CREATE TABLE ...
         query = TableQuery(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
-        _set_column_defs(query)
+        query.set_column_defs()
         object_mapping.add_table_query(
             query=query,
             column_mapping=query.get_column_names_with_types(include_system=True),
