@@ -40,12 +40,41 @@ class PLBlock(exp.Block):
     """PL/pgSQL BEGIN ... END block (subclass of Block)."""
 
 
+class PLDeclareItem(exp.DeclareItem):
+    """Extended DeclareItem for PL/pgSQL.
+
+    Adds helpers to detect special type references used in DECLARE:
+      - table%ROWTYPE
+      - table.column%TYPE
+
+    When parsing these, we store references under args:
+      - row_of: Identifier (table name) for %ROWTYPE
+      - column_of: Column expression for %TYPE
+    """
+
+    # Accept additional PL/pgSQL-specific attributes under args
+    arg_types = {
+        **exp.DeclareItem.arg_types,
+        "row_of": False,
+        "column_of": False,
+    }
+
+    def is_row_type(self) -> bool:  # pragma: no cover - exercised by tests
+        return self.args.get("row_of") is not None
+
+    def is_column_type(self) -> bool:  # pragma: no cover - exercised by tests
+        return self.args.get("column_of") is not None
+
+
 class PLpgSQLParser(PostgresParser):
     """Parser that recognizes the PERFORM statement and DECLARE ... BEGIN blocks."""
 
     def _parse_statement(self) -> exp.Expr | None:  # type: ignore[override]
         # End of input
-        logger.info("")
+        logger.warning(
+            "Tokens: %s",
+            [f"{t.token_type.name}({t.text})" for t in self._tokens],
+        )
 
         if not self._curr:
             return None
@@ -130,44 +159,122 @@ class PLpgSQLParser(PostgresParser):
             if self._match(TokenType.SEMICOLON):
                 continue
 
-            # Parse one declaration item: name TYPE [:= <expr>] ;
-            # Manually consume variable name and type. Tokenization can vary:
-            # Case A: STRING token like 'name TYPE'
-            # Case B: Separate tokens: VAR/IDENTIFIER then a TYPE token sequence
-            curr_tok = self._curr
-            if not curr_tok:
-                self.raise_error("Expected identifier in DECLARE item")
+            # Parse a single DECLARE item head: name and type details
+            name, dtype, row_of, column_of = self._parse_single_declare_head()
 
-            if curr_tok.token_type == TokenType.STRING and " " in curr_tok.text:
-                raw_name, rest = curr_tok.text.split(None, 1)
-                name = exp.Var(this=raw_name)
-                # Build DataType from the remainder before any default operator
-                type_text = rest.split(":=", 1)[0].strip()
-                dtype = exp.DataType.build(type_text)
-                # consume this combined token
-                self._advance()
-            else:
-                raw_name = curr_tok.text
-                name = exp.Var(this=raw_name)
-                # advance past the variable token
-                self._advance()
-                dtype = self._parse_type()
-
+            # Optional default: := <expr>
             default = exp.Null()
             if self._match(TokenType.COLON_EQ):
                 default = self._parse_expression()
 
             # Terminating semicolon for this item, possibly across chunk boundary
             if not self._match(TokenType.SEMICOLON):
-                # If semicolon isn't in this chunk, try in the next
                 self._advance_chunk()
                 self._match(TokenType.SEMICOLON)
 
+            # Build PLDeclareItem (always) and append
             declare_items.append(
-                self.expression(exp.DeclareItem(this=[name], kind=dtype, default=default))
+                self.expression(
+                    self._build_pl_declare_item(name=name, dtype=dtype, default=default, row_of=row_of, column_of=column_of)
+                )
             )
 
         return declare_items
+
+    # --- DECLARE helpers ---
+    def _parse_single_declare_head(
+        self,
+    ) -> tuple[exp.Expression, exp.DataType, exp.Expression | None, exp.Expression | None]:
+        """Parse the head of a DECLARE item: name and type info.
+
+        Returns (name, dtype, row_of, column_of). The default value and trailing semicolon
+        are handled by the caller.
+        """
+        curr_tok = self._curr
+        if not curr_tok:
+            self.raise_error("Expected identifier in DECLARE item")
+
+        row_of: exp.Expression | None = None
+        column_of: exp.Expression | None = None
+
+        # Case A: current token is a single STRING containing "name TYPE"
+        if curr_tok.token_type == TokenType.STRING and " " in curr_tok.text:
+            raw_name, rest = curr_tok.text.split(None, 1)
+            name = exp.Var(this=raw_name)
+
+            type_text = rest.split(":=", 1)[0].strip()
+            upper = type_text.upper()
+
+            if upper.endswith("%ROWTYPE"):
+                base = type_text[: -len("%ROWTYPE")].strip()
+                if base:
+                    row_of = exp.to_table(base)
+            elif upper.endswith("%TYPE"):
+                base = type_text[: -len("%TYPE")].strip()
+                if "." in base:
+                    tbl, col = base.rsplit(".", 1)
+                    column_of = exp.column(col, tbl)
+
+            if row_of or column_of:
+                # Placeholder kind; actual rendering handled in generator
+                dtype = exp.DataType.build("UNKNOWN", dialect=self.dialect)
+            else:
+                dtype = exp.DataType.build(type_text, udt=True)
+
+            # consume this combined token
+            self._advance()
+            return name, dtype, row_of, column_of
+
+        # Case B: name then a parsed type sequence
+        raw_name = curr_tok.text
+        name = exp.Var(this=raw_name)
+        self._advance()
+
+        # Try to detect inline %ROWTYPE / %TYPE just after the name
+        save_i = self._index
+        save_curr = self._curr
+        if self._match_texts("%", advance=False) or self._match(TokenType.MOD, advance=False):
+            if self._match_texts("ROWTYPE"):
+                row_of = exp.to_identifier(raw_name)
+                dtype = exp.DataType.build("RECORD", dialect=self.dialect)
+                return name, dtype, row_of, column_of
+            if self._match_texts("TYPE"):
+                # Ambiguous/cumbersome tokenization, revert and parse a normal type
+                self._index = save_i
+                self._curr = save_curr
+
+        # Fallback: parse a normal type, optionally followed by %TYPE
+        dtype = self._parse_type()
+        if self._match_texts("%") or self._match(TokenType.MOD):
+            if self._match_texts("TYPE"):
+                base = dtype.sql()
+                if base and "." in base:
+                    tbl, col = base.rsplit(".", 1)
+                    column_of = exp.column(col, tbl)
+                    dtype = exp.DataType.build("TEXT", dialect=self.dialect)
+
+        return name, dtype, row_of, column_of
+
+    def _build_pl_declare_item(
+        self,
+        *,
+        name: exp.Expression,
+        dtype: exp.DataType,
+        default: exp.Expression,
+        row_of: exp.Expression | None,
+        column_of: exp.Expression | None,
+    ) -> PLDeclareItem:
+        """Create a PLDeclareItem with optional row/column type references."""
+        kwargs: dict[str, exp.Expression | list[exp.Expression]] = {
+            "this": [name],
+            "kind": dtype,
+            "default": default,
+        }
+        if row_of is not None:
+            kwargs["row_of"] = row_of
+        if column_of is not None:
+            kwargs["column_of"] = column_of
+        return PLDeclareItem(**kwargs)  # type: ignore[return-value]
 
     def _parse_pl_block_body(self) -> list[exp.Expression]:
         """Parse a PL/pgSQL block body until END.
@@ -213,30 +320,58 @@ class PLpgSQLGenerator(PostgresGenerator):
         **PostgresGenerator.TRANSFORMS,
         Perform: lambda self, e: self.perform_sql(e),
         PLBlock: lambda self, e: self.plblock_sql(e),
+        PLDeclareItem: lambda self, e: self.pldeclareitem_sql(e),
     }
 
     def plblock_sql(self, expression: PLBlock) -> str:
-        """Generate SQL for PL/pgSQL blocks, including optional DECLARE section."""
+        """Generate SQL for PL/pgSQL blocks, including an optional DECLARE section."""
         declare = expression.args.get("declare")
 
         decl_sql = ""
         if declare:
             lines: list[str] = []
             for item in declare.expressions or []:
-                # 'this' is a list of variables in SQLGlot's DeclareItem
-                names = self.expressions(item, "this") or []
-                name = ", ".join(names) if names else ""
-                kind = self.sql(item, "kind")
-                default = self.sql(item, "default")
-                line = f"    {name} {kind}"
-                if default:
-                    line += f" := {default}"
-                line += ";"
+                if isinstance(item, PLDeclareItem):
+                    # Delegate PL/pgSQL-specific line formatting to the dedicated method
+                    line = f"    {self.pldeclareitem_sql(item)}"
+                else:
+                    # Fallback: use generic rendering and ensure it ends with ';'
+                    rendered = self.sql(item).rstrip()
+                    if not rendered.endswith(";"):
+                        rendered += ";"
+                    line = f"    {rendered}"
                 lines.append(line)
             decl_sql = "DECLARE\n" + "\n".join(lines) + "\n"
 
         body_sql = self.block_sql(expression)
         return decl_sql + body_sql
+
+    def pldeclareitem_sql(self, expression: PLDeclareItem) -> str:
+        """Render a single PL/pgSQL declare item line.
+
+        Example outputs:
+          - "myrow tablename%ROWTYPE;"
+          - "myfield tablename.columnname%TYPE := 1;"
+        """
+        names = self.expressions(expression, "this") or []
+        name = ", ".join(names) if names else ""
+        default = self.sql(expression, "default")
+
+        if expression.is_row_type():
+            tbl = self.sql(expression, "row_of")
+            rendered_type = f"{tbl}%ROWTYPE"
+        elif expression.is_column_type():
+            col = self.sql(expression, "column_of")
+            rendered_type = f"{col}%TYPE"
+        else:
+            kind = self.sql(expression, "kind")
+            rendered_type = f"{kind}" if kind else ""
+
+        line = f"{name} {rendered_type}".rstrip()
+        if default:
+            line += f" := {default}"
+        line += ";"
+        return line
 
     def block_sql(self, expression: exp.Block) -> str:
         """PL/pgSQL-style block rendering.
@@ -251,7 +386,7 @@ class PLpgSQLGenerator(PostgresGenerator):
         Additionally, if the first child is a PLBlock wrapper, unwrap it to reach
         the actual statements (e.g., PERFORM) contained within.
         """
-        expressions = list(expression.args.get("expressions") or [])
+        expressions = expression.expressions
 
         # Drop a trailing END marker if present
         if expressions and isinstance(expressions[-1], exp.EndStatement):
@@ -262,7 +397,7 @@ class PLpgSQLGenerator(PostgresGenerator):
         # for sqlglot's chunk-based parsing which may split block body statements
         # across chunks, causing siblings to appear alongside the inner PLBlock.
         if expressions and isinstance(expressions[0], PLBlock):
-            inner = list(expressions[0].args.get("expressions") or [])
+            inner = expressions[0].expressions
             for e in expressions[1:]:
                 if isinstance(e, exp.EndStatement):
                     break
@@ -271,9 +406,6 @@ class PLpgSQLGenerator(PostgresGenerator):
             inner = expressions
 
         body = "; ".join(s for s in (self.sql(e) for e in inner) if s)
-        if not body:
-            return "BEGIN END"
-
         # Heuristic: include a trailing semicolon after END iff the block body
         # contains more than one statement. This matches the expectations in
         # our lightweight tests.

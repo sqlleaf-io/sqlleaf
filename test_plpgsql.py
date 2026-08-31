@@ -70,6 +70,42 @@ class TestPLpgSQLDeclare(unittest.TestCase):
         DECLARE
             my_id INTEGER;
             my_count INTEGER := 0;
+            arow RECORD;
+        BEGIN
+            PERFORM 1;
+        END;
+        """
+        tree = parse_one(sql, dialect=PLpgSQL)
+        self.assertIsInstance(tree, PLBlock)
+
+        decl = tree.args.get("declare")
+        self.assertIsInstance(decl, exp.Declare)
+
+        items = list(decl.expressions)
+
+        first0 = items[0].this[0]
+        self.assertEqual(first0.name, "my_id")
+        self.assertIn(items[0].args.get("kind").sql(), {"INT"})
+        self.assertIsNone(items[0].args.get("default").to_py(), None)
+
+        first1 = items[1].this[0]
+        self.assertEqual(first1.name, "my_count")
+        self.assertIn(items[1].args.get("kind").sql(), {"INTEGER"})
+        self.assertEqual(items[1].args.get("default").to_py(), 0)
+
+        first2 = items[2].this[0]
+        self.assertEqual(first2.name, "arow")
+        self.assertIn(items[2].args.get("kind").sql(), {"RECORD"})
+        self.assertEqual(items[2].args.get("default").to_py(), None)
+
+        out = tree.sql(dialect=PLpgSQL)
+
+
+    def test_declare_row_and_column_type(self) -> None:
+        sql = """
+        DECLARE
+            myrow tablename%ROWTYPE;
+            myfield tablename.columnname%TYPE;
         BEGIN
             PERFORM 1;
         END;
@@ -83,17 +119,21 @@ class TestPLpgSQLDeclare(unittest.TestCase):
         items = list(decl.expressions)
         self.assertEqual(len(items), 2)
 
-        first0 = items[0].this[0]
-        self.assertEqual(first0.name, "my_id")
-        self.assertIn(items[0].args.get("kind").sql(), {"INT"})
-        self.assertIsNone(items[0].args.get("default").to_py(), None)
+        # First is a table row type
+        first = items[0]
+        # Ensure helper exists and returns True
+        self.assertTrue(hasattr(first, "is_row_type"))
+        self.assertTrue(first.is_row_type())
 
-        first1 = items[1].this[0]
-        self.assertEqual(first1.name, "my_count")
-        self.assertIn(items[1].args.get("kind").sql(), {"INTEGER"})
-        self.assertEqual(items[1].args.get("default").to_py(), 0)
+        # Second is a column type
+        second = items[1]
+        self.assertTrue(hasattr(second, "is_column_type"))
+        self.assertTrue(second.is_column_type())
 
-        out = tree.sql(dialect=PLpgSQL)
+        # Round-trip contains the PL/pgSQL markers
+        rendered = tree.sql(dialect=PLpgSQL)
+        self.assertIn("%ROWTYPE", rendered)
+        self.assertIn("%TYPE", rendered)
 
 
 if __name__ == "__main__":
