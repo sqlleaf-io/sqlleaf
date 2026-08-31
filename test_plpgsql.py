@@ -8,6 +8,7 @@ Run directly:
 """
 
 from sqlglot import parse_one
+from sqlglot.errors import ParseError
 
 from plpgsql import PLpgSQL, Perform
 
@@ -33,8 +34,34 @@ def test_perform_select_like_tail() -> None:
     assert sql == "PERFORM 1 FROM t WHERE id = 42", f"Unexpected SQL: {sql}"
 
 
+def test_begin_perform() -> None:
+    tree = parse_one("BEGIN PERFORM 1 FROM t WHERE id = 42; END;", dialect=PLpgSQL)
+
+    sql = tree.sql(dialect=PLpgSQL)
+    assert sql == "BEGIN PERFORM 1 FROM t WHERE id = 42; END", f"Unexpected SQL: {sql}"
+
+
+def test_begin_perform_twice() -> None:
+    tree = parse_one("BEGIN SELECT 1 INTO var1; SELECT 2 INTO var2; END;", dialect=PLpgSQL)
+
+    sql = tree.sql(dialect=PLpgSQL)
+    assert sql == "BEGIN SELECT 1 INTO var1; SELECT 2 INTO var2; END;", f"Unexpected SQL: {sql}"
+
+
+def test_begin_empty_raises() -> None:
+    try:
+        parse_one("BEGIN END;", dialect=PLpgSQL)
+    except ParseError as e:
+        # Expected
+        assert e.args[0] == "Empty BEGIN ... END block is not allowed"
+
+
+
 if __name__ == "__main__":
     # Run the tests sequentially and print a simple success message
     test_perform_function_call()
     test_perform_select_like_tail()
+    test_begin_perform()
+    test_begin_perform_twice()
+    test_begin_empty_raises()
     print("All PLpgSQL tests passed.")
