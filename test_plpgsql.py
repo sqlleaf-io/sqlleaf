@@ -135,6 +135,41 @@ class TestPLpgSQLDeclare(unittest.TestCase):
         self.assertIn("%ROWTYPE", rendered)
         self.assertIn("%TYPE", rendered)
 
+    def test_declare_alias_for_param(self) -> None:
+        sql = """
+        DECLARE
+            arg1 ALIAS FOR $1;
+        BEGIN
+            PERFORM 1;
+        END;
+        """
+        tree = parse_one(sql, dialect=PLpgSQL)
+        self.assertIsInstance(tree, PLBlock)
+
+        decl = tree.args.get("declare")
+        self.assertIsInstance(decl, exp.Declare)
+
+        items = list(decl.expressions)
+        self.assertEqual(len(items), 1)
+
+        item = items[0]
+        # Ensure it is our extended declare item
+        from plpgsql import PLDeclareItem  # local import to avoid circular during typing
+        self.assertIsInstance(item, PLDeclareItem)
+
+        # Name should be arg1
+        self.assertEqual(item.this[0].name, "arg1")
+
+        # alias_for must be present and be an exp.Var representing $1
+        alias_for = item.args.get("alias_for")
+        self.assertIsInstance(alias_for, exp.Var)
+        # .name property renders the identifier
+        self.assertEqual(alias_for.name, "$1")
+
+        # Round-trip keeps the alias syntax
+        rendered = tree.sql(dialect=PLpgSQL)
+        self.assertIn("ALIAS FOR $1", rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

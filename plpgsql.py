@@ -57,6 +57,7 @@ class PLDeclareItem(exp.DeclareItem):
         **exp.DeclareItem.arg_types,
         "row_of": False,
         "column_of": False,
+        "alias_for": False,
     }
 
     def is_row_type(self) -> bool:  # pragma: no cover - exercised by tests
@@ -159,12 +160,12 @@ class PLpgSQLParser(PostgresParser):
             if self._match(TokenType.SEMICOLON):
                 continue
 
-            # Parse a single DECLARE item head: name and type details
-            name, dtype, row_of, column_of = self._parse_single_declare_head()
+            # Parse a single DECLARE item head: name and type details (or alias)
+            name, dtype, row_of, column_of, alias_for = self._parse_single_declare_head()
 
             # Optional default: := <expr>
             default = exp.Null()
-            if self._match(TokenType.COLON_EQ):
+            if alias_for is None and self._match(TokenType.COLON_EQ):
                 default = self._parse_expression()
 
             # Terminating semicolon for this item, possibly across chunk boundary
@@ -175,7 +176,14 @@ class PLpgSQLParser(PostgresParser):
             # Build PLDeclareItem (always) and append
             declare_items.append(
                 self.expression(
-                    self._build_pl_declare_item(name=name, dtype=dtype, default=default, row_of=row_of, column_of=column_of)
+                    self._build_pl_declare_item(
+                        name=name,
+                        dtype=dtype,
+                        default=default,
+                        row_of=row_of,
+                        column_of=column_of,
+                        alias_for=alias_for,
+                    )
                 )
             )
 
@@ -184,10 +192,16 @@ class PLpgSQLParser(PostgresParser):
     # --- DECLARE helpers ---
     def _parse_single_declare_head(
         self,
-    ) -> tuple[exp.Expression, exp.DataType, exp.Expression | None, exp.Expression | None]:
+    ) -> tuple[
+        exp.Expression,
+        exp.DataType,
+        exp.Expression | None,
+        exp.Expression | None,
+        exp.Expression | None,
+    ]:
         """Parse the head of a DECLARE item: name and type info.
 
-        Returns (name, dtype, row_of, column_of). The default value and trailing semicolon
+        Returns (name, dtype, row_of, column_of, alias_for). The default value and trailing semicolon
         are handled by the caller.
         """
         curr_tok = self._curr
@@ -196,6 +210,7 @@ class PLpgSQLParser(PostgresParser):
 
         row_of: exp.Expression | None = None
         column_of: exp.Expression | None = None
+        alias_for: exp.Expression | None = None
 
         # Case A: current token is a single STRING containing "name TYPE"
         if curr_tok.token_type == TokenType.STRING and " " in curr_tok.text:
@@ -205,7 +220,14 @@ class PLpgSQLParser(PostgresParser):
             type_text = rest.split(":=", 1)[0].strip()
             upper = type_text.upper()
 
-            if upper.endswith("%ROWTYPE"):
+            if upper.startswith("ALIAS FOR"):
+                # e.g. "ALIAS FOR $1"
+                after = type_text[len("ALIAS FOR"):].strip()
+                if after:
+                    alias_for = exp.Var(this=after)
+                # Placeholder kind; actual rendering handled in generator
+                dtype = exp.DataType.build("UNKNOWN", dialect=self.dialect)
+            elif upper.endswith("%ROWTYPE"):
                 base = type_text[: -len("%ROWTYPE")].strip()
                 if base:
                     row_of = exp.to_table(base)
@@ -215,7 +237,7 @@ class PLpgSQLParser(PostgresParser):
                     tbl, col = base.rsplit(".", 1)
                     column_of = exp.column(col, tbl)
 
-            if row_of or column_of:
+            if alias_for is not None or row_of or column_of:
                 # Placeholder kind; actual rendering handled in generator
                 dtype = exp.DataType.build("UNKNOWN", dialect=self.dialect)
             else:
@@ -223,12 +245,24 @@ class PLpgSQLParser(PostgresParser):
 
             # consume this combined token
             self._advance()
-            return name, dtype, row_of, column_of
+            return name, dtype, row_of, column_of, alias_for
 
         # Case B: name then a parsed type sequence
         raw_name = curr_tok.text
         name = exp.Var(this=raw_name)
         self._advance()
+
+        # Special case: "name ALIAS FOR $n"
+        if self._match_texts("ALIAS"):
+            if not self._match_texts("FOR"):
+                self.raise_error("Expected FOR after ALIAS in DECLARE item")
+
+            # Parse the following variable like $1
+            # Rely on expression parser to produce exp.Var
+            alias_for = self._parse_primary()
+            # Provide a placeholder kind; generation will render ALIAS FOR variant
+            dtype = exp.DataType.build("UNKNOWN", dialect=self.dialect)
+            return name, dtype, row_of, column_of, alias_for
 
         # Try to detect inline %ROWTYPE / %TYPE just after the name
         save_i = self._index
@@ -237,7 +271,7 @@ class PLpgSQLParser(PostgresParser):
             if self._match_texts("ROWTYPE"):
                 row_of = exp.to_identifier(raw_name)
                 dtype = exp.DataType.build("RECORD", dialect=self.dialect)
-                return name, dtype, row_of, column_of
+                return name, dtype, row_of, column_of, alias_for
             if self._match_texts("TYPE"):
                 # Ambiguous/cumbersome tokenization, revert and parse a normal type
                 self._index = save_i
@@ -253,7 +287,7 @@ class PLpgSQLParser(PostgresParser):
                     column_of = exp.column(col, tbl)
                     dtype = exp.DataType.build("TEXT", dialect=self.dialect)
 
-        return name, dtype, row_of, column_of
+        return name, dtype, row_of, column_of, alias_for
 
     def _build_pl_declare_item(
         self,
@@ -263,6 +297,7 @@ class PLpgSQLParser(PostgresParser):
         default: exp.Expression,
         row_of: exp.Expression | None,
         column_of: exp.Expression | None,
+        alias_for: exp.Expression | None,
     ) -> PLDeclareItem:
         """Create a PLDeclareItem with optional row/column type references."""
         kwargs: dict[str, exp.Expression | list[exp.Expression]] = {
@@ -274,6 +309,8 @@ class PLpgSQLParser(PostgresParser):
             kwargs["row_of"] = row_of
         if column_of is not None:
             kwargs["column_of"] = column_of
+        if alias_for is not None:
+            kwargs["alias_for"] = alias_for
         return PLDeclareItem(**kwargs)  # type: ignore[return-value]
 
     def _parse_pl_block_body(self) -> list[exp.Expression]:
@@ -356,6 +393,13 @@ class PLpgSQLGenerator(PostgresGenerator):
         names = self.expressions(expression, "this") or []
         name = ", ".join(names) if names else ""
         default = self.sql(expression, "default")
+
+        # Alias variant takes precedence and doesn't render type/default
+        alias_for = expression.args.get("alias_for")
+        if alias_for is not None:
+            alias_sql = self.sql(expression, "alias_for")
+            line = f"{name} ALIAS FOR {alias_sql};"
+            return line
 
         if expression.is_row_type():
             tbl = self.sql(expression, "row_of")
