@@ -163,8 +163,8 @@ class PLpgSQLParser(PostgresParser):
             # Parse a single DECLARE item head: name and type details (or alias)
             name, dtype, row_of, column_of, alias_for = self._parse_single_declare_head()
 
-            # Optional default: := <expr>
-            default = exp.Null()
+            # Optional default: := <expr>. Represent absence as None to avoid rendering ':= NULL'.
+            default: exp.Expression | None = None
             if alias_for is None and self._match(TokenType.COLON_EQ):
                 default = self._parse_expression()
 
@@ -194,7 +194,7 @@ class PLpgSQLParser(PostgresParser):
         self,
     ) -> tuple[
         exp.Expression,
-        exp.DataType,
+        exp.DataType | None,
         exp.Expression | None,
         exp.Expression | None,
         exp.Expression | None,
@@ -204,114 +204,147 @@ class PLpgSQLParser(PostgresParser):
         Returns (name, dtype, row_of, column_of, alias_for). The default value and trailing semicolon
         are handled by the caller.
         """
-        curr_tok = self._curr
-        if not curr_tok:
-            self.raise_error("Expected identifier in DECLARE item")
+        # First, handle the special case where the lexer produced a single STRING token
+        # containing both the variable name and the rest of the head. Normalize it to
+        # the same return shape as the standard path.
+        combined = self.__parse_combined_declare_head_if_present()
+        if combined is not None:
+            return combined
 
-        row_of: exp.Expression | None = None
-        column_of: exp.Expression | None = None
-        alias_for: exp.Expression | None = None
+        # Otherwise, parse using the decomposed helpers
+        name = self.__parse_declare_name()
 
-        # Case A: current token is a single STRING containing "name TYPE"
-        if curr_tok.token_type == TokenType.STRING and " " in curr_tok.text:
-            raw_name, rest = curr_tok.text.split(None, 1)
-            name = exp.Var(this=raw_name)
+        alias_for = self.__parse_alias_for_if_present()
+        if alias_for is not None:
+            return name, None, None, None, alias_for
 
-            type_text = rest.split(":=", 1)[0].strip()
-            upper = type_text.upper()
+        row_of, column_of = self.__parse_row_or_column_suffix_if_present(name)
+        if row_of is not None or column_of is not None:
+            return name, None, row_of, column_of, None
 
-            if upper.startswith("ALIAS FOR"):
-                # e.g. "ALIAS FOR $1"
-                after = type_text[len("ALIAS FOR"):].strip()
-                if after:
-                    alias_for = exp.Var(this=after)
-                # Placeholder kind; actual rendering handled in generator
-                dtype = exp.DataType.build("UNKNOWN", dialect=self.dialect)
-            elif upper.endswith("%ROWTYPE"):
-                base = type_text[: -len("%ROWTYPE")].strip()
-                if base:
-                    row_of = exp.to_table(base)
-            elif upper.endswith("%TYPE"):
-                base = type_text[: -len("%TYPE")].strip()
-                if "." in base:
-                    tbl, col = base.rsplit(".", 1)
-                    column_of = exp.column(col, tbl)
-
-            if alias_for is not None or row_of or column_of:
-                # Placeholder kind; actual rendering handled in generator
-                dtype = exp.DataType.build("UNKNOWN", dialect=self.dialect)
-            else:
-                dtype = exp.DataType.build(type_text, udt=True)
-
-            # consume this combined token
-            self._advance()
-            return name, dtype, row_of, column_of, alias_for
-
-        # Case B: name then a parsed type sequence
-        raw_name = curr_tok.text
-        name = exp.Var(this=raw_name)
-        self._advance()
-
-        # Special case: "name ALIAS FOR $n"
-        if self._match_texts("ALIAS"):
-            if not self._match_texts("FOR"):
-                self.raise_error("Expected FOR after ALIAS in DECLARE item")
-
-            # Parse the following variable like $1
-            # Rely on expression parser to produce exp.Var
-            alias_for = self._parse_primary()
-            # Provide a placeholder kind; generation will render ALIAS FOR variant
-            dtype = exp.DataType.build("UNKNOWN", dialect=self.dialect)
-            return name, dtype, row_of, column_of, alias_for
-
-        # Try to detect inline %ROWTYPE / %TYPE just after the name
-        save_i = self._index
-        save_curr = self._curr
-        if self._match_texts("%", advance=False) or self._match(TokenType.MOD, advance=False):
-            if self._match_texts("ROWTYPE"):
-                row_of = exp.to_identifier(raw_name)
-                dtype = exp.DataType.build("RECORD", dialect=self.dialect)
-                return name, dtype, row_of, column_of, alias_for
-            if self._match_texts("TYPE"):
-                # Ambiguous/cumbersome tokenization, revert and parse a normal type
-                self._index = save_i
-                self._curr = save_curr
-
-        # Fallback: parse a normal type, optionally followed by %TYPE
-        dtype = self._parse_type()
+        # Normal type parsing, possibly followed by a trailing %TYPE modifier
+        dtype = self.__parse_normal_type()
         if self._match_texts("%") or self._match(TokenType.MOD):
             if self._match_texts("TYPE"):
                 base = dtype.sql()
                 if base and "." in base:
                     tbl, col = base.rsplit(".", 1)
                     column_of = exp.column(col, tbl)
-                    dtype = exp.DataType.build("TEXT", dialect=self.dialect)
+                    dtype = None
 
+        return name, dtype, None, column_of, None
+
+    # --- Decomposed helpers for DECLARE head parsing ---
+    def __parse_declare_name(self) -> exp.Expression:
+        curr_tok = self._curr
+        if not curr_tok:
+            self.raise_error("Expected identifier in DECLARE item")
+        raw_name = curr_tok.text
+        name = exp.Var(this=raw_name)
+        self._advance()
+        return name
+
+    def __parse_alias_for_if_present(self) -> exp.Expression | None:
+        if not self._match_texts("ALIAS"):
+            return None
+        if not self._match_texts("FOR"):
+            self.raise_error("Expected FOR after ALIAS in DECLARE item")
+        return self._parse_primary()
+
+    def __parse_row_or_column_suffix_if_present(self, base_name: exp.Expression) -> tuple[exp.Expression | None, exp.Expression | None]:
+        # Non-advancing peek for a percent marker
+        save_i = self._index
+        save_curr = self._curr
+        if self._match_texts("%", advance=False) or self._match(TokenType.MOD, advance=False):
+            # Only consume on success
+            if self._match_texts("ROWTYPE"):
+                return exp.to_identifier(getattr(base_name, "name", "")), None
+            if self._match_texts("TYPE"):
+                # Inline %TYPE directly after name is not supported here; let normal type parsing handle it
+                self._index = save_i
+                self._curr = save_curr
+                return None, None
+        # Restore pointer (no consumption) and return no suffix
+        self._index = save_i
+        self._curr = save_curr
+        return None, None
+
+    def __parse_normal_type(self) -> exp.DataType:
+        return self._parse_type()
+
+    def __parse_combined_declare_head_if_present(
+        self,
+    ) -> tuple[
+        exp.Expression,
+        exp.DataType | None,
+        exp.Expression | None,
+        exp.Expression | None,
+        exp.Expression | None,
+    ] | None:
+        curr_tok = self._curr
+        if not curr_tok or curr_tok.token_type != TokenType.STRING or " " not in curr_tok.text:
+            return None
+
+        row_of: exp.Expression | None = None
+        column_of: exp.Expression | None = None
+        alias_for: exp.Expression | None = None
+
+        raw_name, rest = curr_tok.text.split(None, 1)
+        name = exp.Var(this=raw_name)
+
+        type_text = rest.split(":=", 1)[0].strip()
+        upper = type_text.upper()
+
+        if upper.startswith("ALIAS FOR"):
+            after = type_text[len("ALIAS FOR"):].strip()
+            if after:
+                alias_for = exp.Var(this=after)
+            dtype: exp.DataType | None = None
+        elif upper.endswith("%ROWTYPE"):
+            base = type_text[: -len("%ROWTYPE")].strip()
+            if base:
+                row_of = exp.to_table(base)
+            dtype = None
+        elif upper.endswith("%TYPE"):
+            base = type_text[: -len("%TYPE")].strip()
+            if "." in base:
+                tbl, col = base.rsplit(".", 1)
+                column_of = exp.column(col, tbl)
+            dtype = None
+        else:
+            dtype = exp.DataType.build(type_text, udt=True)
+
+        # consume this combined token
+        self._advance()
         return name, dtype, row_of, column_of, alias_for
 
     def _build_pl_declare_item(
         self,
         *,
         name: exp.Expression,
-        dtype: exp.DataType,
-        default: exp.Expression,
+        dtype: exp.DataType | None,
+        default: exp.Expression | None,
         row_of: exp.Expression | None,
         column_of: exp.Expression | None,
         alias_for: exp.Expression | None,
     ) -> PLDeclareItem:
-        """Create a PLDeclareItem with optional row/column type references."""
-        kwargs: dict[str, exp.Expression | list[exp.Expression]] = {
-            "this": [name],
-            "kind": dtype,
-            "default": default,
-        }
+        """Create a PLDeclareItem with optional row/column type references.
+
+        Builds the node directly and sets only the arguments that are present,
+        avoiding loosely typed kwargs dicts and type ignores.
+        """
+        item = PLDeclareItem(this=[name])
+        if dtype is not None:
+            item.set("kind", dtype)
+        if default is not None:
+            item.set("default", default)
         if row_of is not None:
-            kwargs["row_of"] = row_of
+            item.set("row_of", row_of)
         if column_of is not None:
-            kwargs["column_of"] = column_of
+            item.set("column_of", column_of)
         if alias_for is not None:
-            kwargs["alias_for"] = alias_for
-        return PLDeclareItem(**kwargs)  # type: ignore[return-value]
+            item.set("alias_for", alias_for)
+        return item
 
     def _parse_pl_block_body(self) -> list[exp.Expression]:
         """Parse a PL/pgSQL block body until END.
@@ -392,7 +425,7 @@ class PLpgSQLGenerator(PostgresGenerator):
         """
         names = self.expressions(expression, "this") or []
         name = ", ".join(names) if names else ""
-        default = self.sql(expression, "default")
+        default_expr = expression.args.get("default")
 
         # Alias variant takes precedence and doesn't render type/default
         alias_for = expression.args.get("alias_for")
@@ -412,8 +445,8 @@ class PLpgSQLGenerator(PostgresGenerator):
             rendered_type = f"{kind}" if kind else ""
 
         line = f"{name} {rendered_type}".rstrip()
-        if default:
-            line += f" := {default}"
+        if default_expr is not None:
+            line += f" := {self.sql(expression, 'default')}"
         line += ";"
         return line
 

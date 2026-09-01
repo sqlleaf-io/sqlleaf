@@ -86,7 +86,8 @@ class TestPLpgSQLDeclare(unittest.TestCase):
         first0 = items[0].this[0]
         self.assertEqual(first0.name, "my_id")
         self.assertIn(items[0].args.get("kind").sql(), {"INT"})
-        self.assertIsNone(items[0].args.get("default").to_py(), None)
+        # No default should be stored for declarations without ':='
+        self.assertIsNone(items[0].args.get("default"))
 
         first1 = items[1].this[0]
         self.assertEqual(first1.name, "my_count")
@@ -96,9 +97,11 @@ class TestPLpgSQLDeclare(unittest.TestCase):
         first2 = items[2].this[0]
         self.assertEqual(first2.name, "arow")
         self.assertIn(items[2].args.get("kind").sql(), {"RECORD"})
-        self.assertEqual(items[2].args.get("default").to_py(), None)
+        self.assertIsNone(items[2].args.get("default"))
 
         out = tree.sql(dialect=PLpgSQL)
+        # Ensure we do not emit spurious ':= NULL' for items without defaults
+        self.assertNotIn(":= NULL", out)
 
 
     def test_declare_row_and_column_type(self) -> None:
