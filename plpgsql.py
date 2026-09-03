@@ -54,12 +54,14 @@ class PLDeclareItem(exp.Expression):
 
     arg_types = {
         "this": True,
-        "type": False,
+        "kind": False,
         "expression": False,
         "value": False,
         "default": False,
         "assign": False,
         "constant": False,
+        "collate": False,
+        "not_null": False,
     }
 
 
@@ -165,6 +167,26 @@ class PlPgSQL(Postgres):
             # Parse a type expression (prefer singular _parse_type, fallback to plural helper)
             type_expr = self._parse_type() or self._parse_types()
 
+            # Optional COLLATE clause after type
+            collate_expr = None
+            if self._match(TokenType.COLLATE):
+                # Collation can be an identifier or quoted identifier
+                collate_expr = self._parse_id_var()
+
+            # Optional NOT NULL constraint (sits after COLLATE and before DEFAULT)
+            not_null = False
+            # Use text sequence matcher to consume both tokens if present
+            if getattr(self, "_match_text_seq", None) and self._match_text_seq("NOT", "NULL"):
+                not_null = True
+            else:
+                # Fallback using token types if needed
+                if self._match(TokenType.NOT):
+                    if self._match(TokenType.NULL):
+                        not_null = True
+                    else:
+                        # Put back the NOT if it wasn't followed by NULL
+                        self._retreat()
+
             # Optional initialization with DEFAULT or assignment (:= or =)
             init_expr = None
             is_default = False
@@ -182,7 +204,9 @@ class PlPgSQL(Postgres):
             return self.expression(
                 PLDeclareItem(
                     this=ident,
-                    type=type_expr,
+                    kind=type_expr,
+                    collate=collate_expr,
+                    not_null=not_null,
                     expression=init_expr,
                     value=init_expr,
                     default=is_default,
@@ -223,20 +247,23 @@ class PlPgSQL(Postgres):
 
         def pldeclareitem_sql(self, expression: PLDeclareItem) -> str:
             name = self.sql(expression.this)
-            typ = self.sql(expression.args.get("type")) if expression.args.get("type") is not None else ""
+            typ = self.sql(expression.args.get("kind")) if expression.args.get("kind") is not None else ""
             # Normalize type rendering to uppercase to match Postgres style in tests
             typ_render = typ.upper() if typ else ""
             const_kw = " CONSTANT" if expression.args.get("constant") else ""
+            collate = expression.args.get("collate")
+            collate_sql = f" COLLATE {self.sql(collate)}" if collate is not None else ""
+            not_null_sql = " NOT NULL" if expression.args.get("not_null") else ""
             init = expression.args.get("expression")
 
             if init is not None and expression.args.get("default"):
-                return f"{name}{const_kw} {typ_render} DEFAULT {self.sql(init)}"
+                return f"{name}{const_kw} {typ_render}{collate_sql}{not_null_sql} DEFAULT {self.sql(init)}"
 
             if init is not None:
                 op = expression.args.get("assign") or ":="
-                return f"{name}{const_kw} {typ_render} {op} {self.sql(init)}"
+                return f"{name}{const_kw} {typ_render}{collate_sql}{not_null_sql} {op} {self.sql(init)}"
 
-            return f"{name}{const_kw} {typ_render}"
+            return f"{name}{const_kw} {typ_render}{collate_sql}{not_null_sql}"
 
 
 plpgsql = PlPgSQL
