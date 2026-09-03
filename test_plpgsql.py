@@ -11,9 +11,7 @@ import unittest
 
 from sqlglot.errors import ParseError
 from sqlglot import exp, parse_one
-from plpgsql import PLBlock
-
-from plpgsql import PLpgSQL, Perform
+from plpgsql import PLpgSQL, Perform, PLBlock
 
 
 class TestPLpgSQL(unittest.TestCase):
@@ -45,6 +43,28 @@ class TestPLpgSQL(unittest.TestCase):
 
         sql = tree.sql(dialect=PLpgSQL)
         self.assertEqual(sql, query, f"Unexpected SQL: {sql}")
+
+    def test_begin_close_name(self) -> None:
+        query = "BEGIN CLOSE mycursor; END"
+        tree = parse_one(query, dialect=PLpgSQL)
+        target = tree.expressions[0].expression
+        self.assertEqual(target.name, "mycursor")
+        self.assertEqual(tree.sql(dialect=PLpgSQL), query)
+
+    def test_begin_close_all(self) -> None:
+        query = "BEGIN CLOSE ALL; END"
+        tree = parse_one(query, dialect=PLpgSQL)
+        target = tree.expressions[0].expression
+        self.assertEqual(target.name.upper(), "ALL")
+        self.assertEqual(tree.sql(dialect=PLpgSQL), query)
+
+    def test_begin_close_invalid_literal_number(self) -> None:
+        with self.assertRaises(ParseError):
+            parse_one("BEGIN CLOSE 123; END;", dialect=PLpgSQL)
+
+    def test_begin_close_invalid_literal_string(self) -> None:
+        with self.assertRaises(ParseError):
+            parse_one("BEGIN CLOSE 'hello'; END;", dialect=PLpgSQL)
 
     def test_begin_perform_twice(self) -> None:
         query = "BEGIN SELECT 1 INTO var1; SELECT 2 INTO var2; END;"

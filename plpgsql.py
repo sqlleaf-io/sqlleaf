@@ -40,6 +40,19 @@ class PLBlock(exp.Block):
     """PL/pgSQL BEGIN ... END block (subclass of Block)."""
 
 
+class PLClose(exp.Expression):
+    """PL/pgSQL CLOSE statement for cursors.
+
+    Grammar: CLOSE { name | ALL };
+
+    The argument is stored under the 'expression' key and is either:
+      - an exp.Identifier for a cursor name, or
+      - an exp.Var with value 'ALL'.
+    """
+
+    arg_types = {"expression": True}
+
+
 class PLDeclareItem(exp.DeclareItem):
     """Extended DeclareItem for PL/pgSQL.
 
@@ -77,6 +90,7 @@ class PLpgSQLParser(PostgresParser):
         for try_fn in (
             self._try_parse_declare_block,
             self._try_parse_begin_block,
+            self._try_parse_close,
             self._try_parse_perform,
         ):
             node = try_fn()
@@ -104,6 +118,7 @@ class PLpgSQLParser(PostgresParser):
         """Attempt to parse a simple BEGIN ... END block."""
         if not self._match(TokenType.BEGIN):
             return None
+
         statements = self._parse_pl_block_body()
         return self.expression(PLBlock(expressions=statements))
 
@@ -130,6 +145,26 @@ class PLpgSQLParser(PostgresParser):
 
         # No set-ops handling for PERFORM for now; not required by tests.
         return perform
+
+    def _try_parse_close(self) -> exp.Expr | None:
+        """Attempt to parse a CLOSE statement inside a PL/pgSQL BEGIN block.
+
+        Syntax: CLOSE { name | ALL };
+        """
+        if not self._match_text_seq("CLOSE"):
+            return None
+
+        # CLOSE ALL
+        if self._match(TokenType.ALL):
+            target: exp.Expression = exp.Var(this=self._prev.text)
+            return self.expression(PLClose(expression=target))
+
+        # CLOSE <identifier>
+        if self._match(TokenType.VAR):
+            ident_expr = exp.to_identifier(self._prev.text)
+            return self.expression(PLClose(expression=ident_expr))
+
+        self.raise_error("Expected identifier or ALL")
 
     def _parse_declare_items_until_begin(self) -> list[exp.Expression]:
         """Parse DECLARE items until BEGIN is encountered."""
@@ -384,6 +419,8 @@ class PLpgSQLGenerator(PostgresGenerator):
         Perform: lambda self, e: self.perform_sql(e),
         PLBlock: lambda self, e: self.plblock_sql(e),
         PLDeclareItem: lambda self, e: self.pldeclareitem_sql(e),
+        # Explicitly register PLClose to ensure dispatch picks it up
+        PLClose: lambda self, e: self.plclose_sql(e),
     }
 
     def plblock_sql(self, expression: PLBlock) -> str:
@@ -507,6 +544,10 @@ class PLpgSQLGenerator(PostgresGenerator):
             body = f"{body}{tail}"
 
         return f"PERFORM{hint}{distinct}{kind}{top} {body}"
+
+    def plclose_sql(self, expression: PLClose) -> str:
+        target = self.sql(expression, "expression")
+        return f"CLOSE {target}"
 
 
 class PLpgSQL(Postgres):
