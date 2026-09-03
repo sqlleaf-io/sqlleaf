@@ -34,7 +34,33 @@ class PGBlock(exp.Expression):
     Stores inner statements in ``expressions``.
     """
     # Allow empty blocks: 'expressions' is optional
-    arg_types = {"expressions": False, "begin": False}
+    # Optionally includes a DECLARE section captured as `declare`.
+    arg_types = {"expressions": False, "begin": False, "declare": False}
+
+
+class PLDeclare(exp.Expression):
+    """A PL/pgSQL DECLARE section containing declaration items."""
+
+    arg_types = {"expressions": True}
+
+
+class PLDeclareItem(exp.Expression):
+    """A single variable declaration inside a PL/pgSQL DECLARE section.
+
+    Currently supports:
+      - name type;
+      - name type := expression;
+    """
+
+    arg_types = {
+        "this": True,
+        "type": False,
+        "expression": False,
+        "value": False,
+        "default": False,
+        "assign": False,
+        "constant": False,
+    }
 
 
 class PlPgSQL(Postgres):
@@ -45,15 +71,31 @@ class PlPgSQL(Postgres):
     - Generator: reuse Postgres generator (already knows how to render Block)
     """
 
+    class Tokenizer(Postgres.Tokenizer):
+        # Override DECLARE to be a dedicated token in this dialect
+        KEYWORDS = {
+            **Postgres.Tokenizer.KEYWORDS,
+            "DECLARE": TokenType.DECLARE,
+        }
+
     class Parser(PostgresParser):
         STATEMENT_PARSERS = {
             **PostgresParser.STATEMENT_PARSERS,
             TokenType.BEGIN: lambda self: self._parse_plpgsql_block(),
+            TokenType.DECLARE: lambda self: self._parse_plpgsql_block(),
         }
 
         def _parse_plpgsql_block(self) -> PGBlock:
-            # BEGIN
-            self._match(TokenType.BEGIN)
+            # Determine entry: dispatcher consumed the first keyword into _prev
+            declare = None
+            if self._prev and self._prev.token_type == TokenType.DECLARE:
+                # Started with DECLARE: parse declaration section, then require BEGIN
+                declare = self._parse_pldeclare()
+                if not self._match(TokenType.BEGIN):
+                    self.raise_error("Expected BEGIN after DECLARE or at block start")
+            else:
+                # Started with BEGIN: already consumed, do nothing here
+                pass
 
             expressions: list[exp.Expression] = []
 
@@ -82,22 +124,119 @@ class PlPgSQL(Postgres):
                 self.check_errors()
                 self._advance_chunk()
 
-            return self.expression(PGBlock(expressions=expressions, begin=True))
+            return self.expression(PGBlock(expressions=expressions, declare=declare, begin=True))
+
+        def _parse_pldeclare(self) -> PLDeclare:
+            items: list[exp.Expression] = []
+            while True:
+                # If current chunk is consumed, move to the next one
+                if self._index >= self._tokens_size:
+                    self._advance_chunk()
+
+                # Stop if the next significant token is BEGIN (start of block body)
+                if not self._curr or self._match(TokenType.BEGIN, advance=False):
+                    break
+
+                item = self._parse_pldeclareitem()
+                if not item:
+                    break
+                items.append(item)
+
+                # After parsing an item, the chunk should be consumed (terminated by ';')
+                if self._index < self._tokens_size:
+                    self.raise_error("Invalid DECLARE item / Unexpected token")
+
+                # Proceed to next chunk for the following declaration or BEGIN
+                self.check_errors()
+                self._advance_chunk()
+
+            return self.expression(PLDeclare(expressions=items))
+
+        def _parse_pldeclareitem(self) -> PLDeclareItem | None:
+            ident = self._parse_id_var()
+            if not ident:
+                return None
+
+            # Optional CONSTANT modifier
+            is_constant = False
+            if self._match(getattr(TokenType, "CONSTANT", TokenType.UNKNOWN)) or self._match_texts("CONSTANT"):
+                is_constant = True
+
+            # Parse a type expression (prefer singular _parse_type, fallback to plural helper)
+            type_expr = self._parse_type() or self._parse_types()
+
+            # Optional initialization with DEFAULT or assignment (:= or =)
+            init_expr = None
+            is_default = False
+            assign_op: str | None = None
+            if self._match(TokenType.DEFAULT):
+                is_default = True
+                init_expr = self._parse_bitwise()
+            elif self._match(TokenType.COLON_EQ):
+                assign_op = ":="
+                init_expr = self._parse_bitwise()
+            elif self._match(TokenType.EQ):
+                assign_op = "="
+                init_expr = self._parse_bitwise()
+
+            return self.expression(
+                PLDeclareItem(
+                    this=ident,
+                    type=type_expr,
+                    expression=init_expr,
+                    value=init_expr,
+                    default=is_default,
+                    assign=assign_op,
+                    constant=is_constant,
+                )
+            )
 
     class Generator(PostgresGenerator):
         # Provide explicit transform to ensure support for PGBlock
         TRANSFORMS = {
             **getattr(PostgresGenerator, "TRANSFORMS", {}),
             PGBlock: lambda self, e: self.pgblock_sql(e),
+            PLDeclare: lambda self, e: self.pldeclare_sql(e),
+            PLDeclareItem: lambda self, e: self.pldeclareitem_sql(e),
         }
 
         # Also expose the auto-discovered method
         def pgblock_sql(self, expression: PGBlock) -> str:
-            parts = ["BEGIN"]
+            parts: list[str] = []
+
+            # Render DECLARE section first if present
+            declare = expression.args.get("declare")
+            if declare and getattr(declare, "expressions", None):
+                parts.append(self.sql(declare))
+
+            parts.append("BEGIN")
             for expr in expression.expressions:
                 parts.append(f"{self.sql(expr)};")
             parts.append("END")
             return " ".join(parts)
+
+        def pldeclare_sql(self, expression: PLDeclare) -> str:
+            items = [f"{self.sql(item)};" for item in expression.expressions]
+            if not items:
+                return "DECLARE"
+            return " ".join(["DECLARE", *items])
+
+        def pldeclareitem_sql(self, expression: PLDeclareItem) -> str:
+            name = self.sql(expression.this)
+            typ = self.sql(expression.args.get("type")) if expression.args.get("type") is not None else ""
+            # Normalize type rendering to uppercase to match Postgres style in tests
+            typ_render = typ.upper() if typ else ""
+            const_kw = " CONSTANT" if expression.args.get("constant") else ""
+            init = expression.args.get("expression")
+
+            if init is not None and expression.args.get("default"):
+                return f"{name}{const_kw} {typ_render} DEFAULT {self.sql(init)}"
+
+            if init is not None:
+                op = expression.args.get("assign") or ":="
+                return f"{name}{const_kw} {typ_render} {op} {self.sql(init)}"
+
+            return f"{name}{const_kw} {typ_render}"
 
 
 plpgsql = PlPgSQL
