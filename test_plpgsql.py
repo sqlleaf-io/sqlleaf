@@ -9,3 +9,13 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_begin_select_one(self) -> None:
+        sql = "BEGIN SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_begin_select_two(self) -> None:
+        sql = "BEGIN SELECT 1; SELECT 2; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])

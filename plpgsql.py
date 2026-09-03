@@ -8,8 +8,8 @@ This dialect recognizes the statement form:
     BEGIN
     END;
 
-There is no support for statements inside the block yet — we only parse the
-BEGIN/END pair and produce an exp.PGBlock node.
+This change extends support to accept any SQL statements between BEGIN and
+END and stores them in the PGBlock.expressions list.
 
 Usage:
     >>> import sqlglot
@@ -29,11 +29,11 @@ from sqlglot.tokens import TokenType
 
 
 class PGBlock(exp.Expression):
-    """A Postgres-specific empty BEGIN ... END block.
+    """A Postgres-specific BEGIN ... END block.
 
-    For now, this is a thin subclass of exp.Block to allow the parser to
-    construct a distinct node type (PGBlock) for PL/pgSQL BEGIN blocks.
+    Stores inner statements in ``expressions``.
     """
+    # Allow empty blocks: 'expressions' is optional
     arg_types = {"expressions": False, "begin": False}
 
 
@@ -52,21 +52,52 @@ class PlPgSQL(Postgres):
         }
 
         def _parse_plpgsql_block(self) -> PGBlock:
-            # Consume BEGIN and the matching END to form an empty PG block
+            # BEGIN
             self._match(TokenType.BEGIN)
-            # No inner statements are supported yet; just require END
-            self._match(TokenType.END)
-            # Create an empty PGBlock (no EndStatement inside)
-            return self.expression(PGBlock(expressions=[], begin=True))
+
+            expressions: list[exp.Expression] = []
+
+            while True:
+                # If we've consumed the current chunk, move to the next one
+                if self._index >= self._tokens_size:
+                    self._advance_chunk()
+
+                # Stop if we reached END (block terminator)
+                if not self._curr:
+                    break
+
+                if self._match(TokenType.END, advance=False):
+                    self._advance()  # consume END
+                    break
+
+                stmt = self._parse_statement()
+                if stmt is not None:
+                    expressions.append(stmt)
+
+                # After parsing a statement, if we haven't consumed the chunk, it's an error
+                if self._index < self._tokens_size:
+                    self.raise_error("Invalid expression / Unexpected token")
+
+                # Proceed to next chunk for the following statement or END
+                self.check_errors()
+                self._advance_chunk()
+
+            return self.expression(PGBlock(expressions=expressions, begin=True))
 
     class Generator(PostgresGenerator):
+        # Provide explicit transform to ensure support for PGBlock
         TRANSFORMS = {
-            PGBlock: lambda self, e: "BEGIN END",
+            **getattr(PostgresGenerator, "TRANSFORMS", {}),
+            PGBlock: lambda self, e: self.pgblock_sql(e),
         }
 
-        # Also keep the auto-discovered method (harmless redundancy)
+        # Also expose the auto-discovered method
         def pgblock_sql(self, expression: PGBlock) -> str:
-            return "BEGIN END"
+            parts = ["BEGIN"]
+            for expr in expression.expressions:
+                parts.append(f"{self.sql(expr)};")
+            parts.append("END")
+            return " ".join(parts)
 
 
 plpgsql = PlPgSQL
