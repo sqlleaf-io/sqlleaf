@@ -60,13 +60,6 @@ class PLDeclareItem(exp.DeclareItem):
         "alias_for": False,
     }
 
-    def is_row_type(self) -> bool:  # pragma: no cover - exercised by tests
-        return self.args.get("row_of") is not None
-
-    def is_column_type(self) -> bool:  # pragma: no cover - exercised by tests
-        return self.args.get("column_of") is not None
-
-
 class PLpgSQLParser(PostgresParser):
     """Parser that recognizes the PERFORM statement and DECLARE ... BEGIN blocks."""
 
@@ -434,10 +427,10 @@ class PLpgSQLGenerator(PostgresGenerator):
             line = f"{name} ALIAS FOR {alias_sql};"
             return line
 
-        if expression.is_row_type():
+        if expression.args.get("row_of"):
             tbl = self.sql(expression, "row_of")
             rendered_type = f"{tbl}%ROWTYPE"
-        elif expression.is_column_type():
+        elif expression.args.get("column_of"):
             col = self.sql(expression, "column_of")
             rendered_type = f"{col}%TYPE"
         else:

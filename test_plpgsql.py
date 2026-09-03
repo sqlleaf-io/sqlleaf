@@ -125,13 +125,11 @@ class TestPLpgSQLDeclare(unittest.TestCase):
         # First is a table row type
         first = items[0]
         # Ensure helper exists and returns True
-        self.assertTrue(hasattr(first, "is_row_type"))
-        self.assertTrue(first.is_row_type())
+        self.assertIsNotNone(first.args["row_of"])
 
         # Second is a column type
         second = items[1]
-        self.assertTrue(hasattr(second, "is_column_type"))
-        self.assertTrue(second.is_column_type())
+        self.assertIsNotNone(second.args["column_of"])
 
         # Round-trip contains the PL/pgSQL markers
         rendered = tree.sql(dialect=PLpgSQL)
