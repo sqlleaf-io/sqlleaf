@@ -62,6 +62,7 @@ class PLDeclareItem(exp.Expression):
         "constant": False,
         "collate": False,
         "not_null": False,
+        "alias_for": False,
     }
 
 
@@ -160,9 +161,21 @@ class PlPgSQL(Postgres):
                 return None
 
             # Optional CONSTANT modifier
-            is_constant = False
-            if self._match(getattr(TokenType, "CONSTANT", TokenType.UNKNOWN)) or self._match_texts("CONSTANT"):
-                is_constant = True
+            is_constant = self._match_texts("CONSTANT")
+
+            # Optional ALIAS FOR $n variant: must come before type parsing
+            if self._match_text_seq("ALIAS", "FOR"):
+                # Parse a positional parameter like $1
+                param_expr = self._parse_identifier()
+                return self.expression(
+                    PLDeclareItem(
+                        this=ident,
+                        alias_for=True,
+                        expression=param_expr,
+                        value=param_expr,
+                        constant=is_constant,
+                    )
+                )
 
             # Parse a type expression (prefer singular _parse_type, fallback to plural helper)
             type_expr = self._parse_type() or self._parse_types()
@@ -175,17 +188,8 @@ class PlPgSQL(Postgres):
 
             # Optional NOT NULL constraint (sits after COLLATE and before DEFAULT)
             not_null = False
-            # Use text sequence matcher to consume both tokens if present
-            if getattr(self, "_match_text_seq", None) and self._match_text_seq("NOT", "NULL"):
+            if self._match_text_seq("NOT", "NULL"):
                 not_null = True
-            else:
-                # Fallback using token types if needed
-                if self._match(TokenType.NOT):
-                    if self._match(TokenType.NULL):
-                        not_null = True
-                    else:
-                        # Put back the NOT if it wasn't followed by NULL
-                        self._retreat()
 
             # Optional initialization with DEFAULT or assignment (:= or =)
             init_expr = None
@@ -247,6 +251,10 @@ class PlPgSQL(Postgres):
 
         def pldeclareitem_sql(self, expression: PLDeclareItem) -> str:
             name = self.sql(expression.this)
+            # Handle alias variant early: name ALIAS FOR $n
+            if expression.args.get("alias_for"):
+                target = self.sql(expression.args.get("expression"))
+                return f"{name} ALIAS FOR {target}"
             typ = self.sql(expression.args.get("kind")) if expression.args.get("kind") is not None else ""
             # Normalize type rendering to uppercase to match Postgres style in tests
             typ_render = typ.upper() if typ else ""
