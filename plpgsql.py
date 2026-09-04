@@ -38,13 +38,13 @@ class PGBlock(exp.Expression):
     arg_types = {"expressions": False, "begin": False, "declare": False}
 
 
-class PLDeclare(exp.Expression):
+class PGDeclare(exp.Expression):
     """A PL/pgSQL DECLARE section containing declaration items."""
 
     arg_types = {"expressions": True}
 
 
-class PLDeclareItem(exp.Expression):
+class PGDeclareItem(exp.Expression):
     """A single variable declaration inside a PL/pgSQL DECLARE section.
 
     Currently supports:
@@ -129,7 +129,7 @@ class PlPgSQL(Postgres):
 
             return self.expression(PGBlock(expressions=expressions, declare=declare, begin=True))
 
-        def _parse_pldeclare(self) -> PLDeclare:
+        def _parse_pldeclare(self) -> PGDeclare:
             items: list[exp.Expression] = []
             while True:
                 # If current chunk is consumed, move to the next one
@@ -153,9 +153,9 @@ class PlPgSQL(Postgres):
                 self.check_errors()
                 self._advance_chunk()
 
-            return self.expression(PLDeclare(expressions=items))
+            return self.expression(PGDeclare(expressions=items))
 
-        def _parse_pldeclareitem(self) -> PLDeclareItem | None:
+        def _parse_pldeclareitem(self) -> PGDeclareItem | None:
             ident = self._parse_id_var()
             if not ident:
                 return None
@@ -168,7 +168,7 @@ class PlPgSQL(Postgres):
                 # Parse a positional parameter like $1
                 param_expr = self._parse_identifier()
                 return self.expression(
-                    PLDeclareItem(
+                    PGDeclareItem(
                         this=ident,
                         alias_for=True,
                         expression=param_expr,
@@ -206,7 +206,7 @@ class PlPgSQL(Postgres):
                 init_expr = self._parse_bitwise()
 
             return self.expression(
-                PLDeclareItem(
+                PGDeclareItem(
                     this=ident,
                     kind=type_expr,
                     collate=collate_expr,
@@ -224,8 +224,8 @@ class PlPgSQL(Postgres):
         TRANSFORMS = {
             **getattr(PostgresGenerator, "TRANSFORMS", {}),
             PGBlock: lambda self, e: self.pgblock_sql(e),
-            PLDeclare: lambda self, e: self.pldeclare_sql(e),
-            PLDeclareItem: lambda self, e: self.pldeclareitem_sql(e),
+            PGDeclare: lambda self, e: self.pldeclare_sql(e),
+            PGDeclareItem: lambda self, e: self.pldeclareitem_sql(e),
         }
 
         # Also expose the auto-discovered method
@@ -243,13 +243,13 @@ class PlPgSQL(Postgres):
             parts.append("END")
             return " ".join(parts)
 
-        def pldeclare_sql(self, expression: PLDeclare) -> str:
+        def pldeclare_sql(self, expression: PGDeclare) -> str:
             items = [f"{self.sql(item)};" for item in expression.expressions]
             if not items:
                 return "DECLARE"
             return " ".join(["DECLARE", *items])
 
-        def pldeclareitem_sql(self, expression: PLDeclareItem) -> str:
+        def pldeclareitem_sql(self, expression: PGDeclareItem) -> str:
             name = self.sql(expression.this)
             # Handle alias variant early: name ALIAS FOR $n
             if expression.args.get("alias_for"):
