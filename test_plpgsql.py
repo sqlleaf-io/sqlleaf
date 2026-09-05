@@ -195,3 +195,18 @@ class TestPlPgSQL(unittest.TestCase):
     def test_when_requires_statement(self) -> None:
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one("BEGIN EXCEPTION WHEN division_by_zero THEN END;", dialect=plpgsql)
+
+    def test_return_bare(self) -> None:
+        sql = "BEGIN RETURN; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_return_expression(self) -> None:
+        sql = "BEGIN RETURN 1 + 2; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_return_inside_exception_when(self) -> None:
+        sql = "BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN RETURN; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])

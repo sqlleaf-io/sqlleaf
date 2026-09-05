@@ -103,6 +103,19 @@ class PGSqlState(exp.Expression):
     arg_types = {"this": False}
 
 
+class PGReturn(exp.Expression):
+    """Represents a PL/pgSQL RETURN statement.
+
+    Supports both forms:
+      - RETURN;
+      - RETURN <expression>;
+
+    The optional expression is stored in `this`.
+    """
+
+    arg_types = {"this": False}
+
+
 class PlPgSQL(Postgres):
     """A minimal PL/pgSQL-like dialect extending Postgres.
 
@@ -353,6 +366,26 @@ class PlPgSQL(Postgres):
                 )
             )
 
+        def _parse_statement(self) -> exp.Expr | None:  # type: ignore[override]
+            # Let RETURN be handled as a regular statement within this dialect
+            if self._curr and self._curr.text.upper() == "RETURN":
+                return self._parse_pgreturn()
+            return super()._parse_statement()
+
+        def _parse_pgreturn(self) -> PGReturn:
+            # Consume RETURN keyword
+            if not self._match_texts("RETURN"):
+                self.raise_error("Expected RETURN")
+
+            # Optional expression on the same chunk before semicolon
+            # If end of chunk reached immediately, it's a bare RETURN
+            expr: exp.Expression | None = None
+            if self._curr is not None and self._index < self._tokens_size:
+                # Parse a general expression (value/expression)
+                expr = self._parse_expression()
+
+            return self.expression(PGReturn(this=expr))
+
     class Generator(PostgresGenerator):
         # Provide explicit transform to ensure support for PGBlock
         TRANSFORMS = {
@@ -362,6 +395,7 @@ class PlPgSQL(Postgres):
             PGDeclareItem: lambda self, e: self.pldeclareitem_sql(e),
             PGException: lambda self, e: self.pgexception_sql(e),
             PGWhen: lambda self, e: self.pgwhen_sql(e),
+            PGReturn: lambda self, e: self.pgreturn_sql(e),
         }
 
         # Also expose the auto-discovered method
@@ -454,6 +488,12 @@ class PlPgSQL(Postgres):
             if value is not None:
                 return f"SQLSTATE {self.sql(value)}"
             return "SQLSTATE"
+
+        def pgreturn_sql(self, expression: PGReturn) -> str:
+            value = getattr(expression, "this", None)
+            if value is not None:
+                return f"RETURN {self.sql(value)}"
+            return "RETURN"
 
 
 plpgsql = PlPgSQL
