@@ -87,7 +87,7 @@ class PGWhen(exp.Expression):
 class PGOthers(exp.Expression):
     """Represents the OTHERS keyword in EXCEPTION WHEN OTHERS THEN ..."""
 
-    arg_types: dict[str, bool] = {}
+    arg_types = {"this": False}
 
 
 class PGLoop(exp.Expression):
@@ -160,10 +160,9 @@ class PGFetch(exp.Expression):
 
     - Cursor name is stored in ``this``.
     - Target list is stored in ``expressions``.
-    - Optional ``direction`` stores one of: NEXT, PRIOR, FIRST, LAST, FORWARD, BACKWARD,
-      ABSOLUTE, RELATIVE.
+    - Optional ``direction`` stores a dedicated Expression representing one of the
+      directions: NEXT, PRIOR, FIRST, LAST, FORWARD, BACKWARD, ABSOLUTE, RELATIVE.
     - Optional ``preposition`` stores either "FROM" or "IN" when ``direction`` is present.
-    - Optional ``count`` stores the expression following ABSOLUTE/RELATIVE.
     """
 
     arg_types = {
@@ -171,8 +170,57 @@ class PGFetch(exp.Expression):
         "expressions": True,
         "direction": False,
         "preposition": False,
-        "count": False,
     }
+
+
+class PGNext(exp.Expression):
+    """FETCH NEXT direction."""
+
+    arg_types = {"this": False}
+
+
+class PGPrior(exp.Expression):
+    """FETCH PRIOR direction."""
+
+    arg_types = {"this": False}
+
+
+class PGFirst(exp.Expression):
+    """FETCH FIRST direction."""
+
+    arg_types = {"this": False}
+
+
+class PGLast(exp.Expression):
+    """FETCH LAST direction."""
+
+    arg_types = {"this": False}
+
+
+class PGForward(exp.Expression):
+    """FETCH FORWARD direction."""
+
+    arg_types = {"this": False}
+
+
+class PGBackward(exp.Expression):
+    """FETCH BACKWARD direction."""
+
+    arg_types = {"this": False}
+
+
+class PGAbsolute(exp.Expression):
+    """FETCH ABSOLUTE <count> direction.
+    """
+
+    arg_types = {"this": True}
+
+
+class PGRelative(exp.Expression):
+    """FETCH RELATIVE <count> direction.
+    """
+
+    arg_types = {"this": True}
 
 
 class PGSqlState(exp.Expression):
@@ -666,32 +714,42 @@ class PlPgSQL(Postgres):
                 self.raise_error("Expected FETCH")
 
             # Optional direction followed by FROM|IN
-            direction: str | None = None
+            direction: exp.Expression | None = None
             preposition: str | None = None
-            count_expr: exp.Expression | None = None
 
-            if self._match_texts(
-                "NEXT"
-            ) or self._match_texts("PRIOR") or self._match_texts("FIRST") or self._match_texts("LAST") or self._match_texts("FORWARD") or self._match_texts("BACKWARD"):
-                # _prev holds the matched token
-                direction = self._prev.text.upper() if self._prev else None
-                if self._match_texts("FROM"):
-                    preposition = "FROM"
-                elif self._match_texts("IN"):
-                    preposition = "IN"
-                else:
-                    self.raise_error("Expected FROM or IN after FETCH direction")
-            elif self._match_texts("ABSOLUTE") or self._match_texts("RELATIVE"):
-                direction = self._prev.text.upper() if self._prev else None
+            # Local helper to parse required preposition token
+            def _parse_required_preposition(error_msg: str) -> str:
+                if self._match_texts(("FROM", "IN")):
+                    return (self._prev.text or "").upper()
+                self.raise_error(error_msg)
+                return ""  # unreachable, keeps type-checkers happy
+
+            # Map simple directions to their expression classes
+            SIMPLE_DIRS = {
+                "NEXT": PGNext,
+                "PRIOR": PGPrior,
+                "FIRST": PGFirst,
+                "LAST": PGLast,
+                "FORWARD": PGForward,
+                "BACKWARD": PGBackward,
+            }
+
+            if self._match_texts(tuple(SIMPLE_DIRS.keys())):
+                kw = (self._prev.text or "").upper()
+                direction = self.expression(SIMPLE_DIRS[kw]())
+                preposition = _parse_required_preposition("Expected FROM or IN after FETCH direction")
+            elif self._match_texts(("ABSOLUTE", "RELATIVE")):
+                kind = (self._prev.text or "").upper()
                 # Parse count expression (supports negatives and general expressions)
                 count_expr = self._parse_bitwise()
-                # Require FROM or IN
-                if self._match_texts("FROM"):
-                    preposition = "FROM"
-                elif self._match_texts("IN"):
-                    preposition = "IN"
-                else:
-                    self.raise_error("Expected FROM or IN after FETCH ABSOLUTE/RELATIVE count")
+                direction = (
+                    self.expression(PGAbsolute(this=count_expr))
+                    if kind == "ABSOLUTE"
+                    else self.expression(PGRelative(this=count_expr))
+                )
+                preposition = _parse_required_preposition(
+                    "Expected FROM or IN after FETCH ABSOLUTE/RELATIVE count"
+                )
 
             # Cursor identifier (after optional direction + FROM|IN)
             cursor = self._parse_id_var()
@@ -712,7 +770,6 @@ class PlPgSQL(Postgres):
                     expressions=targets,
                     direction=direction,
                     preposition=preposition,
-                    count=count_expr,
                 )
             )
 
@@ -731,6 +788,14 @@ class PlPgSQL(Postgres):
             PGContinue: lambda self, e: self.pgcontinue_sql(e),
             PGOpenCursor: lambda self, e: self.pgopencursor_sql(e),
             PGFetch: lambda self, e: self.pgfetch_sql(e),
+            PGNext: lambda self, e: self.pgnext_sql(e),
+            PGPrior: lambda self, e: self.pgprior_sql(e),
+            PGFirst: lambda self, e: self.pgfirst_sql(e),
+            PGLast: lambda self, e: self.pglast_sql(e),
+            PGForward: lambda self, e: self.pgforward_sql(e),
+            PGBackward: lambda self, e: self.pgbackward_sql(e),
+            PGAbsolute: lambda self, e: self.pgabsolute_sql(e),
+            PGRelative: lambda self, e: self.pgrelative_sql(e),
         }
 
         # Also expose the auto-discovered method
@@ -891,16 +956,36 @@ class PlPgSQL(Postgres):
 
         def pgfetch_sql(self, expression: PGFetch) -> str:
             targets_sql = ", ".join(self.sql(e) for e in expression.expressions)
-            direction = expression.args.get("direction")
-            if direction:
-                # Include count for ABSOLUTE/RELATIVE when present
-                if direction in ("ABSOLUTE", "RELATIVE"):
-                    cnt = expression.args.get("count")
-                    prep = expression.args.get("preposition") or "FROM"
-                    return f"FETCH {direction} {self.sql(cnt)} {prep} {self.sql(expression.this)} INTO {targets_sql}"
+            direction_expr = expression.args.get("direction")
+            if direction_expr is not None:
                 prep = expression.args.get("preposition") or "FROM"
-                return f"FETCH {direction} {prep} {self.sql(expression.this)} INTO {targets_sql}"
+                return f"FETCH {self.sql(direction_expr)} {prep} {self.sql(expression.this)} INTO {targets_sql}"
             return f"FETCH {self.sql(expression.this)} INTO {targets_sql}"
+
+        # Direction generators (auto-discovered)
+        def pgnext_sql(self, expression: PGNext) -> str:
+            return "NEXT"
+
+        def pgprior_sql(self, expression: PGPrior) -> str:
+            return "PRIOR"
+
+        def pgfirst_sql(self, expression: PGFirst) -> str:
+            return "FIRST"
+
+        def pglast_sql(self, expression: PGLast) -> str:
+            return "LAST"
+
+        def pgforward_sql(self, expression: PGForward) -> str:
+            return "FORWARD"
+
+        def pgbackward_sql(self, expression: PGBackward) -> str:
+            return "BACKWARD"
+
+        def pgabsolute_sql(self, expression: PGAbsolute) -> str:
+            return f"ABSOLUTE {self.sql(expression.this)}"
+
+        def pgrelative_sql(self, expression: PGRelative) -> str:
+            return f"RELATIVE {self.sql(expression.this)}"
 
 
 plpgsql = PlPgSQL
