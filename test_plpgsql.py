@@ -155,6 +155,20 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
+    def test_exception_when_sqlstate_non_string_fails(self) -> None:
+        sql = "BEGIN SELECT 1; EXCEPTION WHEN SQLSTATE hello THEN RAISE; END;"
+        with self.assertRaisesRegex(
+            sqlglot.errors.ParseError, r"SQLSTATE must be followed by a quoted literal"
+        ):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_exception_when_sqlstate_nothing_fails(self) -> None:
+        sql = "BEGIN SELECT 1; EXCEPTION WHEN SQLSTATE THEN RAISE; END;"
+        with self.assertRaisesRegex(
+            sqlglot.errors.ParseError, r"SQLSTATE must be followed by a quoted literal"
+        ):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
     def test_exception_when_others(self) -> None:
         sql = "BEGIN SELECT 1; EXCEPTION WHEN OTHERS THEN RAISE; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)

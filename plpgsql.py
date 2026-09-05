@@ -90,6 +90,19 @@ class PGOthers(exp.Expression):
     arg_types: dict[str, bool] = {}
 
 
+class PGSqlState(exp.Expression):
+    """Represents the SQLSTATE condition, optionally followed by a string literal.
+
+    Examples:
+      - SQLSTATE
+      - SQLSTATE '22012'
+
+    The optional literal is stored in `this`.
+    """
+
+    arg_types = {"this": False}
+
+
 class PlPgSQL(Postgres):
     """A minimal PL/pgSQL-like dialect extending Postgres.
 
@@ -235,20 +248,18 @@ class PlPgSQL(Postgres):
 
         def _parse_pgwhen_condition(self) -> exp.Expression | None:
             # Support: identifier condition (e.g., division_by_zero)
-            # or the form: SQLSTATE 'XXXXX'
-            # or the keyword OTHERS
+            # the keyword OTHERS, or the form: SQLSTATE ['XXXXX']
             if self._match_texts("OTHERS"):
                 return self.expression(PGOthers())
+
             if self._match_texts("SQLSTATE"):
-                # Expect a quoted literal string immediately after SQLSTATE
-                string_expr = self._parse_primary()
-                if not isinstance(string_expr, exp.Literal) or not string_expr.is_string:
-                    self.raise_error("SQLSTATE must be followed by a quoted literal")
-                # Represent SQLSTATE 'xxxxx' without a dedicated class by packing
-                # it into a tuple-like structure: (Identifier('SQLSTATE'), 'xxxxx')
-                return self.expression(
-                    exp.Tuple(expressions=[exp.to_identifier("SQLSTATE"), string_expr])
-                )
+                # If a quoted literal follows, parse and attach it.
+                if self._match(TokenType.STRING, advance=False):
+                    lit = self._parse_primary()
+                    if isinstance(lit, exp.Literal) and lit.is_string:
+                        return self.expression(PGSqlState(this=lit))
+
+                self.raise_error("SQLSTATE must be followed by a quoted literal")
 
             return self._parse_id_var()
 
@@ -415,16 +426,9 @@ class PlPgSQL(Postgres):
             # Render condition expression with special handling for SQLSTATE tokens,
             # and support OR-composed conditions similar to CASE.
             def render_cond(node: exp.Expression) -> str:
-                # SQLSTATE 'xxxxx' encoded as Tuple(Identifier('SQLSTATE'), Literal)
-                if isinstance(node, exp.Tuple) and len(node.expressions) == 2:
-                    first, second = node.expressions
-                    if (
-                        isinstance(first, exp.Identifier)
-                        and first.name.upper() == "SQLSTATE"
-                        and isinstance(second, exp.Literal)
-                        and second.is_string
-                    ):
-                        return f"SQLSTATE {self.sql(second)}"
+                # Dedicated SQLSTATE expression
+                if isinstance(node, PGSqlState):
+                    return self.pgsqlstate_sql(node)
                 # WHEN OTHERS
                 if isinstance(node, PGOthers):
                     return self.pgothers_sql(node)
@@ -443,6 +447,13 @@ class PlPgSQL(Postgres):
         # Auto-discovered generator for PGOthers
         def pgothers_sql(self, expression: exp.Expression) -> str:  # type: ignore[override]
             return "OTHERS"
+
+        # Auto-discovered generator for PGSqlState
+        def pgsqlstate_sql(self, expression: exp.Expression) -> str:  # type: ignore[override]
+            value = getattr(expression, "this", None)
+            if value is not None:
+                return f"SQLSTATE {self.sql(value)}"
+            return "SQLSTATE"
 
 
 plpgsql = PlPgSQL
