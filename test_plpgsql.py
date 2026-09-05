@@ -337,3 +337,18 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN OPEN curs3(42); END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_open_bound_cursor_named_colon_arg(self) -> None:
+        sql = "BEGIN OPEN curs3(key := 42); END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_open_bound_cursor_named_arrow_arg(self) -> None:
+        sql = "BEGIN OPEN curs3(key => 42); END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_open_bound_cursor_mixed_arg(self) -> None:
+        sql = "BEGIN OPEN curs3(a => b, c := 10); END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])

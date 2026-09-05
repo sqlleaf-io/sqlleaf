@@ -125,6 +125,17 @@ class PGContinue(exp.Expression):
     arg_types = {"this": False, "when": False}
 
 
+class AssignArg(exp.Expression, exp.Binary):
+    """Represents a named argument using the PL/pgSQL ``:=`` syntax.
+
+    Example: ``key := 42`` inside an OPEN cursor argument list.
+
+    The name is stored in ``this`` and the value in ``expression``.
+    """
+
+    pass
+
+
 class PGOpenCursor(exp.Expression):
     """A PL/pgSQL OPEN cursor statement.
 
@@ -422,7 +433,7 @@ class PlPgSQL(Postgres):
                 )
             )
 
-        def _parse_statement(self) -> exp.Expr | None:  # type: ignore[override]
+        def _parse_statement(self) -> exp.Expr | None:
             # Let RETURN be handled as a regular statement within this dialect
             if self._curr and self._curr.text.upper() == "RETURN":
                 return self._parse_pgreturn()
@@ -543,6 +554,44 @@ class PlPgSQL(Postgres):
 
             return self.expression(PGContinue(this=label, when=condition))
 
+        def _parse_open_args(self) -> list[exp.Expression]:
+            """Parse an OPEN cursor argument list and return the collected args.
+
+            Supports positional arguments, name := value (AssignArg), and
+            name => value (Kwarg).
+
+            Precondition: current token is '(' (not yet consumed).
+            Postcondition: the closing ')' is consumed.
+            """
+            # Consume '('
+            self._advance()
+
+            # Delegate argument collection to helper (does not consume ')')
+            args: list[exp.Expression] = []
+
+            if not self._match(TokenType.R_PAREN, advance=False):
+                while True:
+                    # Parse an expression; if immediately followed by := or =>,
+                    # treat the parsed expression as the name of a named argument.
+                    first = self._parse_expression()
+                    if self._match(TokenType.COLON_EQ) or self._match(TokenType.FARROW):
+                        op_token = self._prev
+                        value_expr = self._parse_expression()
+                        if op_token and op_token.token_type == TokenType.COLON_EQ:
+                            args.append(AssignArg(this=first, expression=value_expr))
+                        else:
+                            args.append(exp.Kwarg(this=first, expression=value_expr))
+                    else:
+                        args.append(first)
+
+                    if not self._match(TokenType.COMMA):
+                        break
+
+            if not self._match(TokenType.R_PAREN):
+                self.raise_error("Expected ')' to close argument list in OPEN")
+
+            return args
+
         def _parse_pgopen(self) -> PGOpenCursor:
             # Consume OPEN keyword
             if not self._match_texts("OPEN"):
@@ -551,9 +600,10 @@ class PlPgSQL(Postgres):
             # Cursor variable identifier
             cursor = self._parse_id_var()
 
-            # Bound cursor with positional arguments: OPEN c(<args>)
+            # Bound cursor with arguments: OPEN c(<args>) where args can be positional,
+            # name := value (AssignArg), or name => value (Kwarg)
             if self._match(TokenType.L_PAREN, advance=False):
-                args = self._parse_wrapped_csv(self._parse_expression)
+                args = self._parse_open_args()
                 return self.expression(PGOpenCursor(this=cursor, expressions=args))
 
             # Optional [[NO] SCROLL]
@@ -675,11 +725,11 @@ class PlPgSQL(Postgres):
             return f"WHEN {conds} THEN {body_sql}"
 
         # Auto-discovered generator for PGOthers
-        def pgothers_sql(self, expression: exp.Expression) -> str:  # type: ignore[override]
+        def pgothers_sql(self, expression: exp.Expression) -> str:
             return "OTHERS"
 
         # Auto-discovered generator for PGSqlState
-        def pgsqlstate_sql(self, expression: exp.Expression) -> str:  # type: ignore[override]
+        def pgsqlstate_sql(self, expression: exp.Expression) -> str:
             value = getattr(expression, "this", None)
             if value is not None:
                 return f"SQLSTATE {self.sql(value)}"
@@ -745,6 +795,10 @@ class PlPgSQL(Postgres):
                 args_sql = ", ".join(self.sql(arg) for arg in expression.expressions)
                 name_sql = f"{name_sql}({args_sql})"
             return f"OPEN {name_sql}"
+
+        # Auto-discovered generator for AssignArg
+        def colon_arg_sql(self, expression: AssignArg) -> str:
+            return self.binary(expression, ":=")
 
 
 plpgsql = PlPgSQL
