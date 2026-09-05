@@ -216,6 +216,8 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
+    # TODO: RETURN QUERY EXECUTE command-string [ USING expression [, ... ] ];
+
     def test_return_query_inside_exception_when(self) -> None:
         sql = "BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN RETURN QUERY SELECT 2; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
@@ -273,5 +275,35 @@ class TestPlPgSQL(unittest.TestCase):
 
     def test_exit_inside_loop(self) -> None:
         sql = "BEGIN LOOP EXIT; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_continue_bare(self) -> None:
+        sql = "BEGIN CONTINUE; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_continue_with_label(self) -> None:
+        sql = "BEGIN CONTINUE myloop; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_continue_with_when(self) -> None:
+        sql = "BEGIN CONTINUE WHEN x > 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_continue_with_label_and_when(self) -> None:
+        sql = "BEGIN CONTINUE myloop WHEN x > 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_continue_inside_exception_when(self) -> None:
+        sql = "BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN CONTINUE; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_continue_inside_loop(self) -> None:
+        sql = "BEGIN LOOP CONTINUE; END LOOP; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
