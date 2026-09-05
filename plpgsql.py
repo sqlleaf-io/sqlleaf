@@ -35,12 +35,12 @@ class PGBlock(exp.Expression):
     """
     # Allow empty blocks: 'expressions' is optional
     # Optionally includes a DECLARE section captured as `declare`.
-    arg_types = {"expressions": False, "begin": False, "declare": False}
+    # Optionally includes an exception section captured as `exception`.
+    arg_types = {"expressions": False, "begin": False, "declare": False, "exception": False}
 
 
 class PGDeclare(exp.Expression):
     """A PL/pgSQL DECLARE section containing declaration items."""
-
     arg_types = {"expressions": True}
 
 
@@ -64,6 +64,18 @@ class PGDeclareItem(exp.Expression):
         "not_null": False,
         "alias_for": False,
     }
+
+
+class PGException(exp.Expression):
+    """PL/pgSQL EXCEPTION section containing WHEN entries."""
+
+    arg_types = {"expressions": True}
+
+
+class PGWhen(exp.Expression):
+    """A single WHEN ... THEN ... entry inside an EXCEPTION section."""
+
+    arg_types = {"conditions": True, "expressions": True}
 
 
 class PlPgSQL(Postgres):
@@ -96,11 +108,9 @@ class PlPgSQL(Postgres):
                 declare = self._parse_pldeclare()
                 if not self._match(TokenType.BEGIN):
                     self.raise_error("Expected BEGIN after DECLARE or at block start")
-            else:
-                # Started with BEGIN: already consumed, do nothing here
-                pass
 
             expressions: list[exp.Expression] = []
+            exception = None
 
             while True:
                 # If we've consumed the current chunk, move to the next one
@@ -110,6 +120,15 @@ class PlPgSQL(Postgres):
                 # Stop if we reached END (block terminator)
                 if not self._curr:
                     break
+
+                # Detect start of EXCEPTION section (structural, not delimited by ';')
+                if self._match_texts("EXCEPTION", advance=False):
+                    # Parse the exception section and then let the loop continue
+                    # so that END is handled by the usual logic.
+                    exception = self._parse_pgexception()
+                    # After parsing EXCEPTION, do not parse more statements here.
+                    # Continue to let the END be consumed by the block logic.
+                    continue
 
                 if self._match(TokenType.END, advance=False):
                     self._advance()  # consume END
@@ -127,7 +146,74 @@ class PlPgSQL(Postgres):
                 self.check_errors()
                 self._advance_chunk()
 
-            return self.expression(PGBlock(expressions=expressions, declare=declare, begin=True))
+            return self.expression(PGBlock(expressions=expressions, declare=declare, exception=exception, begin=True))
+
+        def _parse_pgexception(self) -> exp.Expression:
+            # Consume EXCEPTION keyword if not yet consumed
+            if not self._match_texts("EXCEPTION"):
+                self.raise_error("Expected EXCEPTION in block")
+
+            whens: list[exp.Expression] = []
+
+            # Parse one or more WHEN clauses
+            while self._match(TokenType.WHEN, advance=False):
+                whens.append(self._parse_pgwhen())
+
+            if not whens:
+                self.raise_error("EXCEPTION requires at least one WHEN clause")
+
+            return self.expression(PGException(expressions=whens))
+
+        def _parse_pgwhen(self) -> exp.Expression:
+            if not self._match(TokenType.WHEN):
+                self.raise_error("Expected WHEN in EXCEPTION section")
+
+            # Parse one or more condition identifiers separated by OR
+            conditions: list[exp.Expression] = []
+
+            # First condition
+            cond = self._parse_id_var()
+            if cond is not None:
+                conditions.append(cond)
+
+            # Additional conditions joined by OR
+            while self._match(TokenType.OR):
+                more = self._parse_id_var()
+                if more is None:
+                    self.raise_error("Expected condition after OR")
+                conditions.append(more)
+
+            if not conditions:
+                self.raise_error("WHEN requires at least one condition")
+
+            if not self._match(TokenType.THEN):
+                self.raise_error("Expected THEN in WHEN clause")
+
+            # Parse one or more statements until next WHEN or END
+            body: list[exp.Expression] = []
+            while True:
+                if not self._curr:
+                    break
+
+                # Stop if new WHEN or END is next
+                if self._match(TokenType.WHEN, advance=False) or self._match(TokenType.END, advance=False):
+                    break
+
+                stmt = self._parse_statement()
+                if stmt is not None:
+                    body.append(stmt)
+
+                # Ensure the statement consumed the whole chunk (terminated by ';')
+                if self._index < self._tokens_size:
+                    self.raise_error("Invalid expression in WHEN body / Unexpected token")
+
+                self.check_errors()
+                self._advance_chunk()
+
+            if not body:
+                self.raise_error("WHEN body requires at least one statement")
+
+            return self.expression(PGWhen(conditions=conditions, expressions=body))
 
         def _parse_pldeclare(self) -> PGDeclare:
             items: list[exp.Expression] = []
@@ -226,6 +312,8 @@ class PlPgSQL(Postgres):
             PGBlock: lambda self, e: self.pgblock_sql(e),
             PGDeclare: lambda self, e: self.pldeclare_sql(e),
             PGDeclareItem: lambda self, e: self.pldeclareitem_sql(e),
+            PGException: lambda self, e: self.pgexception_sql(e),
+            PGWhen: lambda self, e: self.pgwhen_sql(e),
         }
 
         # Also expose the auto-discovered method
@@ -240,6 +328,12 @@ class PlPgSQL(Postgres):
             parts.append("BEGIN")
             for expr in expression.expressions:
                 parts.append(f"{self.sql(expr)};")
+
+            # Render EXCEPTION section if present
+            ex = expression.args.get("exception")
+            if ex is not None:
+                parts.append(self.sql(ex))
+
             parts.append("END")
             return " ".join(parts)
 
@@ -255,6 +349,7 @@ class PlPgSQL(Postgres):
             if expression.args.get("alias_for"):
                 target = self.sql(expression.args.get("expression"))
                 return f"{name} ALIAS FOR {target}"
+
             typ = self.sql(expression.args.get("kind")) if expression.args.get("kind") is not None else ""
             # Normalize type rendering to uppercase to match Postgres style in tests
             typ_render = typ.upper() if typ else ""
@@ -272,6 +367,19 @@ class PlPgSQL(Postgres):
                 return f"{name}{const_kw} {typ_render}{collate_sql}{not_null_sql} {op} {self.sql(init)}"
 
             return f"{name}{const_kw} {typ_render}{collate_sql}{not_null_sql}"
+
+        def pgexception_sql(self, expression: "PGException") -> str:
+            parts: list[str] = ["EXCEPTION"]
+            for when in expression.expressions:
+                parts.append(self.sql(when))
+            return " ".join(parts)
+
+        def pgwhen_sql(self, expression: "PGWhen") -> str:
+            # Render conditions joined by OR
+            conds = " OR ".join(self.sql(c) for c in expression.args.get("conditions") or [])
+            # Render body statements, each terminated by a semicolon
+            body_sql = " ".join(f"{self.sql(stmt)};" for stmt in expression.expressions)
+            return f"WHEN {conds} THEN {body_sql}"
 
 
 plpgsql = PlPgSQL
