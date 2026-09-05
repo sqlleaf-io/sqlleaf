@@ -58,8 +58,9 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertEqual(out, "DECLARE my_count INTEGER = 0; BEGIN SELECT 1; END")
 
     # TODO:
-    #  myrow tablename%ROWTYPE;
-    #  myfield tablename.columnname%TYPE;
+    #  - myrow tablename%ROWTYPE;
+    #  - myfield tablename.columnname%TYPE;
+    #  - cursors
 
     def test_plpgsql_declare_default(self) -> None:
         sql = """
@@ -398,5 +399,57 @@ class TestPlPgSQL(unittest.TestCase):
 
     def test_move_forward_count_from_cursor(self) -> None:
         sql = "BEGIN MOVE FORWARD FROM curs4; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    # New FETCH direction forms
+    def test_fetch_count_from_cursor(self) -> None:
+        sql = "BEGIN FETCH 5 FROM curs5 INTO x; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_fetch_all_from_cursor(self) -> None:
+        sql = "BEGIN FETCH ALL FROM curs5 INTO x; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_fetch_forward_count_from_cursor(self) -> None:
+        sql = "BEGIN FETCH FORWARD 3 FROM curs6 INTO a, b; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_fetch_forward_all_from_cursor(self) -> None:
+        sql = "BEGIN FETCH FORWARD ALL FROM curs6 INTO a; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_fetch_backward_count_from_cursor(self) -> None:
+        sql = "BEGIN FETCH BACKWARD 2 FROM curs7 INTO col; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_fetch_backward_all_from_cursor(self) -> None:
+        sql = "BEGIN FETCH BACKWARD ALL FROM curs7 INTO col; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    # New MOVE direction forms
+    def test_move_forward_count(self) -> None:
+        sql = "BEGIN MOVE FORWARD 4 FROM curs8; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_move_forward_all(self) -> None:
+        sql = "BEGIN MOVE FORWARD ALL FROM curs8; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_move_backward_count(self) -> None:
+        sql = "BEGIN MOVE BACKWARD 2 FROM curs9; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_move_backward_all(self) -> None:
+        sql = "BEGIN MOVE BACKWARD ALL FROM curs9; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])

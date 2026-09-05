@@ -153,12 +153,12 @@ class PGLast(exp.Expression):
 
 class PGForward(exp.Expression):
     """FETCH FORWARD direction."""
-    arg_types = {"this": False}
+    arg_types = {"this": False, "all": False}
 
 
 class PGBackward(exp.Expression):
     """FETCH BACKWARD direction."""
-    arg_types = {"this": False}
+    arg_types = {"this": False, "all": False}
 
 
 class PGAbsolute(exp.Expression):
@@ -169,6 +169,14 @@ class PGAbsolute(exp.Expression):
 class PGRelative(exp.Expression):
     """FETCH RELATIVE <count> direction."""
     arg_types = {"this": True}
+
+
+class PGAll(exp.Expression):
+    """Direction variant representing ALL (no additional keyword).
+
+    Used for forms like "FETCH ALL FROM c" or as the payload of FORWARD/BACKWARD ALL.
+    """
+    arg_types = {"this": False}
 
 
 class PGSqlState(exp.Expression):
@@ -716,11 +724,52 @@ class PlPgSQL(Postgres):
                 "PRIOR": PGPrior,
                 "FIRST": PGFirst,
                 "LAST": PGLast,
-                "FORWARD": PGForward,
-                "BACKWARD": PGBackward,
             }
 
-            if self._match_texts(tuple(SIMPLE_DIRS.keys())):
+            # Helper: check if the upcoming token sequence represents a numeric count
+            def _next_is_numeric() -> bool:
+                return (
+                    (self._curr is not None and self._curr.token_type == TokenType.NUMBER)
+                    or (
+                        self._curr is not None
+                        and self._curr.token_type == TokenType.DASH
+                        and self._next is not None
+                        and self._next.token_type == TokenType.NUMBER
+                    )
+                )
+
+            # Handle FORWARD/BACKWARD with optional count/ALL
+            if self._match_texts(("FORWARD", "BACKWARD")):
+                which = (self._prev.text or "").upper()
+                # Optional ALL or count after FORWARD/BACKWARD
+                if self._match_texts("ALL"):
+                    direction = (
+                        self.expression(PGForward(all=True))
+                        if which == "FORWARD"
+                        else self.expression(PGBackward(all=True))
+                    )
+                else:
+                    # Parse numeric count only when the next token(s) are numeric
+                    if _next_is_numeric():
+                        count_expr = self._parse_bitwise()
+                        direction = (
+                            self.expression(PGForward(this=count_expr))
+                            if which == "FORWARD"
+                            else self.expression(PGBackward(this=count_expr))
+                        )
+                    else:
+                        # No count provided; just the keyword
+                        direction = (
+                            self.expression(PGForward())
+                            if which == "FORWARD"
+                            else self.expression(PGBackward())
+                        )
+
+                preposition = _parse_required_preposition(
+                    f"Expected FROM or IN after {after_kw} direction"
+                )
+
+            elif self._match_texts(tuple(SIMPLE_DIRS.keys())):
                 kw = (self._prev.text or "").upper()
                 direction = self.expression(SIMPLE_DIRS[kw]())
                 preposition = _parse_required_preposition(
@@ -737,6 +786,22 @@ class PlPgSQL(Postgres):
                 preposition = _parse_required_preposition(
                     f"Expected FROM or IN after {after_kw} ABSOLUTE/RELATIVE count"
                 )
+
+            else:
+                # Standalone ALL or standalone count (equivalent to FORWARD ALL / FORWARD count)
+                if self._match_texts("ALL"):
+                    direction = self.expression(PGAll())
+                    preposition = _parse_required_preposition(
+                        f"Expected FROM or IN after {after_kw} ALL"
+                    )
+                else:
+                    # Parse numeric count only when the next token(s) are numeric
+                    if _next_is_numeric():
+                        count_expr = self._parse_bitwise()
+                        direction = count_expr
+                        preposition = _parse_required_preposition(
+                            f"Expected FROM or IN after {after_kw} count"
+                        )
 
             cursor = self._parse_id_var()
             return direction, preposition, cursor
@@ -765,6 +830,7 @@ class PlPgSQL(Postgres):
             PGBackward: lambda self, e: self.pgbackward_sql(e),
             PGAbsolute: lambda self, e: self.pgabsolute_sql(e),
             PGRelative: lambda self, e: self.pgrelative_sql(e),
+            PGAll: lambda self, e: self.pgall_sql(e),
         }
 
         # Also expose the auto-discovered method
@@ -952,9 +1018,17 @@ class PlPgSQL(Postgres):
             return "LAST"
 
         def pgforward_sql(self, expression: PGForward) -> str:
+            if expression.args.get("all"):
+                return "FORWARD ALL"
+            if expression.args.get("this") is not None:
+                return f"FORWARD {self.sql(expression.this)}"
             return "FORWARD"
 
         def pgbackward_sql(self, expression: PGBackward) -> str:
+            if expression.args.get("all"):
+                return "BACKWARD ALL"
+            if expression.args.get("this") is not None:
+                return f"BACKWARD {self.sql(expression.this)}"
             return "BACKWARD"
 
         def pgabsolute_sql(self, expression: PGAbsolute) -> str:
@@ -962,6 +1036,9 @@ class PlPgSQL(Postgres):
 
         def pgrelative_sql(self, expression: PGRelative) -> str:
             return f"RELATIVE {self.sql(expression.this)}"
+
+        def pgall_sql(self, expression: PGAll) -> str:
+            return "ALL"
 
 
 plpgsql = PlPgSQL
