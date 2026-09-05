@@ -230,3 +230,18 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN RETURN NEXT 3; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_loop_empty_fails(self) -> None:
+        sql = "BEGIN LOOP END LOOP; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            expr = sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_loop_with_return(self) -> None:
+        sql = "BEGIN LOOP RETURN; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_loop_inside_exception_when(self) -> None:
+        sql = "BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN LOOP RETURN; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])

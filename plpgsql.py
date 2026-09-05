@@ -90,6 +90,15 @@ class PGOthers(exp.Expression):
     arg_types: dict[str, bool] = {}
 
 
+class PGLoop(exp.Expression):
+    """A PL/pgSQL LOOP ... END LOOP construct.
+
+    Stores inner statements in ``expressions`` similar to :class:`PGBlock`.
+    """
+
+    arg_types = {"expressions": True}
+
+
 class PGSqlState(exp.Expression):
     """Represents the SQLSTATE condition, optionally followed by a string literal.
 
@@ -375,6 +384,9 @@ class PlPgSQL(Postgres):
             # Let RETURN be handled as a regular statement within this dialect
             if self._curr and self._curr.text.upper() == "RETURN":
                 return self._parse_pgreturn()
+            # Support top-level LOOP statements within blocks and WHEN bodies
+            if self._curr and self._curr.text.upper() == "LOOP":
+                return self._parse_pgloop()
             return super()._parse_statement()
 
         def _parse_pgreturn(self) -> PGReturn:
@@ -408,6 +420,42 @@ class PlPgSQL(Postgres):
 
             return self.expression(PGReturn(this=expr))
 
+        def _parse_pgloop(self) -> PGLoop:
+            # Consume LOOP keyword starting the construct
+            if not self._match_texts("LOOP"):
+                self.raise_error("Expected LOOP")
+
+            body: list[exp.Expression] = []
+
+            while True:
+                # Move to next chunk when the current is fully consumed
+                if self._index >= self._tokens_size:
+                    self._advance_chunk()
+
+                # If next token begins END, close the loop
+                if self._match(TokenType.END, advance=False):
+                    self._advance()  # consume END
+                    # Require the LOOP keyword after END
+                    if not self._match_texts("LOOP"):
+                        self.raise_error("Expected LOOP after END in LOOP block")
+                    break
+
+                if not self._curr:
+                    break
+
+                stmt = self._parse_statement()
+                if stmt is not None:
+                    body.append(stmt)
+
+                # Ensure full chunk consumption for each statement
+                if self._index < self._tokens_size:
+                    self.raise_error("Invalid expression inside LOOP / Unexpected token")
+
+                self.check_errors()
+                self._advance_chunk()
+
+            return self.expression(PGLoop(expressions=body))
+
     class Generator(PostgresGenerator):
         # Provide explicit transform to ensure support for PGBlock
         TRANSFORMS = {
@@ -417,6 +465,7 @@ class PlPgSQL(Postgres):
             PGDeclareItem: lambda self, e: self.pldeclareitem_sql(e),
             PGException: lambda self, e: self.pgexception_sql(e),
             PGWhen: lambda self, e: self.pgwhen_sql(e),
+            PGLoop: lambda self, e: self.pgloop_sql(e),
             PGReturn: lambda self, e: self.pgreturn_sql(e),
         }
 
@@ -526,6 +575,13 @@ class PlPgSQL(Postgres):
             if value is not None:
                 return f"RETURN {self.sql(value)}"
             return "RETURN"
+
+        def pgloop_sql(self, expression: PGLoop) -> str:
+            body_sql = " ".join(f"{self.sql(stmt)};" for stmt in expression.expressions)
+            # Render exactly: LOOP <stmts>; END LOOP
+            if body_sql:
+                return f"LOOP {body_sql} END LOOP"
+            return "LOOP END LOOP"
 
 
 plpgsql = PlPgSQL
