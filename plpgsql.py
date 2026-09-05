@@ -99,6 +99,19 @@ class PGLoop(exp.Expression):
     arg_types = {"expressions": True}
 
 
+class PGExit(exp.Expression):
+    """A PL/pgSQL EXIT statement.
+
+    Syntax:
+      EXIT [ label ] [ WHEN <expression> ];
+
+    - Optional label is stored in ``this`` (as an identifier expression).
+    - Optional condition after WHEN is stored under ``when``.
+    """
+
+    arg_types = {"this": False, "when": False}
+
+
 class PGSqlState(exp.Expression):
     """Represents the SQLSTATE condition, optionally followed by a string literal.
 
@@ -387,6 +400,9 @@ class PlPgSQL(Postgres):
             # Support top-level LOOP statements within blocks and WHEN bodies
             if self._curr and self._curr.text.upper() == "LOOP":
                 return self._parse_pgloop()
+            # Support EXIT [label] [WHEN expr]; anywhere similar to LOOP
+            if self._curr and self._curr.text.upper() == "EXIT":
+                return self._parse_pgexit()
             return super()._parse_statement()
 
         def _parse_pgreturn(self) -> PGReturn:
@@ -456,6 +472,24 @@ class PlPgSQL(Postgres):
 
             return self.expression(PGLoop(expressions=body))
 
+        def _parse_pgexit(self) -> PGExit:
+            # Consume EXIT keyword
+            if not self._match_texts("EXIT"):
+                self.raise_error("Expected EXIT")
+
+            label = None
+            condition = None
+
+            # Optional label: next token is an identifier/var (and not WHEN)
+            if self._curr is not None and self._curr.text.upper() != "WHEN":
+                label = self._parse_id_var()
+
+            # Optional WHEN <expression>
+            if self._match(TokenType.WHEN):
+                condition = self._parse_expression()
+
+            return self.expression(PGExit(this=label, when=condition))
+
     class Generator(PostgresGenerator):
         # Provide explicit transform to ensure support for PGBlock
         TRANSFORMS = {
@@ -467,6 +501,7 @@ class PlPgSQL(Postgres):
             PGWhen: lambda self, e: self.pgwhen_sql(e),
             PGLoop: lambda self, e: self.pgloop_sql(e),
             PGReturn: lambda self, e: self.pgreturn_sql(e),
+            PGExit: lambda self, e: self.pgexit_sql(e),
         }
 
         # Also expose the auto-discovered method
@@ -582,6 +617,15 @@ class PlPgSQL(Postgres):
             if body_sql:
                 return f"LOOP {body_sql} END LOOP"
             return "LOOP END LOOP"
+
+        def pgexit_sql(self, expression: PGExit) -> str:
+            parts: list[str] = ["EXIT"]
+            if expression.args.get("this") is not None:
+                parts.append(self.sql(expression.this))
+            if expression.args.get("when") is not None:
+                parts.append("WHEN")
+                parts.append(self.sql(expression.args.get("when")))
+            return " ".join(parts)
 
 
 plpgsql = PlPgSQL
