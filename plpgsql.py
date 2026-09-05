@@ -86,6 +86,36 @@ class PGContinue(exp.Expression):
     arg_types = {"this": False, "when": False}
 
 
+class PGRaise(exp.Expression):
+    """A PL/pgSQL RAISE statement.
+
+    Supports the following variants:
+
+      - RAISE [ level ] 'format' [, expression [, ... ]] [ USING option { = | := } expression [, ...] ];
+      - RAISE [ level ] condition_name [ USING option { = | := } expression [, ...] ];
+      - RAISE [ level ] SQLSTATE 'sqlstate' [ USING option { = | := } expression [, ...] ];
+      - RAISE [ level ] USING option { = | := } expression [, ... ];
+      - RAISE ;  (re-raise inside EXCEPTION handler)
+
+    Fields:
+      - level: optional exp.Identifier
+      - message: optional exp.Expression (typically a string literal)
+      - expressions: optional CSV expressions used to fill format placeholders
+      - condition: optional exp.Identifier (condition name)
+      - sqlstate: optional PGSqlState
+      - using: optional list of AssignArg entries
+    """
+
+    arg_types = {
+        "level": False,
+        "message": False,
+        "expressions": False,
+        "condition": False,
+        "sqlstate": False,
+        "using": False,
+    }
+
+
 class AssignArg(exp.Expression, exp.Binary):
     """Represents a named argument using the PL/pgSQL ``:=`` syntax.
 
@@ -480,6 +510,9 @@ class PlPgSQL(Postgres):
             # Support CONTINUE [label] [WHEN expr]; anywhere similar to EXIT
             if self._curr and self._curr.text.upper() == "CONTINUE":
                 return self._parse_pgcontinue()
+            # Support RAISE statement and its variants
+            if self._curr and self._curr.text.upper() == "RAISE":
+                return self._parse_pgraise()
             # Support OPEN cursorvar [ [ NO ] SCROLL ] FOR query; anywhere
             if self._curr and self._curr.text.upper() == "OPEN":
                 return self._parse_pgopen()
@@ -493,6 +526,103 @@ class PlPgSQL(Postgres):
             if self._curr and self._curr.text.upper() == "CLOSE":
                 return self._parse_pgclose()
             return super()._parse_statement()
+
+        def _parse_pgraise(self) -> PGRaise:
+            # Consume RAISE keyword
+            if not self._match_texts("RAISE"):
+                self.raise_error("Expected RAISE")
+
+            LEVELS = {"DEBUG", "LOG", "INFO", "NOTICE", "WARNING", "EXCEPTION"}
+
+            level = None
+            message: exp.Expression | None = None
+            fmt_args: list[exp.Expression] | None = None
+            condition = None
+            sqlstate: exp.Expression | None = None
+            using_args: list[exp.Expression] | None = None
+
+            # Optional level
+            if self._curr is not None and self._curr.text.upper() in LEVELS:
+                # Treat as identifier to keep minimal AST
+                token = self._curr
+                self._advance()
+                ident = exp.to_identifier(token.text)
+                ident.update_positions(token)
+                level = ident
+
+            # Helper to parse USING options into AssignArg entries
+            def _parse_using_list() -> list[exp.Expression]:
+                # Current token should be USING (not yet consumed)
+                if not self._match(TokenType.USING):
+                    return []
+                opts: list[exp.Expression] = []
+                # Parse CSV of name {:=|=} expr
+                first = True
+                while True:
+                    # Name is a simple identifier or variable token
+                    name = self._parse_id_var(any_token=True)
+                    if not name:
+                        if first:
+                            self.raise_error("Expected option name after USING")
+                        break
+
+                    # Allow either := or =
+                    if self._match(TokenType.COLON_EQ) or self._match(TokenType.EQ):
+                        value = self._parse_expression()
+                        opts.append(AssignArg(this=name, expression=value))
+                    else:
+                        self.raise_error("Expected ':=' or '=' in USING option")
+
+                    first = False
+                    if not self._match(TokenType.COMMA):
+                        break
+
+                return opts
+
+            # Branch on next token for main payload
+            if self._curr is None or self._index >= self._tokens_size:
+                # Bare re-raise
+                pass
+            elif self._match_texts("SQLSTATE"):
+                # Expect a quoted literal next
+                if self._match(TokenType.STRING, advance=False):
+                    lit = self._parse_primary()
+                    if isinstance(lit, exp.Literal) and lit.is_string:
+                        sqlstate = self.expression(PGSqlState(this=lit))
+                    else:
+                        self.raise_error("SQLSTATE must be followed by a quoted literal")
+                else:
+                    self.raise_error("SQLSTATE must be followed by a quoted literal")
+            elif self._match(TokenType.STRING, advance=False):
+                # Message/format expression (typically a string)
+                message = self._parse_expression()
+                # Optional CSV of expressions
+                args: list[exp.Expression] = []
+                while self._match(TokenType.COMMA):
+                    args.append(self._parse_expression())
+                if args:
+                    fmt_args = args
+            elif self._match(TokenType.USING, advance=False):
+                # USING-only form
+                using_args = _parse_using_list()
+            else:
+                # Condition name (identifier)
+                condition = self._parse_id_var(any_token=True)
+
+            # Optional USING after message/condition/sqlstate
+            if using_args is None and self._match(TokenType.USING, advance=False):
+                using_args = _parse_using_list()
+
+            return self.expression(
+                PGRaise(
+                    level=level,
+                    message=message,
+                    expressions=fmt_args,
+                    condition=condition,
+                    sqlstate=sqlstate,
+                    using=using_args,
+                )
+            )
 
         def _parse_pgreturn(self) -> PGReturn:
             # Consume RETURN keyword
@@ -839,6 +969,9 @@ class PlPgSQL(Postgres):
             PGReturn: lambda self, e: self.pgreturn_sql(e),
             PGExit: lambda self, e: self.pgexit_sql(e),
             PGContinue: lambda self, e: self.pgcontinue_sql(e),
+            PGRaise: lambda self, e: self.pgraise_sql(e),
+            AssignArg: lambda self, e: self.assignarg_sql(e),
+            PGSqlState: lambda self, e: self.pgsqlstate_sql(e),
             PGOpenCursor: lambda self, e: self.pgopencursor_sql(e),
             PGFetch: lambda self, e: self.pgfetch_sql(e),
             PGMove: lambda self, e: self.pgmove_sql(e),
@@ -961,6 +1094,37 @@ class PlPgSQL(Postgres):
                 return f"RETURN {self.sql(value)}"
             return "RETURN"
 
+        def pgraise_sql(self, expression: PGRaise) -> str:
+            parts: list[str] = ["RAISE"]
+
+            lvl = expression.args.get("level")
+            if lvl is not None:
+                # Render level in upper-case for canonical output
+                parts.append(self.sql(lvl).upper())
+
+            # payload: message (+args) | condition | sqlstate | none
+            msg = expression.args.get("message")
+            cond = expression.args.get("condition")
+            state = expression.args.get("sqlstate")
+
+            if msg is not None:
+                seg = self.sql(msg)
+                args = expression.args.get("expressions") or []
+                if args:
+                    seg = f"{seg}, " + ", ".join(self.sql(a) for a in args)
+                parts.append(seg)
+            elif cond is not None:
+                parts.append(self.sql(cond))
+            elif state is not None:
+                # Call dedicated renderer to avoid relying on global transform
+                parts.append(self.pgsqlstate_sql(state))
+
+            using_args = expression.args.get("using") or []
+            if using_args:
+                parts.append("USING " + ", ".join(self.sql(a) for a in using_args))
+
+            return " ".join(parts)
+
         def pgloop_sql(self, expression: PGLoop) -> str:
             body_sql = " ".join(f"{self.sql(stmt)};" for stmt in expression.expressions)
             # Render exactly: LOOP <stmts>; END LOOP
@@ -1007,7 +1171,7 @@ class PlPgSQL(Postgres):
             return f"OPEN {name_sql}"
 
         # Auto-discovered generator for AssignArg
-        def colon_arg_sql(self, expression: AssignArg) -> str:
+        def assignarg_sql(self, expression: AssignArg) -> str:
             return self.binary(expression, ":=")
 
         def pgfetch_sql(self, expression: PGFetch) -> str:

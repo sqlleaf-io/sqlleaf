@@ -207,6 +207,62 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
+    def test_raise_level_message_with_arg_variable(self) -> None:
+        sql = "BEGIN RAISE NOTICE 'Calling cs_create_job(%)', v_job_id; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_raise_condition_bare(self) -> None:
+        sql = "BEGIN RAISE division_by_zero; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_raise_level_sqlstate(self) -> None:
+        sql = "BEGIN RAISE WARNING SQLSTATE '22012'; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_raise_condition_using_message_concat(self) -> None:
+        sql = (
+            "BEGIN RAISE unique_violation USING MESSAGE = 'Duplicate user ID: ' || user_id; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(
+            expr.sql(dialect=plpgsql),
+            "BEGIN RAISE unique_violation USING MESSAGE := 'Duplicate user ID: ' || user_id; END",
+        )
+
+    def test_raise_bare(self) -> None:
+        sql = "BEGIN RAISE; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_raise_level_using_only(self) -> None:
+        sql = "BEGIN RAISE INFO USING MESSAGE := 'hello', DETAIL := 'world'; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_raise_message_with_args(self) -> None:
+        sql = "BEGIN RAISE EXCEPTION 'oops: % %', 1, 2; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_raise_using_equals_normalized(self) -> None:
+        sql = "BEGIN RAISE USING MESSAGE = 'x', HINT = 'y'; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), "BEGIN RAISE USING MESSAGE := 'x', HINT := 'y'; END")
+
+    def test_raise_condition_using(self) -> None:
+        sql = "BEGIN RAISE unique_violation USING CONSTRAINT := 'users_pkey'; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_raise_sqlstate_non_string_fails(self) -> None:
+        with self.assertRaisesRegex(
+            sqlglot.errors.ParseError, r"SQLSTATE must be followed by a quoted literal"
+        ):
+            sqlglot.parse_one("BEGIN RAISE SQLSTATE 22012; END;", dialect=plpgsql)
+
     def test_return_inside_exception_when(self) -> None:
         sql = "BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN RETURN; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
