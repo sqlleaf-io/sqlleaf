@@ -67,15 +67,21 @@ class PGDeclareItem(exp.Expression):
 
 
 class PGException(exp.Expression):
-    """PL/pgSQL EXCEPTION section containing WHEN entries."""
+    """PL/pgSQL EXCEPTION section containing WHEN entries.
 
-    arg_types = {"expressions": True}
+    Mirror exp.Case by storing WHEN clauses under `ifs`.
+    """
+
+    arg_types = {"ifs": True}
 
 
 class PGWhen(exp.Expression):
-    """A single WHEN ... THEN ... entry inside an EXCEPTION section."""
+    """A single WHEN ... THEN ... entry inside an EXCEPTION section.
 
-    arg_types = {"conditions": True, "expressions": True}
+    Mirror exp.When by using `condition` for the predicate and `true` for the body.
+    """
+
+    arg_types = {"condition": True, "then": True}
 
 
 class PlPgSQL(Postgres):
@@ -162,7 +168,7 @@ class PlPgSQL(Postgres):
             if not whens:
                 self.raise_error("EXCEPTION requires at least one WHEN clause")
 
-            return self.expression(PGException(expressions=whens))
+            return self.expression(PGException(ifs=whens))
 
         def _parse_pgwhen(self) -> exp.Expression:
             if not self._match(TokenType.WHEN):
@@ -171,14 +177,14 @@ class PlPgSQL(Postgres):
             # Parse one or more condition identifiers separated by OR
             conditions: list[exp.Expression] = []
 
-            # First condition
-            cond = self._parse_id_var()
+            # First condition (identifier or SQLSTATE 'xxxxx')
+            cond = self._parse_pgwhen_condition()
             if cond is not None:
                 conditions.append(cond)
 
             # Additional conditions joined by OR
             while self._match(TokenType.OR):
-                more = self._parse_id_var()
+                more = self._parse_pgwhen_condition()
                 if more is None:
                     self.raise_error("Expected condition after OR")
                 conditions.append(more)
@@ -213,7 +219,29 @@ class PlPgSQL(Postgres):
             if not body:
                 self.raise_error("WHEN body requires at least one statement")
 
-            return self.expression(PGWhen(conditions=conditions, expressions=body))
+            # Combine multiple conditions into a single OR expression like exp.Case does
+            condition_expr = conditions[0]
+            if len(conditions) > 1:
+                # Use builder to combine with OR respecting nesting
+                condition_expr = exp.or_(*conditions)
+
+            return self.expression(PGWhen(condition=condition_expr, then=body))
+
+        def _parse_pgwhen_condition(self) -> exp.Expression | None:
+            # Support: identifier condition (e.g., division_by_zero)
+            # or the form: SQLSTATE 'XXXXX'
+            if self._match_texts("SQLSTATE"):
+                # Expect a quoted literal string immediately after SQLSTATE
+                string_expr = self._parse_primary()
+                if not isinstance(string_expr, exp.Literal) or not string_expr.is_string:
+                    self.raise_error("SQLSTATE must be followed by a quoted literal")
+                # Represent SQLSTATE 'xxxxx' without a dedicated class by packing
+                # it into a tuple-like structure: (Identifier('SQLSTATE'), 'xxxxx')
+                return self.expression(
+                    exp.Tuple(expressions=[exp.to_identifier("SQLSTATE"), string_expr])
+                )
+
+            return self._parse_id_var()
 
         def _parse_pldeclare(self) -> PGDeclare:
             items: list[exp.Expression] = []
@@ -370,15 +398,34 @@ class PlPgSQL(Postgres):
 
         def pgexception_sql(self, expression: "PGException") -> str:
             parts: list[str] = ["EXCEPTION"]
-            for when in expression.expressions:
+            for when in expression.args.get("ifs") or []:
                 parts.append(self.sql(when))
             return " ".join(parts)
 
         def pgwhen_sql(self, expression: "PGWhen") -> str:
-            # Render conditions joined by OR
-            conds = " OR ".join(self.sql(c) for c in expression.args.get("conditions") or [])
+            # Render condition expression with special handling for SQLSTATE tokens,
+            # and support OR-composed conditions similar to CASE.
+            def render_cond(node: exp.Expression) -> str:
+                # SQLSTATE 'xxxxx' encoded as Tuple(Identifier('SQLSTATE'), Literal)
+                if isinstance(node, exp.Tuple) and len(node.expressions) == 2:
+                    first, second = node.expressions
+                    if (
+                        isinstance(first, exp.Identifier)
+                        and first.name.upper() == "SQLSTATE"
+                        and isinstance(second, exp.Literal)
+                        and second.is_string
+                    ):
+                        return f"SQLSTATE {self.sql(second)}"
+                # OR chain
+                if isinstance(node, exp.Or):
+                    return f"{render_cond(node.left)} OR {render_cond(node.right)}"
+                return self.sql(node)
+
+            condition = expression.args.get("condition")
+            conds = render_cond(condition) if condition is not None else ""
             # Render body statements, each terminated by a semicolon
-            body_sql = " ".join(f"{self.sql(stmt)};" for stmt in expression.expressions)
+            body = expression.args.get("then") or []
+            body_sql = " ".join(f"{self.sql(stmt)};" for stmt in body)
             return f"WHEN {conds} THEN {body_sql}"
 
 
