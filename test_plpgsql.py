@@ -379,3 +379,24 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN FETCH ABSOLUTE 5 IN curs4 INTO x; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    # MOVE tests
+    def test_move_simple_cursor(self) -> None:
+        sql = "BEGIN MOVE curs1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_move_last_from_cursor(self) -> None:
+        sql = "BEGIN MOVE LAST FROM curs3; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_move_relative_negative_from_cursor(self) -> None:
+        sql = "BEGIN MOVE RELATIVE -2 FROM curs4; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_move_forward_count_from_cursor(self) -> None:
+        sql = "BEGIN MOVE FORWARD FROM curs4; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
