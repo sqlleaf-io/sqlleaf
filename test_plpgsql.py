@@ -229,6 +229,11 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
+    def test_return_next_parameter(self) -> None:
+        sql = "BEGIN RETURN NEXT $1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
     def test_return_next_inside_exception_when(self) -> None:
         sql = "BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN RETURN NEXT 3; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
@@ -351,6 +356,11 @@ class TestPlPgSQL(unittest.TestCase):
 
     def test_open_bound_cursor_mixed_arg(self) -> None:
         sql = "BEGIN OPEN curs3(a => b, c := 10); END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_open_bound_cursor_variable_select(self) -> None:
+        sql = "BEGIN OPEN $1 FOR SELECT 1; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
