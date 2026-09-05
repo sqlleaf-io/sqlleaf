@@ -327,3 +327,13 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN LOOP OPEN c FOR SELECT 1; END LOOP; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_open_bound_cursor_no_args(self) -> None:
+        sql = "BEGIN OPEN curs2; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_open_bound_cursor_positional_arg(self) -> None:
+        sql = "BEGIN OPEN curs3(42); END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])

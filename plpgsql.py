@@ -126,20 +126,19 @@ class PGContinue(exp.Expression):
 
 
 class PGOpenCursor(exp.Expression):
-    """A PL/pgSQL OPEN unbound cursor statement.
+    """A PL/pgSQL OPEN cursor statement.
 
-    Syntax:
-      OPEN cursorvar [ [ NO ] SCROLL ] FOR query;
+    Supports two forms:
+      - Unbound: OPEN cursorvar [ [ NO ] SCROLL ] FOR query;
+      - Bound:   OPEN cursorvar [ ( arg_value [, ...] ) ];
 
     - Cursor variable name is stored in ``this``.
-    - The query after FOR is stored in ``expression``.
-    - Optional scroll behavior is stored in ``scroll``:
-        * True  -> SCROLL
-        * False -> NO SCROLL
-        * None  -> not specified
+    - For unbound form: the query after FOR is stored in ``expression`` and optional
+      scroll behavior is stored in ``scroll`` (True => SCROLL, False => NO SCROLL).
+    - For bound form: positional argument values are stored in ``expressions``.
     """
 
-    arg_types = {"this": True, "expression": True, "scroll": False}
+    arg_types = {"this": True, "expression": False, "scroll": False, "expressions": False}
 
 
 class PGSqlState(exp.Expression):
@@ -552,6 +551,11 @@ class PlPgSQL(Postgres):
             # Cursor variable identifier
             cursor = self._parse_id_var()
 
+            # Bound cursor with positional arguments: OPEN c(<args>)
+            if self._match(TokenType.L_PAREN, advance=False):
+                args = self._parse_wrapped_csv(self._parse_expression)
+                return self.expression(PGOpenCursor(this=cursor, expressions=args))
+
             # Optional [[NO] SCROLL]
             scroll: bool | None = None
             if self._match_texts("NO"):
@@ -561,8 +565,11 @@ class PlPgSQL(Postgres):
             elif self._match_texts("SCROLL"):
                 scroll = True
 
-            # Require FOR and then a query-producing statement
+            # If there's no FOR and no SCROLL/NO SCROLL, treat as bound cursor with zero args: OPEN c;
             if not self._match_texts("FOR"):
+                if scroll is None:
+                    return self.expression(PGOpenCursor(this=cursor))
+                # If SCROLL/NO SCROLL was provided, FOR is required
                 self.raise_error("Expected FOR in OPEN cursor statement")
 
             query = self._parse_statement()
@@ -720,15 +727,24 @@ class PlPgSQL(Postgres):
             return " ".join(parts)
 
         def pgopencursor_sql(self, expression: PGOpenCursor) -> str:
-            parts: list[str] = ["OPEN", self.sql(expression.this)]
-            scroll = expression.args.get("scroll")
-            if scroll is True:
-                parts.append("SCROLL")
-            elif scroll is False:
-                parts.append("NO SCROLL")
-            parts.append("FOR")
-            parts.append(self.sql(expression.args.get("expression")))
-            return " ".join(parts)
+            # Unbound form: OPEN c [NO|SCROLL] FOR <query>
+            if expression.args.get("expression") is not None:
+                parts: list[str] = ["OPEN", self.sql(expression.this)]
+                scroll = expression.args.get("scroll")
+                if scroll is True:
+                    parts.append("SCROLL")
+                elif scroll is False:
+                    parts.append("NO SCROLL")
+                parts.append("FOR")
+                parts.append(self.sql(expression.args.get("expression")))
+                return " ".join(parts)
+
+            # Bound form: OPEN c or OPEN c(<args>)
+            name_sql = self.sql(expression.this)
+            if getattr(expression, "expressions", None):
+                args_sql = ", ".join(self.sql(arg) for arg in expression.expressions)
+                name_sql = f"{name_sql}({args_sql})"
+            return f"OPEN {name_sql}"
 
 
 plpgsql = PlPgSQL
