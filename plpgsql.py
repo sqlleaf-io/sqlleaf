@@ -84,6 +84,12 @@ class PGWhen(exp.Expression):
     arg_types = {"condition": True, "then": True}
 
 
+class PGOthers(exp.Expression):
+    """Represents the OTHERS keyword in EXCEPTION WHEN OTHERS THEN ..."""
+
+    arg_types: dict[str, bool] = {}
+
+
 class PlPgSQL(Postgres):
     """A minimal PL/pgSQL-like dialect extending Postgres.
 
@@ -230,6 +236,9 @@ class PlPgSQL(Postgres):
         def _parse_pgwhen_condition(self) -> exp.Expression | None:
             # Support: identifier condition (e.g., division_by_zero)
             # or the form: SQLSTATE 'XXXXX'
+            # or the keyword OTHERS
+            if self._match_texts("OTHERS"):
+                return self.expression(PGOthers())
             if self._match_texts("SQLSTATE"):
                 # Expect a quoted literal string immediately after SQLSTATE
                 string_expr = self._parse_primary()
@@ -416,6 +425,9 @@ class PlPgSQL(Postgres):
                         and second.is_string
                     ):
                         return f"SQLSTATE {self.sql(second)}"
+                # WHEN OTHERS
+                if isinstance(node, PGOthers):
+                    return self.pgothers_sql(node)
                 # OR chain
                 if isinstance(node, exp.Or):
                     return f"{render_cond(node.left)} OR {render_cond(node.right)}"
@@ -427,6 +439,10 @@ class PlPgSQL(Postgres):
             body = expression.args.get("then") or []
             body_sql = " ".join(f"{self.sql(stmt)};" for stmt in body)
             return f"WHEN {conds} THEN {body_sql}"
+
+        # Auto-discovered generator for PGOthers
+        def pgothers_sql(self, expression: exp.Expression) -> str:  # type: ignore[override]
+            return "OTHERS"
 
 
 plpgsql = PlPgSQL
