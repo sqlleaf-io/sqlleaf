@@ -352,3 +352,30 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN OPEN curs3(a => b, c := 10); END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    # TODO: OPEN unbound_cursorvar [ [ NO ] SCROLL ] FOR EXECUTE query_string [ USING expression [, ... ] ];
+
+    def test_fetch_cursor_into_single(self) -> None:
+        sql = "BEGIN FETCH curs1 INTO rowvar; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_fetch_cursor_into_multiple(self) -> None:
+        sql = "BEGIN FETCH curs2 INTO foo, bar, baz; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_fetch_with_direction_from(self) -> None:
+        sql = "BEGIN FETCH LAST FROM curs3 INTO x, y; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_fetch_relative_with_count(self) -> None:
+        sql = "BEGIN FETCH RELATIVE -2 FROM curs4 INTO x; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_fetch_absolute_with_count_in(self) -> None:
+        sql = "BEGIN FETCH ABSOLUTE 5 IN curs4 INTO x; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])

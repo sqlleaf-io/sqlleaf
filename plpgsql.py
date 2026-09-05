@@ -152,6 +152,29 @@ class PGOpenCursor(exp.Expression):
     arg_types = {"this": True, "expression": False, "scroll": False, "expressions": False}
 
 
+class PGFetch(exp.Expression):
+    """A PL/pgSQL FETCH statement.
+
+    Syntax:
+      FETCH [ direction { FROM | IN } ] <cursor> INTO <target> [, <target> ...];
+
+    - Cursor name is stored in ``this``.
+    - Target list is stored in ``expressions``.
+    - Optional ``direction`` stores one of: NEXT, PRIOR, FIRST, LAST, FORWARD, BACKWARD,
+      ABSOLUTE, RELATIVE.
+    - Optional ``preposition`` stores either "FROM" or "IN" when ``direction`` is present.
+    - Optional ``count`` stores the expression following ABSOLUTE/RELATIVE.
+    """
+
+    arg_types = {
+        "this": True,
+        "expressions": True,
+        "direction": False,
+        "preposition": False,
+        "count": False,
+    }
+
+
 class PGSqlState(exp.Expression):
     """Represents the SQLSTATE condition, optionally followed by a string literal.
 
@@ -197,6 +220,12 @@ class PlPgSQL(Postgres):
             **Postgres.Tokenizer.KEYWORDS,
             "DECLARE": TokenType.DECLARE,
         }
+
+        # In base sqlglot, FETCH is treated as a COMMAND, which swallows the rest
+        # of the statement as a single STRING token. For PL/pgSQL we want to
+        # parse FETCH <cursor> INTO <targets> normally, so exclude FETCH from
+        # the COMMANDS set.
+        COMMANDS = Postgres.Tokenizer.COMMANDS - {TokenType.FETCH}
 
     class Parser(PostgresParser):
         STATEMENT_PARSERS = {
@@ -449,6 +478,9 @@ class PlPgSQL(Postgres):
             # Support OPEN cursorvar [ [ NO ] SCROLL ] FOR query; anywhere
             if self._curr and self._curr.text.upper() == "OPEN":
                 return self._parse_pgopen()
+            # Support FETCH cursor INTO targets; anywhere
+            if self._curr and self._curr.text.upper() == "FETCH":
+                return self._parse_pgfetch()
             return super()._parse_statement()
 
         def _parse_pgreturn(self) -> PGReturn:
@@ -628,6 +660,62 @@ class PlPgSQL(Postgres):
 
             return self.expression(PGOpenCursor(this=cursor, expression=query, scroll=scroll))
 
+        def _parse_pgfetch(self) -> PGFetch:
+            # Consume FETCH keyword
+            if not self._match_texts("FETCH"):
+                self.raise_error("Expected FETCH")
+
+            # Optional direction followed by FROM|IN
+            direction: str | None = None
+            preposition: str | None = None
+            count_expr: exp.Expression | None = None
+
+            if self._match_texts(
+                "NEXT"
+            ) or self._match_texts("PRIOR") or self._match_texts("FIRST") or self._match_texts("LAST") or self._match_texts("FORWARD") or self._match_texts("BACKWARD"):
+                # _prev holds the matched token
+                direction = self._prev.text.upper() if self._prev else None
+                if self._match_texts("FROM"):
+                    preposition = "FROM"
+                elif self._match_texts("IN"):
+                    preposition = "IN"
+                else:
+                    self.raise_error("Expected FROM or IN after FETCH direction")
+            elif self._match_texts("ABSOLUTE") or self._match_texts("RELATIVE"):
+                direction = self._prev.text.upper() if self._prev else None
+                # Parse count expression (supports negatives and general expressions)
+                count_expr = self._parse_bitwise()
+                # Require FROM or IN
+                if self._match_texts("FROM"):
+                    preposition = "FROM"
+                elif self._match_texts("IN"):
+                    preposition = "IN"
+                else:
+                    self.raise_error("Expected FROM or IN after FETCH ABSOLUTE/RELATIVE count")
+
+            # Cursor identifier (after optional direction + FROM|IN)
+            cursor = self._parse_id_var()
+
+            # INTO keyword
+            if not self._match_texts("INTO"):
+                self.raise_error("Expected INTO in FETCH statement")
+
+            # One or more targets separated by commas on the same chunk
+            targets = self._parse_csv(self._parse_expression)
+
+            if not targets:
+                self.raise_error("Expected target list after INTO in FETCH")
+
+            return self.expression(
+                PGFetch(
+                    this=cursor,
+                    expressions=targets,
+                    direction=direction,
+                    preposition=preposition,
+                    count=count_expr,
+                )
+            )
+
     class Generator(PostgresGenerator):
         # Provide explicit transform to ensure support for PGBlock
         TRANSFORMS = {
@@ -642,6 +730,7 @@ class PlPgSQL(Postgres):
             PGExit: lambda self, e: self.pgexit_sql(e),
             PGContinue: lambda self, e: self.pgcontinue_sql(e),
             PGOpenCursor: lambda self, e: self.pgopencursor_sql(e),
+            PGFetch: lambda self, e: self.pgfetch_sql(e),
         }
 
         # Also expose the auto-discovered method
@@ -799,6 +888,19 @@ class PlPgSQL(Postgres):
         # Auto-discovered generator for AssignArg
         def colon_arg_sql(self, expression: AssignArg) -> str:
             return self.binary(expression, ":=")
+
+        def pgfetch_sql(self, expression: PGFetch) -> str:
+            targets_sql = ", ".join(self.sql(e) for e in expression.expressions)
+            direction = expression.args.get("direction")
+            if direction:
+                # Include count for ABSOLUTE/RELATIVE when present
+                if direction in ("ABSOLUTE", "RELATIVE"):
+                    cnt = expression.args.get("count")
+                    prep = expression.args.get("preposition") or "FROM"
+                    return f"FETCH {direction} {self.sql(cnt)} {prep} {self.sql(expression.this)} INTO {targets_sql}"
+                prep = expression.args.get("preposition") or "FROM"
+                return f"FETCH {direction} {prep} {self.sql(expression.this)} INTO {targets_sql}"
+            return f"FETCH {self.sql(expression.this)} INTO {targets_sql}"
 
 
 plpgsql = PlPgSQL
