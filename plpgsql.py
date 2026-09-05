@@ -131,6 +131,15 @@ class PGMove(exp.Expression):
     }
 
 
+class PGClose(exp.Expression):
+    """A PL/pgSQL CLOSE cursor statement.
+
+    Syntax:
+      CLOSE <cursor>;
+    """
+    arg_types = {"this": True}
+
+
 class PGNext(exp.Expression):
     """FETCH NEXT direction."""
     arg_types = {"this": False}
@@ -480,6 +489,9 @@ class PlPgSQL(Postgres):
             # Support MOVE [direction { FROM | IN }] cursor; anywhere
             if self._curr and self._curr.text.upper() == "MOVE":
                 return self._parse_pgmove()
+            # Support CLOSE cursor; anywhere
+            if self._curr and self._curr.text.upper() == "CLOSE":
+                return self._parse_pgclose()
             return super()._parse_statement()
 
         def _parse_pgreturn(self) -> PGReturn:
@@ -702,6 +714,14 @@ class PlPgSQL(Postgres):
                 )
             )
 
+        def _parse_pgclose(self) -> "PGClose":
+            # Consume CLOSE keyword
+            if not self._match_texts("CLOSE"):
+                self.raise_error("Expected CLOSE")
+
+            cursor = self._parse_id_var()
+            return self.expression(PGClose(this=cursor))
+
         def _parse_pg_direction_and_cursor(
             self, *, after_kw: str
         ) -> tuple[exp.Expression | None, str | None, exp.Expression]:
@@ -822,6 +842,7 @@ class PlPgSQL(Postgres):
             PGOpenCursor: lambda self, e: self.pgopencursor_sql(e),
             PGFetch: lambda self, e: self.pgfetch_sql(e),
             PGMove: lambda self, e: self.pgmove_sql(e),
+            PGClose: lambda self, e: self.pgclose_sql(e),
             PGNext: lambda self, e: self.pgnext_sql(e),
             PGPrior: lambda self, e: self.pgprior_sql(e),
             PGFirst: lambda self, e: self.pgfirst_sql(e),
@@ -1003,6 +1024,9 @@ class PlPgSQL(Postgres):
                 prep = expression.args.get("preposition") or "FROM"
                 return f"MOVE {self.sql(direction_expr)} {prep} {self.sql(expression.this)}"
             return f"MOVE {self.sql(expression.this)}"
+
+        def pgclose_sql(self, expression: "PGClose") -> str:
+            return f"CLOSE {self.sql(expression.this)}"
 
         # Direction generators (auto-discovered)
         def pgnext_sql(self, expression: PGNext) -> str:

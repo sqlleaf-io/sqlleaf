@@ -453,3 +453,8 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN MOVE BACKWARD ALL FROM curs9; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_close_cursor_in_block(self) -> None:
+        sql = "BEGIN CLOSE curs1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
