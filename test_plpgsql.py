@@ -210,3 +210,23 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN RETURN; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_return_query_simple(self) -> None:
+        sql = "BEGIN RETURN QUERY SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_return_query_inside_exception_when(self) -> None:
+        sql = "BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN RETURN QUERY SELECT 2; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_return_next_simple(self) -> None:
+        sql = "BEGIN RETURN NEXT 1 + 2; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_return_next_inside_exception_when(self) -> None:
+        sql = "BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN RETURN NEXT 3; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])

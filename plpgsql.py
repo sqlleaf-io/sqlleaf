@@ -109,11 +109,16 @@ class PGReturn(exp.Expression):
     Supports both forms:
       - RETURN;
       - RETURN <expression>;
+      - RETURN QUERY <query>;
 
     The optional expression is stored in `this`.
+    For RETURN QUERY, the returned query is stored in `expression`, and a boolean flag
+    `query` is set to True.
+    For RETURN NEXT, the returned expression is stored in `expression`, and a boolean flag
+    `next` is set to True.
     """
 
-    arg_types = {"this": False}
+    arg_types = {"this": False, "query": False, "next": False}
 
 
 class PlPgSQL(Postgres):
@@ -377,11 +382,28 @@ class PlPgSQL(Postgres):
             if not self._match_texts("RETURN"):
                 self.raise_error("Expected RETURN")
 
-            # Optional expression on the same chunk before semicolon
-            # If end of chunk reached immediately, it's a bare RETURN
+            # Support RETURN QUERY <query>;
+            if self._match_texts("QUERY"):
+                # Parse a full statement that returns rows (eg. SELECT ...)
+                # We delegate to the standard statement parser so it can handle
+                # SELECT, WITH, VALUES, INSERT ... RETURNING, etc.
+                query = self._parse_statement()
+                if query is None:
+                    self.raise_error("Expected query after RETURN QUERY")
+                return self.expression(PGReturn(this=query, query=True))
+
+            # Support RETURN NEXT <expression>;
+            if self._match_texts("NEXT"):
+                # NEXT must be followed by an expression on the same chunk
+                if self._curr is None or self._index >= self._tokens_size:
+                    self.raise_error("Expected expression after RETURN NEXT")
+                expr = self._parse_expression()
+                return self.expression(PGReturn(this=expr, next=True))
+
+            # Otherwise, optional expression on the same chunk before semicolon.
+            # If end of chunk reached immediately, it's a bare RETURN.
             expr: exp.Expression | None = None
             if self._curr is not None and self._index < self._tokens_size:
-                # Parse a general expression (value/expression)
                 expr = self._parse_expression()
 
             return self.expression(PGReturn(this=expr))
@@ -490,6 +512,16 @@ class PlPgSQL(Postgres):
             return "SQLSTATE"
 
         def pgreturn_sql(self, expression: PGReturn) -> str:
+            # Prefer rendering RETURN QUERY if query flag is set
+            if expression.args.get("query"):
+                q = expression.args.get("this")
+                return f"RETURN QUERY {self.sql(q)}"
+
+            # Render RETURN NEXT when flagged
+            if expression.args.get("next"):
+                e = expression.args.get("this")
+                return f"RETURN NEXT {self.sql(e)}"
+
             value = getattr(expression, "this", None)
             if value is not None:
                 return f"RETURN {self.sql(value)}"
