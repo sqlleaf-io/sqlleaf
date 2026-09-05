@@ -307,3 +307,23 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN LOOP CONTINUE; END LOOP; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_open_cursor_simple(self) -> None:
+        sql = "BEGIN OPEN c FOR SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_open_cursor_with_scroll(self) -> None:
+        sql = "BEGIN OPEN c SCROLL FOR SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_open_cursor_with_no_scroll(self) -> None:
+        sql = "BEGIN OPEN c NO SCROLL FOR SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_open_cursor_inside_loop(self) -> None:
+        sql = "BEGIN LOOP OPEN c FOR SELECT 1; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])

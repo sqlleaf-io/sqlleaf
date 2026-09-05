@@ -125,6 +125,23 @@ class PGContinue(exp.Expression):
     arg_types = {"this": False, "when": False}
 
 
+class PGOpenCursor(exp.Expression):
+    """A PL/pgSQL OPEN unbound cursor statement.
+
+    Syntax:
+      OPEN cursorvar [ [ NO ] SCROLL ] FOR query;
+
+    - Cursor variable name is stored in ``this``.
+    - The query after FOR is stored in ``expression``.
+    - Optional scroll behavior is stored in ``scroll``:
+        * True  -> SCROLL
+        * False -> NO SCROLL
+        * None  -> not specified
+    """
+
+    arg_types = {"this": True, "expression": True, "scroll": False}
+
+
 class PGSqlState(exp.Expression):
     """Represents the SQLSTATE condition, optionally followed by a string literal.
 
@@ -419,6 +436,9 @@ class PlPgSQL(Postgres):
             # Support CONTINUE [label] [WHEN expr]; anywhere similar to EXIT
             if self._curr and self._curr.text.upper() == "CONTINUE":
                 return self._parse_pgcontinue()
+            # Support OPEN cursorvar [ [ NO ] SCROLL ] FOR query; anywhere
+            if self._curr and self._curr.text.upper() == "OPEN":
+                return self._parse_pgopen()
             return super()._parse_statement()
 
         def _parse_pgreturn(self) -> PGReturn:
@@ -524,6 +544,33 @@ class PlPgSQL(Postgres):
 
             return self.expression(PGContinue(this=label, when=condition))
 
+        def _parse_pgopen(self) -> PGOpenCursor:
+            # Consume OPEN keyword
+            if not self._match_texts("OPEN"):
+                self.raise_error("Expected OPEN")
+
+            # Cursor variable identifier
+            cursor = self._parse_id_var()
+
+            # Optional [[NO] SCROLL]
+            scroll: bool | None = None
+            if self._match_texts("NO"):
+                if not self._match_texts("SCROLL"):
+                    self.raise_error("Expected SCROLL after NO in OPEN")
+                scroll = False
+            elif self._match_texts("SCROLL"):
+                scroll = True
+
+            # Require FOR and then a query-producing statement
+            if not self._match_texts("FOR"):
+                self.raise_error("Expected FOR in OPEN cursor statement")
+
+            query = self._parse_statement()
+            if query is None:
+                self.raise_error("Expected query after OPEN ... FOR")
+
+            return self.expression(PGOpenCursor(this=cursor, expression=query, scroll=scroll))
+
     class Generator(PostgresGenerator):
         # Provide explicit transform to ensure support for PGBlock
         TRANSFORMS = {
@@ -537,6 +584,7 @@ class PlPgSQL(Postgres):
             PGReturn: lambda self, e: self.pgreturn_sql(e),
             PGExit: lambda self, e: self.pgexit_sql(e),
             PGContinue: lambda self, e: self.pgcontinue_sql(e),
+            PGOpenCursor: lambda self, e: self.pgopencursor_sql(e),
         }
 
         # Also expose the auto-discovered method
@@ -669,6 +717,17 @@ class PlPgSQL(Postgres):
             if expression.args.get("when") is not None:
                 parts.append("WHEN")
                 parts.append(self.sql(expression.args.get("when")))
+            return " ".join(parts)
+
+        def pgopencursor_sql(self, expression: PGOpenCursor) -> str:
+            parts: list[str] = ["OPEN", self.sql(expression.this)]
+            scroll = expression.args.get("scroll")
+            if scroll is True:
+                parts.append("SCROLL")
+            elif scroll is False:
+                parts.append("NO SCROLL")
+            parts.append("FOR")
+            parts.append(self.sql(expression.args.get("expression")))
             return " ".join(parts)
 
 
