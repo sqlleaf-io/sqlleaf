@@ -116,6 +116,16 @@ class PGRaise(exp.Expression):
     }
 
 
+class PGAssert(exp.Expression):
+    """A PL/pgSQL ASSERT statement.
+
+    Syntax:
+      ASSERT condition [ , message ];
+    """
+
+    arg_types = {"condition": True, "message": False}
+
+
 class AssignArg(exp.Expression, exp.Binary):
     """Represents a named argument using the PL/pgSQL ``:=`` syntax.
 
@@ -513,6 +523,9 @@ class PlPgSQL(Postgres):
             # Support RAISE statement and its variants
             if self._curr and self._curr.text.upper() == "RAISE":
                 return self._parse_pgraise()
+            # Support ASSERT condition [, message]; anywhere
+            if self._curr and self._curr.text.upper() == "ASSERT":
+                return self._parse_pgassert()
             # Support OPEN cursorvar [ [ NO ] SCROLL ] FOR query; anywhere
             if self._curr and self._curr.text.upper() == "OPEN":
                 return self._parse_pgopen()
@@ -526,6 +539,19 @@ class PlPgSQL(Postgres):
             if self._curr and self._curr.text.upper() == "CLOSE":
                 return self._parse_pgclose()
             return super()._parse_statement()
+
+        def _parse_pgassert(self) -> PGAssert:
+            # Consume ASSERT keyword
+            if not self._match_texts("ASSERT"):
+                self.raise_error("Expected ASSERT")
+
+            condition = self._parse_expression()
+
+            message = None
+            if self._match(TokenType.COMMA):
+                message = self._parse_expression()
+
+            return self.expression(PGAssert(condition=condition, message=message))
 
         def _parse_pgraise(self) -> PGRaise:
             # Consume RAISE keyword
@@ -985,6 +1011,7 @@ class PlPgSQL(Postgres):
             PGAbsolute: lambda self, e: self.pgabsolute_sql(e),
             PGRelative: lambda self, e: self.pgrelative_sql(e),
             PGAll: lambda self, e: self.pgall_sql(e),
+            PGAssert: lambda self, e: self.pgassert_sql(e),
         }
 
         # Also expose the auto-discovered method
@@ -1124,6 +1151,13 @@ class PlPgSQL(Postgres):
                 parts.append("USING " + ", ".join(self.sql(a) for a in using_args))
 
             return " ".join(parts)
+
+        def pgassert_sql(self, expression: PGAssert) -> str:
+            cond = self.sql(expression.args.get("condition"))
+            msg = expression.args.get("message")
+            if msg is not None:
+                return f"ASSERT {cond}, {self.sql(msg)}"
+            return f"ASSERT {cond}"
 
         def pgloop_sql(self, expression: PGLoop) -> str:
             body_sql = " ".join(f"{self.sql(stmt)};" for stmt in expression.expressions)

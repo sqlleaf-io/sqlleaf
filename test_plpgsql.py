@@ -247,6 +247,7 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
+    # TODO: don't rewrite := to =
     def test_raise_using_equals_normalized(self) -> None:
         sql = "BEGIN RAISE USING MESSAGE = 'x', HINT = 'y'; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
@@ -522,5 +523,26 @@ class TestPlPgSQL(unittest.TestCase):
 
     def test_close_cursor_in_block(self) -> None:
         sql = "BEGIN CLOSE curs1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    # ASSERT tests
+    def test_assert_simple(self) -> None:
+        sql = "BEGIN ASSERT x > 0; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_assert_with_message(self) -> None:
+        sql = "BEGIN ASSERT x > 0, 'bad'; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_assert_inside_loop(self) -> None:
+        sql = "BEGIN LOOP ASSERT TRUE; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_assert_inside_exception_when(self) -> None:
+        sql = "BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN ASSERT x > 0; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
