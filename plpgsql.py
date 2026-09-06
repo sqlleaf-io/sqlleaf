@@ -68,6 +68,15 @@ class PGLoop(exp.Expression):
     arg_types = {"expressions": True}
 
 
+class PGWhile(exp.Expression):
+    """A PL/pgSQL WHILE statement..
+
+    Syntax:
+        WHILE ... LOOP ... END LOOP [label]
+    """
+    arg_types = {"this": True, "expressions": True, "label": False}
+
+
 class PGExit(exp.Expression):
     """A PL/pgSQL EXIT statement.
 
@@ -511,10 +520,13 @@ class PlPgSQL(Postgres):
             # Let RETURN be handled as a regular statement within this dialect
             if self._curr and self._curr.text.upper() == "RETURN":
                 return self._parse_pgreturn()
+            # Support WHILE ... LOOP ... END LOOP
+            if self._curr and self._curr.text.upper() == "WHILE":
+                return self._parse_pgwhile()
             # Support top-level LOOP statements within blocks and WHEN bodies
             if self._curr and self._curr.text.upper() == "LOOP":
                 return self._parse_pgloop()
-            # Support EXIT [label] [WHEN expr]; anywhere similar to LOOP
+            # Support EXIT [label] [WHEN expr]
             if self._curr and self._curr.text.upper() == "EXIT":
                 return self._parse_pgexit()
             # Support CONTINUE [label] [WHEN expr]; anywhere similar to EXIT
@@ -539,6 +551,48 @@ class PlPgSQL(Postgres):
             if self._curr and self._curr.text.upper() == "CLOSE":
                 return self._parse_pgclose()
             return super()._parse_statement()
+
+        def _parse_pgwhile(self) -> PGWhile:
+            # Consume WHILE keyword
+            if not self._match_texts("WHILE"):
+                self.raise_error("Expected WHILE")
+
+            # Parse condition expression
+            cond = self._parse_expression()
+
+            # Guard against accidental aliasing like: <cond> AS LOOP
+            if isinstance(cond, exp.Alias):
+                alias = cond.args.get("alias")
+                if isinstance(alias, exp.Identifier) and alias.name.upper() == "LOOP":
+                    cond = cond.this
+                else:
+                    # Require LOOP explicitly after condition if not via alias
+                    if not self._match_texts("LOOP"):
+                        self.raise_error("Expected LOOP after WHILE condition")
+            else:
+                if not self._match_texts("LOOP"):
+                    self.raise_error("Expected LOOP after WHILE condition")
+
+            # Parse body statements until END
+            body: list[exp.Expression] = []
+            while True:
+                if self._match(TokenType.END):
+                    break
+
+                stmt = self._parse_statement()
+                body.append(stmt)
+                # Statements in PL/pgSQL blocks are chunk-delimited; advance to next chunk
+                self._advance_chunk()
+
+            # After END, require LOOP
+            if not self._match_texts("LOOP"):
+                self.raise_error("Expected LOOP after END in WHILE block")
+
+            # Optional label and optional semicolon
+            label = self._parse_id_var(any_token=True)
+            self._match(TokenType.SEMICOLON)
+
+            return self.expression(PGWhile(this=cond, expressions=body, label=label))
 
         def _parse_pgassert(self) -> PGAssert:
             # Consume ASSERT keyword
@@ -992,6 +1046,7 @@ class PlPgSQL(Postgres):
             PGException: lambda self, e: self.pgexception_sql(e),
             PGWhen: lambda self, e: self.pgwhen_sql(e),
             PGLoop: lambda self, e: self.pgloop_sql(e),
+            PGWhile: lambda self, e: self.pgwhile_sql(e),
             PGReturn: lambda self, e: self.pgreturn_sql(e),
             PGExit: lambda self, e: self.pgexit_sql(e),
             PGContinue: lambda self, e: self.pgcontinue_sql(e),
@@ -1165,6 +1220,15 @@ class PlPgSQL(Postgres):
             if body_sql:
                 return f"LOOP {body_sql} END LOOP"
             return "LOOP END LOOP"
+
+        def pgwhile_sql(self, expression: PGWhile) -> str:
+            cond_sql = self.sql(expression.this)
+            body_sql = " ".join(f"{self.sql(stmt)};" for stmt in expression.expressions)
+            label = expression.args.get("label")
+            suffix = f" {self.sql(label)}" if label is not None else ""
+            if body_sql:
+                return f"WHILE {cond_sql} LOOP {body_sql} END LOOP{suffix}"
+            return f"WHILE {cond_sql} LOOP END LOOP{suffix}"
 
         def pgexit_sql(self, expression: PGExit) -> str:
             parts: list[str] = ["EXIT"]

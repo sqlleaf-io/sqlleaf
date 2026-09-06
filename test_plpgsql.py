@@ -546,3 +546,40 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN ASSERT x > 0; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    # WHILE tests
+    def test_plpgsql_while_simple(self) -> None:
+        sql = "BEGIN WHILE x < 10 LOOP x := x + 1; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_plpgsql_while_cond_or(self) -> None:
+        sql = "BEGIN WHILE x < 10 OR x < 5 LOOP x := x + 1; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_plpgsql_while_cond_and(self) -> None:
+        sql = "BEGIN WHILE x < 10 AND x < 5 LOOP x := x + 1; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_plpgsql_while_with_label(self) -> None:
+        sql = "BEGIN WHILE TRUE LOOP EXIT; END LOOP mylabel; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_plpgsql_nested_while_and_loop(self) -> None:
+        sql = "BEGIN WHILE x < 5 LOOP LOOP CONTINUE; END LOOP; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_plpgsql_while_requires_loop_keyword_fails(self) -> None:
+        sql = "BEGIN WHILE x < 10 SELECT 1; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_plpgsql_while_requires_end_loop_fails(self) -> None:
+        sql = "BEGIN WHILE TRUE LOOP SELECT 1; END; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
