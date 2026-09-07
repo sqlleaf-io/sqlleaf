@@ -348,7 +348,7 @@ class PlPgSQL(Postgres):
                 whens.append(self._parse_pgwhen())
 
             if not whens:
-                self.raise_error("EXCEPTION requires at least one WHEN clause")
+                self.raise_error("Invalid expression / Unexpected token")
 
             return self.expression(PGException(ifs=whens))
 
@@ -378,7 +378,7 @@ class PlPgSQL(Postgres):
                 self.raise_error("Expected THEN in WHEN clause")
 
             # Parse one or more statements until next WHEN or END
-            body: list[exp.Expression] = []
+            thens: list[exp.Expression] = []
             while True:
                 if not self._curr:
                     break
@@ -389,7 +389,7 @@ class PlPgSQL(Postgres):
 
                 stmt = self._parse_statement()
                 if stmt is not None:
-                    body.append(stmt)
+                    thens.append(stmt)
 
                 # Ensure the statement consumed the whole chunk (terminated by ';')
                 if self._index < self._tokens_size:
@@ -398,7 +398,7 @@ class PlPgSQL(Postgres):
                 self.check_errors()
                 self._advance_chunk()
 
-            if not body:
+            if not thens:
                 self.raise_error("WHEN body requires at least one statement")
 
             # Combine multiple conditions into a single OR expression like exp.Case does
@@ -407,7 +407,7 @@ class PlPgSQL(Postgres):
                 # Use builder to combine with OR respecting nesting
                 condition_expr = exp.or_(*conditions)
 
-            return self.expression(PGWhen(condition=condition_expr, then=body))
+            return self.expression(PGWhen(condition=condition_expr, then=thens))
 
         def _parse_pgwhen_condition(self) -> exp.Expression | None:
             # Support: identifier condition (e.g., division_by_zero)

@@ -20,6 +20,11 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
+    def test_begin_variable_equals_fails(self) -> None:
+        sql = "BEGIN x = 1; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
     def test_plpgsql_declare_defaults_to_null(self) -> None:
         sql = """
         DECLARE
@@ -299,7 +304,7 @@ class TestPlPgSQL(unittest.TestCase):
     def test_loop_empty_fails(self) -> None:
         sql = "BEGIN LOOP END LOOP; END;"
         with self.assertRaises(sqlglot.errors.ParseError):
-            expr = sqlglot.parse_one(sql, dialect=plpgsql)
+            sqlglot.parse_one(sql, dialect=plpgsql)
 
     def test_loop_with_return(self) -> None:
         sql = "BEGIN LOOP RETURN; END LOOP; END;"
@@ -582,4 +587,3 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN WHILE TRUE LOOP SELECT 1; END; END;"
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one(sql, dialect=plpgsql)
-
