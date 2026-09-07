@@ -582,3 +582,97 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN WHILE TRUE LOOP SELECT 1; END; END;"
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_if_simple_update(self) -> None:
+        sql = (
+            "BEGIN IF v_user_id <> 0 THEN "
+            "UPDATE users SET email = v_email WHERE user_id = v_user_id; "
+            "END IF; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_if_elsif_else_full(self) -> None:
+        sql = (
+            "BEGIN IF number = 0 THEN result := 'zero'; "
+            "ELSIF number > 0 THEN result := 'positive'; "
+            "ELSIF number < 0 THEN result := 'negative'; "
+            "ELSE result := 'NULL'; END IF; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_if_with_else_only(self) -> None:
+        sql = (
+            "BEGIN IF flag THEN a := 1; ELSE a := 2; END IF; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_if_single_elsif_no_else(self) -> None:
+        sql = (
+            "BEGIN IF x = 1 THEN a := 1; ELSIF x = 2 THEN a := 2; END IF; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_if_multiple_statements_in_branch(self) -> None:
+        sql = (
+            "BEGIN IF x > 0 THEN a := 1; b := 2; ELSE a := 3; b := 4; END IF; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_if_inside_loop(self) -> None:
+        sql = (
+            "BEGIN LOOP IF x > 0 THEN a := 1; ELSE a := 2; END IF; END LOOP; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_if_inside_while(self) -> None:
+        sql = (
+            "BEGIN WHILE x < 3 LOOP IF x = 1 THEN a := 1; ELSE a := 0; END IF; END LOOP; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_if_inside_exception_when(self) -> None:
+        sql = (
+            "BEGIN EXCEPTION WHEN division_by_zero THEN IF x = 0 THEN a := 0; ELSE a := 1; END IF; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_nested_if_inside_if(self) -> None:
+        sql = (
+            "BEGIN IF a THEN IF b THEN x := 1; ELSE x := 2; END IF; ELSE x := 3; END IF; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_elseif_spelling_accepted_and_normalized(self) -> None:
+        sql = (
+            "BEGIN IF x = 0 THEN a := 0; ELSEIF x = 1 THEN a := 1; ELSE a := 2; END IF; END;"
+        )
+        # Parser should accept ELSEIF and generator should normalize to ELSIF
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        normalized = (
+            "BEGIN IF x = 0 THEN a := 0; ELSIF x = 1 THEN a := 1; ELSE a := 2; END IF; END"
+        )
+        self.assertEqual(expr.sql(dialect=plpgsql), normalized)
+
+    def test_if_missing_then_raises(self) -> None:
+        sql = "BEGIN IF x > 0 SELECT 1; END IF; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_if_missing_end_if_raises(self) -> None:
+        sql = "BEGIN IF x > 0 THEN a := 1; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_if_empty_branch_raises(self) -> None:
+        sql = "BEGIN IF x > 0 THEN END IF; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)

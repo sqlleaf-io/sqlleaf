@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-"""
-Example custom dialect that extends Postgres to parse simple PL/pgSQL-style blocks.
-"""
-
 from sqlglot import exp
 
 class PGBlock(exp.Expression):
@@ -50,6 +46,20 @@ class PGException(exp.Expression):
 class PGWhen(exp.Expression):
     """A single WHEN ... THEN ... entry inside an EXCEPTION section."""
     arg_types = {"condition": True, "then": True}
+
+
+class PGIfBranch(exp.Expression):
+    """A single IF/ELSIF branch: <condition> THEN <statements>."""
+    arg_types = {"condition": True, "then": True}
+
+
+class PGIf(exp.Expression):
+    """A PL/pgSQL IF ... THEN ... [ELSIF ...] [ELSE ...] END IF statement.
+
+    - ifs: list of PGIfBranch (first is the IF, rest are ELSIF branches)
+    - default: optional list of statements for the ELSE branch
+    """
+    arg_types = {"ifs": True, "default": False}
 
 
 class PGOthers(exp.Expression):
@@ -100,14 +110,6 @@ class PGRaise(exp.Expression):
       - RAISE [ level ] SQLSTATE 'sqlstate' [ USING option { = | := } expression [, ...] ];
       - RAISE [ level ] USING option { = | := } expression [, ... ];
       - RAISE ;  (re-raise inside EXCEPTION handler)
-
-    Fields:
-      - level: optional exp.Identifier
-      - message: optional exp.Expression (typically a string literal)
-      - expressions: optional CSV expressions used to fill format placeholders
-      - condition: optional exp.Identifier (condition name)
-      - sqlstate: optional PGSqlState
-      - using: optional list of AssignArg entries
     """
 
     arg_types = {
@@ -244,12 +246,6 @@ class PGReturn(exp.Expression):
       - RETURN;
       - RETURN <expression>;
       - RETURN QUERY <query>;
-
-    The optional expression is stored in `this`.
-    For RETURN QUERY, the returned query is stored in `expression`, and a boolean flag
-    `query` is set to True.
-    For RETURN NEXT, the returned expression is stored in `expression`, and a boolean flag
-    `next` is set to True.
     """
 
     arg_types = {"this": False, "query": False, "next": False}

@@ -1,10 +1,5 @@
 from __future__ import annotations
-
 import typing as t
-
-"""
-Example custom dialect that extends Postgres to parse simple PL/pgSQL-style blocks.
-"""
 
 from sqlglot.parsers.postgres import PostgresParser
 from sqlglot.tokens import TokenType
@@ -24,6 +19,7 @@ class Parser(PostgresParser):
     PLPGSQL_STATEMENT_PARSERS = {
         "RETURN": lambda self: self._parse_pgreturn(),
         "WHILE": lambda self: self._parse_pgwhile(),
+        "IF": lambda self: self._parse_pgif(),
         "LOOP": lambda self: self._parse_pgloop(),
         "EXIT": lambda self: self._parse_pgexit(),
         "CONTINUE": lambda self: self._parse_pgcontinue(),
@@ -287,6 +283,59 @@ class Parser(PostgresParser):
             self.raise_error("SQLSTATE must be followed by a quoted literal")
 
         return self._parse_id_var()
+
+    def _parse_pgif(self) -> PGIf:
+        # Consume IF keyword
+        if not self._match_texts("IF"):
+            self.raise_error("Expected IF")
+
+        # First branch starts immediately after IF
+        branches: list[exp.Expression] = [self._parse_pgif_branch()]
+
+        # Zero or more ELSIF / ELSEIF branches
+        while self._match_texts(("ELSIF", "ELSEIF")):
+            branches.append(self._parse_pgif_branch())
+
+        # Optional ELSE branch
+        default: list[exp.Expression] | None = None
+        if self._match(TokenType.ELSE):
+            default = self._parse_pgif_body()
+
+        # Require END IF to close
+        if not self._match(TokenType.END):
+            self.raise_error("Expected END to close IF block")
+        if not self._match_texts("IF"):
+            self.raise_error("Expected IF after END in IF block")
+
+        return self.expression(PGIf(ifs=branches, default=default))
+
+    def _parse_pgif_branch(self) -> PGIfBranch:
+        # Parse <condition> THEN <statements>
+        condition = self._parse_expression()
+        if not self._match(TokenType.THEN):
+            self.raise_error("Expected THEN in IF branch")
+
+        then_body = self._parse_pgif_body()
+        if not then_body:
+            self.raise_error("IF branch requires at least one statement")
+
+        return self.expression(PGIfBranch(condition=condition, then=then_body))
+
+    def _parse_pgif_body(self) -> list[exp.Expression]:
+        # Reuse assignment-aware unit parser from block bodies
+        def _unit() -> exp.Expression | None:
+            assignment = self._parse_pg_assignment()
+            if assignment is not None:
+                return assignment
+            return self._parse_statement()
+
+        return self._parse_statement_body(
+            stop_texts=("ELSIF", "ELSEIF"),
+            stop_tokens=(TokenType.ELSE, TokenType.END),
+            error_msg="Invalid expression in IF body / Unexpected token",
+            strict=True,
+            parse_one=_unit,
+        )
 
     def _parse_pldeclare(self) -> PGDeclare:
         items: list[exp.Expression] = self._parse_statement_body(

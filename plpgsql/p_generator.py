@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-"""
-Example custom dialect that extends Postgres to parse simple PL/pgSQL-style blocks.
-"""
-
 from sqlglot.generators.postgres import PostgresGenerator
 from plpgsql.classes import *
 
@@ -17,6 +13,8 @@ class Generator(PostgresGenerator):
         PGDeclareItem: lambda self, e: self.pgdeclareitem_sql(e),
         PGException: lambda self, e: self.pgexception_sql(e),
         PGWhen: lambda self, e: self.pgwhen_sql(e),
+        PGIf: lambda self, e: self.pgif_sql(e),
+        PGIfBranch: lambda self, e: self.pgifbranch_sql(e),
         PGLoop: lambda self, e: self.pgloop_sql(e),
         PGWhile: lambda self, e: self.pgwhile_sql(e),
         PGReturn: lambda self, e: self.pgreturn_sql(e),
@@ -129,6 +127,30 @@ class Generator(PostgresGenerator):
         body = expression.args.get("then") or []
         body_sql = " ".join(self.sql(stmt) + ";" for stmt in body)
         return f"WHEN {conds} THEN {body_sql}"
+
+    def pgif_sql(self, expression: PGIf) -> str:
+        branches = expression.args.get("ifs") or []
+        parts: list[str] = []
+        for i, branch in enumerate(branches):
+            keyword = "IF" if i == 0 else "ELSIF"
+            parts.append(self._pgifbranch_sql(branch, keyword))
+
+        default = expression.args.get("default")
+        if default is not None:
+            body = " ".join(self.sql(stmt) + ";" for stmt in default)
+            parts.append(f"ELSE {body}")
+
+        parts.append("END IF")
+        return " ".join(parts)
+
+    def _pgifbranch_sql(self, branch: PGIfBranch, keyword: str) -> str:
+        cond = self.sql(branch.args.get("condition"))
+        body = " ".join(self.sql(stmt) + ";" for stmt in branch.args.get("then"))
+        return f"{keyword} {cond} THEN {body}"
+
+    def pgifbranch_sql(self, expression: PGIfBranch) -> str:
+        # Standalone rendering (defaults to IF); PGIf normally supplies the keyword.
+        return self._pgifbranch_sql(expression, "IF")
 
     # Auto-discovered generator for PGOthers
     def pgothers_sql(self, expression: exp.Expression) -> str:
