@@ -29,9 +29,7 @@ class PlPgSQL(Postgres):
         }
 
         # In base sqlglot, FETCH is treated as a COMMAND, which swallows the rest
-        # of the statement as a single STRING token. For PL/pgSQL we want to
-        # parse FETCH <cursor> INTO <targets> normally, so exclude FETCH from
-        # the COMMANDS set.
+        # of the statement as a single STRING token, so we exclude it.
         COMMANDS = Postgres.Tokenizer.COMMANDS - {TokenType.FETCH}
 
     class Parser(PostgresParser):
@@ -39,6 +37,22 @@ class PlPgSQL(Postgres):
             **PostgresParser.STATEMENT_PARSERS,
             TokenType.BEGIN: lambda self: self._parse_plpgsql_block(),
             TokenType.DECLARE: lambda self: self._parse_plpgsql_block(),
+        }
+
+        # Map leading PL/pgSQL statement keywords (by lexeme) to parser callables.
+        # These arrive as identifier/VAR tokens, so we dispatch by text.upper().
+        PLPGSQL_STATEMENT_PARSERS = {
+            "RETURN":   lambda self: self._parse_pgreturn(),
+            "WHILE":    lambda self: self._parse_pgwhile(),
+            "LOOP":     lambda self: self._parse_pgloop(),
+            "EXIT":     lambda self: self._parse_pgexit(),
+            "CONTINUE": lambda self: self._parse_pgcontinue(),
+            "RAISE":    lambda self: self._parse_pgraise(),
+            "ASSERT":   lambda self: self._parse_pgassert(),
+            "OPEN":     lambda self: self._parse_pgopen(),
+            "FETCH":    lambda self: self._parse_pgfetch(),
+            "MOVE":     lambda self: self._parse_pgmove(),
+            "CLOSE":    lambda self: self._parse_pgclose(),
         }
 
         def _parse_named_pair(
@@ -76,6 +90,70 @@ class PlPgSQL(Postgres):
 
             return None
 
+        def _parse_statement_body(
+            self,
+            *,
+            stop_texts: tuple[str, ...] = (),
+            stop_tokens: tuple[TokenType, ...] = (),
+            error_msg: str = "Invalid expression / Unexpected token",
+            strict: bool = True,
+            parse_one: t.Callable[[], exp.Expression | None] | None = None,
+        ) -> list[exp.Expression]:
+            """Parse a sequence of ';'-delimited statements until a terminator.
+
+            This advances through chunk-delimited statements, collecting one parsed
+            unit per chunk via ``parse_one`` (defaults to ``self._parse_statement``).
+
+            Terminators are only peeked (not consumed) so callers can decide how to
+            handle them (e.g., ``END``, ``WHEN``, ``EXCEPTION``, ``BEGIN``).
+
+            When ``strict`` is True, the helper enforces that each parsed unit
+            fully consumes its chunk, raises ``error_msg`` if unconsumed tokens
+            remain, calls ``check_errors()``, and then advances to the next chunk.
+            When ``strict`` is False, it simply advances to the next chunk after
+            each parsed unit without extra checks (matching existing laxer callers).
+            """
+
+            out: list[exp.Expression] = []
+            parse = parse_one or self._parse_statement
+
+            # Normalize stop_texts to uppercase for lexeme comparison
+            stop_texts_upper = tuple(s.upper() for s in stop_texts)
+
+            while True:
+                # If we've consumed the current chunk, move to the next one
+                if self._index >= self._tokens_size:
+                    self._advance_chunk()
+
+                # No more tokens in this chunked stream
+                if not self._curr:
+                    break
+
+                # Stop if a token-type terminator is next (but don't consume)
+                if stop_tokens and self._match_set(stop_tokens, advance=False):
+                    break
+
+                # Stop if a lexeme (identifier-like) terminator is next
+                if stop_texts_upper and self._curr.text.upper() in stop_texts_upper:
+                    break
+
+                # Parse one unit from this chunk
+                node = parse()
+                if node is not None:
+                    out.append(node)
+
+                if strict:
+                    # After parsing a unit, there should be no leftover tokens in the chunk
+                    if self._index < self._tokens_size:
+                        self.raise_error(error_msg)
+                    # Surface any accumulated errors (base Parser pattern)
+                    self.check_errors()
+
+                # Proceed to the next chunk regardless of strictness
+                self._advance_chunk()
+
+            return out
+
         def _parse_plpgsql_block(self) -> PGBlock:
             # Determine entry: dispatcher consumed the first keyword into _prev
             declare = None
@@ -85,59 +163,34 @@ class PlPgSQL(Postgres):
                 if not self._match(TokenType.BEGIN):
                     self.raise_error("Expected BEGIN after DECLARE or at block start")
 
-            expressions: list[exp.Expression] = []
             exception = None
 
-            while True:
-                # If we've consumed the current chunk, move to the next one
-                if self._index >= self._tokens_size:
-                    self._advance_chunk()
+            # Parse statements (including assignments) until EXCEPTION or END
+            def _parse_block_unit() -> exp.Expression | None:
+                assignment = self._parse_pg_assignment()
+                if assignment is not None:
+                    return assignment
+                return self._parse_statement()
 
-                # Try local PL/pgSQL assignment first: <ident> := <expr> ;
-                if self._curr:
-                    assign_stmt = self._parse_pg_assignment()
-                    if assign_stmt is not None:
-                        expressions.append(assign_stmt)
+            expressions = self._parse_statement_body(
+                stop_texts=("EXCEPTION",),
+                stop_tokens=(TokenType.END,),
+                error_msg="Invalid expression / Unexpected token",
+                strict=True,
+                parse_one=_parse_block_unit,
+            )
 
-                        # After parsing a statement, if we haven't consumed the chunk, it's an error
-                        if self._index < self._tokens_size:
-                            self.raise_error("Invalid expression / Unexpected token")
+            # If EXCEPTION section follows, parse it now (helper didn't consume it)
+            if self._match_texts("EXCEPTION", advance=False):
+                exception = self._parse_pgexception()
 
-                        # Proceed to next chunk for the following statement or END
-                        self.check_errors()
-                        self._advance_chunk()
-                        continue
+            # Require END to close the block
+            if not self._match(TokenType.END):
+                self.raise_error("Expected END to close block")
 
-                # Stop if we reached END (block terminator)
-                if not self._curr:
-                    break
-
-                # Detect start of EXCEPTION section (structural, not delimited by ';')
-                if self._match_texts("EXCEPTION", advance=False):
-                    # Parse the exception section and then let the loop continue
-                    # so that END is handled by the usual logic.
-                    exception = self._parse_pgexception()
-                    # After parsing EXCEPTION, do not parse more statements here.
-                    # Continue to let the END be consumed by the block logic.
-                    continue
-
-                if self._match(TokenType.END, advance=False):
-                    self._advance()  # consume END
-                    break
-
-                stmt = self._parse_statement()
-                if stmt is not None:
-                    expressions.append(stmt)
-
-                # After parsing a statement, if we haven't consumed the chunk, it's an error
-                if self._index < self._tokens_size:
-                    self.raise_error("Invalid expression / Unexpected token")
-
-                # Proceed to next chunk for the following statement or END
-                self.check_errors()
-                self._advance_chunk()
-
-            return self.expression(PGBlock(expressions=expressions, declare=declare, exception=exception, begin=True))
+            return self.expression(
+                PGBlock(expressions=expressions, declare=declare, exception=exception, begin=True)
+            )
 
         def _parse_pg_assignment(self) -> AssignArg | None:
             """Parse a simple PL/pgSQL assignment statement inside a block.
@@ -150,20 +203,13 @@ class PlPgSQL(Postgres):
             - On non-match, parser state is restored and None is returned.
             """
 
-            # Save parser state to allow safe backtracking on non-match
-            i0 = self._index
-            prev0 = self._prev
-            curr0 = self._curr
-            next0 = self._next
+            # Use index-based backtracking instead of manual state juggling
+            index = self._index
 
             # LHS must be an identifier-like variable
             lhs = self._parse_id_var()
             if not lhs:
-                # Restore and bail
-                self._index = i0
-                self._prev = prev0
-                self._curr = curr0
-                self._next = next0
+                self._retreat(index)
                 return None
 
             # Preserve specific error for accidental '=' usage
@@ -179,11 +225,7 @@ class PlPgSQL(Postgres):
             )
 
             if pair is None:
-                # Not an assignment, restore and bail
-                self._index = i0
-                self._prev = prev0
-                self._curr = curr0
-                self._next = next0
+                self._retreat(index)
                 return None
 
             # Helper guarantees COLON_EQ -> AssignArg
@@ -231,25 +273,12 @@ class PlPgSQL(Postgres):
                 self.raise_error("Expected THEN in WHEN clause")
 
             # Parse one or more statements until next WHEN or END
-            thens: list[exp.Expression] = []
-            while True:
-                if not self._curr:
-                    break
-
-                # Stop if new WHEN or END is next
-                if self._match(TokenType.WHEN, advance=False) or self._match(TokenType.END, advance=False):
-                    break
-
-                stmt = self._parse_statement()
-                if stmt is not None:
-                    thens.append(stmt)
-
-                # Ensure the statement consumed the whole chunk (terminated by ';')
-                if self._index < self._tokens_size:
-                    self.raise_error("Invalid expression in WHEN body / Unexpected token")
-
-                self.check_errors()
-                self._advance_chunk()
+            thens: list[exp.Expression] = self._parse_statement_body(
+                stop_texts=("WHEN",),
+                stop_tokens=(TokenType.END,),
+                error_msg="Invalid expression in WHEN body / Unexpected token",
+                strict=True,
+            )
 
             if not thens:
                 self.raise_error("WHEN body requires at least one statement")
@@ -280,28 +309,13 @@ class PlPgSQL(Postgres):
             return self._parse_id_var()
 
         def _parse_pldeclare(self) -> PGDeclare:
-            items: list[exp.Expression] = []
-            while True:
-                # If current chunk is consumed, move to the next one
-                if self._index >= self._tokens_size:
-                    self._advance_chunk()
-
-                # Stop if the next significant token is BEGIN (start of block body)
-                if not self._curr or self._match(TokenType.BEGIN, advance=False):
-                    break
-
-                item = self._parse_pldeclareitem()
-                if not item:
-                    break
-                items.append(item)
-
-                # After parsing an item, the chunk should be consumed (terminated by ';')
-                if self._index < self._tokens_size:
-                    self.raise_error("Invalid DECLARE item / Unexpected token")
-
-                # Proceed to next chunk for the following declaration or BEGIN
-                self.check_errors()
-                self._advance_chunk()
+            items: list[exp.Expression] = self._parse_statement_body(
+                stop_texts=("BEGIN",),
+                stop_tokens=(),
+                error_msg="Invalid DECLARE item / Unexpected token",
+                strict=True,
+                parse_one=self._parse_pldeclareitem,
+            )
 
             return self.expression(PGDeclare(expressions=items))
 
@@ -370,39 +384,10 @@ class PlPgSQL(Postgres):
             )
 
         def _parse_statement(self) -> exp.Expr | None:
-            # Let RETURN be handled as a regular statement within this dialect
-            if self._curr and self._curr.text.upper() == "RETURN":
-                return self._parse_pgreturn()
-            # Support WHILE ... LOOP ... END LOOP
-            if self._curr and self._curr.text.upper() == "WHILE":
-                return self._parse_pgwhile()
-            # Support top-level LOOP statements within blocks and WHEN bodies
-            if self._curr and self._curr.text.upper() == "LOOP":
-                return self._parse_pgloop()
-            # Support EXIT [label] [WHEN expr]
-            if self._curr and self._curr.text.upper() == "EXIT":
-                return self._parse_pgexit()
-            # Support CONTINUE [label] [WHEN expr]; anywhere similar to EXIT
-            if self._curr and self._curr.text.upper() == "CONTINUE":
-                return self._parse_pgcontinue()
-            # Support RAISE statement and its variants
-            if self._curr and self._curr.text.upper() == "RAISE":
-                return self._parse_pgraise()
-            # Support ASSERT condition [, message]; anywhere
-            if self._curr and self._curr.text.upper() == "ASSERT":
-                return self._parse_pgassert()
-            # Support OPEN cursorvar [ [ NO ] SCROLL ] FOR query; anywhere
-            if self._curr and self._curr.text.upper() == "OPEN":
-                return self._parse_pgopen()
-            # Support FETCH cursor INTO targets; anywhere
-            if self._curr and self._curr.text.upper() == "FETCH":
-                return self._parse_pgfetch()
-            # Support MOVE [direction { FROM | IN }] cursor; anywhere
-            if self._curr and self._curr.text.upper() == "MOVE":
-                return self._parse_pgmove()
-            # Support CLOSE cursor; anywhere
-            if self._curr and self._curr.text.upper() == "CLOSE":
-                return self._parse_pgclose()
+            if self._curr:
+                parser = self.PLPGSQL_STATEMENT_PARSERS.get(self._curr.text.upper())
+                if parser:
+                    return parser(self)
             return super()._parse_statement()
 
         def _parse_pgwhile(self) -> PGWhile:
@@ -426,18 +411,15 @@ class PlPgSQL(Postgres):
                 if not self._match_texts("LOOP"):
                     self.raise_error("Expected LOOP after WHILE condition")
 
-            # Parse body statements until END
-            body: list[exp.Expression] = []
-            while True:
-                if self._match(TokenType.END):
-                    break
+            # Parse body statements until END (lax mode to preserve original behavior)
+            body: list[exp.Expression] = self._parse_statement_body(
+                stop_tokens=(TokenType.END,),
+                strict=False,
+            )
 
-                stmt = self._parse_statement()
-                body.append(stmt)
-                # Statements in PL/pgSQL blocks are chunk-delimited; advance to next chunk
-                self._advance_chunk()
-
-            # After END, require LOOP
+            # Consume END then require LOOP
+            if not self._match(TokenType.END):
+                self.raise_error("Expected END to close WHILE block")
             if not self._match_texts("LOOP"):
                 self.raise_error("Expected LOOP after END in WHILE block")
 
@@ -595,46 +577,33 @@ class PlPgSQL(Postgres):
             if not self._match_texts("LOOP"):
                 self.raise_error("Expected LOOP")
 
-            body: list[exp.Expression] = []
+            # Parse body statements until END using the shared helper
+            body: list[exp.Expression] = self._parse_statement_body(
+                stop_tokens=(TokenType.END,),
+                error_msg="Invalid expression inside LOOP / Unexpected token",
+                strict=True,
+            )
 
-            while True:
-                # Move to next chunk when the current is fully consumed
-                if self._index >= self._tokens_size:
-                    self._advance_chunk()
-
-                # If next token begins END, close the loop
-                if self._match(TokenType.END, advance=False):
-                    self._advance()  # consume END
-                    # Require the LOOP keyword after END
-                    if not self._match_texts("LOOP"):
-                        self.raise_error("Expected LOOP after END in LOOP block")
-                    break
-
-                if not self._curr:
-                    break
-
-                stmt = self._parse_statement()
-                if stmt is not None:
-                    body.append(stmt)
-
-                # Ensure full chunk consumption for each statement
-                if self._index < self._tokens_size:
-                    self.raise_error("Invalid expression inside LOOP / Unexpected token")
-
-                self.check_errors()
-                self._advance_chunk()
+            # Consume END and then require trailing LOOP
+            if not self._match(TokenType.END):
+                self.raise_error("Expected END to close LOOP block")
+            if not self._match_texts("LOOP"):
+                self.raise_error("Expected LOOP after END in LOOP block")
 
             return self.expression(PGLoop(expressions=body))
 
-        def _parse_pgexit(self) -> PGExit:
-            # Consume EXIT keyword
-            if not self._match_texts("EXIT"):
-                self.raise_error("Expected EXIT")
+        def _parse_pgexit_or_continue(self, *, keyword: str, expr_cls: type[exp.Expression]):
+            """Parse EXIT/CONTINUE constructs which share the same grammar.
+
+            Syntax: <KEYWORD> [label] [WHEN <expr>]
+            """
+            if not self._match_texts(keyword):
+                self.raise_error(f"Expected {keyword}")
 
             label = None
             condition = None
 
-            # Optional label: next token is an identifier/var (and not WHEN)
+            # Optional label unless the next token starts a WHEN clause
             if self._curr is not None and self._curr.text.upper() != "WHEN":
                 label = self._parse_id_var()
 
@@ -642,25 +611,13 @@ class PlPgSQL(Postgres):
             if self._match(TokenType.WHEN):
                 condition = self._parse_expression()
 
-            return self.expression(PGExit(this=label, when=condition))
+            return self.expression(expr_cls(this=label, when=condition))
+
+        def _parse_pgexit(self) -> PGExit:
+            return self._parse_pgexit_or_continue(keyword="EXIT", expr_cls=PGExit)
 
         def _parse_pgcontinue(self) -> PGContinue:
-            # Consume CONTINUE keyword
-            if not self._match_texts("CONTINUE"):
-                self.raise_error("Expected CONTINUE")
-
-            label = None
-            condition = None
-
-            # Optional label (if next token isn't WHEN)
-            if self._curr is not None and self._curr.text.upper() != "WHEN":
-                label = self._parse_id_var()
-
-            # Optional WHEN <expression>
-            if self._match(TokenType.WHEN):
-                condition = self._parse_expression()
-
-            return self.expression(PGContinue(this=label, when=condition))
+            return self._parse_pgexit_or_continue(keyword="CONTINUE", expr_cls=PGContinue)
 
         def _parse_open_args(self) -> list[exp.Expression]:
             """Parse an OPEN cursor argument list and return the collected args.
@@ -827,29 +784,18 @@ class PlPgSQL(Postgres):
             # Handle FORWARD/BACKWARD with optional count/ALL
             if self._match_texts(("FORWARD", "BACKWARD")):
                 which = (self._prev.text or "").upper()
+                cls = PGForward if which == "FORWARD" else PGBackward
                 # Optional ALL or count after FORWARD/BACKWARD
                 if self._match_texts("ALL"):
-                    direction = (
-                        self.expression(PGForward(all=True))
-                        if which == "FORWARD"
-                        else self.expression(PGBackward(all=True))
-                    )
+                    direction = self.expression(cls(all=True))
                 else:
                     # Parse numeric count only when the next token(s) are numeric
                     if _next_is_numeric():
                         count_expr = self._parse_bitwise()
-                        direction = (
-                            self.expression(PGForward(this=count_expr))
-                            if which == "FORWARD"
-                            else self.expression(PGBackward(this=count_expr))
-                        )
+                        direction = self.expression(cls(this=count_expr))
                     else:
                         # No count provided; just the keyword
-                        direction = (
-                            self.expression(PGForward())
-                            if which == "FORWARD"
-                            else self.expression(PGBackward())
-                        )
+                        direction = self.expression(cls())
 
                 preposition = _parse_required_preposition(
                     f"Expected FROM or IN after {after_kw} direction"
@@ -893,12 +839,12 @@ class PlPgSQL(Postgres):
             return direction, preposition, cursor
 
     class Generator(PostgresGenerator):
-        # Provide explicit transform to ensure support for PGBlock
+        # Keep explicit TRANSFORMS to adhere to project guidance for this experimental dialect.
         TRANSFORMS = {
             **getattr(PostgresGenerator, "TRANSFORMS", {}),
             PGBlock: lambda self, e: self.pgblock_sql(e),
-            PGDeclare: lambda self, e: self.pldeclare_sql(e),
-            PGDeclareItem: lambda self, e: self.pldeclareitem_sql(e),
+            PGDeclare: lambda self, e: self.pgdeclare_sql(e),
+            PGDeclareItem: lambda self, e: self.pgdeclareitem_sql(e),
             PGException: lambda self, e: self.pgexception_sql(e),
             PGWhen: lambda self, e: self.pgwhen_sql(e),
             PGLoop: lambda self, e: self.pgloop_sql(e),
@@ -925,6 +871,15 @@ class PlPgSQL(Postgres):
             PGAssert: lambda self, e: self.pgassert_sql(e),
         }
 
+        def _loop_control_sql(self, keyword: str, expression: exp.Expression) -> str:
+            parts: list[str] = [keyword]
+            if expression.args.get("this") is not None:
+                parts.append(self.sql(expression.this))
+            if expression.args.get("when") is not None:
+                parts.append("WHEN")
+                parts.append(self.sql(expression.args.get("when")))
+            return " ".join(parts)
+
         # Also expose the auto-discovered method
         def pgblock_sql(self, expression: PGBlock) -> str:
             parts: list[str] = []
@@ -936,7 +891,7 @@ class PlPgSQL(Postgres):
 
             parts.append("BEGIN")
             for expr in expression.expressions:
-                parts.append(f"{self.sql(expr)};")
+                parts.append(self.sql(expr) + ";")
 
             # Render EXCEPTION section if present
             ex = expression.args.get("exception")
@@ -946,13 +901,13 @@ class PlPgSQL(Postgres):
             parts.append("END")
             return " ".join(parts)
 
-        def pldeclare_sql(self, expression: PGDeclare) -> str:
-            items = [f"{self.sql(item)};" for item in expression.expressions]
+        def pgdeclare_sql(self, expression: PGDeclare) -> str:
+            items = [self.sql(item) + ";" for item in expression.expressions]
             if not items:
                 return "DECLARE"
             return " ".join(["DECLARE", *items])
 
-        def pldeclareitem_sql(self, expression: PGDeclareItem) -> str:
+        def pgdeclareitem_sql(self, expression: PGDeclareItem) -> str:
             name = self.sql(expression.this)
             # Handle alias variant early: name ALIAS FOR $n
             if expression.args.get("alias_for"):
@@ -1002,7 +957,7 @@ class PlPgSQL(Postgres):
             conds = render_cond(condition) if condition is not None else ""
             # Render body statements, each terminated by a semicolon
             body = expression.args.get("then") or []
-            body_sql = " ".join(f"{self.sql(stmt)};" for stmt in body)
+            body_sql = " ".join(self.sql(stmt) + ";" for stmt in body)
             return f"WHEN {conds} THEN {body_sql}"
 
         # Auto-discovered generator for PGOthers
@@ -1087,22 +1042,17 @@ class PlPgSQL(Postgres):
             return f"WHILE {cond_sql} LOOP END LOOP{suffix}"
 
         def pgexit_sql(self, expression: PGExit) -> str:
-            parts: list[str] = ["EXIT"]
-            if expression.args.get("this") is not None:
-                parts.append(self.sql(expression.this))
-            if expression.args.get("when") is not None:
-                parts.append("WHEN")
-                parts.append(self.sql(expression.args.get("when")))
-            return " ".join(parts)
+            return self._loop_control_sql("EXIT", expression)
 
         def pgcontinue_sql(self, expression: PGContinue) -> str:
-            parts: list[str] = ["CONTINUE"]
-            if expression.args.get("this") is not None:
-                parts.append(self.sql(expression.this))
-            if expression.args.get("when") is not None:
-                parts.append("WHEN")
-                parts.append(self.sql(expression.args.get("when")))
-            return " ".join(parts)
+            return self._loop_control_sql("CONTINUE", expression)
+
+        def _direction_and_cursor_sql(self, expression: exp.Expression) -> str:
+            dir_expr = expression.args.get("direction")
+            if dir_expr is not None:
+                prep = expression.args.get("preposition") or "FROM"
+                return f"{self.sql(dir_expr)} {prep} {self.sql(expression.this)}"
+            return self.sql(expression.this)
 
         def pgopencursor_sql(self, expression: PGOpenCursor) -> str:
             # Unbound form: OPEN c [NO|SCROLL] FOR <query>
@@ -1130,18 +1080,12 @@ class PlPgSQL(Postgres):
 
         def pgfetch_sql(self, expression: PGFetch) -> str:
             targets_sql = ", ".join(self.sql(e) for e in expression.expressions)
-            direction_expr = expression.args.get("direction")
-            if direction_expr is not None:
-                prep = expression.args.get("preposition") or "FROM"
-                return f"FETCH {self.sql(direction_expr)} {prep} {self.sql(expression.this)} INTO {targets_sql}"
-            return f"FETCH {self.sql(expression.this)} INTO {targets_sql}"
+            frag = self._direction_and_cursor_sql(expression)
+            return f"FETCH {frag} INTO {targets_sql}"
 
         def pgmove_sql(self, expression: "PGMove") -> str:
-            direction_expr = expression.args.get("direction")
-            if direction_expr is not None:
-                prep = expression.args.get("preposition") or "FROM"
-                return f"MOVE {self.sql(direction_expr)} {prep} {self.sql(expression.this)}"
-            return f"MOVE {self.sql(expression.this)}"
+            frag = self._direction_and_cursor_sql(expression)
+            return f"MOVE {frag}"
 
         def pgclose_sql(self, expression: "PGClose") -> str:
             return f"CLOSE {self.sql(expression.this)}"
