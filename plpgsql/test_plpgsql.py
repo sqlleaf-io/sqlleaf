@@ -676,3 +676,47 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN IF x > 0 THEN END IF; END;"
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one(sql, dialect=plpgsql)
+
+    # FOR ... IN <query> LOOP tests
+    def test_for_in_query_simple(self) -> None:
+        sql = (
+            "BEGIN FOR r_user IN SELECT username FROM users LOOP "
+            "RAISE NOTICE 'Username: %', r_user.username; END LOOP; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_query_empty_body_fails(self) -> None:
+        sql = "BEGIN FOR r IN SELECT 1 LOOP END LOOP; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_for_in_query_multiple_statements(self) -> None:
+        sql = "BEGIN FOR r IN SELECT id FROM t LOOP a := 1; b := 2; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_query_with_label(self) -> None:
+        sql = "BEGIN FOR r IN SELECT 1 LOOP EXIT; END LOOP myloop; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_query_with_where(self) -> None:
+        sql = "BEGIN FOR r IN SELECT a FROM t WHERE a > 0 LOOP a := a; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_query_nested_loop(self) -> None:
+        sql = "BEGIN FOR r IN SELECT 1 LOOP LOOP CONTINUE; END LOOP; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_query_missing_loop_fails(self) -> None:
+        sql = "BEGIN FOR r IN SELECT 1 SELECT 2; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_for_in_query_missing_end_loop_fails(self) -> None:
+        sql = "BEGIN FOR r IN SELECT 1 LOOP a := 1; END; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)

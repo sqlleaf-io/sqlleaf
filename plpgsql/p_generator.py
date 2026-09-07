@@ -37,6 +37,7 @@ class Generator(PostgresGenerator):
         PGRelative: lambda self, e: self.pgrelative_sql(e),
         PGAll: lambda self, e: self.pgall_sql(e),
         PGAssert: lambda self, e: self.pgassert_sql(e),
+        PGForIn: lambda self, e: self.pgforin_sql(e),
     }
 
     def _loop_control_sql(self, keyword: str, expression: exp.Expression) -> str:
@@ -232,6 +233,16 @@ class Generator(PostgresGenerator):
         if body_sql:
             return f"WHILE {cond_sql} LOOP {body_sql} END LOOP{suffix}"
         return f"WHILE {cond_sql} LOOP END LOOP{suffix}"
+
+    def pgforin_sql(self, expression: PGForIn) -> str:
+        target_sql = self.sql(expression.this)
+        query_sql = self.sql(expression.args.get("query"))
+        body_sql = " ".join(f"{self.sql(stmt)};" for stmt in expression.expressions)
+        label = expression.args.get("label")
+        suffix = f" {self.sql(label)}" if label is not None else ""
+        if body_sql:
+            return f"FOR {target_sql} IN {query_sql} LOOP {body_sql} END LOOP{suffix}"
+        return f"FOR {target_sql} IN {query_sql} LOOP END LOOP{suffix}"
 
     def pgexit_sql(self, expression: PGExit) -> str:
         return self._loop_control_sql("EXIT", expression)

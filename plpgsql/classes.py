@@ -82,6 +82,16 @@ class PGWhile(exp.Expression):
     arg_types = {"this": True, "expressions": True, "label": False}
 
 
+class PGForIn(exp.Expression):
+    """A PL/pgSQL query FOR loop.
+
+    Syntax:
+        FOR <target> IN <query> LOOP <statements> END LOOP [label]
+    """
+
+    arg_types = {"this": True, "query": True, "expressions": True, "label": False}
+
+
 class PGExit(exp.Expression):
     """A PL/pgSQL EXIT statement.
 

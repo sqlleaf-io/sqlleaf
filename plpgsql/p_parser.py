@@ -21,6 +21,7 @@ class Parser(PostgresParser):
         "WHILE": lambda self: self._parse_pgwhile(),
         "IF": lambda self: self._parse_pgif(),
         "LOOP": lambda self: self._parse_pgloop(),
+        "FOR": lambda self: self._parse_pgforin(),
         "EXIT": lambda self: self._parse_pgexit(),
         "CONTINUE": lambda self: self._parse_pgcontinue(),
         "RAISE": lambda self: self._parse_pgraise(),
@@ -428,6 +429,7 @@ class Parser(PostgresParser):
         cond = self._parse_expression()
 
         # Guard against accidental aliasing like: <cond> AS LOOP
+        # TODO: read until LOOP as it is a reserved keyword
         if isinstance(cond, exp.Alias):
             alias = cond.args.get("alias")
             if isinstance(alias, exp.Identifier) and alias.name.upper() == "LOOP":
@@ -457,6 +459,73 @@ class Parser(PostgresParser):
         self._match(TokenType.SEMICOLON)
 
         return self.expression(PGWhile(this=cond, expressions=body, label=label))
+
+    def _parse_pgforin(self) -> PGForIn:
+        # Consume FOR keyword
+        if not self._match_texts("FOR"):
+            self.raise_error("Expected FOR")
+
+        # Parse loop target identifier/variable
+        target = self._parse_id_var()
+
+        # Require IN keyword
+        if not self._match(TokenType.IN):
+            self.raise_error("Expected IN after FOR target")
+
+        # Parse only up to the LOOP keyword as the query header to avoid it being
+        # consumed as an alias (e.g., "AS LOOP") by the base SQL parser.
+        # We scan the raw token buffer until the first lexeme "LOOP".
+        scan_index = self._index
+        tokens_cap = len(self._tokens)
+        while scan_index < tokens_cap:
+            tok = self._tokens[scan_index]
+            # Encountering a semicolon before LOOP means malformed header
+            if getattr(tok, "token_type", None) == TokenType.SEMICOLON:
+                break
+            if getattr(tok, "text", "").upper() == "LOOP":
+                break
+            scan_index += 1
+
+        if scan_index >= tokens_cap or getattr(self._tokens[scan_index], "text", "").upper() != "LOOP":
+            self.raise_error("Expected LOOP after FOR ... IN <query>")
+
+        saved_size = self._tokens_size
+        try:
+            # Temporarily bound the token window to exclude LOOP
+            self._tokens_size = scan_index
+            query = self._parse_statement()
+            # Best-effort check: the header should be fully consumed within the window
+            if self._index < scan_index:
+                # Advance to the boundary if anything unconsumed remains in this window
+                self._index = scan_index
+        finally:
+            # Restore full window; current index now sits at the LOOP token
+            self._tokens_size = saved_size
+            # Ensure current token pointer is in sync with the updated index
+            if 0 <= self._index < len(self._tokens):
+                self._curr = self._tokens[self._index]
+
+        # Consume the LOOP keyword that begins the body
+        if not self._match_texts("LOOP"):
+            self.raise_error("Expected LOOP after FOR ... IN <query>")
+
+        # Parse body statements until END (match existing loops' behavior)
+        body: list[exp.Expression] = self._parse_statement_body(
+            stop_tokens=(TokenType.END,),
+            strict=False,
+        )
+
+        # Consume END then require trailing LOOP
+        if not self._match(TokenType.END):
+            self.raise_error("Expected END to close FOR loop")
+        if not self._match_texts("LOOP"):
+            self.raise_error("Expected LOOP after END in FOR loop")
+
+        # Optional label and semicolon
+        label = self._parse_id_var(any_token=True)
+        self._match(TokenType.SEMICOLON)
+
+        return self.expression(PGForIn(this=target, query=query, expressions=body or [], label=label))
 
     def _parse_pgassert(self) -> PGAssert:
         # Consume ASSERT keyword
