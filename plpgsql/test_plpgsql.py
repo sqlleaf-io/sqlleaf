@@ -1,7 +1,7 @@
 import unittest
 
 import sqlglot
-from plpgsql import plpgsql, PGBlock
+from plpgsql.methods import plpgsql, PGBlock
 
 
 class TestPlPgSQL(unittest.TestCase):
@@ -17,6 +17,11 @@ class TestPlPgSQL(unittest.TestCase):
 
     def test_begin_select_two(self) -> None:
         sql = "BEGIN SELECT 1; SELECT 2; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_begin_variable_assignment(self) -> None:
+        sql = "BEGIN x := 1; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
