@@ -1,7 +1,7 @@
 import unittest
 
 import sqlglot
-from plpgsql.methods import plpgsql, PGBlock
+from plpgsql.p_dialect import plpgsql
 
 
 class TestPlPgSQL(unittest.TestCase):
