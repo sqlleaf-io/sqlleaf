@@ -1,4 +1,5 @@
 from __future__ import annotations
+import typing as t
 
 """
 Example custom dialect that extends Postgres to parse simple PL/pgSQL-style blocks.
@@ -39,6 +40,41 @@ class PlPgSQL(Postgres):
             TokenType.BEGIN: lambda self: self._parse_plpgsql_block(),
             TokenType.DECLARE: lambda self: self._parse_plpgsql_block(),
         }
+
+        def _parse_named_pair(
+            self,
+            name_expr: exp.Expression,
+            allowed_ops: set[TokenType],
+            rhs_parser: t.Callable[[], exp.Expression] | None = None,
+        ) -> exp.Expression | None:
+            """Parse a named-argument style pair following a name expression.
+
+            Supported operators are provided via ``allowed_ops`` and map to:
+            - TokenType.COLON_EQ (:=)  -> AssignArg
+            - TokenType.EQ (=)         -> exp.EQ
+            - TokenType.FARROW (=>)    -> exp.Kwarg
+
+            If the next token is not an allowed operator, return None and do not
+            consume anything. Otherwise, consume the operator, parse RHS via the
+            provided ``rhs_parser`` (defaults to full expression), and return the
+            appropriate expression node.
+            """
+
+            rhsp = rhs_parser or self._parse_expression
+
+            if self._match(TokenType.COLON_EQ, advance=False) and TokenType.COLON_EQ in allowed_ops:
+                self._advance()
+                return self.expression(AssignArg(this=name_expr, expression=rhsp()))
+
+            if self._match(TokenType.EQ, advance=False) and TokenType.EQ in allowed_ops:
+                self._advance()
+                return self.expression(exp.EQ(this=name_expr, expression=rhsp()))
+
+            if self._match(TokenType.FARROW, advance=False) and TokenType.FARROW in allowed_ops:
+                self._advance()
+                return self.expression(exp.Kwarg(this=name_expr, expression=rhsp()))
+
+            return None
 
         def _parse_plpgsql_block(self) -> PGBlock:
             # Determine entry: dispatcher consumed the first keyword into _prev
@@ -89,20 +125,6 @@ class PlPgSQL(Postgres):
                     self._advance()  # consume END
                     break
 
-                # Try local PL/pgSQL assignment first: <ident> := <expr> ;
-                assign_stmt = self._parse_pg_assignment()
-                if assign_stmt is not None:
-                    expressions.append(assign_stmt)
-
-                    # After parsing a statement, if we haven't consumed the chunk, it's an error
-                    if self._index < self._tokens_size:
-                        self.raise_error("Invalid expression / Unexpected token")
-
-                    # Proceed to next chunk for the following statement or END
-                    self.check_errors()
-                    self._advance_chunk()
-                    continue
-
                 stmt = self._parse_statement()
                 if stmt is not None:
                     expressions.append(stmt)
@@ -132,7 +154,7 @@ class PlPgSQL(Postgres):
             i0 = self._index
             prev0 = self._prev
             curr0 = self._curr
-            next0 = self._next if hasattr(self, "_next") else None
+            next0 = self._next
 
             # LHS must be an identifier-like variable
             lhs = self._parse_id_var()
@@ -141,28 +163,31 @@ class PlPgSQL(Postgres):
                 self._index = i0
                 self._prev = prev0
                 self._curr = curr0
-                if hasattr(self, "_next"):
-                    self._next = next0
+                self._next = next0
                 return None
 
-            # Reject '=' usage in this context
+            # Preserve specific error for accidental '=' usage
             if self._match(TokenType.EQ, advance=False):
                 self.raise_error("Use := for assignment in PL/pgSQL blocks")
                 return None  # unreachable, keeps type-checkers happy
 
-            # Accept ':=' as assignment operator
-            if not self._match(TokenType.COLON_EQ):
+            # Delegate operator + RHS parsing to shared helper (only ':=')
+            pair = self._parse_named_pair(
+                lhs,
+                allowed_ops={TokenType.COLON_EQ},
+                rhs_parser=self._parse_expression,
+            )
+
+            if pair is None:
                 # Not an assignment, restore and bail
                 self._index = i0
                 self._prev = prev0
                 self._curr = curr0
-                if hasattr(self, "_next"):
-                    self._next = next0
+                self._next = next0
                 return None
 
-            # Parse RHS as a general expression
-            rhs = self._parse_expression()
-            return self.expression(AssignArg(this=lhs, expression=rhs))
+            # Helper guarantees COLON_EQ -> AssignArg
+            return pair  # type: ignore[return-value]
 
         def _parse_pgexception(self) -> exp.Expression:
             # Consume EXCEPTION keyword if not yet consumed
@@ -458,7 +483,7 @@ class PlPgSQL(Postgres):
                 ident.update_positions(token)
                 level = ident
 
-            # Helper to parse USING options into AssignArg entries
+            # Helper to parse USING options into AssignArg/EQ entries
             def _parse_using_list() -> list[exp.Expression]:
                 # Current token should be USING (not yet consumed)
                 if not self._match(TokenType.USING):
@@ -474,15 +499,14 @@ class PlPgSQL(Postgres):
                             self.raise_error("Expected option name after USING")
                         break
 
-                    # Allow either := or =. For '=' use standard EQ, for ':=' use AssignArg
-                    if self._match(TokenType.COLON_EQ):
-                        value = self._parse_expression()
-                        opts.append(AssignArg(this=name, expression=value))
-                    elif self._match(TokenType.EQ):
-                        value = self._parse_expression()
-                        opts.append(exp.EQ(this=name, expression=value))
-                    else:
+                    pair = self._parse_named_pair(
+                        name,
+                        allowed_ops={TokenType.COLON_EQ, TokenType.EQ},
+                        rhs_parser=self._parse_expression,
+                    )
+                    if pair is None:
                         self.raise_error("Expected ':=' or '=' in USING option")
+                    opts.append(pair)
 
                     first = False
                     if not self._match(TokenType.COMMA):
@@ -658,13 +682,14 @@ class PlPgSQL(Postgres):
                     # Parse an expression; if immediately followed by := or =>,
                     # treat the parsed expression as the name of a named argument.
                     first = self._parse_expression()
-                    if self._match(TokenType.COLON_EQ) or self._match(TokenType.FARROW):
-                        op_token = self._prev
-                        value_expr = self._parse_expression()
-                        if op_token and op_token.token_type == TokenType.COLON_EQ:
-                            args.append(AssignArg(this=first, expression=value_expr))
-                        else:
-                            args.append(exp.Kwarg(this=first, expression=value_expr))
+
+                    pair = self._parse_named_pair(
+                        first,
+                        allowed_ops={TokenType.COLON_EQ, TokenType.FARROW},
+                        rhs_parser=self._parse_expression,
+                    )
+                    if pair is not None:
+                        args.append(pair)
                     else:
                         args.append(first)
 
