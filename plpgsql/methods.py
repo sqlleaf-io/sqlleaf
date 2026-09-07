@@ -57,6 +57,21 @@ class PlPgSQL(Postgres):
                 if self._index >= self._tokens_size:
                     self._advance_chunk()
 
+                # Try local PL/pgSQL assignment first: <ident> := <expr> ;
+                if self._curr:
+                    assign_stmt = self._parse_pg_assignment()
+                    if assign_stmt is not None:
+                        expressions.append(assign_stmt)
+
+                        # After parsing a statement, if we haven't consumed the chunk, it's an error
+                        if self._index < self._tokens_size:
+                            self.raise_error("Invalid expression / Unexpected token")
+
+                        # Proceed to next chunk for the following statement or END
+                        self.check_errors()
+                        self._advance_chunk()
+                        continue
+
                 # Stop if we reached END (block terminator)
                 if not self._curr:
                     break
@@ -74,6 +89,20 @@ class PlPgSQL(Postgres):
                     self._advance()  # consume END
                     break
 
+                # Try local PL/pgSQL assignment first: <ident> := <expr> ;
+                assign_stmt = self._parse_pg_assignment()
+                if assign_stmt is not None:
+                    expressions.append(assign_stmt)
+
+                    # After parsing a statement, if we haven't consumed the chunk, it's an error
+                    if self._index < self._tokens_size:
+                        self.raise_error("Invalid expression / Unexpected token")
+
+                    # Proceed to next chunk for the following statement or END
+                    self.check_errors()
+                    self._advance_chunk()
+                    continue
+
                 stmt = self._parse_statement()
                 if stmt is not None:
                     expressions.append(stmt)
@@ -87,6 +116,53 @@ class PlPgSQL(Postgres):
                 self._advance_chunk()
 
             return self.expression(PGBlock(expressions=expressions, declare=declare, exception=exception, begin=True))
+
+        def _parse_pg_assignment(self) -> AssignArg | None:
+            """Parse a simple PL/pgSQL assignment statement inside a block.
+
+            Pattern: <identifier> := <expression>
+
+            Notes:
+            - We do NOT accept '=' as assignment. If we detect '<ident> =', raise a ParseError.
+            - Parsing is local to the current chunk (terminated by ';').
+            - On non-match, parser state is restored and None is returned.
+            """
+
+            # Save parser state to allow safe backtracking on non-match
+            i0 = self._index
+            prev0 = self._prev
+            curr0 = self._curr
+            next0 = self._next if hasattr(self, "_next") else None
+
+            # LHS must be an identifier-like variable
+            lhs = self._parse_id_var()
+            if not lhs:
+                # Restore and bail
+                self._index = i0
+                self._prev = prev0
+                self._curr = curr0
+                if hasattr(self, "_next"):
+                    self._next = next0
+                return None
+
+            # Reject '=' usage in this context
+            if self._match(TokenType.EQ, advance=False):
+                self.raise_error("Use := for assignment in PL/pgSQL blocks")
+                return None  # unreachable, keeps type-checkers happy
+
+            # Accept ':=' as assignment operator
+            if not self._match(TokenType.COLON_EQ):
+                # Not an assignment, restore and bail
+                self._index = i0
+                self._prev = prev0
+                self._curr = curr0
+                if hasattr(self, "_next"):
+                    self._next = next0
+                return None
+
+            # Parse RHS as a general expression
+            rhs = self._parse_expression()
+            return self.expression(AssignArg(this=lhs, expression=rhs))
 
         def _parse_pgexception(self) -> exp.Expression:
             # Consume EXCEPTION keyword if not yet consumed
@@ -398,10 +474,13 @@ class PlPgSQL(Postgres):
                             self.raise_error("Expected option name after USING")
                         break
 
-                    # Allow either := or =
-                    if self._match(TokenType.COLON_EQ) or self._match(TokenType.EQ):
+                    # Allow either := or =. For '=' use standard EQ, for ':=' use AssignArg
+                    if self._match(TokenType.COLON_EQ):
                         value = self._parse_expression()
                         opts.append(AssignArg(this=name, expression=value))
+                    elif self._match(TokenType.EQ):
+                        value = self._parse_expression()
+                        opts.append(exp.EQ(this=name, expression=value))
                     else:
                         self.raise_error("Expected ':=' or '=' in USING option")
 
@@ -1020,7 +1099,7 @@ class PlPgSQL(Postgres):
                 name_sql = f"{name_sql}({args_sql})"
             return f"OPEN {name_sql}"
 
-        # Auto-discovered generator for AssignArg
+        # Auto-discovered generator for AssignArg (always PL/pgSQL ':=')
         def assignarg_sql(self, expression: AssignArg) -> str:
             return self.binary(expression, ":=")
 

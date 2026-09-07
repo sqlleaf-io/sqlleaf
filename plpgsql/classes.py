@@ -135,7 +135,7 @@ class AssignArg(exp.Expression, exp.Binary):
 
     Example: ``key := 42``
     """
-    pass
+    arg_types = {"this": True, "expression": True, "op": False}
 
 
 class PGOpenCursor(exp.Expression):
