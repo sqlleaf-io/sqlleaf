@@ -869,6 +869,11 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
+    def test_execute_format_command_with_args(self) -> None:
+        sql = "EXECUTE FORMAT('UPDATE tbl SET %I = $1 WHERE key = $2', colname) USING newvalue, keyvalue;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
     def test_execute_into_single(self) -> None:
         sql = "EXECUTE 'SELECT a' INTO var1;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
@@ -883,3 +888,44 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "EXECUTE 'SELECT a' INTO STRICT var1;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    # EXECUTE ... USING tests
+    def test_execute_using_single(self) -> None:
+        sql = "EXECUTE 'SELECT $1' USING a;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_execute_using_multiple_with_function(self) -> None:
+        sql = "EXECUTE 'SELECT $1, $2' USING a, UPPER(b);"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_execute_into_using(self) -> None:
+        sql = "EXECUTE 'SELECT a' INTO var1 USING x;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_execute_into_strict_using(self) -> None:
+        sql = "EXECUTE 'SELECT a, b' INTO STRICT var1, var2 USING x, y;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_execute_using_inside_block(self) -> None:
+        sql = "BEGIN EXECUTE 'SELECT $1' USING a; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_execute_using_missing_list_fails(self) -> None:
+        sql = "EXECUTE 'SELECT 1' USING;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_execute_using_trailing_comma_fails(self) -> None:
+        sql = "EXECUTE 'SELECT 1' USING a,;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_execute_invalid_order_using_before_into_fails(self) -> None:
+        sql = "EXECUTE 'SELECT 1' USING a INTO v;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)

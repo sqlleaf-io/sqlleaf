@@ -1129,6 +1129,7 @@ class Parser(PostgresParser):
 
         targets: list[exp.Expression] | None = None
         strict = False
+        using: list[exp.Expression] | None = None
 
         # Optional INTO [STRICT] target [, ...]
         if self._match_texts("INTO"):
@@ -1140,12 +1141,25 @@ class Parser(PostgresParser):
             if not targets:
                 self.raise_error("Expected target list after INTO in EXECUTE")
 
+        # Optional USING expression [, ...]
+        if self._match_texts("USING"):
+            # Require at least one expression and disallow trailing commas
+            first = self._parse_expression()
+            if first is None:
+                self.raise_error("Expected expression list after USING in EXECUTE")
+            using = [first]
+            while self._match(TokenType.COMMA):
+                nxt = self._parse_expression()
+                if nxt is None:
+                    self.raise_error("Expected expression after comma in USING list")
+                using.append(nxt)
+
         return self.expression(
             PGExecute(
                 this=command,
                 expressions=targets,
                 strict=strict,
-                using=[],
+                using=using or [],
             )
         )
 
