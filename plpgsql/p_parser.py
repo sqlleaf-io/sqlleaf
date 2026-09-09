@@ -977,11 +977,19 @@ class Parser(PostgresParser):
         if not self._match_texts("RETURN"):
             self.raise_error("Expected RETURN")
 
-        # Support RETURN QUERY <query>;
+        # Support RETURN QUERY <query>; and RETURN QUERY EXECUTE ... [USING ...];
         if self._match_texts("QUERY"):
-            # Parse a full statement that returns rows (eg. SELECT ...)
-            # We delegate to the standard statement parser so it can handle
-            # SELECT, WITH, VALUES, INSERT ... RETURNING, etc.
+            # Fast-path for dynamic EXECUTE variant
+            if self._match(TokenType.EXECUTE, advance=False):
+                exec_node = self._parse_pgexecute()
+
+                # Prohibit INTO / INTO STRICT in RETURN QUERY EXECUTE form
+                if exec_node.args.get("expressions") or exec_node.args.get("strict"):
+                    self.raise_error("INTO is not allowed in RETURN QUERY EXECUTE")
+
+                return self.expression(PGReturn(this=exec_node, query=True))
+
+            # Otherwise parse a full query-producing statement (SELECT/WITH/VALUES/INSERT ... RETURNING)
             query = self._parse_statement()
             if query is None:
                 self.raise_error("Expected query after RETURN QUERY")

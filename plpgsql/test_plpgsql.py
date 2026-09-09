@@ -314,12 +314,54 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
-    # TODO: RETURN QUERY EXECUTE command-string [ USING expression [, ... ] ];
+    # RETURN QUERY EXECUTE command-string [ USING expression [, ... ] ];
+    def test_return_query_execute_basic(self) -> None:
+        sql = "BEGIN RETURN QUERY EXECUTE 'SELECT 1'; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_return_query_execute_using(self) -> None:
+        sql = "BEGIN RETURN QUERY EXECUTE 'SELECT $1, $2' USING a, UPPER(b); END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_return_query_execute_inside_exception(self) -> None:
+        sql = (
+            "BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN RETURN QUERY EXECUTE 'SELECT 2'; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_return_query_execute_format_command(self) -> None:
+        sql = "BEGIN RETURN QUERY EXECUTE FORMAT('SELECT %s', x); END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_return_query_inside_exception_when(self) -> None:
         sql = "BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN RETURN QUERY SELECT 2; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    # Negative cases for RETURN QUERY EXECUTE
+    def test_return_query_execute_using_missing_list_fails(self) -> None:
+        sql = "BEGIN RETURN QUERY EXECUTE 'SELECT 1' USING; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_return_query_execute_using_trailing_comma_fails(self) -> None:
+        sql = "BEGIN RETURN QUERY EXECUTE 'SELECT 1' USING a,; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_return_query_execute_into_fails(self) -> None:
+        sql = "BEGIN RETURN QUERY EXECUTE 'SELECT 1' INTO v; END;"
+        with self.assertRaisesRegex(sqlglot.errors.ParseError, r"INTO is not allowed in RETURN QUERY EXECUTE"):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_return_query_execute_into_strict_fails(self) -> None:
+        sql = "BEGIN RETURN QUERY EXECUTE 'SELECT 1' INTO STRICT v; END;"
+        with self.assertRaisesRegex(sqlglot.errors.ParseError, r"INTO is not allowed in RETURN QUERY EXECUTE"):
+            sqlglot.parse_one(sql, dialect=plpgsql)
 
     def test_return_next_simple(self) -> None:
         sql = "BEGIN RETURN NEXT 1 + 2; END;"
