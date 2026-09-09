@@ -206,6 +206,21 @@ class PGFetch(exp.Expression):
     }
 
 
+class PGExecute(exp.Expression):
+    """A PL/pgSQL dynamic EXECUTE statement.
+
+    Syntax:
+      EXECUTE command-string;
+    """
+
+    arg_types = {
+        "this": True,          # command-string expression (literal / concat / function call)
+        "expressions": False,  # INTO target list (list of variables), optional
+        "strict": False,       # True when INTO STRICT was used
+        "using": False,        # USING expression list, optional
+    }
+
+
 class PGMove(exp.Expression):
     """A PL/pgSQL MOVE statement.
 

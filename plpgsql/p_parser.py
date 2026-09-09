@@ -31,6 +31,7 @@ class Parser(PostgresParser):
         "FETCH": lambda self: self._parse_pgfetch(),
         "MOVE": lambda self: self._parse_pgmove(),
         "CLOSE": lambda self: self._parse_pgclose(),
+        "EXECUTE": lambda self: self._parse_pgexecute(),
     }
 
     def _parse_named_pair(
@@ -1114,6 +1115,29 @@ class Parser(PostgresParser):
 
         cursor = self._parse_id_var()
         return self.expression(PGClose(this=cursor))
+
+    def _parse_pgexecute(self) -> PGExecute:
+        # Consume EXECUTE keyword (tokenized as TokenType.EXECUTE)
+        if not self._match(TokenType.EXECUTE):
+            self.raise_error("Expected EXECUTE")
+
+        # Command-string: any scalar expression (literal, '||' concat, function call).
+        # _parse_expression naturally stops at INTO / USING (non-alias tokens).
+        command = self._parse_expression()
+        if command is None:
+            self.raise_error("Expected command string after EXECUTE")
+
+        targets: list[exp.Expression] | None = None
+        strict = False
+
+        return self.expression(
+            PGExecute(
+                this=command,
+                expressions=targets,
+                strict=strict,
+                using=[],
+            )
+        )
 
     def _parse_pg_direction_and_cursor(
         self, *, after_kw: str

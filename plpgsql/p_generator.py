@@ -39,6 +39,7 @@ class Generator(PostgresGenerator):
         PGAssert: lambda self, e: self.pgassert_sql(e),
         PGForIn: lambda self, e: self.pgforin_sql(e),
         PGForEach: lambda self, e: self.pgforeach_sql(e),
+        PGExecute: lambda self, e: self.pgexecute_sql(e),
     }
 
     def _loop_control_sql(self, keyword: str, expression: exp.Expression) -> str:
@@ -320,6 +321,20 @@ class Generator(PostgresGenerator):
 
     def pgclose_sql(self, expression: "PGClose") -> str:
         return f"CLOSE {self.sql(expression.this)}"
+
+    def pgexecute_sql(self, expression: PGExecute) -> str:
+        parts: list[str] = ["EXECUTE", self.sql(expression.this)]
+
+        targets = expression.args.get("expressions")
+        if targets:
+            into = "INTO STRICT" if expression.args.get("strict") else "INTO"
+            parts.append(f"{into} " + ", ".join(self.sql(t) for t in targets))
+
+        using_args = expression.args.get("using")
+        if using_args:
+            parts.append("USING " + ", ".join(self.sql(a) for a in using_args))
+
+        return " ".join(parts)
 
     # Direction generators (auto-discovered)
     def pgnext_sql(self, expression: PGNext) -> str:

@@ -25,9 +25,9 @@ class PlPgSQL(Postgres):
             "DECLARE": TokenType.DECLARE,
         }
 
-        # In base sqlglot, FETCH is treated as a COMMAND, which swallows the rest
-        # of the statement as a single STRING token, so we exclude it.
-        COMMANDS = Postgres.Tokenizer.COMMANDS - {TokenType.FETCH}
+        # In base sqlglot, FETCH and EXECUTE are treated as COMMANDs, which swallow the rest
+        # of the statement as a single STRING token, so we exclude them.
+        COMMANDS = Postgres.Tokenizer.COMMANDS - {TokenType.FETCH, TokenType.EXECUTE}
 
     Generator = Generator
     Parser = Parser

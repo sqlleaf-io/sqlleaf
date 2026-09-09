@@ -190,15 +190,15 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
-    def test_exception_requires_when(self) -> None:
+    def test_exception_requires_when_fails(self) -> None:
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one("BEGIN EXCEPTION END;", dialect=plpgsql)
 
-    def test_when_requires_condition(self) -> None:
+    def test_when_requires_condition_fails(self) -> None:
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one("BEGIN EXCEPTION WHEN THEN RAISE; END;", dialect=plpgsql)
 
-    def test_when_requires_statement(self) -> None:
+    def test_when_requires_statement_fails(self) -> None:
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one("BEGIN EXCEPTION WHEN division_by_zero THEN END;", dialect=plpgsql)
 
@@ -853,3 +853,18 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN FOREACH x ARRAY $1 LOOP a := 1; END LOOP; END;"
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_execute_inside_block(self) -> None:
+        sql = "BEGIN EXECUTE 'SELECT 1'; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_execute_concat_command(self) -> None:
+        sql = "EXECUTE 'SELECT count(*) FROM ' || QUOTE_IDENT(tabname);"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_execute_format_command(self) -> None:
+        sql = "EXECUTE FORMAT('SELECT count(*)');"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
