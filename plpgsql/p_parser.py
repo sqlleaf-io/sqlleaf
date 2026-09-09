@@ -22,6 +22,7 @@ class Parser(PostgresParser):
         "IF": lambda self: self._parse_pgif(),
         "LOOP": lambda self: self._parse_pgloop(),
         "FOR": lambda self: self._parse_pgfor(),
+        "FOREACH": lambda self: self._parse_pgforeach(),
         "EXIT": lambda self: self._parse_pgexit(),
         "CONTINUE": lambda self: self._parse_pgcontinue(),
         "RAISE": lambda self: self._parse_pgraise(),
@@ -552,6 +553,34 @@ class Parser(PostgresParser):
 
         return loop_index, sep_kind, sep_index, by_index
 
+    def _find_foreach_loop_index(self) -> int | None:
+        """Return the index of the header-terminating LOOP lexeme, or None.
+
+        Tracks parenthesis depth so a `LOOP` appearing inside the array
+        expression's parentheses is not mistaken for the loop keyword. Stops at a
+        top-level semicolon (malformed header).
+        """
+        i = self._index
+        cap = len(self._tokens)
+        depth = 0
+
+        while i < cap:
+            tok = self._tokens[i]
+            ttype = tok.token_type
+            text_upper = tok.text.upper()
+
+            if ttype == TokenType.SEMICOLON:
+                break
+            if depth == 0 and text_upper == "LOOP":
+                return i
+            if ttype == TokenType.L_PAREN:
+                depth += 1
+            elif ttype == TokenType.R_PAREN:
+                depth = max(0, depth - 1)
+            i += 1
+
+        return None
+
     def _parse_pgforin_tail(self, target: exp.Expression, *, loop_index: int) -> PGForIn:
         """Parse the query form tail of a FOR loop, starting after IN.
 
@@ -699,6 +728,77 @@ class Parser(PostgresParser):
             )
         )
 
+    def _parse_pgforeach(self) -> PGForEach:
+        # Consume FOREACH keyword
+        if not self._match_texts("FOREACH"):
+            self.raise_error("Expected FOREACH")
+
+        # Loop target variable
+        target = self._parse_id_var()
+
+        # Optional SLICE <number>
+        slice_expr = None
+        if self._match_texts("SLICE"):
+            # Require a NUMBER token next and construct a numeric literal
+            if not self._curr or self._curr.token_type != TokenType.NUMBER:
+                self.raise_error("Expected a number after SLICE")
+            text = self._curr.text
+            self._advance()
+            slice_expr = exp.Literal(this=text, is_string=False)
+
+        # Require IN ARRAY
+        if not self._match(TokenType.IN):
+            self.raise_error("Expected IN after FOREACH target")
+        if not self._match(TokenType.ARRAY):
+            self.raise_error("Expected ARRAY after IN in FOREACH")
+
+        # Locate the header-terminating LOOP so the array expression parsing
+        # does not swallow it as an alias.
+        loop_index = self._find_foreach_loop_index()
+        if loop_index is None:
+            self.raise_error("Expected LOOP after FOREACH ... IN ARRAY header")
+
+        # Parse the array expression bounded to stop before LOOP.
+        saved_size = self._tokens_size
+        try:
+            self._tokens_size = loop_index
+            array_expr = self._parse_expression()
+            if self._index < loop_index:
+                self._index = loop_index
+        finally:
+            self._tokens_size = saved_size
+            if 0 <= self._index < len(self._tokens):
+                self._curr = self._tokens[self._index]
+
+        # Consume the LOOP keyword that begins the body
+        if not self._match_texts("LOOP"):
+            self.raise_error("Expected LOOP after FOREACH ... IN ARRAY <expression>")
+
+        # Parse body statements until END
+        body = self._parse_statement_body(
+            stop_tokens=(TokenType.END,),
+            strict=False,
+        )
+
+        # Consume END then require trailing LOOP
+        if not self._match(TokenType.END):
+            self.raise_error("Expected END to close FOREACH loop")
+        if not self._match_texts("LOOP"):
+            self.raise_error("Expected LOOP after END in FOREACH loop")
+
+        # Optional label and optional semicolon
+        label = self._parse_id_var(any_token=True)
+        self._match(TokenType.SEMICOLON)
+
+        return self.expression(
+            PGForEach(
+                this=target,
+                slice=slice_expr,
+                expression=array_expr,
+                expressions=body or [],
+                label=label,
+            )
+        )
     def _parse_pgassert(self) -> PGAssert:
         # Consume ASSERT keyword
         if not self._match_texts("ASSERT"):

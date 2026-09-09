@@ -106,6 +106,24 @@ class PGForIn(exp.Expression):
     }
 
 
+class PGForEach(exp.Expression):
+    """A PL/pgSQL FOREACH loop over the elements/slices of an array.
+
+    Syntax:
+        FOREACH <target> [ SLICE <number> ] IN ARRAY <expression> LOOP
+            <statements>
+        END LOOP [ label ];
+    """
+
+    arg_types = {
+        "this": True,          # loop target identifier / variable
+        "slice": False,        # optional SLICE number (exp.Literal)
+        "expression": True,    # the array expression to iterate over
+        "expressions": True,   # body statements
+        "label": False,        # optional trailing label
+    }
+
+
 class PGExit(exp.Expression):
     """A PL/pgSQL EXIT statement.
 

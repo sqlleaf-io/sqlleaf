@@ -38,6 +38,7 @@ class Generator(PostgresGenerator):
         PGAll: lambda self, e: self.pgall_sql(e),
         PGAssert: lambda self, e: self.pgassert_sql(e),
         PGForIn: lambda self, e: self.pgforin_sql(e),
+        PGForEach: lambda self, e: self.pgforeach_sql(e),
     }
 
     def _loop_control_sql(self, keyword: str, expression: exp.Expression) -> str:
@@ -251,6 +252,22 @@ class Generator(PostgresGenerator):
             by_sql = f" BY {self.sql(step)}" if step is not None else ""
             header = f"FOR {target_sql} IN {reverse}{start_sql}..{end_sql}{by_sql} LOOP"
 
+        if body_sql:
+            return f"{header} {body_sql} END LOOP{suffix}"
+        return f"{header} END LOOP{suffix}"
+
+    def pgforeach_sql(self, expression: PGForEach) -> str:
+        target_sql = self.sql(expression.this)
+        array_sql = self.sql(expression.args.get("expression"))
+        body_sql = " ".join(f"{self.sql(stmt)};" for stmt in expression.expressions)
+
+        slice_expr = expression.args.get("slice")
+        slice_sql = f" SLICE {self.sql(slice_expr)}" if slice_expr is not None else ""
+
+        label = expression.args.get("label")
+        suffix = f" {self.sql(label)}" if label is not None else ""
+
+        header = f"FOREACH {target_sql}{slice_sql} IN ARRAY {array_sql} LOOP"
         if body_sql:
             return f"{header} {body_sql} END LOOP{suffix}"
         return f"{header} END LOOP{suffix}"

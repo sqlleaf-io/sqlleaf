@@ -771,3 +771,85 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN FOR i IN 1..10 LOOP a := 1; END; END;"
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one(sql, dialect=plpgsql)
+
+    # FOREACH ... IN ARRAY LOOP tests
+    def test_foreach_simple(self) -> None:
+        sql = "BEGIN FOREACH x IN ARRAY $1 LOOP s := s + x; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_foreach_issue_example(self) -> None:
+        # The exact example from the feature request (RETURN follows the loop).
+        sql = "BEGIN FOREACH x IN ARRAY $1 LOOP s := s + x; END LOOP; RETURN s; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_foreach_with_slice(self) -> None:
+        sql = "BEGIN FOREACH x SLICE 1 IN ARRAY $1 LOOP a := 1; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_foreach_array_literal(self) -> None:
+        sql = "BEGIN FOREACH x IN ARRAY ARRAY[1, 2, 3] LOOP a := x; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_foreach_multiple_statements(self) -> None:
+        sql = "BEGIN FOREACH x IN ARRAY $1 LOOP a := 1; b := 2; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_foreach_with_label(self) -> None:
+        sql = "BEGIN FOREACH x IN ARRAY $1 LOOP EXIT; END LOOP myloop; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_foreach_slice_with_label(self) -> None:
+        sql = "BEGIN FOREACH x SLICE 2 IN ARRAY $1 LOOP a := 1; END LOOP myloop; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_foreach_nested_loop(self) -> None:
+        sql = "BEGIN FOREACH x IN ARRAY $1 LOOP LOOP CONTINUE; END LOOP; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_foreach_inside_exception_when(self) -> None:
+        sql = (
+            "BEGIN SELECT 1; EXCEPTION WHEN OTHERS THEN "
+            "FOREACH x IN ARRAY $1 LOOP a := x; END LOOP; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_foreach_ast_shape(self) -> None:
+        from plpgsql.classes import PGForEach
+
+        sql = "BEGIN FOREACH x SLICE 1 IN ARRAY $1 LOOP a := 1; END LOOP; END;"
+        block = sqlglot.parse_one(sql, dialect=plpgsql)
+        foreach = block.find(PGForEach)
+        self.assertIsNotNone(foreach)
+        assert foreach is not None  # for type checkers
+        self.assertEqual(foreach.this.name, "x")
+        self.assertEqual(foreach.args["slice"].name, "1")
+        self.assertEqual(len(foreach.args["expressions"]), 1)
+
+    def test_foreach_missing_loop_fails(self) -> None:
+        sql = "BEGIN FOREACH x IN ARRAY $1 a := 1; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_foreach_missing_end_loop_fails(self) -> None:
+        sql = "BEGIN FOREACH x IN ARRAY $1 LOOP a := 1; END; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_foreach_missing_array_fails(self) -> None:
+        sql = "BEGIN FOREACH x IN $1 LOOP a := 1; END LOOP; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_foreach_missing_in_fails(self) -> None:
+        sql = "BEGIN FOREACH x ARRAY $1 LOOP a := 1; END LOOP; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
