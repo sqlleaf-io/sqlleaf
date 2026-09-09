@@ -40,6 +40,7 @@ class Generator(PostgresGenerator):
         PGForIn: lambda self, e: self.pgforin_sql(e),
         PGForEach: lambda self, e: self.pgforeach_sql(e),
         PGExecute: lambda self, e: self.pgexecute_sql(e),
+        PGGetDiagnostics: lambda self, e: self.pggetdiagnostics_sql(e),
     }
 
     def _loop_control_sql(self, keyword: str, expression: exp.Expression) -> str:
@@ -334,6 +335,19 @@ class Generator(PostgresGenerator):
         if using_args:
             parts.append("USING " + ", ".join(self.sql(a) for a in using_args))
 
+        return " ".join(parts)
+
+    def pggetdiagnostics_sql(self, expression: PGGetDiagnostics) -> str:
+        parts: list[str] = ["GET"]
+        if expression.args.get("current"):
+            parts.append("CURRENT")
+        elif expression.args.get("stacked"):
+            parts.append("STACKED")
+        parts.append("DIAGNOSTICS")
+
+        assigns = expression.expressions or []
+        assigns_sql = ", ".join(self.sql(a) for a in assigns)
+        parts.append(assigns_sql)
         return " ".join(parts)
 
     # Direction generators (auto-discovered)

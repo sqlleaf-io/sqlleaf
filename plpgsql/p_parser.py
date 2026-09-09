@@ -32,7 +32,67 @@ class Parser(PostgresParser):
         "MOVE": lambda self: self._parse_pgmove(),
         "CLOSE": lambda self: self._parse_pgclose(),
         "EXECUTE": lambda self: self._parse_pgexecute(),
+        "GET": lambda self: self._parse_pggetdiagnostics(),
     }
+
+    def _parse_pggetdiagnostics(self) -> PGGetDiagnostics:
+        # 1. Consume GET
+        if not self._match_texts("GET"):
+            self.raise_error("Expected GET")
+
+        # 2. Optional CURRENT or STACKED
+        current = False
+        stacked = False
+        if self._match_texts("CURRENT"):
+            current = True
+        elif self._match_texts("STACKED"):
+            stacked = True
+
+        # 3. Require DIAGNOSTICS
+        if not self._match_texts("DIAGNOSTICS"):
+            hint = " CURRENT" if current else (" STACKED" if stacked else "")
+            self.raise_error("Expected DIAGNOSTICS after GET" + hint)
+
+        pairs: list[exp.Expression] = []
+
+        def parse_item() -> exp.Expression:
+            # Items are represented as identifier-like expressions
+            ident = self._parse_id_var(any_token=True)
+            if ident is None:
+                self.raise_error("Expected diagnostics item after operator")
+            return ident
+
+        # 4. Parse first assignment pair (mandatory)
+        var = self._parse_id_var(any_token=True)
+        if var is None:
+            self.raise_error("Expected variable after DIAGNOSTICS")
+
+        pair = self._parse_named_pair(
+            var,
+            allowed_ops={TokenType.EQ, TokenType.COLON_EQ},
+            rhs_parser=parse_item,
+        )
+        if pair is None:
+            self.raise_error("Expected assignment operator (= or :=) after variable")
+        pairs.append(pair)
+
+        # 5. Zero or more ", var op item" pairs
+        while self._match(TokenType.COMMA):
+            var = self._parse_id_var(any_token=True)
+            if var is None:
+                self.raise_error("Expected variable after comma in GET DIAGNOSTICS")
+            pair = self._parse_named_pair(
+                var,
+                allowed_ops={TokenType.EQ, TokenType.COLON_EQ},
+                rhs_parser=parse_item,
+            )
+            if pair is None:
+                self.raise_error("Expected assignment operator (= or :=) after variable")
+            pairs.append(pair)
+
+        # Optional semicolon is handled by caller parsing body; do not consume here
+
+        return self.expression(PGGetDiagnostics(current=current, stacked=stacked, expressions=pairs))
 
     def _parse_named_pair(
         self,

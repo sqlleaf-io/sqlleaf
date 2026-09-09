@@ -174,6 +174,20 @@ class PGAssert(exp.Expression):
     arg_types = {"condition": True, "message": False}
 
 
+class PGGetDiagnostics(exp.Expression):
+    """A PL/pgSQL GET [CURRENT] DIAGNOSTICS statement.
+
+    Syntax:
+      GET [ CURRENT ] DIAGNOSTICS variable { = | := } item [ , ... ];
+    """
+
+    # current: optional boolean flag indicating GET CURRENT DIAGNOSTICS
+    # stacked: optional boolean flag indicating GET STACKED DIAGNOSTICS
+    # expressions: list of assignment pairs (exp.EQ or AssignArg) mapping
+    #              target variables to diagnostic items
+    arg_types = {"current": False, "stacked": False, "expressions": True}
+
+
 class AssignArg(exp.Expression, exp.Binary):
     """Represents a named argument using the PL/pgSQL ``:=`` syntax.
 

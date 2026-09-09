@@ -110,6 +110,46 @@ class TestPlPgSQL(unittest.TestCase):
         out = expr.sql(dialect=plpgsql)
         self.assertEqual(out, "DECLARE amount CONSTANT INTEGER := 5; BEGIN SELECT 1; END")
 
+    def test_get_diagnostics_basic(self) -> None:
+        cases = [
+            "GET DIAGNOSTICS integer_var = ROW_COUNT;",
+            "GET DIAGNOSTICS text_var = PG_CONTEXT;",
+            "GET DIAGNOSTICS oid_var = PG_ROUTINE_OID;",
+            "GET CURRENT DIAGNOSTICS integer_var = ROW_COUNT;",
+            "GET STACKED DIAGNOSTICS integer_var = ROW_COUNT;",
+            "GET DIAGNOSTICS v := ROW_COUNT;",
+            "GET DIAGNOSTICS a = ROW_COUNT, b := PG_CONTEXT;",
+        ]
+        for sql in cases:
+            with self.subTest(sql=sql):
+                expr = sqlglot.parse_one(sql, dialect=plpgsql)
+                self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_get_diagnostics_nested(self) -> None:
+        sqls = [
+            "BEGIN GET DIAGNOSTICS a = ROW_COUNT, b := PG_CONTEXT; END;",
+            "BEGIN GET STACKED DIAGNOSTICS a = ROW_COUNT; END;",
+        ]
+        for sql in sqls:
+            with self.subTest(sql=sql):
+                expr = sqlglot.parse_one(sql, dialect=plpgsql)
+                self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_get_diagnostics_negative(self) -> None:
+        bad_cases = [
+            "GET DIAGNOSTICS;",
+            "GET CURRENT integer_var = ROW_COUNT;",
+            "GET STACKED integer_var = ROW_COUNT;",
+            "GET DIAGNOSTICS integer_var ROW_COUNT;",
+            "GET DIAGNOSTICS = ROW_COUNT;",
+            "GET DIAGNOSTICS integer_var = ;",
+            "GET DIAGNOSTICS integer_var = ROW_COUNT,;",
+        ]
+        for sql in bad_cases:
+            with self.subTest(sql=sql):
+                with self.assertRaises(sqlglot.errors.ParseError):
+                    sqlglot.parse_one(sql, dialect=plpgsql)
+
     def test_plpgsql_declare_collate(self) -> None:
         sql = """
         DECLARE
