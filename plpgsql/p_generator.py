@@ -236,13 +236,24 @@ class Generator(PostgresGenerator):
 
     def pgforin_sql(self, expression: PGForIn) -> str:
         target_sql = self.sql(expression.this)
-        query_sql = self.sql(expression.args.get("query"))
         body_sql = " ".join(f"{self.sql(stmt)};" for stmt in expression.expressions)
         label = expression.args.get("label")
         suffix = f" {self.sql(label)}" if label is not None else ""
+
+        query = expression.args.get("query")
+        if query is not None:
+            header = f"FOR {target_sql} IN {self.sql(query)} LOOP"
+        else:
+            reverse = "REVERSE " if expression.args.get("reverse") else ""
+            start_sql = self.sql(expression.args.get("start"))
+            end_sql = self.sql(expression.args.get("end"))
+            step = expression.args.get("step")
+            by_sql = f" BY {self.sql(step)}" if step is not None else ""
+            header = f"FOR {target_sql} IN {reverse}{start_sql}..{end_sql}{by_sql} LOOP"
+
         if body_sql:
-            return f"FOR {target_sql} IN {query_sql} LOOP {body_sql} END LOOP{suffix}"
-        return f"FOR {target_sql} IN {query_sql} LOOP END LOOP{suffix}"
+            return f"{header} {body_sql} END LOOP{suffix}"
+        return f"{header} END LOOP{suffix}"
 
     def pgexit_sql(self, expression: PGExit) -> str:
         return self._loop_control_sql("EXIT", expression)

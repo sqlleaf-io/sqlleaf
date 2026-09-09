@@ -83,13 +83,27 @@ class PGWhile(exp.Expression):
 
 
 class PGForIn(exp.Expression):
-    """A PL/pgSQL query FOR loop.
+    """A PL/pgSQL FOR loop over a query or an integer range.
 
-    Syntax:
+    Syntax (query):
         FOR <target> IN <query> LOOP <statements> END LOOP [label]
+
+    Syntax (range):
+        FOR <target> IN [REVERSE] <from> .. <to> [BY <step>] LOOP
+            <statements>
+        END LOOP [label]
     """
 
-    arg_types = {"this": True, "query": True, "expressions": True, "label": False}
+    arg_types = {
+        "this": True,         # loop target identifier (exp.Identifier / var)
+        "query": False,       # query form header (exclusive with range fields)
+        "reverse": False,     # range: True flag when REVERSE present
+        "start": False,       # range: lower-bound expression
+        "end": False,         # range: upper-bound expression
+        "step": False,        # range: optional BY expression
+        "expressions": True,  # body statements
+        "label": False,       # optional trailing label
+    }
 
 
 class PGExit(exp.Expression):

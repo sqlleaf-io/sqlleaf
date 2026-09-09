@@ -720,3 +720,54 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN FOR r IN SELECT 1 LOOP a := 1; END; END;"
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one(sql, dialect=plpgsql)
+
+    # FOR ... IN <range> LOOP tests
+    def test_for_range_simple(self) -> None:
+        sql = "BEGIN FOR i IN 1..10 LOOP a := i; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_range_reverse(self) -> None:
+        sql = "BEGIN FOR i IN REVERSE 10..1 LOOP a := i; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_range_reverse_by(self) -> None:
+        sql = "BEGIN FOR i IN REVERSE 10..1 BY 2 LOOP a := i; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_range_by_no_reverse(self) -> None:
+        sql = "BEGIN FOR i IN 1..10 BY 2 LOOP a := i; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_range_with_label(self) -> None:
+        sql = "BEGIN FOR i IN 1..3 LOOP EXIT; END LOOP myloop; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_range_multiple_statements(self) -> None:
+        sql = "BEGIN FOR i IN 1..3 LOOP a := 1; b := 2; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_range_expression_bounds(self) -> None:
+        sql = "BEGIN FOR i IN (a + 1)..(b * 2) LOOP a := i; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_range_nested_loop(self) -> None:
+        sql = "BEGIN FOR i IN 1..3 LOOP LOOP CONTINUE; END LOOP; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_range_missing_loop_fails(self) -> None:
+        sql = "BEGIN FOR i IN 1..10 a := 1; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_for_range_missing_end_loop_fails(self) -> None:
+        sql = "BEGIN FOR i IN 1..10 LOOP a := 1; END; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
