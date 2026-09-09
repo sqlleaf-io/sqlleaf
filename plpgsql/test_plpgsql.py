@@ -868,3 +868,18 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "EXECUTE FORMAT('SELECT count(*)');"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_execute_into_single(self) -> None:
+        sql = "EXECUTE 'SELECT a' INTO var1;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_execute_into_multiple(self) -> None:
+        sql = "EXECUTE 'SELECT a, b, c' INTO var1, var2, var3;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_execute_into_strict_single(self) -> None:
+        sql = "EXECUTE 'SELECT a' INTO STRICT var1;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])

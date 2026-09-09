@@ -1130,6 +1130,16 @@ class Parser(PostgresParser):
         targets: list[exp.Expression] | None = None
         strict = False
 
+        # Optional INTO [STRICT] target [, ...]
+        if self._match_texts("INTO"):
+            # STRICT is tokenized as VAR, so match by text
+            strict = self._match_texts("STRICT")
+
+            # One or more targets separated by commas
+            targets = self._parse_csv(self._parse_expression)
+            if not targets:
+                self.raise_error("Expected target list after INTO in EXECUTE")
+
         return self.expression(
             PGExecute(
                 this=command,
