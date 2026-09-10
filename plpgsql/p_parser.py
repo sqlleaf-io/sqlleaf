@@ -1190,9 +1190,14 @@ class Parser(PostgresParser):
             # If SCROLL/NO SCROLL was provided, FOR is required
             self.raise_error("Expected FOR in OPEN cursor statement")
 
-        query = self._parse_statement()
-        if query is None:
-            self.raise_error("Expected query after OPEN ... FOR")
+        if self._match(TokenType.EXECUTE, advance=False):
+            query = self._parse_pgexecute()
+            if query.args["expressions"]:
+                self.raise_error("INTO is not allowed in OPEN FOR EXECUTE")
+        else:
+            query = self._parse_statement()
+            if query is None:
+                self.raise_error("Expected query after OPEN ... FOR")
 
         return self.expression(PGOpenCursor(this=cursor, expression=query, scroll=scroll))
 

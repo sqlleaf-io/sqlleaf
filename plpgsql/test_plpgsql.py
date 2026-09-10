@@ -572,7 +572,51 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
-    # TODO: OPEN unbound_cursorvar [ [ NO ] SCROLL ] FOR EXECUTE query_string [ USING expression [, ... ] ];
+    def test_open_cursor_for_execute_simple(self) -> None:
+        sql = "BEGIN OPEN c FOR EXECUTE q; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_open_cursor_for_execute_using(self) -> None:
+        sql = "BEGIN OPEN curs1 FOR EXECUTE FORMAT('SELECT 1 WHERE x = $1') USING keyvalue; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_open_cursor_for_execute_with_scroll(self) -> None:
+        sql = "BEGIN OPEN c SCROLL FOR EXECUTE q USING x; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_open_cursor_for_execute_with_no_scroll(self) -> None:
+        sql = "BEGIN OPEN c NO SCROLL FOR EXECUTE q USING x; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_open_cursor_for_execute_ast_shape(self) -> None:
+        from plpgsql.classes import PGExecute, PGOpenCursor
+
+        sql = "BEGIN OPEN c FOR EXECUTE 'SELECT 1' USING x; END;"
+        block = sqlglot.parse_one(sql, dialect=plpgsql)
+        open_node = block.find(PGOpenCursor)
+        self.assertIsNotNone(open_node)
+        assert open_node is not None  # for type checkers
+        self.assertIsInstance(open_node.args["expression"], PGExecute)
+        self.assertEqual(len(open_node.args["expression"].args["using"]), 1)
+        self.assertEqual(open_node.args["expression"].args["using"][0].name, "x")
+
+    def test_open_cursor_for_execute_into_fails(self) -> None:
+        sql = "BEGIN OPEN c FOR EXECUTE 'SELECT 1' INTO v; END;"
+        with self.assertRaisesRegex(
+            sqlglot.errors.ParseError, r"INTO is not allowed in OPEN FOR EXECUTE"
+        ):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_open_cursor_for_execute_into_strict_fails(self) -> None:
+        sql = "BEGIN OPEN c FOR EXECUTE 'SELECT 1' INTO STRICT v; END;"
+        with self.assertRaisesRegex(
+            sqlglot.errors.ParseError, r"INTO is not allowed in OPEN FOR EXECUTE"
+        ):
+            sqlglot.parse_one(sql, dialect=plpgsql)
 
     def test_fetch_cursor_into_single(self) -> None:
         sql = "BEGIN FETCH curs1 INTO rowvar; END;"
