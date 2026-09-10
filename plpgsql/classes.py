@@ -19,6 +19,7 @@ class PGDeclareItem(exp.Expression):
     Currently supports:
       - name type;
       - name type := expression;
+      - name [ [ NO ] SCROLL ] CURSOR [ ( args ) ] FOR query;
     """
 
     arg_types = {
@@ -32,7 +33,16 @@ class PGDeclareItem(exp.Expression):
         "collate": False,
         "not_null": False,
         "alias_for": False,
+        "cursor": False,
+        "scroll": False,
+        "cursor_args": False,
+        "query": False,
     }
+
+
+class PGCursorArg(exp.Expression):
+    """A single cursor argument declaration: ``name type``."""
+    arg_types = {"this": True, "kind": True}
 
 
 class PGException(exp.Expression):
@@ -40,7 +50,7 @@ class PGException(exp.Expression):
 
     Mirror exp.Case by storing WHEN clauses under `ifs`.
     """
-    arg_types = {"ifs": True}
+    arg_types = {"whens": True}
 
 
 class PGWhen(exp.Expression):

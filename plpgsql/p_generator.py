@@ -41,6 +41,7 @@ class Generator(PostgresGenerator):
         PGForEach: lambda self, e: self.pgforeach_sql(e),
         PGExecute: lambda self, e: self.pgexecute_sql(e),
         PGGetDiagnostics: lambda self, e: self.pggetdiagnostics_sql(e),
+        PGCursorArg: lambda self, e: self.pgcursorarg_sql(e),
     }
 
     def _loop_control_sql(self, keyword: str, expression: exp.Expression) -> str:
@@ -81,6 +82,29 @@ class Generator(PostgresGenerator):
 
     def pgdeclareitem_sql(self, expression: PGDeclareItem) -> str:
         name = self.sql(expression.this)
+        # Cursor declaration
+        if expression.args.get("cursor"):
+            parts: list[str] = [name]
+            scroll = expression.args.get("scroll")
+
+            if scroll is True:
+                parts.append("SCROLL")
+            elif scroll is False:
+                parts.append("NO SCROLL")
+
+            # CURSOR and optional args
+            cursor_args = expression.args.get("cursor_args")
+            if cursor_args:
+                args_sql = ", ".join(self.sql(a) for a in cursor_args)
+                parts.append(f"CURSOR({args_sql})")
+            else:
+                parts.append("CURSOR")
+
+            # FOR query
+            parts.append("FOR")
+            parts.append(self.sql(expression.args.get("query")))
+            return " ".join(parts)
+
         # Handle alias variant early: name ALIAS FOR $n
         if expression.args.get("alias_for"):
             target = self.sql(expression.args.get("expression"))
@@ -104,9 +128,14 @@ class Generator(PostgresGenerator):
 
         return f"{name}{const_kw} {typ_render}{collate_sql}{not_null_sql}"
 
+    def pgcursorarg_sql(self, expression: PGCursorArg) -> str:
+        kind = self.sql(expression.args.get("kind"))
+        kind_render = kind.upper() if kind else ""
+        return f"{self.sql(expression.this)} {kind_render}"
+
     def pgexception_sql(self, expression: "PGException") -> str:
         parts: list[str] = ["EXCEPTION"]
-        for when in expression.args.get("ifs") or []:
+        for when in expression.args.get("whens") or []:
             parts.append(self.sql(when))
         return " ".join(parts)
 

@@ -284,7 +284,7 @@ class Parser(PostgresParser):
         if not whens:
             self.raise_error("Invalid expression / Unexpected token")
 
-        return self.expression(PGException(ifs=whens))
+        return self.expression(PGException(whens=whens))
 
     def _parse_pgwhen(self) -> exp.Expression:
         if not self._match(TokenType.WHEN):
@@ -433,6 +433,27 @@ class Parser(PostgresParser):
                 )
             )
 
+        # Detect cursor declaration before type parsing:
+        index = self._index
+        scroll: bool | None = None
+        if self._match_texts("NO"):
+            if self._match_texts("SCROLL"):
+                scroll = False
+            else:
+                # Not a valid cursor prelude, rollback
+                self._retreat(index)
+        elif self._match_texts("SCROLL"):
+            scroll = True
+
+        # If SCROLL/NO SCROLL matched, require CURSOR next; else try bare CURSOR
+        if scroll is not None:
+            if self._match_texts("CURSOR"):
+                return self._parse_pl_declare_cursor(ident, is_constant, scroll)
+            # Roll back if not actually a cursor declaration
+            self._retreat(index)
+        elif self._match_texts("CURSOR"):
+            return self._parse_pl_declare_cursor(ident, is_constant, None)
+
         # Parse a type expression (prefer singular _parse_type, fallback to plural helper)
         type_expr = self._parse_type() or self._parse_types()
 
@@ -474,6 +495,40 @@ class Parser(PostgresParser):
                 constant=is_constant,
             )
         )
+
+    def _parse_pl_declare_cursor(
+        self, ident: exp.Expression, is_constant: bool, scroll: bool | None
+    ) -> PGDeclareItem:
+        # Optional argument declaration list: ( name type [, ...] )
+        cursor_args: list[exp.Expression] | None = None
+        if self._match(TokenType.L_PAREN):
+            cursor_args = self._parse_csv(self._parse_pl_cursor_arg)
+            if not self._match(TokenType.R_PAREN):
+                self.raise_error("Expected ')' to close cursor argument list")
+
+        # Required FOR <query>
+        if not self._match_texts("FOR"):
+            self.raise_error("Expected FOR in cursor declaration")
+
+        query = self._parse_statement()
+        if query is None:
+            self.raise_error("Expected query after CURSOR ... FOR")
+
+        return self.expression(
+            PGDeclareItem(
+                this=ident,
+                cursor=True,
+                scroll=scroll,
+                cursor_args=cursor_args,
+                query=query,
+                constant=is_constant,
+            )
+        )
+
+    def _parse_pl_cursor_arg(self) -> PGCursorArg:
+        name = self._parse_id_var()
+        arg_type = self._parse_type() or self._parse_types()
+        return self.expression(PGCursorArg(this=name, kind=arg_type))
 
     def _parse_statement(self) -> exp.Expr | None:
         if self._curr:

@@ -186,6 +186,75 @@ class TestPlPgSQL(unittest.TestCase):
         out = expr.sql(dialect=plpgsql)
         self.assertEqual(out, 'DECLARE subtotal ALIAS FOR $1; BEGIN SELECT 1; END')
 
+    # Cursor declaration tests
+    def test_plpgsql_declare_cursor_simple(self) -> None:
+        sql = """
+        DECLARE
+            curs2 CURSOR FOR SELECT * FROM tenk1;
+        BEGIN
+            SELECT 1;
+        END;
+        """
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        out = expr.sql(dialect=plpgsql)
+        self.assertEqual(
+            out,
+            "DECLARE curs2 CURSOR FOR SELECT * FROM tenk1; BEGIN SELECT 1; END",
+        )
+
+    def test_plpgsql_declare_cursor_with_args(self) -> None:
+        sql = """
+        DECLARE
+            curs3 CURSOR (key integer) FOR SELECT * FROM tenk1 WHERE unique1 = key;
+        BEGIN
+            SELECT 1;
+        END;
+        """
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        out = expr.sql(dialect=plpgsql)
+        self.assertEqual(
+            out,
+            "DECLARE curs3 CURSOR(key INTEGER) FOR SELECT * FROM tenk1 WHERE unique1 = key; BEGIN SELECT 1; END",
+        )
+
+    def test_plpgsql_declare_scroll_cursor(self) -> None:
+        sql = "DECLARE c SCROLL CURSOR FOR SELECT 1; BEGIN SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_plpgsql_declare_no_scroll_cursor(self) -> None:
+        sql = "DECLARE c NO SCROLL CURSOR FOR SELECT 1; BEGIN SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_plpgsql_declare_cursor_multi_args(self) -> None:
+        sql = (
+            "DECLARE c CURSOR(a integer, b text) FOR SELECT 1; BEGIN SELECT 1; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(
+            expr.sql(dialect=plpgsql),
+            "DECLARE c CURSOR(a INTEGER, b TEXT) FOR SELECT 1; BEGIN SELECT 1; END",
+        )
+
+    def test_plpgsql_declare_cursor_issue_example(self) -> None:
+        sql = """
+        DECLARE
+            curs1 refcursor;
+            curs2 CURSOR FOR SELECT * FROM tenk1;
+            curs3 CURSOR (key integer) FOR SELECT * FROM tenk1 WHERE unique1 = key;
+        BEGIN
+            SELECT 1;
+        END;
+        """
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        out = expr.sql(dialect=plpgsql)
+        self.assertEqual(
+            out,
+            "DECLARE curs1 REFCURSOR; curs2 CURSOR FOR SELECT * FROM tenk1; "
+            "curs3 CURSOR(key INTEGER) FOR SELECT * FROM tenk1 WHERE unique1 = key; BEGIN SELECT 1; END",
+        )
+
     def test_exception_single_when_single_stmt(self) -> None:
         sql = "BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN RAISE; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
