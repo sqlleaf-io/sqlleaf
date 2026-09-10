@@ -849,6 +849,110 @@ class TestPlPgSQL(unittest.TestCase):
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one(sql, dialect=plpgsql)
 
+    # FOR ... IN EXECUTE ... LOOP tests
+    def test_for_in_execute_simple(self) -> None:
+        sql = (
+            "BEGIN FOR user_row IN EXECUTE query_str LOOP "
+            "RAISE NOTICE 'User ID: %, Username: %', user_row.id, user_row.username; "
+            "END LOOP; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_execute_literal_command(self) -> None:
+        sql = "BEGIN FOR r IN EXECUTE 'SELECT 1' LOOP RETURN; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_execute_using_single(self) -> None:
+        sql = "BEGIN FOR r IN EXECUTE 'SELECT $1' USING a LOOP a := 1; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_execute_using_multiple(self) -> None:
+        sql = (
+            "BEGIN FOR r IN EXECUTE 'SELECT $1, $2' USING a, UPPER(b) LOOP "
+            "RETURN; END LOOP; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_execute_concat_command(self) -> None:
+        sql = (
+            "BEGIN FOR r IN EXECUTE 'SELECT * FROM ' || QUOTE_IDENT(tabname) LOOP "
+            "RETURN; END LOOP; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_execute_format_command(self) -> None:
+        sql = (
+            "BEGIN FOR r IN EXECUTE FORMAT('SELECT %s', x) USING y LOOP "
+            "RETURN; END LOOP; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_execute_with_label(self) -> None:
+        sql = "BEGIN FOR r IN EXECUTE q LOOP EXIT; END LOOP myloop; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_execute_multiple_statements(self) -> None:
+        sql = "BEGIN FOR r IN EXECUTE q LOOP a := 1; b := 2; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_execute_nested_loop(self) -> None:
+        sql = "BEGIN FOR r IN EXECUTE q LOOP LOOP CONTINUE; END LOOP; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_execute_inside_exception_when(self) -> None:
+        sql = (
+            "BEGIN SELECT 1; EXCEPTION WHEN OTHERS THEN "
+            "FOR r IN EXECUTE q LOOP a := 1; END LOOP; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_execute_ast_shape(self) -> None:
+        from plpgsql.classes import PGForIn, PGExecute
+
+        sql = "BEGIN FOR r IN EXECUTE q USING a LOOP RETURN; END LOOP; END;"
+        block = sqlglot.parse_one(sql, dialect=plpgsql)
+        forin = block.find(PGForIn)
+        self.assertIsNotNone(forin)
+        assert forin is not None  # for type checkers
+        self.assertEqual(forin.this.name, "r")
+        self.assertIsInstance(forin.args["query"], PGExecute)
+        self.assertEqual(len(forin.args["query"].args["using"]), 1)
+
+    # Negative cases
+    def test_for_in_execute_into_fails(self) -> None:
+        sql = "BEGIN FOR r IN EXECUTE 'SELECT 1' INTO v LOOP RETURN; END LOOP; END;"
+        with self.assertRaisesRegex(
+            sqlglot.errors.ParseError, r"INTO is not allowed in FOR IN EXECUTE"
+        ):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_for_in_execute_into_strict_fails(self) -> None:
+        sql = "BEGIN FOR r IN EXECUTE 'SELECT 1' INTO STRICT v LOOP RETURN; END LOOP; END;"
+        with self.assertRaisesRegex(
+            sqlglot.errors.ParseError, r"INTO is not allowed in FOR IN EXECUTE"
+        ):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_for_in_execute_using_trailing_comma_fails(self) -> None:
+        sql = "BEGIN FOR r IN EXECUTE q USING a, LOOP RETURN; END LOOP; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_for_in_execute_missing_end_loop_fails(self) -> None:
+        sql = "BEGIN FOR r IN EXECUTE q LOOP a := 1; END; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
     def test_for_range_missing_end_loop_fails(self) -> None:
         sql = "BEGIN FOR i IN 1..10 LOOP a := 1; END; END;"
         with self.assertRaises(sqlglot.errors.ParseError):

@@ -651,7 +651,15 @@ class Parser(PostgresParser):
         try:
             # Temporarily bound the token window to exclude LOOP
             self._tokens_size = loop_index
-            query = self._parse_statement()
+            # If the header begins with EXECUTE, parse via _parse_pgexecute and
+            # explicitly reject INTO / INTO STRICT in this context, mirroring
+            # RETURN QUERY EXECUTE semantics.
+            if self._match(TokenType.EXECUTE, advance=False):
+                query = self._parse_pgexecute()
+                if query.args.get("expressions") or query.args.get("strict"):
+                    self.raise_error("INTO is not allowed in FOR IN EXECUTE")
+            else:
+                query = self._parse_statement()
             # Ensure we advance to the boundary if anything remains
             if self._index < loop_index:
                 self._index = loop_index
