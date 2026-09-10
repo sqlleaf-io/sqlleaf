@@ -42,6 +42,7 @@ class Generator(PostgresGenerator):
         PGExecute: lambda self, e: self.pgexecute_sql(e),
         PGGetDiagnostics: lambda self, e: self.pggetdiagnostics_sql(e),
         PGCursorArg: lambda self, e: self.pgcursorarg_sql(e),
+        PGCursorCall: lambda self, e: self.pgcursorcall_sql(e),
     }
 
     def _loop_control_sql(self, keyword: str, expression: exp.Expression) -> str:
@@ -286,6 +287,13 @@ class Generator(PostgresGenerator):
         if body_sql:
             return f"{header} {body_sql} END LOOP{suffix}"
         return f"{header} END LOOP{suffix}"
+
+    def pgcursorcall_sql(self, expression: PGCursorCall) -> str:
+        cursor_sql = self.sql(expression.this)
+        args = expression.args.get("expressions")
+        if args:
+            return f"{cursor_sql}({', '.join(self.sql(arg) for arg in args)})"
+        return cursor_sql
 
     def pgforeach_sql(self, expression: PGForEach) -> str:
         target_sql = self.sql(expression.this)

@@ -714,7 +714,23 @@ class Parser(PostgresParser):
                 if query.args.get("expressions") or query.args.get("strict"):
                     self.raise_error("INTO is not allowed in FOR IN EXECUTE")
             else:
-                query = self._parse_statement()
+                start_index = self._index
+                query = None
+
+                cursor = self._parse_id_var()
+                if cursor is not None:
+                    args = None
+                    if self._match(TokenType.L_PAREN, advance=False):
+                        args = self._parse_cursor_call_args(
+                            close_error="Expected ')' to close argument list in FOR IN cursor call"
+                        )
+
+                    if self._index == loop_index:
+                        query = self.expression(PGCursorCall(this=cursor, expressions=args))
+
+                if query is None:
+                    self._retreat(start_index)
+                    query = self._parse_statement()
             # Ensure we advance to the boundary if anything remains
             if self._index < loop_index:
                 self._index = loop_index
@@ -1121,6 +1137,31 @@ class Parser(PostgresParser):
     def _parse_pgcontinue(self) -> PGContinue:
         return self._parse_pgexit_or_continue(keyword="CONTINUE", expr_cls=PGContinue)
 
+    def _parse_cursor_call_args(self, *, close_error: str) -> list[exp.Expression]:
+        """Parse a parenthesized cursor argument list and consume the closing ')'."""
+        self._advance()
+
+        args: list[exp.Expression] = []
+        if not self._match(TokenType.R_PAREN, advance=False):
+            while True:
+                first = self._parse_expression()
+                pair = self._parse_named_pair(
+                    first,
+                    allowed_ops={TokenType.COLON_EQ, TokenType.FARROW},
+                    rhs_parser=self._parse_expression,
+                )
+                args.append(pair or first)
+
+                if not self._match(TokenType.COMMA):
+                    break
+                if self._match(TokenType.R_PAREN, advance=False):
+                    self.raise_error("Trailing comma is not allowed in cursor argument list")
+
+        if not self._match(TokenType.R_PAREN):
+            self.raise_error(close_error)
+
+        return args
+
     def _parse_open_args(self) -> list[exp.Expression]:
         """Parse an OPEN cursor argument list and return the collected args.
 
@@ -1130,35 +1171,7 @@ class Parser(PostgresParser):
         Precondition: current token is '(' (not yet consumed).
         Postcondition: the closing ')' is consumed.
         """
-        # Consume '('
-        self._advance()
-
-        # Delegate argument collection to helper (does not consume ')')
-        args: list[exp.Expression] = []
-
-        if not self._match(TokenType.R_PAREN, advance=False):
-            while True:
-                # Parse an expression; if immediately followed by := or =>,
-                # treat the parsed expression as the name of a named argument.
-                first = self._parse_expression()
-
-                pair = self._parse_named_pair(
-                    first,
-                    allowed_ops={TokenType.COLON_EQ, TokenType.FARROW},
-                    rhs_parser=self._parse_expression,
-                )
-                if pair is not None:
-                    args.append(pair)
-                else:
-                    args.append(first)
-
-                if not self._match(TokenType.COMMA):
-                    break
-
-        if not self._match(TokenType.R_PAREN):
-            self.raise_error("Expected ')' to close argument list in OPEN")
-
-        return args
+        return self._parse_cursor_call_args(close_error="Expected ')' to close argument list in OPEN")
 
     def _parse_pgopen(self) -> PGOpenCursor:
         # Consume OPEN keyword

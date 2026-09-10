@@ -916,6 +916,81 @@ class TestPlPgSQL(unittest.TestCase):
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one(sql, dialect=plpgsql)
 
+    def test_for_in_cursor_simple(self) -> None:
+        sql = "BEGIN FOR rec IN cur LOOP a := rec.a; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_cursor_with_positional_arg(self) -> None:
+        sql = "BEGIN FOR rec IN cur(42) LOOP a := rec.a; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_cursor_with_positional_args(self) -> None:
+        sql = "BEGIN FOR rec IN cur('IT', 75000) LOOP a := rec.a; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_cursor_with_named_colon_args(self) -> None:
+        sql = "BEGIN FOR rec IN cur(dept_param := 'IT', min_sal := 75000) LOOP a := rec.a; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_cursor_with_named_arrow_args(self) -> None:
+        sql = "BEGIN FOR rec IN cur(dept_param => 'IT', min_sal => 75000) LOOP a := rec.a; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_cursor_with_mixed_named_args(self) -> None:
+        sql = "BEGIN FOR rec IN cur(dept_param := 'IT', min_sal => 75000) LOOP a := rec.a; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_cursor_with_label(self) -> None:
+        sql = "BEGIN FOR rec IN cur LOOP EXIT; END LOOP myloop; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_cursor_ast_shape(self) -> None:
+        from plpgsql.classes import PGCursorCall, PGForIn
+
+        sql = "BEGIN FOR rec IN cur(dept_param := 'IT', min_sal => 75000) LOOP NULL; END LOOP; END;"
+        block = sqlglot.parse_one(sql, dialect=plpgsql)
+        for_in = block.find(PGForIn)
+        self.assertIsNotNone(for_in)
+        assert for_in is not None
+        self.assertIsInstance(for_in.args["query"], PGCursorCall)
+        self.assertEqual(for_in.args["query"].args["this"].name, "cur")
+        args = for_in.args["query"].args["expressions"]
+        self.assertEqual(len(args), 2)
+        self.assertIsInstance(args[0], sqlglot.exp.PropertyEQ)
+        self.assertIsInstance(args[1], sqlglot.exp.Kwarg)
+
+    def test_for_in_cursor_missing_close_paren_fails(self) -> None:
+        sql = "BEGIN FOR rec IN cur(1 LOOP a := rec.a; END LOOP; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_for_in_cursor_trailing_comma_fails(self) -> None:
+        sql = "BEGIN FOR rec IN cur(1,) LOOP a := rec.a; END LOOP; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_for_in_cursor_missing_loop_fails(self) -> None:
+        sql = "BEGIN FOR rec IN cur(1) a := rec.a; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_for_in_cursor_missing_end_loop_fails(self) -> None:
+        sql = "BEGIN FOR rec IN cur(1) LOOP a := rec.a; END; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_for_in_cursor_invalid_named_arg_fails(self) -> None:
+        sql = "BEGIN FOR rec IN cur(name :=) LOOP a := rec.a; END LOOP; END;"
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
     # FOR ... IN <range> LOOP tests
     def test_for_range_simple(self) -> None:
         sql = "BEGIN FOR i IN 1..10 LOOP a := i; END LOOP; END;"

@@ -116,6 +116,20 @@ class PGForIn(exp.Expression):
     }
 
 
+class PGCursorCall(exp.Expression):
+    """A PL/pgSQL bound cursor invocation in loop/open headers.
+
+    Syntax:
+      <cursor>
+      <cursor>(arg [, ...])
+    """
+
+    arg_types = {
+        "this": True,
+        "expressions": False,
+    }
+
+
 class PGForEach(exp.Expression):
     """A PL/pgSQL FOREACH loop over the elements/slices of an array.
 
