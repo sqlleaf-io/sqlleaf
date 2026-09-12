@@ -1,28 +1,32 @@
 from __future__ import annotations
 
-"""
-Example custom dialect that extends Postgres to parse simple PL/pgSQL-style blocks.
-"""
-
 from sqlglot.dialects.postgres import Postgres
-from sqlglot.tokens import TokenType
+
 from plpgsql.p_generator import Generator
-from plpgsql.p_parser import Parser
+from plpgsql.p_parser import Parser, TokenType
 
 
 class PlPgSQL(Postgres):
-    """A minimal PL/pgSQL-like dialect extending Postgres.
-
-    - Tokenizer: inherit from Postgres (BEGIN/END already mapped)
-    - Parser: treat BEGIN ... END as a top-level statement and parse it into exp.Block
-    - Generator: reuse Postgres generator (already knows how to render Block)
     """
-
+    A custom dialect that extends Postgres to parse PL/pgSQL.
+    """
     class Tokenizer(Postgres.Tokenizer):
-        # Override DECLARE to be a dedicated token in this dialect
         KEYWORDS = {
             **Postgres.Tokenizer.KEYWORDS,
+            "ASSERT": TokenType.ASSERT,
+            "CLOSE": TokenType.CLOSE,
+            "CONTINUE": TokenType.CONTINUE,
             "DECLARE": TokenType.DECLARE,
+            "EXIT": TokenType.EXIT,
+            "FOREACH": TokenType.FOREACH,
+            "GET": TokenType.GET,
+            "IF": TokenType.IF,
+            "LOOP": TokenType.LOOP,
+            "MOVE": TokenType.MOVE,
+            "OPEN": TokenType.OPEN,
+            "RAISE": TokenType.RAISE,
+            "RETURN": TokenType.RETURN,
+            "WHILE": TokenType.WHILE,
         }
 
         # In base sqlglot, FETCH and EXECUTE are treated as COMMANDs, which swallow the rest

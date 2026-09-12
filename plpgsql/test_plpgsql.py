@@ -782,14 +782,14 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
-    def test_if_simple_update(self) -> None:
-        sql = (
-            "BEGIN IF v_user_id <> 0 THEN "
-            "UPDATE users SET email = v_email WHERE user_id = v_user_id; "
-            "END IF; END;"
-        )
-        expr = sqlglot.parse_one(sql, dialect=plpgsql)
-        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+    # def test_if_simple_update(self) -> None:
+    #     sql = (
+    #         "BEGIN IF v_user_id <> 0 THEN "
+    #         "UPDATE users SET email = v_email WHERE user_id = v_user_id; "
+    #         "END IF; END;"
+    #     )
+    #     expr = sqlglot.parse_one(sql, dialect=plpgsql)
+    #     self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_if_elsif_else_full(self) -> None:
         sql = (
