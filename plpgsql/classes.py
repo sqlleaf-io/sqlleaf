@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from sqlglot import exp
 
+
 class PGBlock(exp.Expression):
     """A BEGIN ... END block."""
-    arg_types = {"expressions": True, "begin": False, "declare": False, "exception": False}
+    arg_types = {"expressions": False, "begin": False, "declare": False, "exception": False}
 
 
 class PGDeclare(exp.Expression):
@@ -225,6 +226,11 @@ class PGAll(exp.Expression):
 
 class PGSqlState(exp.Expression):
     """The SQLSTATE statement."""
+    arg_types = {"this": False}
+
+
+class PGFound(exp.Expression):
+    """The special PL/pgSQL boolean status variable FOUND."""
     arg_types = {"this": False}
 
 

@@ -2,13 +2,14 @@ import unittest
 
 import sqlglot
 from plpgsql.p_dialect import plpgsql
+from plpgsql.classes import *
 
 
 class TestPlPgSQL(unittest.TestCase):
     def test_begin_end_roundtrip(self) -> None:
         sql = "BEGIN END;"
-        with self.assertRaises(sqlglot.errors.ParseError):
-            sqlglot.parse_one(sql, dialect=plpgsql)
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_begin_select_one(self) -> None:
         sql = "BEGIN SELECT 1; END;"
@@ -593,8 +594,6 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_open_cursor_for_execute_ast_shape(self) -> None:
-        from plpgsql.classes import PGExecute, PGOpenCursor
-
         sql = "BEGIN OPEN c FOR EXECUTE 'SELECT 1' USING x; END;"
         block = sqlglot.parse_one(sql, dialect=plpgsql)
         open_node = block.find(PGOpenCursor)
@@ -779,9 +778,8 @@ class TestPlPgSQL(unittest.TestCase):
             sqlglot.parse_one(sql, dialect=plpgsql)
 
     def test_if_found(self) -> None:
-        sql = "BEGIN IF FOUND THEN 1; END IF; END;"
+        sql = "BEGIN IF FOUND THEN RETURN 1; END IF; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
-        raise ValueError(repr(expr))
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_if_simple_update(self) -> None:
@@ -958,8 +956,6 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_for_in_cursor_ast_shape(self) -> None:
-        from plpgsql.classes import PGCursorCall, PGForIn
-
         sql = "BEGIN FOR rec IN cur(dept_param := 'IT', min_sal => 75000) LOOP NULL; END LOOP; END;"
         block = sqlglot.parse_one(sql, dialect=plpgsql)
         for_in = block.find(PGForIn)
@@ -1111,8 +1107,6 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_for_in_execute_ast_shape(self) -> None:
-        from plpgsql.classes import PGForIn, PGExecute
-
         sql = "BEGIN FOR r IN EXECUTE q USING a LOOP RETURN; END LOOP; END;"
         block = sqlglot.parse_one(sql, dialect=plpgsql)
         forin = block.find(PGForIn)
@@ -1203,8 +1197,6 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_foreach_ast_shape(self) -> None:
-        from plpgsql.classes import PGForEach
-
         sql = "BEGIN FOREACH x SLICE 1 IN ARRAY $1 LOOP a := 1; END LOOP; END;"
         block = sqlglot.parse_one(sql, dialect=plpgsql)
         foreach = block.find(PGForEach)
@@ -1309,3 +1301,46 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "EXECUTE 'SELECT 1' USING a INTO v;"
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one(sql, dialect=plpgsql)
+
+    # FOUND testsdd
+    def test_found_in_case_when(self) -> None:
+        sql = "BEGIN a := CASE WHEN FOUND THEN 'Success' ELSE 'Failed' END; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_found_assert(self) -> None:
+        sql = "BEGIN ASSERT FOUND, 'Inventory item 500 does not exist!'; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_found_exit_when_not(self) -> None:
+        sql = "BEGIN LOOP EXIT WHEN NOT FOUND; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_found_assignment(self) -> None:
+        sql = "BEGIN a := FOUND; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_found_raise_notice(self) -> None:
+        sql = "BEGIN RAISE NOTICE 'User lookup completed. Record located? %', FOUND; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_found_ast_is_pgfound(self) -> None:
+        expr = sqlglot.parse_one("BEGIN a := FOUND; END;", dialect=plpgsql)
+        # Ensure it's a PGFound instead of a Column
+        self.assertTrue(any(isinstance(n, PGFound) for n in expr.walk()))
+        self.assertFalse(any(
+            isinstance(n, exp.Column) and n.name.upper() == "FOUND"
+            for n in expr.walk()
+        ))
+
+    def test_found_not_ast_shape(self) -> None:
+        expr = sqlglot.parse_one(
+            "BEGIN IF NOT FOUND THEN RETURN 1; END IF; END;", dialect=plpgsql
+        )
+        not_nodes = [n for n in expr.walk() if isinstance(n, exp.Not)]
+        self.assertTrue(not_nodes)
+        self.assertIsInstance(not_nodes[0].this, PGFound)

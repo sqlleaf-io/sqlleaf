@@ -43,6 +43,7 @@ class Generator(PostgresGenerator):
         PGGetDiagnostics: lambda self, e: self.pggetdiagnostics_sql(e),
         PGCursorArg: lambda self, e: self.pgcursorarg_sql(e),
         PGCursorCall: lambda self, e: self.pgcursorcall_sql(e),
+        PGFound: lambda self, e: self.pgfound_sql(e),
     }
 
     def _loop_control_sql(self, keyword: str, expression: exp.Expression) -> str:
@@ -386,6 +387,9 @@ class Generator(PostgresGenerator):
         assigns_sql = ", ".join(self.sql(a) for a in assigns)
         parts.append(assigns_sql)
         return " ".join(parts)
+
+    def pgfound_sql(self, expression: PGFound) -> str:
+        return "FOUND"
 
     # Direction generators (auto-discovered)
     def pgnext_sql(self, expression: PGNext) -> str:

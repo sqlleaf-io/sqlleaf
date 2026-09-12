@@ -35,6 +35,12 @@ class Parser(PostgresParser):
         "GET": lambda self: self._parse_pggetdiagnostics(),
     }
 
+    # Intercept bare FOUND wherever an expression is allowed and parse it into PGFound
+    NO_PAREN_FUNCTION_PARSERS = {
+        **PostgresParser.NO_PAREN_FUNCTION_PARSERS,
+        "FOUND": lambda self: self.expression(PGFound()),
+    }
+
     def _parse_pggetdiagnostics(self) -> PGGetDiagnostics:
         # 1. Consume GET
         if not self._match_texts("GET"):
