@@ -103,7 +103,7 @@ class Parser(PostgresParser):
         """Parse a named-argument style pair following a name expression.
 
         Supported operators are provided via ``allowed_ops`` and map to:
-        - TokenType.COLON_EQ (:=)  -> AssignArg
+        - TokenType.COLON_EQ (:=)  -> PGAssignArg
         - TokenType.EQ (=)         -> exp.EQ
         - TokenType.FARROW (=>)    -> exp.Kwarg
 
@@ -117,7 +117,7 @@ class Parser(PostgresParser):
 
         if self._match(TokenType.COLON_EQ, advance=False) and TokenType.COLON_EQ in allowed_ops:
             self._advance()
-            return self.expression(AssignArg(this=name_expr, expression=rhsp()))
+            return self.expression(PGAssignArg(this=name_expr, expression=rhsp()))
 
         if self._match(TokenType.EQ, advance=False) and TokenType.EQ in allowed_ops:
             self._advance()
@@ -231,7 +231,7 @@ class Parser(PostgresParser):
             PGBlock(expressions=expressions, declare=declare, exception=exception, begin=True)
         )
 
-    def _parse_pg_assignment(self) -> AssignArg | None:
+    def _parse_pg_assignment(self) -> PGAssignArg | None:
         """Parse a simple PL/pgSQL assignment statement inside a block.
 
         Pattern: <identifier> := <expression>
@@ -267,7 +267,7 @@ class Parser(PostgresParser):
             self._retreat(index)
             return None
 
-        # Helper guarantees COLON_EQ -> AssignArg
+        # Helper guarantees COLON_EQ -> PGAssignArg
         return pair  # type: ignore[return-value]
 
     def _parse_pgexception(self) -> exp.Expression:
@@ -975,7 +975,7 @@ class Parser(PostgresParser):
             ident.update_positions(token)
             level = ident
 
-        # Helper to parse USING options into AssignArg/EQ entries
+        # Helper to parse USING options into PGAssignArg/EQ entries
         def _parse_using_list() -> list[exp.Expression]:
             # Current token should be USING (not yet consumed)
             if not self._match(TokenType.USING):
@@ -1165,7 +1165,7 @@ class Parser(PostgresParser):
     def _parse_open_args(self) -> list[exp.Expression]:
         """Parse an OPEN cursor argument list and return the collected args.
 
-        Supports positional arguments, name := value (AssignArg), and
+        Supports positional arguments, name := value (PGAssignArg), and
         name => value (Kwarg).
 
         Precondition: current token is '(' (not yet consumed).
@@ -1182,7 +1182,7 @@ class Parser(PostgresParser):
         cursor = self._parse_id_var()
 
         # Bound cursor with arguments: OPEN c(<args>) where args can be positional,
-        # name := value (AssignArg), or name => value (Kwarg)
+        # name := value (PGAssignArg), or name => value (Kwarg)
         if self._match(TokenType.L_PAREN, advance=False):
             args = self._parse_open_args()
             return self.expression(PGOpenCursor(this=cursor, expressions=args))

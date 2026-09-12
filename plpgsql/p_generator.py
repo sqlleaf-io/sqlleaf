@@ -21,7 +21,7 @@ class Generator(PostgresGenerator):
         PGExit: lambda self, e: self.pgexit_sql(e),
         PGContinue: lambda self, e: self.pgcontinue_sql(e),
         PGRaise: lambda self, e: self.pgraise_sql(e),
-        AssignArg: lambda self, e: self.assignarg_sql(e),
+        PGAssignArg: lambda self, e: self.PGAssignArg_sql(e),
         PGSqlState: lambda self, e: self.pgsqlstate_sql(e),
         PGOpenCursor: lambda self, e: self.pgopencursor_sql(e),
         PGFetch: lambda self, e: self.pgfetch_sql(e),
@@ -344,8 +344,8 @@ class Generator(PostgresGenerator):
             name_sql = f"{name_sql}({args_sql})"
         return f"OPEN {name_sql}"
 
-    # Auto-discovered generator for AssignArg (always PL/pgSQL ':=')
-    def assignarg_sql(self, expression: AssignArg) -> str:
+    # Auto-discovered generator for PGAssignArg (always PL/pgSQL ':=')
+    def PGAssignArg_sql(self, expression: PGAssignArg) -> str:
         return self.binary(expression, ":=")
 
     def pgfetch_sql(self, expression: PGFetch) -> str:

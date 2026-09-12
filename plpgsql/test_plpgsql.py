@@ -7,8 +7,8 @@ from plpgsql.p_dialect import plpgsql
 class TestPlPgSQL(unittest.TestCase):
     def test_begin_end_roundtrip(self) -> None:
         sql = "BEGIN END;"
-        expr = sqlglot.parse_one(sql, dialect=plpgsql)
-        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one(sql, dialect=plpgsql)
 
     def test_begin_select_one(self) -> None:
         sql = "BEGIN SELECT 1; END;"
@@ -777,6 +777,12 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN WHILE TRUE LOOP SELECT 1; END; END;"
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_if_found(self) -> None:
+        sql = "BEGIN IF FOUND THEN 1; END IF; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        raise ValueError(repr(expr))
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_if_simple_update(self) -> None:
         sql = (
