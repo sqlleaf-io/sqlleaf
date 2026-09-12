@@ -3,25 +3,17 @@ from __future__ import annotations
 from sqlglot import exp
 
 class PGBlock(exp.Expression):
-    """A Postgres-specific BEGIN ... END block.
-    """
-    arg_types = {"expressions": False, "begin": False, "declare": False, "exception": False}
+    """A BEGIN ... END block."""
+    arg_types = {"expressions": True, "begin": False, "declare": False, "exception": False}
 
 
 class PGDeclare(exp.Expression):
-    """A PL/pgSQL DECLARE section containing declaration items."""
+    """A DECLARE section."""
     arg_types = {"expressions": True}
 
 
 class PGDeclareItem(exp.Expression):
-    """A single variable declaration inside a PL/pgSQL DECLARE section.
-
-    Currently supports:
-      - name type;
-      - name type := expression;
-      - name [ [ NO ] SCROLL ] CURSOR [ ( args ) ] FOR query;
-    """
-
+    """A variable declaration item inside a DECLARE section."""
     arg_types = {
         "this": True,
         "kind": False,
@@ -41,89 +33,56 @@ class PGDeclareItem(exp.Expression):
 
 
 class PGCursorArg(exp.Expression):
-    """A single cursor argument declaration: ``name type``."""
+    """A cursor argument declaration."""
     arg_types = {"this": True, "kind": True}
 
 
 class PGException(exp.Expression):
-    """PL/pgSQL EXCEPTION section containing WHEN entries.
-
-    Mirror exp.Case by storing WHEN clauses under `ifs`.
-    """
+    """An EXCEPTION section."""
     arg_types = {"whens": True}
 
 
 class PGWhen(exp.Expression):
-    """A single WHEN ... THEN ... entry inside an EXCEPTION section."""
+    """A WHEN ... THEN ... entry inside an EXCEPTION section."""
     arg_types = {"condition": True, "then": True}
 
 
 class PGIfBranch(exp.Expression):
-    """A single IF/ELSIF branch: <condition> THEN <statements>."""
+    """An IF/ELSIF branch."""
     arg_types = {"condition": True, "then": True}
 
 
 class PGIf(exp.Expression):
-    """A PL/pgSQL IF ... THEN ... [ELSIF ...] [ELSE ...] END IF statement.
-
-    - ifs: list of PGIfBranch (first is the IF, rest are ELSIF branches)
-    - default: optional list of statements for the ELSE branch
-    """
+    """An IF statement."""
     arg_types = {"ifs": True, "default": False}
 
 
-class PGOthers(exp.Expression):
-    """Represents the OTHERS keyword in EXCEPTION WHEN OTHERS THEN ..."""
-    arg_types = {"this": False}
-
-
 class PGLoop(exp.Expression):
-    """A PL/pgSQL LOOP ... END LOOP construct.
-    """
+    """A LOOP statement."""
     arg_types = {"expressions": True}
 
 
 class PGWhile(exp.Expression):
-    """A PL/pgSQL WHILE statement..
-
-    Syntax:
-        WHILE ... LOOP ... END LOOP [label]
-    """
+    """A WHILE statement."""
     arg_types = {"this": True, "expressions": True, "label": False}
 
 
 class PGForIn(exp.Expression):
-    """A PL/pgSQL FOR loop over a query or an integer range.
-
-    Syntax (query):
-        FOR <target> IN <query> LOOP <statements> END LOOP [label]
-
-    Syntax (range):
-        FOR <target> IN [REVERSE] <from> .. <to> [BY <step>] LOOP
-            <statements>
-        END LOOP [label]
-    """
-
+    """A FOR statement."""
     arg_types = {
-        "this": True,         # loop target identifier (exp.Identifier / var)
-        "query": False,       # query form header (exclusive with range fields)
-        "reverse": False,     # range: True flag when REVERSE present
-        "start": False,       # range: lower-bound expression
-        "end": False,         # range: upper-bound expression
-        "step": False,        # range: optional BY expression
-        "expressions": True,  # body statements
-        "label": False,       # optional trailing label
+        "this": True,
+        "query": False,
+        "reverse": False,
+        "start": False,
+        "end": False,
+        "step": False,
+        "expressions": True,
+        "label": False,
     }
 
 
 class PGCursorCall(exp.Expression):
-    """A PL/pgSQL bound cursor invocation in loop/open headers.
-
-    Syntax:
-      <cursor>
-      <cursor>(arg [, ...])
-    """
-
+    """A bound cursor invocation."""
     arg_types = {
         "this": True,
         "expressions": False,
@@ -131,52 +90,28 @@ class PGCursorCall(exp.Expression):
 
 
 class PGForEach(exp.Expression):
-    """A PL/pgSQL FOREACH loop over the elements/slices of an array.
-
-    Syntax:
-        FOREACH <target> [ SLICE <number> ] IN ARRAY <expression> LOOP
-            <statements>
-        END LOOP [ label ];
-    """
-
+    """A FOREACH statement."""
     arg_types = {
-        "this": True,          # loop target identifier / variable
-        "slice": False,        # optional SLICE number (exp.Literal)
-        "expression": True,    # the array expression to iterate over
-        "expressions": True,   # body statements
-        "label": False,        # optional trailing label
+        "this": True,
+        "slice": False,
+        "expression": True,
+        "expressions": True,
+        "label": False,
     }
 
 
 class PGExit(exp.Expression):
-    """A PL/pgSQL EXIT statement.
-
-    Syntax:
-      EXIT [ label ] [ WHEN <expression> ];
-    """
+    """An EXIT statement."""
     arg_types = {"this": False, "when": False}
 
 
 class PGContinue(exp.Expression):
-    """A PL/pgSQL CONTINUE statement.
-
-    Syntax:
-      CONTINUE [ label ] [ WHEN <expression> ];
-    """
+    """A CONTINUE statement."""
     arg_types = {"this": False, "when": False}
 
 
 class PGRaise(exp.Expression):
-    """A PL/pgSQL RAISE statement.
-
-    Supports the following variants:
-
-      - RAISE [ level ] 'format' [, expression [, ... ]] [ USING option { = | := } expression [, ...] ];
-      - RAISE [ level ] condition_name [ USING option { = | := } expression [, ...] ];
-      - RAISE [ level ] SQLSTATE 'sqlstate' [ USING option { = | := } expression [, ...] ];
-      - RAISE [ level ] USING option { = | := } expression [, ... ];
-      - RAISE ;  (re-raise inside EXCEPTION handler)
-    """
+    """A RAISE statement."""
 
     arg_types = {
         "level": False,
@@ -189,53 +124,27 @@ class PGRaise(exp.Expression):
 
 
 class PGAssert(exp.Expression):
-    """A PL/pgSQL ASSERT statement.
-
-    Syntax:
-      ASSERT condition [ , message ];
-    """
-
+    """An ASSERT statement."""
     arg_types = {"condition": True, "message": False}
 
 
 class PGGetDiagnostics(exp.Expression):
-    """A PL/pgSQL GET [CURRENT] DIAGNOSTICS statement.
-
-    Syntax:
-      GET [ CURRENT ] DIAGNOSTICS variable { = | := } item [ , ... ];
-    """
-
-    # current: optional boolean flag indicating GET CURRENT DIAGNOSTICS
-    # stacked: optional boolean flag indicating GET STACKED DIAGNOSTICS
-    # expressions: list of assignment pairs (exp.EQ or AssignArg) mapping
-    #              target variables to diagnostic items
+    """A GET DIAGNOSTICS statement."""
     arg_types = {"current": False, "stacked": False, "expressions": True}
 
 
-class AssignArg(exp.Expression, exp.Binary):
-    """Represents a named argument using the PL/pgSQL ``:=`` syntax.
-
-    Example: ``key := 42``
-    """
+class PGAssignArg(exp.Expression, exp.Binary):
+    """Represents a named argument using `:=` syntax."""
     arg_types = {"this": True, "expression": True, "op": False}
 
 
 class PGOpenCursor(exp.Expression):
-    """A PL/pgSQL OPEN cursor statement.
-
-    Supports two forms:
-      - Unbound: OPEN cursorvar [ [ NO ] SCROLL ] FOR query;
-      - Bound:   OPEN cursorvar [ ( arg_value [, ...] ) ];
-    """
+    """An OPEN cursor statement."""
     arg_types = {"this": True, "expression": False, "scroll": False, "expressions": False}
 
 
 class PGFetch(exp.Expression):
-    """A PL/pgSQL FETCH statement.
-
-    Syntax:
-      FETCH [ direction { FROM | IN } ] <cursor> INTO <target> [, <target> ...];
-    """
+    """A FETCH statement."""
     arg_types = {
         "this": True,
         "expressions": True,
@@ -245,11 +154,7 @@ class PGFetch(exp.Expression):
 
 
 class PGExecute(exp.Expression):
-    """A PL/pgSQL dynamic EXECUTE statement.
-
-    Syntax:
-      EXECUTE command-string;
-    """
+    """A dynamic EXECUTE statement."""
 
     arg_types = {
         "this": True,          # command-string expression (literal / concat / function call)
@@ -260,11 +165,7 @@ class PGExecute(exp.Expression):
 
 
 class PGMove(exp.Expression):
-    """A PL/pgSQL MOVE statement.
-
-    Syntax:
-      MOVE [ direction { FROM | IN } ] <cursor>;
-    """
+    """A MOVE statement."""
     arg_types = {
         "this": True,
         "direction": False,
@@ -273,75 +174,65 @@ class PGMove(exp.Expression):
 
 
 class PGClose(exp.Expression):
-    """A PL/pgSQL CLOSE cursor statement.
-
-    Syntax:
-      CLOSE <cursor>;
-    """
+    """A CLOSE cursor statement."""
     arg_types = {"this": True}
 
 
 class PGNext(exp.Expression):
-    """FETCH NEXT direction."""
+    """The NEXT direction."""
     arg_types = {"this": False}
 
 
 class PGPrior(exp.Expression):
-    """FETCH PRIOR direction."""
+    """The PRIOR direction."""
     arg_types = {"this": False}
 
 
 class PGFirst(exp.Expression):
-    """FETCH FIRST direction."""
+    """The FIRST direction."""
     arg_types = {"this": False}
 
 
 class PGLast(exp.Expression):
-    """FETCH LAST direction."""
+    """The LAST direction."""
     arg_types = {"this": False}
 
 
 class PGForward(exp.Expression):
-    """FETCH FORWARD direction."""
+    """The FORWARD direction."""
     arg_types = {"this": False, "all": False}
 
 
 class PGBackward(exp.Expression):
-    """FETCH BACKWARD direction."""
+    """The BACKWARD direction."""
     arg_types = {"this": False, "all": False}
 
 
 class PGAbsolute(exp.Expression):
-    """FETCH ABSOLUTE <count> direction."""
+    """The ABSOLUTE <count> direction."""
     arg_types = {"this": True}
 
 
 class PGRelative(exp.Expression):
-    """FETCH RELATIVE <count> direction."""
+    """The RELATIVE <count> direction."""
     arg_types = {"this": True}
 
 
 class PGAll(exp.Expression):
-    """Direction variant representing ALL (no additional keyword).
-
-    Used for forms like "FETCH ALL FROM c" or as the payload of FORWARD/BACKWARD ALL.
-    """
+    """The ALL direction."""
     arg_types = {"this": False}
 
 
 class PGSqlState(exp.Expression):
-    """Represents the SQLSTATE condition, optionally followed by a string literal."""
+    """The SQLSTATE statement."""
     arg_types = {"this": False}
 
 
 class PGReturn(exp.Expression):
-    """Represents a PL/pgSQL RETURN statement.
-
-    Supports both forms:
-      - RETURN;
-      - RETURN <expression>;
-      - RETURN QUERY <query>;
-    """
-
+    """A RETURN statement."""
     arg_types = {"this": False, "query": False, "next": False}
 
+
+class PGOthers(exp.Expression):
+    """The OTHERS keyword in EXCEPTION WHEN OTHERS THEN ..."""
+    arg_types = {"this": False}
