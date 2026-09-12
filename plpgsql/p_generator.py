@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from sqlglot import exp
 from sqlglot.generators.postgres import PostgresGenerator
 from plpgsql.classes import *
 
@@ -9,19 +10,19 @@ class Generator(PostgresGenerator):
     TRANSFORMS = {
         **getattr(PostgresGenerator, "TRANSFORMS", {}),
         PGBlock: lambda self, e: self.pgblock_sql(e),
-        PGDeclare: lambda self, e: self.pgdeclare_sql(e),
+        # PGDeclare: lambda self, e: self.pgdeclare_sql(e),
+        exp.Declare: lambda self, e: self.pgdeclare_sql(e),
         PGDeclareItem: lambda self, e: self.pgdeclareitem_sql(e),
         PGException: lambda self, e: self.pgexception_sql(e),
         PGWhen: lambda self, e: self.pgwhen_sql(e),
         PGIf: lambda self, e: self.pgif_sql(e),
         PGIfBranch: lambda self, e: self.pgifbranch_sql(e),
         PGLoop: lambda self, e: self.pgloop_sql(e),
-        PGWhile: lambda self, e: self.pgwhile_sql(e),
+        # PGWhile: lambda self, e: self.pgwhile_sql(e),
         PGReturn: lambda self, e: self.pgreturn_sql(e),
         PGExit: lambda self, e: self.pgexit_sql(e),
         PGContinue: lambda self, e: self.pgcontinue_sql(e),
         PGRaise: lambda self, e: self.pgraise_sql(e),
-        PGAssignArg: lambda self, e: self.PGAssignArg_sql(e),
         PGSqlState: lambda self, e: self.pgsqlstate_sql(e),
         PGOpenCursor: lambda self, e: self.pgopencursor_sql(e),
         PGFetch: lambda self, e: self.pgfetch_sql(e),
@@ -76,7 +77,8 @@ class Generator(PostgresGenerator):
         parts.append("END")
         return " ".join(parts)
 
-    def pgdeclare_sql(self, expression: PGDeclare) -> str:
+    def pgdeclare_sql(self, expression: exp.Declare) -> str:
+        # A trailing comma is required
         items = [self.sql(item) + ";" for item in expression.expressions]
         if not items:
             return "DECLARE"
@@ -214,6 +216,13 @@ class Generator(PostgresGenerator):
             return f"RETURN {self.sql(value)}"
         return "RETURN"
 
+    # Shared Return node renderer (for interoperability)
+    def return_sql(self, expression: exp.Return) -> str:
+        value = getattr(expression, "this", None)
+        if value is not None:
+            return f"RETURN {self.sql(value)}"
+        return "RETURN"
+
     def pgraise_sql(self, expression: PGRaise) -> str:
         parts: list[str] = ["RAISE"]
 
@@ -253,15 +262,19 @@ class Generator(PostgresGenerator):
         return f"ASSERT {cond}"
 
     def pgloop_sql(self, expression: PGLoop) -> str:
-        body_sql = " ".join(f"{self.sql(stmt)};" for stmt in expression.expressions)
-        # Render exactly: LOOP <stmts>; END LOOP
+        body = expression.args.get("body") or []
+        body_sql = " ".join(f"{self.sql(stmt)};" for stmt in body)
+        label = expression.args.get("label")
+        suffix = f" {self.sql(label)}" if label is not None else ""
+        # Render exactly: LOOP <stmts>; END LOOP [label]
         if body_sql:
-            return f"LOOP {body_sql} END LOOP"
-        return "LOOP END LOOP"
+            return f"LOOP {body_sql} END LOOP{suffix}"
+        return f"LOOP END LOOP{suffix}"
 
-    def pgwhile_sql(self, expression: PGWhile) -> str:
+    def whileblock_sql(self, expression: exp.WhileBlock) -> str:
         cond_sql = self.sql(expression.this)
-        body_sql = " ".join(f"{self.sql(stmt)};" for stmt in expression.expressions)
+        body = expression.args.get("body") or []
+        body_sql = " ".join(f"{self.sql(stmt)};" for stmt in body)
         label = expression.args.get("label")
         suffix = f" {self.sql(label)}" if label is not None else ""
         if body_sql:
@@ -318,6 +331,14 @@ class Generator(PostgresGenerator):
     def pgcontinue_sql(self, expression: PGContinue) -> str:
         return self._loop_control_sql("CONTINUE", expression)
 
+    # Shared node for EXIT/LEAVE
+    def leave_sql(self, expression: exp.Leave) -> str:
+        return self._loop_control_sql("EXIT", expression)
+
+    # Shared node for CONTINUE/ITERATE
+    def iterate_sql(self, expression: exp.Iterate) -> str:
+        return self._loop_control_sql("CONTINUE", expression)
+
     def _direction_and_cursor_sql(self, expression: exp.Expression) -> str:
         dir_expr = expression.args.get("direction")
         if dir_expr is not None:
@@ -344,10 +365,6 @@ class Generator(PostgresGenerator):
             args_sql = ", ".join(self.sql(arg) for arg in expression.expressions)
             name_sql = f"{name_sql}({args_sql})"
         return f"OPEN {name_sql}"
-
-    # Auto-discovered generator for PGAssignArg (always PL/pgSQL ':=')
-    def PGAssignArg_sql(self, expression: PGAssignArg) -> str:
-        return self.binary(expression, ":=")
 
     def pgfetch_sql(self, expression: PGFetch) -> str:
         targets_sql = ", ".join(self.sql(e) for e in expression.expressions)

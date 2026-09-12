@@ -105,11 +105,11 @@ class Parser(PostgresParser):
         name_expr: exp.Expression,
         allowed_ops: set[TokenType],
         rhs_parser: t.Callable[[], exp.Expression] | None = None,
-    ) -> exp.Expression | None:
+    ) -> exp.PropertyEQ | exp.EQ | exp.Kwarg | None:
         """Parse a named-argument style pair following a name expression.
 
         Supported operators are provided via ``allowed_ops`` and map to:
-        - TokenType.COLON_EQ (:=)  -> PGAssignArg
+        - TokenType.COLON_EQ (:=)  -> exp.PropertyEQ
         - TokenType.EQ (=)         -> exp.EQ
         - TokenType.FARROW (=>)    -> exp.Kwarg
 
@@ -123,7 +123,7 @@ class Parser(PostgresParser):
 
         if self._match(TokenType.COLON_EQ, advance=False) and TokenType.COLON_EQ in allowed_ops:
             self._advance()
-            return self.expression(PGAssignArg(this=name_expr, expression=rhsp()))
+            return self.expression(exp.PropertyEQ(this=name_expr, expression=rhsp()))
 
         if self._match(TokenType.EQ, advance=False) and TokenType.EQ in allowed_ops:
             self._advance()
@@ -237,7 +237,7 @@ class Parser(PostgresParser):
             PGBlock(expressions=expressions, declare=declare, exception=exception, begin=True)
         )
 
-    def _parse_pg_assignment(self) -> PGAssignArg | None:
+    def _parse_pg_assignment(self) -> exp.PropertyEQ | None:
         """Parse a simple PL/pgSQL assignment statement inside a block.
 
         Pattern: <identifier> := <expression>
@@ -273,7 +273,7 @@ class Parser(PostgresParser):
             self._retreat(index)
             return None
 
-        # Helper guarantees COLON_EQ -> PGAssignArg
+        # Helper guarantees COLON_EQ -> PropertyEQ
         return pair  # type: ignore[return-value]
 
     def _parse_pgexception(self) -> exp.Expression:
@@ -406,7 +406,7 @@ class Parser(PostgresParser):
             parse_one=_unit,
         )
 
-    def _parse_pldeclare(self) -> PGDeclare:
+    def _parse_pldeclare(self) -> exp.Declare:
         items: list[exp.Expression] = self._parse_statement_body(
             stop_texts=("BEGIN",),
             stop_tokens=(),
@@ -415,7 +415,7 @@ class Parser(PostgresParser):
             parse_one=self._parse_pldeclareitem,
         )
 
-        return self.expression(PGDeclare(expressions=items))
+        return self.expression(exp.Declare(expressions=items))
 
     def _parse_pldeclareitem(self) -> PGDeclareItem | None:
         ident = self._parse_id_var()
@@ -543,7 +543,7 @@ class Parser(PostgresParser):
                 return parser(self)
         return super()._parse_statement()
 
-    def _parse_pgwhile(self) -> PGWhile:
+    def _parse_pgwhile(self) -> exp.WhileBlock:
         # Consume WHILE keyword
         if not self._match_texts("WHILE"):
             self.raise_error("Expected WHILE")
@@ -581,7 +581,7 @@ class Parser(PostgresParser):
         label = self._parse_id_var(any_token=True)
         self._match(TokenType.SEMICOLON)
 
-        return self.expression(PGWhile(this=cond, expressions=body, label=label))
+        return self.expression(exp.WhileBlock(this=cond, body=body, label=label))
 
     def _parse_pgfor(self) -> PGForIn:
         # Consume FOR keyword
@@ -981,7 +981,7 @@ class Parser(PostgresParser):
             ident.update_positions(token)
             level = ident
 
-        # Helper to parse USING options into PGAssignArg/EQ entries
+        # Helper to parse USING options into PropertyEQ/EQ entries
         def _parse_using_list() -> list[exp.Expression]:
             # Current token should be USING (not yet consumed)
             if not self._match(TokenType.USING):
@@ -1114,7 +1114,7 @@ class Parser(PostgresParser):
         if not self._match_texts("LOOP"):
             self.raise_error("Expected LOOP after END in LOOP block")
 
-        return self.expression(PGLoop(expressions=body))
+        return self.expression(PGLoop(body=body))
 
     def _parse_pgexit_or_continue(self, *, keyword: str, expr_cls: type[exp.Expression]):
         """Parse EXIT/CONTINUE constructs which share the same grammar.
@@ -1135,6 +1135,8 @@ class Parser(PostgresParser):
         if self._match(TokenType.WHEN):
             condition = self._parse_expression()
 
+        # Build node. For EXIT, use the PL/pgSQL subclass (PGExit) which extends
+        # the shared exp.Leave with an optional WHEN clause.
         return self.expression(expr_cls(this=label, when=condition))
 
     def _parse_pgexit(self) -> PGExit:
@@ -1171,7 +1173,7 @@ class Parser(PostgresParser):
     def _parse_open_args(self) -> list[exp.Expression]:
         """Parse an OPEN cursor argument list and return the collected args.
 
-        Supports positional arguments, name := value (PGAssignArg), and
+        Supports positional arguments, name := value (PropertyEQ), and
         name => value (Kwarg).
 
         Precondition: current token is '(' (not yet consumed).
@@ -1188,7 +1190,7 @@ class Parser(PostgresParser):
         cursor = self._parse_id_var()
 
         # Bound cursor with arguments: OPEN c(<args>) where args can be positional,
-        # name := value (PGAssignArg), or name => value (Kwarg)
+        # name := value (PropertyEQ), or name => value (Kwarg)
         if self._match(TokenType.L_PAREN, advance=False):
             args = self._parse_open_args()
             return self.expression(PGOpenCursor(this=cursor, expressions=args))

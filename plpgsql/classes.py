@@ -3,24 +3,22 @@ from __future__ import annotations
 from sqlglot import exp
 
 
-class PGBlock(exp.Expression):
+class PGBlock(exp.Block):
     """A BEGIN ... END block."""
-    arg_types = {"expressions": False, "begin": False, "declare": False, "exception": False}
+    arg_types = {
+        "expressions": False,
+        "begin": False,
+        "declare": False,
+        "exception": False,
+    }
 
 
-class PGDeclare(exp.Expression):
-    """A DECLARE section."""
-    arg_types = {"expressions": True}
-
-
-class PGDeclareItem(exp.Expression):
+class PGDeclareItem(exp.DeclareItem):
     """A variable declaration item inside a DECLARE section."""
     arg_types = {
-        "this": True,
-        "kind": False,
+        **exp.DeclareItem.arg_types,
         "expression": False,
         "value": False,
-        "default": False,
         "assign": False,
         "constant": False,
         "collate": False,
@@ -53,19 +51,12 @@ class PGIfBranch(exp.Expression):
     arg_types = {"condition": True, "then": True}
 
 
-class PGIf(exp.Expression):
+class PGIf(exp.CaseStatement):
     """An IF statement."""
-    arg_types = {"ifs": True, "default": False}
 
 
-class PGLoop(exp.Expression):
+class PGLoop(exp.LoopBlock):
     """A LOOP statement."""
-    arg_types = {"expressions": True}
-
-
-class PGWhile(exp.Expression):
-    """A WHILE statement."""
-    arg_types = {"this": True, "expressions": True, "label": False}
 
 
 class PGForIn(exp.Expression):
@@ -101,13 +92,14 @@ class PGForEach(exp.Expression):
     }
 
 
-class PGExit(exp.Expression):
+class PGExit(exp.Leave):
     """An EXIT statement."""
     arg_types = {"this": False, "when": False}
 
 
-class PGContinue(exp.Expression):
-    """A CONTINUE statement."""
+class PGContinue(exp.Iterate):
+    """A CONTINUE statement.
+    """
     arg_types = {"this": False, "when": False}
 
 
@@ -134,34 +126,27 @@ class PGGetDiagnostics(exp.Expression):
     arg_types = {"current": False, "stacked": False, "expressions": True}
 
 
-class PGAssignArg(exp.Expression, exp.Binary):
-    """Represents a named argument using `:=` syntax."""
-    arg_types = {"this": True, "expression": True, "op": False}
-
-
 class PGOpenCursor(exp.Expression):
     """An OPEN cursor statement."""
     arg_types = {"this": True, "expression": False, "scroll": False, "expressions": False}
 
 
-class PGFetch(exp.Expression):
+class PGFetch(exp.Fetch):
     """A FETCH statement."""
     arg_types = {
+        **exp.Fetch.arg_types,
         "this": True,
         "expressions": True,
-        "direction": False,
         "preposition": False,
     }
 
 
-class PGExecute(exp.Expression):
+class PGExecute(exp.Execute):
     """A dynamic EXECUTE statement."""
-
     arg_types = {
-        "this": True,          # command-string expression (literal / concat / function call)
-        "expressions": False,  # INTO target list (list of variables), optional
-        "strict": False,       # True when INTO STRICT was used
-        "using": False,        # USING expression list, optional
+        **exp.Execute.arg_types,
+        "strict": False,
+        "using": False,
     }
 
 
@@ -234,7 +219,7 @@ class PGFound(exp.Expression):
     arg_types = {"this": False}
 
 
-class PGReturn(exp.Expression):
+class PGReturn(exp.Return):
     """A RETURN statement."""
     arg_types = {"this": False, "query": False, "next": False}
 
