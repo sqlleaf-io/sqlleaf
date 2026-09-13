@@ -6,6 +6,25 @@ from plpgsql.classes import *
 
 
 class TestPlPgSQL(unittest.TestCase):
+    def test_perform_from_where_roundtrip(self) -> None:
+        sql = "PERFORM 1 FROM my_table WHERE a = 1;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_perform_function_call_roundtrip(self) -> None:
+        sql = "PERFORM CREATE_MV('cs_session_page_requests_mv', my_query);"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_perform_ast_node_type(self) -> None:
+        expr = sqlglot.parse_one("PERFORM 1 FROM my_table WHERE a = 1;", dialect=plpgsql)
+        self.assertIsInstance(expr, PGPerform)
+        self.assertIsInstance(expr, exp.Select)
+
+    def test_perform_requires_query_body_fails(self) -> None:
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one("PERFORM;", dialect=plpgsql)
+
     def test_begin_end_roundtrip(self) -> None:
         sql = "BEGIN END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)

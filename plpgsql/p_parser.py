@@ -22,6 +22,7 @@ new_tokens = [
     "LOOP",
     "MOVE",
     "OPEN",
+    "PERFORM",
     "RAISE",
     "RETURN",
     "REVERSE",
@@ -53,6 +54,7 @@ class Parser(PostgresParser):
         TokenType.RAISE: lambda self: self._parse_pgraise(),
         TokenType.ASSERT: lambda self: self._parse_pgassert(),
         TokenType.OPEN: lambda self: self._parse_pgopen(),
+        TokenType.PERFORM: lambda self: self._parse_pgperform(),
         TokenType.FETCH: lambda self: self._parse_pgfetch(),
         TokenType.MOVE: lambda self: self._parse_pgmove(),
         TokenType.CLOSE: lambda self: self._parse_pgclose(),
@@ -604,6 +606,28 @@ class Parser(PostgresParser):
         self._match(TokenType.SEMICOLON)
 
         return self.expression(exp.WhileBlock(this=cond, body=body, label=label))
+
+    def _parse_pgperform(self) -> PGPerform:
+        self._advance()
+
+        if self._match(TokenType.SENTINEL, advance=False):
+            self.raise_error("Expected query body after PERFORM")
+
+        perform_index = self._index - 1
+        perform_token = self._tokens[perform_index]
+        original_type = perform_token.token_type
+
+        perform_token.token_type = TokenType.SELECT
+        try:
+            self._retreat(perform_index)
+            query = self._parse_select()
+        finally:
+            perform_token.token_type = original_type
+
+        if not isinstance(query, exp.Select):
+            self.raise_error("Expected query body after PERFORM")
+
+        return self.expression(PGPerform(**query.args))
 
     def _parse_pgfor(self) -> PGForIn:
         # Consume FOR keyword (dispatcher already matched this)

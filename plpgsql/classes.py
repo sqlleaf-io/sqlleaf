@@ -13,6 +13,10 @@ class PGBlock(exp.Block):
     }
 
 
+class PGPerform(exp.Select):
+    """A PERFORM statement."""
+
+
 class PGDeclareItem(exp.DeclareItem):
     """A variable declaration item inside a DECLARE section."""
     arg_types = {

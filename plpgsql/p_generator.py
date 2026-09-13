@@ -46,6 +46,7 @@ class Generator(PostgresGenerator):
         PGCursorCall: lambda self, e: self.pgcursorcall_sql(e),
         PGFound: lambda self, e: self.pgfound_sql(e),
         PGOthers: lambda self , e: self.pgothers_sql(e),
+        PGPerform: lambda self , e: self.pgperform_sql(e),
     }
 
     def _loop_control_sql(self, keyword: str, expression: exp.Expression) -> str:
@@ -79,6 +80,11 @@ class Generator(PostgresGenerator):
 
         sql += self.seg("END")
         return sql
+
+    def pgperform_sql(self, expression: PGPerform) -> str:
+        select = exp.Select(**expression.args)
+        select_sql = self.select_sql(select)
+        return select_sql.replace("SELECT", "PERFORM", 1)
 
     def pgdeclare_sql(self, expression: exp.Declare) -> str:
         # Render each item separated by semicolons; keep a final trailing semicolon

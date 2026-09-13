@@ -26,6 +26,7 @@ class PlPgSQL(Postgres):
             "LOOP": TokenType.LOOP,
             "MOVE": TokenType.MOVE,
             "OPEN": TokenType.OPEN,
+            "PERFORM": TokenType.PERFORM,
             "RAISE": TokenType.RAISE,
             "RETURN": TokenType.RETURN,
             "REVERSE": TokenType.REVERSE,
