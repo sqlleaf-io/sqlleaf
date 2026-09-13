@@ -227,6 +227,16 @@ class PGFound(exp.Expression):
     arg_types = {"this": False}
 
 
+class PGUpdate(exp.Update):
+    """An UPDATE statement with optional WHERE CURRENT OF cursor."""
+    arg_types = {**exp.Update.arg_types, "current_of": False}
+
+
+class PGDelete(exp.Delete):
+    """A DELETE statement with optional WHERE CURRENT OF cursor."""
+    arg_types = {**exp.Delete.arg_types, "current_of": False}
+
+
 class PGReturn(exp.Return):
     """A RETURN statement."""
     arg_types = {"this": False, "query": False, "next": False}

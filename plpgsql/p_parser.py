@@ -43,6 +43,8 @@ class Parser(PostgresParser):
         **PostgresParser.STATEMENT_PARSERS,
         TokenType.BEGIN: lambda self: self._parse_plpgsql_block(),
         TokenType.DECLARE: lambda self: self._parse_plpgsql_block(),
+        TokenType.UPDATE: lambda self: self._parse_pgupdate(),
+        TokenType.DELETE: lambda self: self._parse_pgdelete(),
         TokenType.CASE: lambda self: self._parse_pgcase(),
         TokenType.RETURN: lambda self: self._parse_pgreturn(),
         TokenType.WHILE: lambda self: self._parse_pgwhile(),
@@ -622,6 +624,64 @@ class Parser(PostgresParser):
             if parser:
                 return parser(self)
         return super()._parse_statement()
+
+    def _extract_trailing_where_current_of(self) -> tuple[int, exp.Identifier] | None:
+        statement_index = self._index
+        where_index = -1
+
+        for index in range(statement_index, self._tokens_size - 3):
+            token = self._tokens[index]
+            if token.text.upper() != "WHERE":
+                continue
+
+            if (
+                self._tokens[index + 1].text.upper() == "CURRENT"
+                and self._tokens[index + 2].text.upper() == "OF"
+            ):
+                where_index = index
+
+        if where_index < 0:
+            return None
+
+        cursor_token = self._tokens[where_index + 3]
+        if cursor_token.token_type not in {TokenType.IDENTIFIER, TokenType.VAR, TokenType.STRING}:
+            self.raise_error("Expected cursor name after WHERE CURRENT OF", token=cursor_token)
+
+        cursor = exp.to_identifier(
+            cursor_token.text,
+            quoted=cursor_token.token_type in {TokenType.IDENTIFIER, TokenType.STRING},
+        )
+        cursor.update_positions(cursor_token)
+
+        for trailing_token in self._tokens[where_index + 4 : self._tokens_size]:
+            if trailing_token.token_type not in {TokenType.SEMICOLON, TokenType.SENTINEL}:
+                self.raise_error("Invalid expression after WHERE CURRENT OF", token=trailing_token)
+
+        return where_index, cursor
+
+    def _parse_pg_dml_with_current_of(self, parse: t.Callable[[], exp.Expression]) -> tuple[exp.Expression, exp.Identifier | None]:
+        self._advance()
+        current_of_info = self._extract_trailing_where_current_of()
+        original_tokens_size = self._tokens_size
+
+        if current_of_info:
+            self._tokens_size = current_of_info[0]
+
+        statement = parse()
+        self._tokens_size = original_tokens_size
+
+        if current_of_info:
+            self._retreat(original_tokens_size)
+
+        return statement, current_of_info and current_of_info[1]
+
+    def _parse_pgupdate(self) -> PGUpdate:
+        update, current_of = self._parse_pg_dml_with_current_of(super()._parse_update)
+        return self.expression(PGUpdate(**update.args, current_of=current_of))
+
+    def _parse_pgdelete(self) -> PGDelete:
+        delete, current_of = self._parse_pg_dml_with_current_of(super()._parse_delete)
+        return self.expression(PGDelete(**delete.args, current_of=current_of))
 
     def _parse_pgwhile(self) -> exp.WhileBlock:
         # Consume WHILE keyword (dispatcher already matched this)

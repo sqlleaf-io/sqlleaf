@@ -48,6 +48,8 @@ class Generator(PostgresGenerator):
         PGFound: lambda self, e: self.pgfound_sql(e),
         PGOthers: lambda self , e: self.pgothers_sql(e),
         PGPerform: lambda self , e: self.pgperform_sql(e),
+        PGDelete: lambda self , e: self.pgdelete_sql(e),
+        PGUpdate: lambda self , e: self.pgupdate_sql(e),
     }
 
     def _loop_control_sql(self, keyword: str, expression: exp.Expression) -> str:
@@ -58,6 +60,20 @@ class Generator(PostgresGenerator):
             sql += self.seg("WHEN")
             sql += self.seg(self.sql(expression, "when"))
         return sql
+
+    def _current_of_sql(self, expression: exp.Expression) -> str:
+        current_of = expression.args.get("current_of")
+        if not current_of:
+            return ""
+        return self.seg(f"WHERE CURRENT OF {self.sql(current_of)}")
+
+    def pgupdate_sql(self, expression: PGUpdate) -> str:
+        update = exp.Update(**{k: v for k, v in expression.args.items() if k != "current_of"})
+        return self.update_sql(update) + self._current_of_sql(expression)
+
+    def pgdelete_sql(self, expression: PGDelete) -> str:
+        delete = exp.Delete(**{k: v for k, v in expression.args.items() if k != "current_of"})
+        return self.delete_sql(delete) + self._current_of_sql(expression)
 
     # Also expose the auto-discovered method
     def pgblock_sql(self, expression: PGBlock) -> str:

@@ -50,6 +50,55 @@ class TestPlPgSQL(unittest.TestCase):
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one(sql, dialect=plpgsql)
 
+    def test_update_where_current_of_roundtrip(self) -> None:
+        sql = "UPDATE foo SET dataval = myval WHERE CURRENT OF curs1;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+        self.assertIsInstance(expr, PGUpdate)
+        self.assertIsInstance(expr.args["current_of"], exp.Identifier)
+        self.assertEqual(expr.args["current_of"].name, "curs1")
+
+    def test_delete_where_current_of_roundtrip(self) -> None:
+        sql = "DELETE FROM foo WHERE CURRENT OF curs1;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+        self.assertIsInstance(expr, PGDelete)
+        self.assertIsInstance(expr.args["current_of"], exp.Identifier)
+        self.assertEqual(expr.args["current_of"].name, "curs1")
+
+    def test_update_where_current_of_missing_cursor_fails(self) -> None:
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one("UPDATE foo SET dataval = myval WHERE CURRENT OF;", dialect=plpgsql)
+
+    def test_delete_where_current_of_missing_cursor_fails(self) -> None:
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one("DELETE FROM foo WHERE CURRENT OF;", dialect=plpgsql)
+
+    def test_update_where_current_of_quoted_cursor_roundtrip(self) -> None:
+        sql = 'UPDATE foo SET dataval = myval WHERE CURRENT OF "Curs1";'
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+        self.assertTrue(expr.args["current_of"].quoted)
+        self.assertEqual(expr.args["current_of"].name, "Curs1")
+
+    def test_update_where_current_of_inside_block_roundtrip(self) -> None:
+        sql = "BEGIN UPDATE foo SET dataval = myval WHERE CURRENT OF curs1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_update_without_current_of_still_roundtrips(self) -> None:
+        sql = "UPDATE foo SET dataval = myval WHERE id = 1;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_delete_without_current_of_still_roundtrips(self) -> None:
+        sql = "DELETE FROM foo WHERE id = 1;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
     def test_plpgsql_declare_defaults_to_null(self) -> None:
         sql = """
         DECLARE
