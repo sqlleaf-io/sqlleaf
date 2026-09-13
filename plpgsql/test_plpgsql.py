@@ -769,12 +769,12 @@ class TestPlPgSQL(unittest.TestCase):
 
     def test_plpgsql_while_requires_loop_keyword_fails(self) -> None:
         sql = "BEGIN WHILE x < 10 SELECT 1; END;"
-        with self.assertRaises(sqlglot.errors.ParseError):
+        with self.assertRaisesRegex(sqlglot.errors.ParseError, r"Expected token: LOOP"):
             sqlglot.parse_one(sql, dialect=plpgsql)
 
     def test_plpgsql_while_requires_end_loop_fails(self) -> None:
         sql = "BEGIN WHILE TRUE LOOP SELECT 1; END; END;"
-        with self.assertRaises(sqlglot.errors.ParseError):
+        with self.assertRaisesRegex(sqlglot.errors.ParseError, r"Expected token: LOOP"):
             sqlglot.parse_one(sql, dialect=plpgsql)
 
     def test_if_found(self) -> None:
@@ -863,12 +863,12 @@ class TestPlPgSQL(unittest.TestCase):
 
     def test_if_missing_then_raises(self) -> None:
         sql = "BEGIN IF x > 0 SELECT 1; END IF; END;"
-        with self.assertRaises(sqlglot.errors.ParseError):
+        with self.assertRaisesRegex(sqlglot.errors.ParseError, r"Expected token: THEN"):
             sqlglot.parse_one(sql, dialect=plpgsql)
 
     def test_if_missing_end_if_raises(self) -> None:
         sql = "BEGIN IF x > 0 THEN a := 1; END;"
-        with self.assertRaises(sqlglot.errors.ParseError):
+        with self.assertRaisesRegex(sqlglot.errors.ParseError, r"Expected token: IF"):
             sqlglot.parse_one(sql, dialect=plpgsql)
 
     def test_if_empty_branch_raises(self) -> None:
@@ -912,12 +912,12 @@ class TestPlPgSQL(unittest.TestCase):
 
     def test_for_in_query_missing_loop_fails(self) -> None:
         sql = "BEGIN FOR r IN SELECT 1 SELECT 2; END;"
-        with self.assertRaises(sqlglot.errors.ParseError):
+        with self.assertRaisesRegex(sqlglot.errors.ParseError, r"Expected token: LOOP"):
             sqlglot.parse_one(sql, dialect=plpgsql)
 
     def test_for_in_query_missing_end_loop_fails(self) -> None:
         sql = "BEGIN FOR r IN SELECT 1 LOOP a := 1; END; END;"
-        with self.assertRaises(sqlglot.errors.ParseError):
+        with self.assertRaisesRegex(sqlglot.errors.ParseError, r"Expected token: LOOP"):
             sqlglot.parse_one(sql, dialect=plpgsql)
 
     def test_for_in_cursor_simple(self) -> None:

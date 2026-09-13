@@ -66,6 +66,14 @@ class Parser(PostgresParser):
         "FOUND": lambda self: self.expression(PGFound()),
     }
 
+    def _match_expect(self, token_type: TokenType, *, advance: bool = True) -> None:
+        if not self._match(token_type, advance=advance):
+            self.raise_error(f"Expected token: {token_type.name}")
+
+    def _match_text_expect(self, text: str, *, advance: bool = True) -> None:
+        if not self._match_texts((text,), advance=advance):
+            self.raise_error(f"Expected token: {text.upper()}")
+
     def _parse_pggetdiagnostics(self) -> PGGetDiagnostics:
         # 1. Consume GET (dispatcher already matched this)
         self._advance()
@@ -77,9 +85,7 @@ class Parser(PostgresParser):
         elif self._match_texts(("STACKED",)):
             stacked = True
 
-        if not self._match_texts(("DIAGNOSTICS",)):
-            hint = " CURRENT" if current else (" STACKED" if stacked else "")
-            self.raise_error("Expected DIAGNOSTICS after GET" + hint)
+        self._match_text_expect("DIAGNOSTICS")
 
         pairs: list[exp.Expression] = []
 
@@ -235,8 +241,7 @@ class Parser(PostgresParser):
         elif self._match(TokenType.DECLARE):
             # DECLARE section, then mandatory BEGIN
             declare = self._parse_pldeclare()
-            if not self._match(TokenType.BEGIN):
-                self.raise_error("Expected BEGIN after DECLARE or at block start")
+            self._match_expect(TokenType.BEGIN)
         else:
             self.raise_error("Expected BEGIN or DECLARE to start PL/pgSQL block")
 
@@ -262,8 +267,7 @@ class Parser(PostgresParser):
             exception = self._parse_pgexception()
 
         # Require END to close the block
-        if not self._match(TokenType.END):
-            self.raise_error("Expected END to close block")
+        self._match_expect(TokenType.END)
 
         return self.expression(
             PGBlock(expressions=expressions, declare=declare, exception=exception, begin=True)
@@ -310,8 +314,7 @@ class Parser(PostgresParser):
 
     def _parse_pgexception(self) -> exp.Expression:
         # Consume EXCEPTION keyword if not yet consumed
-        if not self._match_texts(("EXCEPTION",)):
-            self.raise_error("Expected EXCEPTION in block")
+        self._match_text_expect("EXCEPTION")
 
         whens: list[exp.Expression] = []
 
@@ -325,8 +328,7 @@ class Parser(PostgresParser):
         return self.expression(PGException(whens=whens))
 
     def _parse_pgwhen(self) -> exp.Expression:
-        if not self._match(TokenType.WHEN):
-            self.raise_error("Expected WHEN in EXCEPTION section")
+        self._match_expect(TokenType.WHEN)
 
         # Parse one or more condition identifiers separated by OR
         conditions: list[exp.Expression] = []
@@ -346,8 +348,7 @@ class Parser(PostgresParser):
         if not conditions:
             self.raise_error("WHEN requires at least one condition")
 
-        if not self._match(TokenType.THEN):
-            self.raise_error("Expected THEN in WHEN clause")
+        self._match_expect(TokenType.THEN)
 
         # Parse one or more statements until next WHEN or END
         thens: list[exp.Expression] = self._parse_statement_body(
@@ -402,18 +403,15 @@ class Parser(PostgresParser):
             default = self._parse_pgif_body()
 
         # Require END IF to close
-        if not self._match(TokenType.END):
-            self.raise_error("Expected END to close IF block")
-        if not self._match(TokenType.IF):
-            self.raise_error("Expected IF after END in IF block")
+        self._match_expect(TokenType.END)
+        self._match_expect(TokenType.IF)
 
         return self.expression(PGIf(ifs=branches, default=default))
 
     def _parse_pgif_branch(self) -> PGIfBranch:
         # Parse <condition> THEN <statements>
         condition = self._parse_expression()
-        if not self._match(TokenType.THEN):
-            self.raise_error("Expected THEN in IF branch")
+        self._match_expect(TokenType.THEN)
 
         then_body = self._parse_pgif_body()
         if not then_body:
@@ -540,12 +538,10 @@ class Parser(PostgresParser):
         cursor_args: list[exp.Expression] | None = None
         if self._match(TokenType.L_PAREN):
             cursor_args = self._parse_csv(self._parse_pl_cursor_arg)
-            if not self._match(TokenType.R_PAREN):
-                self.raise_error("Expected ')' to close cursor argument list")
+            self._match_expect(TokenType.R_PAREN)
 
         # Required FOR <query>
-        if not self._match(TokenType.FOR):
-            self.raise_error("Expected FOR in cursor declaration")
+        self._match_expect(TokenType.FOR)
 
         query = self._parse_statement()
         if query is None:
@@ -589,11 +585,9 @@ class Parser(PostgresParser):
                 cond = cond.this
             else:
                 # Require LOOP explicitly after condition if not via alias
-                if not self._match(TokenType.LOOP):
-                    self.raise_error("Expected LOOP after WHILE condition")
+                self._match_expect(TokenType.LOOP)
         else:
-            if not self._match(TokenType.LOOP):
-                self.raise_error("Expected LOOP after WHILE condition")
+            self._match_expect(TokenType.LOOP)
 
         # Parse body statements until END (lax mode to preserve original behavior)
         body: list[exp.Expression] = self._parse_statement_body(
@@ -602,10 +596,8 @@ class Parser(PostgresParser):
         )
 
         # Consume END then require LOOP
-        if not self._match(TokenType.END):
-            self.raise_error("Expected END to close WHILE block")
-        if not self._match(TokenType.LOOP):
-            self.raise_error("Expected LOOP after END in WHILE block")
+        self._match_expect(TokenType.END)
+        self._match_expect(TokenType.LOOP)
 
         # Optional label and optional semicolon
         label = self._parse_id_var(any_token=True)
@@ -621,8 +613,7 @@ class Parser(PostgresParser):
         target = self._parse_id_var()
 
         # Require IN keyword
-        if not self._match(TokenType.IN):
-            self.raise_error("Expected IN after FOR target")
+        self._match_expect(TokenType.IN)
 
         reverse = self._match(TokenType.REVERSE)
 
@@ -632,8 +623,7 @@ class Parser(PostgresParser):
         if start_expr is not None and self._match(TokenType.DDOT):
             end_expr = self._parse_bitwise()
             step_expr = self._parse_bitwise() if self._match(TokenType.BY) else None
-            if not self._match(TokenType.LOOP):
-                self.raise_error("Expected LOOP after FOR range header")
+            self._match_expect(TokenType.LOOP)
             body = self._parse_loop_body()
             return self.expression(
                 PGForIn(
@@ -670,9 +660,7 @@ class Parser(PostgresParser):
             if cursor is not None:
                 args = None
                 if self._match(TokenType.L_PAREN, advance=False):
-                    args = self._parse_cursor_call_args(
-                        close_error="Expected ')' to close argument list in FOR IN cursor call"
-                    )
+                    args = self._parse_cursor_call_args()
 
                 # Cursor call only if the header ends here (next token is LOOP)
                 if self._match(TokenType.LOOP, advance=False):
@@ -682,8 +670,7 @@ class Parser(PostgresParser):
                 self._retreat(start_index)
                 query = self._parse_statement()
 
-        if not self._match(TokenType.LOOP):
-            self.raise_error("Expected LOOP after FOR ... IN <query>")
+        self._match_expect(TokenType.LOOP)
         body = self._parse_loop_body()
         return self.expression(
             PGForIn(
@@ -707,15 +694,12 @@ class Parser(PostgresParser):
             if slice_expr is None:
                 self.raise_error("Expected a number after SLICE")
 
-        if not self._match(TokenType.IN):
-            self.raise_error("Expected IN after FOREACH target")
-        if not self._match(TokenType.ARRAY):
-            self.raise_error("Expected ARRAY after IN in FOREACH")
+        self._match_expect(TokenType.IN)
+        self._match_expect(TokenType.ARRAY)
 
         # The array expression stops at the LOOP token naturally.
         array_expr = self._parse_bitwise()
-        if not self._match(TokenType.LOOP):
-            self.raise_error("Expected LOOP after FOREACH ... IN ARRAY <expression>")
+        self._match_expect(TokenType.LOOP)
         body = self._parse_loop_body()
         return self.expression(
             PGForEach(
@@ -729,10 +713,8 @@ class Parser(PostgresParser):
 
     def _parse_loop_body(self) -> list[exp.Expression]:
         body = self._parse_statement_body(stop_tokens=(TokenType.END,), strict=False)
-        if not self._match(TokenType.END):
-            self.raise_error("Expected END to close loop")
-        if not self._match(TokenType.LOOP):
-            self.raise_error("Expected LOOP after END in loop")
+        self._match_expect(TokenType.END)
+        self._match_expect(TokenType.LOOP)
         return body or []
 
     def _parse_loop_label(self) -> exp.Expression | None:
@@ -777,8 +759,7 @@ class Parser(PostgresParser):
         # Helper to parse USING options into PropertyEQ/EQ entries
         def _parse_using_list() -> list[exp.Expression]:
             # Current token should be USING (not yet consumed)
-            if not self._match(TokenType.USING):
-                return []
+            self._match_expect(TokenType.USING)
             opts: list[exp.Expression] = []
             # Parse CSV of name {:=|=} expr
             first = True
@@ -900,10 +881,8 @@ class Parser(PostgresParser):
         )
 
         # Consume END and then require trailing LOOP
-        if not self._match(TokenType.END):
-            self.raise_error("Expected END to close LOOP block")
-        if not self._match(TokenType.LOOP):
-            self.raise_error("Expected LOOP after END in LOOP block")
+        self._match_expect(TokenType.END)
+        self._match_expect(TokenType.LOOP)
 
         return self.expression(PGLoop(body=body))
 
@@ -936,7 +915,7 @@ class Parser(PostgresParser):
     def _parse_pgcontinue(self) -> PGContinue:
         return self._parse_pgexit_or_continue(token_type=TokenType.CONTINUE, expr_cls=PGContinue)
 
-    def _parse_cursor_call_args(self, *, close_error: str) -> list[exp.Expression]:
+    def _parse_cursor_call_args(self) -> list[exp.Expression]:
         """Parse a parenthesized cursor argument list and consume the closing ')'."""
         self._advance()
 
@@ -956,8 +935,7 @@ class Parser(PostgresParser):
                 if self._match(TokenType.R_PAREN, advance=False):
                     self.raise_error("Trailing comma is not allowed in cursor argument list")
 
-        if not self._match(TokenType.R_PAREN):
-            self.raise_error(close_error)
+        self._match_expect(TokenType.R_PAREN)
 
         return args
 
@@ -970,7 +948,7 @@ class Parser(PostgresParser):
         Precondition: current token is '(' (not yet consumed).
         Postcondition: the closing ')' is consumed.
         """
-        return self._parse_cursor_call_args(close_error="Expected ')' to close argument list in OPEN")
+        return self._parse_cursor_call_args()
 
     def _parse_pgopen(self) -> PGOpenCursor:
         # Consume OPEN keyword (dispatcher already matched this)
@@ -988,8 +966,7 @@ class Parser(PostgresParser):
         # Optional [[NO] SCROLL]
         scroll: bool | None = None
         if self._match_texts("NO"):
-            if not self._match_texts("SCROLL"):
-                self.raise_error("Expected SCROLL after NO in OPEN")
+            self._match_text_expect("SCROLL")
             scroll = False
         elif self._match_texts("SCROLL"):
             scroll = True
@@ -999,7 +976,7 @@ class Parser(PostgresParser):
             if scroll is None:
                 return self.expression(PGOpenCursor(this=cursor))
             # If SCROLL/NO SCROLL was provided, FOR is required
-            self.raise_error("Expected FOR in OPEN cursor statement")
+            self._match_expect(TokenType.FOR)
 
         if self._match(TokenType.EXECUTE, advance=False):
             query = self._parse_pgexecute()
@@ -1020,8 +997,7 @@ class Parser(PostgresParser):
         direction, preposition, cursor = self._parse_pg_direction_and_cursor(after_kw="FETCH")
 
         # INTO keyword
-        if not self._match(TokenType.INTO):
-            self.raise_error("Expected INTO in FETCH statement")
+        self._match_expect(TokenType.INTO)
 
         # One or more targets separated by commas on the same chunk
         targets = self._parse_csv(self._parse_expression)
