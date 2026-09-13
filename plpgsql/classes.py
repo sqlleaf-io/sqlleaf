@@ -158,6 +158,14 @@ class PGExecute(exp.Execute):
     }
 
 
+class PGInto(exp.Into):
+    """An INTO clause."""
+    arg_types = {
+        **exp.Into.arg_types,
+        "strict": False,
+    }
+
+
 class PGMove(exp.Expression):
     """A MOVE statement."""
     arg_types = {

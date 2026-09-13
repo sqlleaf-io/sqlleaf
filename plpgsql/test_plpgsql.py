@@ -1523,6 +1523,10 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
+        into = expr.args.get("into")
+        self.assertIsNotNone(into)
+        self.assertEqual(len(into.args.get("expressions") or []), 2)
+
     def test_insert_returning_into_variable(self) -> None:
         sql = "INSERT INTO t(a) VALUES (1) RETURNING a INTO v;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)

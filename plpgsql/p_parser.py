@@ -626,6 +626,29 @@ class Parser(PostgresParser):
         # self._advance()
         return super()._parse_statement()
 
+    def _parse_into(self) -> exp.Into | None:
+        if not self._match(TokenType.INTO):
+            return None
+
+        strict = self._match_texts(("STRICT",))
+        temp = self._match(TokenType.TEMPORARY)
+        unlogged = self._match_text_seq("UNLOGGED")
+        self._match(TokenType.TABLE)
+
+        targets = self._parse_csv(lambda: self._parse_table(schema=True))
+        if not targets:
+            self.raise_error("Expected target list after INTO")
+
+        return self.expression(
+            PGInto(
+                this=targets[0],
+                expressions=targets if len(targets) > 1 else None,
+                temporary=temp,
+                unlogged=unlogged,
+                strict=strict,
+            )
+        )
+
     def _extract_trailing_where_current_of(self) -> tuple[int, exp.Identifier] | None:
         statement_index = self._index
         where_index = -1

@@ -50,6 +50,8 @@ class Generator(PostgresGenerator):
         PGPerform: lambda self , e: self.pgperform_sql(e),
         PGDelete: lambda self , e: self.pgdelete_sql(e),
         PGUpdate: lambda self , e: self.pgupdate_sql(e),
+        PGInto: lambda self , e: self.pginto_sql(e),
+
     }
 
     def _loop_control_sql(self, keyword: str, expression: exp.Expression) -> str:
@@ -439,6 +441,17 @@ class Generator(PostgresGenerator):
             parts.append("USING " + ", ".join(self.sql(a) for a in using_args))
 
         return " ".join(parts)
+
+    def pginto_sql(self, expression: exp.Into) -> str:
+        strict = " STRICT" if expression.args.get("strict") else ""
+
+        targets = expression.args.get("expressions")
+        if targets:
+            target_sql = ", ".join(self.sql(target) for target in targets)
+        else:
+            target_sql = self.sql(expression, "this")
+
+        return f"{self.seg('INTO')}{strict} {target_sql}"
 
     def pggetdiagnostics_sql(self, expression: PGGetDiagnostics) -> str:
         parts: list[str] = ["GET"]
