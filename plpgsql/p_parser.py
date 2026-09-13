@@ -904,17 +904,13 @@ class Parser(PostgresParser):
         # Loop target variable
         target = self._parse_id_var()
 
-        # Optional SLICE <number>
         slice_expr = None
         if self._match_texts(("SLICE",)):
-            # Require a NUMBER token next and construct a numeric literal
-            if not self._curr or self._curr.token_type != TokenType.NUMBER:
+            num = self._parse_number()
+            if num is None:
                 self.raise_error("Expected a number after SLICE")
-            text = self._curr.text
-            self._advance()
-            slice_expr = exp.Literal(this=text, is_string=False)
+            slice_expr = num
 
-        # Require IN ARRAY
         if not self._match(TokenType.IN):
             self.raise_error("Expected IN after FOREACH target")
         if not self._match(TokenType.ARRAY):
@@ -1345,10 +1341,8 @@ class Parser(PostgresParser):
     def _parse_pg_direction_and_cursor(
         self, *, after_kw: str
     ) -> tuple[exp.Expression | None, str | None, exp.Expression]:
-        """Parse optional direction and required preposition (if direction present), then cursor name.
-
-        Returns a tuple of (direction_expr_or_none, preposition_or_none, cursor_identifier_expr).
-        The error messages incorporate the SQL keyword provided by ``after_kw`` for clarity.
+        """
+        Parse optional direction and required preposition (if direction present), then cursor name.
         """
         direction: exp.Expression | None = None
         preposition: str | None = None
@@ -1366,18 +1360,6 @@ class Parser(PostgresParser):
             "LAST": PGLast,
         }
 
-        # Helper: check if the upcoming token sequence represents a numeric count
-        def _next_is_numeric() -> bool:
-            return (
-                (self._curr is not None and self._curr.token_type == TokenType.NUMBER)
-                or (
-                    self._curr is not None
-                    and self._curr.token_type == TokenType.DASH
-                    and self._next is not None
-                    and self._next.token_type == TokenType.NUMBER
-                )
-            )
-
         # Handle FORWARD/BACKWARD with optional count/ALL
         if self._match_texts(("FORWARD", "BACKWARD")):
             which = (self._prev.text or "").upper()
@@ -1386,12 +1368,11 @@ class Parser(PostgresParser):
             if self._match_texts("ALL"):
                 direction = self.expression(cls(all=True))
             else:
-                # Parse numeric count only when the next token(s) are numeric
-                if _next_is_numeric():
+                # A number
+                if self._match_set((TokenType.NUMBER, TokenType.DASH), advance=False):
                     count_expr = self._parse_bitwise()
                     direction = self.expression(cls(this=count_expr))
                 else:
-                    # No count provided; just the keyword
                     direction = self.expression(cls())
 
             preposition = _parse_required_preposition(
@@ -1423,14 +1404,15 @@ class Parser(PostgresParser):
                 preposition = _parse_required_preposition(
                     f"Expected FROM or IN after {after_kw} ALL"
                 )
+            elif self._match_set((TokenType.NUMBER, TokenType.DASH), advance=False):
+                count_expr = self._parse_bitwise()
+                direction = count_expr
+                preposition = _parse_required_preposition(
+                    f"Expected FROM or IN after {after_kw} count"
+                )
             else:
-                # Parse numeric count only when the next token(s) are numeric
-                if _next_is_numeric():
-                    count_expr = self._parse_bitwise()
-                    direction = count_expr
-                    preposition = _parse_required_preposition(
-                        f"Expected FROM or IN after {after_kw} count"
-                    )
+                if self._match_texts(("FROM", "IN")):
+                    preposition = (self._prev.text or "").upper()
 
         cursor = self._parse_id_var()
         return direction, preposition, cursor
