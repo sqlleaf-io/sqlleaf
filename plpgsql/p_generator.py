@@ -45,44 +45,47 @@ class Generator(PostgresGenerator):
         PGCursorArg: lambda self, e: self.pgcursorarg_sql(e),
         PGCursorCall: lambda self, e: self.pgcursorcall_sql(e),
         PGFound: lambda self, e: self.pgfound_sql(e),
+        PGOthers: lambda self , e: self.pgothers_sql(e),
     }
 
     def _loop_control_sql(self, keyword: str, expression: exp.Expression) -> str:
-        parts: list[str] = [keyword]
+        sql = keyword
         if expression.args.get("this") is not None:
-            parts.append(self.sql(expression.this))
+            sql += self.seg(self.sql(expression, "this"))
         if expression.args.get("when") is not None:
-            parts.append("WHEN")
-            parts.append(self.sql(expression.args.get("when")))
-        return " ".join(parts)
+            sql += self.seg("WHEN")
+            sql += self.seg(self.sql(expression, "when"))
+        return sql
 
     # Also expose the auto-discovered method
     def pgblock_sql(self, expression: PGBlock) -> str:
-        parts: list[str] = []
+        sql = ""
 
-        # Render DECLARE section first if present
+        # DECLARE section first if present
         declare = expression.args.get("declare")
         if declare and getattr(declare, "expressions", None):
-            parts.append(self.sql(declare))
+            sql += self.sql(declare) + self.sep()
 
-        parts.append("BEGIN")
-        for expr in expression.expressions:
-            parts.append(self.sql(expr) + ";")
+        # BEGIN ... statements ... [EXCEPTION ...] END
+        sql += "BEGIN"
 
-        # Render EXCEPTION section if present
+        if expression.expressions:
+            body_sql = self.expressions(sqls=[self.sql(e) for e in expression.expressions], sep=f";{self.sep()}")
+            sql += self.seg(body_sql + ";")
+
         ex = expression.args.get("exception")
         if ex is not None:
-            parts.append(self.sql(ex))
+            sql += self.seg(self.sql(ex))
 
-        parts.append("END")
-        return " ".join(parts)
+        sql += self.seg("END")
+        return sql
 
     def pgdeclare_sql(self, expression: exp.Declare) -> str:
-        # A trailing comma is required
-        items = [self.sql(item) + ";" for item in expression.expressions]
-        if not items:
+        # Render each item separated by semicolons; keep a final trailing semicolon
+        if not expression.expressions:
             return "DECLARE"
-        return " ".join(["DECLARE", *items])
+        items_sql = self.expressions(sqls=[self.sql(item) for item in expression.expressions], sep=f";{self.sep()}")
+        return "DECLARE" + self.seg(items_sql + ";")
 
     def pgdeclareitem_sql(self, expression: PGDeclareItem) -> str:
         name = self.sql(expression.this)
@@ -99,8 +102,7 @@ class Generator(PostgresGenerator):
             # CURSOR and optional args
             cursor_args = expression.args.get("cursor_args")
             if cursor_args:
-                args_sql = ", ".join(self.sql(a) for a in cursor_args)
-                parts.append(f"CURSOR({args_sql})")
+                parts.append(self.func("CURSOR", *cursor_args))
             else:
                 parts.append("CURSOR")
 
@@ -112,78 +114,87 @@ class Generator(PostgresGenerator):
         # Handle alias variant early: name ALIAS FOR $n
         if expression.args.get("alias_for"):
             target = self.sql(expression.args.get("expression"))
-            return f"{name} ALIAS FOR {target}"
+            return name + self.seg("ALIAS") + self.seg("FOR") + self.seg(target)
 
         typ = self.sql(expression.args.get("kind")) if expression.args.get("kind") is not None else ""
         # Normalize type rendering to uppercase to match Postgres style in tests
         typ_render = typ.upper() if typ else ""
         const_kw = " CONSTANT" if expression.args.get("constant") else ""
         collate = expression.args.get("collate")
-        collate_sql = f" COLLATE {self.sql(collate)}" if collate is not None else ""
-        not_null_sql = " NOT NULL" if expression.args.get("not_null") else ""
+        collate_sql = (self.seg("COLLATE") + self.seg(self.sql(collate))) if collate is not None else ""
+        not_null_sql = self.seg("NOT NULL") if expression.args.get("not_null") else ""
         init = expression.args.get("expression")
 
         if init is not None and expression.args.get("default"):
-            return f"{name}{const_kw} {typ_render}{collate_sql}{not_null_sql} DEFAULT {self.sql(init)}"
+            return (
+                name
+                + const_kw
+                + (self.seg(typ_render) if typ_render else "")
+                + collate_sql
+                + not_null_sql
+                + self.seg("DEFAULT")
+                + self.seg(self.sql(init))
+            )
 
         if init is not None:
             op = expression.args.get("assign") or ":="
-            return f"{name}{const_kw} {typ_render}{collate_sql}{not_null_sql} {op} {self.sql(init)}"
+            return (
+                name
+                + const_kw
+                + (self.seg(typ_render) if typ_render else "")
+                + collate_sql
+                + not_null_sql
+                + self.seg(op)
+                + self.seg(self.sql(init))
+            )
 
-        return f"{name}{const_kw} {typ_render}{collate_sql}{not_null_sql}"
+        return name + const_kw + (self.seg(typ_render) if typ_render else "") + collate_sql + not_null_sql
 
     def pgcursorarg_sql(self, expression: PGCursorArg) -> str:
         kind = self.sql(expression.args.get("kind"))
         kind_render = kind.upper() if kind else ""
-        return f"{self.sql(expression.this)} {kind_render}"
+        return self.sql(expression.this) + (self.seg(kind_render) if kind_render else "")
 
     def pgexception_sql(self, expression: "PGException") -> str:
-        parts: list[str] = ["EXCEPTION"]
-        for when in expression.args.get("whens") or []:
-            parts.append(self.sql(when))
-        return " ".join(parts)
+        whens = expression.args.get("whens") or []
+        sql = "EXCEPTION"
+        if whens:
+            sql += self.seg(self.expressions(sqls=[self.sql(w) for w in whens], sep=self.sep()))
+        return sql
 
     def pgwhen_sql(self, expression: "PGWhen") -> str:
-        # Render condition expression with special handling for SQLSTATE tokens,
-        # and support OR-composed conditions similar to CASE.
-        def render_cond(node: exp.Expression) -> str:
-            # Dedicated SQLSTATE expression
-            if isinstance(node, PGSqlState):
-                return self.pgsqlstate_sql(node)
-            # WHEN OTHERS
-            if isinstance(node, PGOthers):
-                return self.pgothers_sql(node)
-            # OR chain
-            if isinstance(node, exp.Or):
-                return f"{render_cond(node.left)} OR {render_cond(node.right)}"
-            return self.sql(node)
-
+        # Prefer the normal generator dispatch for conditions
         condition = expression.args.get("condition")
-        conds = render_cond(condition) if condition is not None else ""
-        # Render body statements, each terminated by a semicolon
+        conds = self.sql(condition) if condition is not None else ""
         body = expression.args.get("then") or []
-        body_sql = " ".join(self.sql(stmt) + ";" for stmt in body)
-        return f"WHEN {conds} THEN {body_sql}"
+        body_sql = self.expressions(sqls=[self.sql(stmt) for stmt in body], sep=f";{self.sep()}")
+        if body_sql:
+            body_sql += ";"
+        return "WHEN" + (self.seg(conds) if conds else "") + self.seg("THEN") + (self.seg(body_sql) if body_sql else "")
 
     def pgif_sql(self, expression: PGIf) -> str:
         branches = expression.args.get("ifs") or []
-        parts: list[str] = []
+        sql_parts: list[str] = []
         for i, branch in enumerate(branches):
             keyword = "IF" if i == 0 else "ELSIF"
-            parts.append(self._pgifbranch_sql(branch, keyword))
+            sql_parts.append(self._pgifbranch_sql(branch, keyword))
 
         default = expression.args.get("default")
         if default is not None:
-            body = " ".join(self.sql(stmt) + ";" for stmt in default)
-            parts.append(f"ELSE {body}")
+            else_body = self.expressions(sqls=[self.sql(stmt) for stmt in default], sep=f";{self.sep()}")
+            if else_body:
+                else_body += ";"
+            sql_parts.append("ELSE" + (self.seg(else_body) if else_body else ""))
 
-        parts.append("END IF")
-        return " ".join(parts)
+        sql_parts.append("END IF")
+        return self.sep().join(sql_parts) if self.pretty else " ".join(sql_parts)
 
     def _pgifbranch_sql(self, branch: PGIfBranch, keyword: str) -> str:
-        cond = self.sql(branch.args.get("condition"))
-        body = " ".join(self.sql(stmt) + ";" for stmt in branch.args.get("then"))
-        return f"{keyword} {cond} THEN {body}"
+        cond = self.sql(branch, "condition")
+        body = self.expressions(sqls=[self.sql(stmt) for stmt in (branch.args.get("then") or [])], sep=f";{self.sep()}")
+        if body:
+            body += ";"
+        return keyword + (self.seg(cond) if cond else "") + self.seg("THEN") + (self.seg(body) if body else "")
 
     def pgifbranch_sql(self, expression: PGIfBranch) -> str:
         # Standalone rendering (defaults to IF); PGIf normally supplies the keyword.
@@ -197,7 +208,7 @@ class Generator(PostgresGenerator):
     def pgsqlstate_sql(self, expression: exp.Expression) -> str:
         value = getattr(expression, "this", None)
         if value is not None:
-            return f"SQLSTATE {self.sql(value)}"
+            return "SQLSTATE" + self.seg(self.sql(value))
         return "SQLSTATE"
 
     def pgreturn_sql(self, expression: PGReturn) -> str:
