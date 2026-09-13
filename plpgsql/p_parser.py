@@ -12,8 +12,10 @@ from sqlglot import tokenizer_core
 tt = tokenizer_core.TokenType
 new_tokens = [
     "ASSERT",
+    "BY",
     "CLOSE",
     "CONTINUE",
+    "DDOT",
     "EXIT",
     "FOREACH",
     "IF",
@@ -22,6 +24,7 @@ new_tokens = [
     "OPEN",
     "RAISE",
     "RETURN",
+    "REVERSE",
     "WHILE",
 ]
 token_dict = {m.name: m.value for m in TokenType}
@@ -137,19 +140,27 @@ class Parser(PostgresParser):
 
         rhsp = rhs_parser or self._parse_expression
 
-        if self._match(TokenType.COLON_EQ, advance=False) and TokenType.COLON_EQ in allowed_ops:
-            self._advance()
-            return self.expression(exp.PropertyEQ(this=name_expr, expression=rhsp()))
+        # Map supported operators to their expression classes
+        op_to_expr: dict[TokenType, type[exp.Expression]] = {
+            TokenType.COLON_EQ: exp.PropertyEQ,
+            TokenType.EQ: exp.EQ,
+            TokenType.FARROW: exp.Kwarg,
+        }
 
-        if self._match(TokenType.EQ, advance=False) and TokenType.EQ in allowed_ops:
-            self._advance()
-            return self.expression(exp.EQ(this=name_expr, expression=rhsp()))
+        # Filter to the allowed operators for this context
+        candidates = tuple(t for t in op_to_expr.keys() if t in allowed_ops)
+        if not candidates:
+            return None
 
-        if self._match(TokenType.FARROW, advance=False) and TokenType.FARROW in allowed_ops:
-            self._advance()
-            return self.expression(exp.Kwarg(this=name_expr, expression=rhsp()))
+        # If the next token is not one of the allowed operators, do not consume
+        if not self._match_set(candidates, advance=False):
+            return None
 
-        return None
+        # Consume the operator and build the corresponding expression
+        op = self._curr.token_type
+        self._advance()
+        klass = op_to_expr[op]
+        return self.expression(klass(this=name_expr, expression=rhsp()))
 
     def _parse_statement_body(
         self,
@@ -613,282 +624,73 @@ class Parser(PostgresParser):
         if not self._match(TokenType.IN):
             self.raise_error("Expected IN after FOR target")
 
-        # Classify header up to LOOP and detect range separator / BY
-        loop_index, sep_kind, sep_index, by_index = self._classify_for_header()
+        reverse = self._match(TokenType.REVERSE)
 
-        if loop_index is None:
-            self.raise_error("Expected LOOP after FOR ... IN header")
-
-        # Range form if a top-level separator was found
-        if sep_kind is not None and sep_index is not None:
-            return self._parse_pgforrange_tail(
-                target,
-                loop_index=loop_index,
-                sep_kind=sep_kind,
-                sep_index=sep_index,
-                by_index=by_index,
+        # Try range form: <start> .. <end> [BY <step>] LOOP
+        start_index = self._index
+        start_expr = self._parse_bitwise()
+        if start_expr is not None and self._match(TokenType.DDOT):
+            end_expr = self._parse_bitwise()
+            step_expr = self._parse_bitwise() if self._match(TokenType.BY) else None
+            if not self._match(TokenType.LOOP):
+                self.raise_error("Expected LOOP after FOR range header")
+            body = self._parse_loop_body()
+            return self.expression(
+                PGForIn(
+                    this=target,
+                    reverse=reverse or None,
+                    start=start_expr,
+                    end=end_expr,
+                    step=step_expr,
+                    expressions=body,
+                    label=self._parse_loop_label(),
+                )
             )
 
-        # Otherwise, fall back to query form
-        return self._parse_pgforin_tail(target, loop_index=loop_index)
+        if reverse:
+            self.raise_error("Expected '..' range after REVERSE in FOR header")
 
-    def _classify_for_header(self) -> tuple[int | None, str | None, int | None, int | None]:
-        """Scan forward to LOOP and detect a top-level range separator and optional BY.
+        # Not a range: rewind and parse the query/cursor form
+        self._retreat(start_index)
+        return self._parse_pgfor_query(target)
 
-        Returns (loop_index, sep_kind, sep_index, by_index) where:
-          - loop_index: index of the LOOP lexeme or None if not found before semicolon/EOS
-          - sep_kind: 'double' for '..' or 'numdot' for NUMBER-with-trailing-dot + '.'
-          - sep_index: index of the first DOT token to consume as part of the separator
-          - by_index: index of BY lexeme at top-level between separator and LOOP, if any
-        """
-        i = self._index
-        cap = len(self._tokens)
-        depth = 0
-        loop_index: int | None = None
-        sep_kind: str | None = None
-        sep_index: int | None = None
-        by_index: int | None = None
+    def _parse_pgfor_query(self, target: exp.Expression) -> PGForIn:
+        # If the header begins with EXECUTE, parse via _parse_pgexecute and
+        # explicitly reject INTO / INTO STRICT in this context, mirroring
+        # RETURN QUERY EXECUTE semantics.
+        if self._match(TokenType.EXECUTE, advance=False):
+            query = self._parse_pgexecute()
+            if query.args.get("expressions") or query.args.get("strict"):
+                self.raise_error("INTO is not allowed in FOR IN EXECUTE")
+        else:
+            start_index = self._index
+            query = None
 
-        while i < cap:
-            tok = self._tokens[i]
-            ttype = getattr(tok, "token_type", None)
-            text_upper = getattr(tok, "text", "").upper()
+            cursor = self._parse_id_var()
+            if cursor is not None:
+                args = None
+                if self._match(TokenType.L_PAREN, advance=False):
+                    args = self._parse_cursor_call_args(
+                        close_error="Expected ')' to close argument list in FOR IN cursor call"
+                    )
 
-            # Malformed header if semicolon encountered before LOOP
-            if ttype == TokenType.SEMICOLON:
-                break
-            if text_upper == "LOOP":
-                loop_index = i
-                break
+                # Cursor call only if the header ends here (next token is LOOP)
+                if self._match(TokenType.LOOP, advance=False):
+                    query = self.expression(PGCursorCall(this=cursor, expressions=args))
 
-            if ttype == TokenType.L_PAREN:
-                depth += 1
-            elif ttype == TokenType.R_PAREN:
-                depth = max(0, depth - 1)
+            if query is None:
+                self._retreat(start_index)
+                query = self._parse_statement()
 
-            if depth == 0 and sep_index is None:
-                # Detect double-dot '..'
-                if (
-                    ttype == TokenType.DOT
-                    and i + 1 < cap
-                    and getattr(self._tokens[i + 1], "token_type", None) == TokenType.DOT
-                ):
-                    sep_kind = "double"
-                    sep_index = i
-                else:
-                    # Detect NUMBER token whose text ends with '.' followed by a DOT
-                    if (
-                        ttype == TokenType.NUMBER
-                        and getattr(tok, "text", "").endswith(".")
-                        and i + 1 < cap
-                        and getattr(self._tokens[i + 1], "token_type", None) == TokenType.DOT
-                    ):
-                        sep_kind = "numdot"
-                        sep_index = i + 1  # first DOT to consume
-
-            if depth == 0 and sep_index is not None and by_index is None and text_upper == "BY":
-                by_index = i
-
-            i += 1
-
-        return loop_index, sep_kind, sep_index, by_index
-
-    def _find_foreach_loop_index(self) -> int | None:
-        """Return the index of the header-terminating LOOP lexeme, or None.
-
-        Tracks parenthesis depth so a `LOOP` appearing inside the array
-        expression's parentheses is not mistaken for the loop keyword. Stops at a
-        top-level semicolon (malformed header).
-        """
-        i = self._index
-        cap = len(self._tokens)
-        depth = 0
-
-        while i < cap:
-            tok = self._tokens[i]
-            ttype = tok.token_type
-            text_upper = tok.text.upper()
-
-            if ttype == TokenType.SEMICOLON:
-                break
-            if depth == 0 and text_upper == "LOOP":
-                return i
-            if ttype == TokenType.L_PAREN:
-                depth += 1
-            elif ttype == TokenType.R_PAREN:
-                depth = max(0, depth - 1)
-            i += 1
-
-        return None
-
-    def _parse_pgforin_tail(self, target: exp.Expression, *, loop_index: int) -> PGForIn:
-        """Parse the query form tail of a FOR loop, starting after IN.
-
-        The caller must provide the index of the LOOP lexeme to bound the header.
-        """
-        saved_size = self._tokens_size
-        try:
-            # Temporarily bound the token window to exclude LOOP
-            self._tokens_size = loop_index
-            # If the header begins with EXECUTE, parse via _parse_pgexecute and
-            # explicitly reject INTO / INTO STRICT in this context, mirroring
-            # RETURN QUERY EXECUTE semantics.
-            if self._match(TokenType.EXECUTE, advance=False):
-                query = self._parse_pgexecute()
-                if query.args.get("expressions") or query.args.get("strict"):
-                    self.raise_error("INTO is not allowed in FOR IN EXECUTE")
-            else:
-                start_index = self._index
-                query = None
-
-                cursor = self._parse_id_var()
-                if cursor is not None:
-                    args = None
-                    if self._match(TokenType.L_PAREN, advance=False):
-                        args = self._parse_cursor_call_args(
-                            close_error="Expected ')' to close argument list in FOR IN cursor call"
-                        )
-
-                    if self._index == loop_index:
-                        query = self.expression(PGCursorCall(this=cursor, expressions=args))
-
-                if query is None:
-                    self._retreat(start_index)
-                    query = self._parse_statement()
-            # Ensure we advance to the boundary if anything remains
-            if self._index < loop_index:
-                self._index = loop_index
-        finally:
-            # Restore full window and sync current token pointer
-            self._tokens_size = saved_size
-            if 0 <= self._index < len(self._tokens):
-                self._curr = self._tokens[self._index]
-
-        # Consume the LOOP keyword that begins the body
         if not self._match(TokenType.LOOP):
             self.raise_error("Expected LOOP after FOR ... IN <query>")
-
-        # Parse body statements until END (match existing loops' behavior)
-        body: list[exp.Expression] = self._parse_statement_body(
-            stop_tokens=(TokenType.END,),
-            strict=False,
-        )
-
-        # Consume END then require trailing LOOP
-        if not self._match(TokenType.END):
-            self.raise_error("Expected END to close FOR loop")
-        if not self._match(TokenType.LOOP):
-            self.raise_error("Expected LOOP after END in FOR loop")
-
-        # Optional label and semicolon
-        label = self._parse_id_var(any_token=True)
-        self._match(TokenType.SEMICOLON)
-
-        return self.expression(PGForIn(this=target, query=query, expressions=body or [], label=label))
-
-    def _parse_pgforrange_tail(
-        self,
-        target: exp.Expression,
-        *,
-        loop_index: int,
-        sep_kind: str,
-        sep_index: int,
-        by_index: int | None,
-    ) -> PGForIn:
-        """Parse the integer range form tail of a FOR loop, starting after IN."""
-
-        # Optional REVERSE
-        reverse_flag = self._match_texts("REVERSE")
-
-        # Parse start bounded up to the first DOT of the separator
-        saved_size = self._tokens_size
-        try:
-            self._tokens_size = sep_index
-            start_expr = self._parse_expression()
-            if self._index < sep_index:
-                self._index = sep_index
-        finally:
-            self._tokens_size = saved_size
-            if 0 <= self._index < len(self._tokens):
-                self._curr = self._tokens[self._index]
-
-        # Normalize trailing-dot numeric literal (e.g., '10.') to integer '10'
-        if isinstance(start_expr, exp.Literal) and start_expr.is_number:
-            text = start_expr.name if hasattr(start_expr, "name") else None
-            if isinstance(text, str) and text.endswith("."):
-                # Rebuild as a number literal without the trailing dot
-                start_expr = exp.Literal(this=text[:-1], is_string=False)
-
-        # Consume separator: either '.' or '..'
-        if sep_kind == "double":
-            if not self._match(TokenType.DOT):
-                self.raise_error("Expected '..' in FOR range header")
-            if not self._match(TokenType.DOT):
-                self.raise_error("Expected '..' in FOR range header")
-        else:  # 'numdot'
-            if not self._match(TokenType.DOT):
-                self.raise_error("Expected '..' in FOR range header")
-
-        # Determine bound for end expression (BY or LOOP)
-        end_bound = by_index if by_index is not None else loop_index
-
-        # Parse end bounded up to BY/LOOP
-        saved_size2 = self._tokens_size
-        try:
-            self._tokens_size = end_bound
-            end_expr = self._parse_expression()
-            if self._index < end_bound:
-                self._index = end_bound
-        finally:
-            self._tokens_size = saved_size2
-            if 0 <= self._index < len(self._tokens):
-                self._curr = self._tokens[self._index]
-
-        # Optional BY <step>
-        step_expr = None
-        if by_index is not None:
-            if not self._match_texts("BY"):
-                self.raise_error("Expected BY before step expression in FOR range header")
-            saved_size3 = self._tokens_size
-            try:
-                self._tokens_size = loop_index
-                step_expr = self._parse_expression()
-                if self._index < loop_index:
-                    self._index = loop_index
-            finally:
-                self._tokens_size = saved_size3
-                if 0 <= self._index < len(self._tokens):
-                    self._curr = self._tokens[self._index]
-
-        # Consume LOOP
-        if not self._match_texts("LOOP"):
-            self.raise_error("Expected LOOP after FOR range header")
-
-        # Parse body statements until END (lax mode to preserve behavior)
-        body: list[exp.Expression] = self._parse_statement_body(
-            stop_tokens=(TokenType.END,),
-            strict=False,
-        )
-
-        # Close END LOOP
-        if not self._match(TokenType.END):
-            self.raise_error("Expected END to close FOR loop")
-        if not self._match_texts("LOOP"):
-            self.raise_error("Expected LOOP after END in FOR loop")
-
-        # Optional label + optional semicolon
-        label = self._parse_id_var(any_token=True)
-        self._match(TokenType.SEMICOLON)
-
+        body = self._parse_loop_body()
         return self.expression(
             PGForIn(
                 this=target,
-                reverse=reverse_flag or None,
-                start=start_expr,
-                end=end_expr,
-                step=step_expr,
-                expressions=body or [],
-                label=label,
+                query=query,
+                expressions=body,
+                label=self._parse_loop_label(),
             )
         )
 
@@ -901,63 +703,43 @@ class Parser(PostgresParser):
 
         slice_expr = None
         if self._match_texts(("SLICE",)):
-            num = self._parse_number()
-            if num is None:
+            slice_expr = self._parse_number()
+            if slice_expr is None:
                 self.raise_error("Expected a number after SLICE")
-            slice_expr = num
 
         if not self._match(TokenType.IN):
             self.raise_error("Expected IN after FOREACH target")
         if not self._match(TokenType.ARRAY):
             self.raise_error("Expected ARRAY after IN in FOREACH")
 
-        # Locate the header-terminating LOOP so the array expression parsing
-        # does not swallow it as an alias.
-        loop_index = self._find_foreach_loop_index()
-        if loop_index is None:
-            self.raise_error("Expected LOOP after FOREACH ... IN ARRAY header")
-
-        # Parse the array expression bounded to stop before LOOP.
-        saved_size = self._tokens_size
-        try:
-            self._tokens_size = loop_index
-            array_expr = self._parse_expression()
-            if self._index < loop_index:
-                self._index = loop_index
-        finally:
-            self._tokens_size = saved_size
-            if 0 <= self._index < len(self._tokens):
-                self._curr = self._tokens[self._index]
-
-        # Consume the LOOP keyword that begins the body
+        # The array expression stops at the LOOP token naturally.
+        array_expr = self._parse_bitwise()
         if not self._match(TokenType.LOOP):
             self.raise_error("Expected LOOP after FOREACH ... IN ARRAY <expression>")
-
-        # Parse body statements until END
-        body = self._parse_statement_body(
-            stop_tokens=(TokenType.END,),
-            strict=False,
-        )
-
-        # Consume END then require trailing LOOP
-        if not self._match(TokenType.END):
-            self.raise_error("Expected END to close FOREACH loop")
-        if not self._match(TokenType.LOOP):
-            self.raise_error("Expected LOOP after END in FOREACH loop")
-
-        # Optional label and optional semicolon
-        label = self._parse_id_var(any_token=True)
-        self._match(TokenType.SEMICOLON)
-
+        body = self._parse_loop_body()
         return self.expression(
             PGForEach(
                 this=target,
                 slice=slice_expr,
                 expression=array_expr,
-                expressions=body or [],
-                label=label,
+                expressions=body,
+                label=self._parse_loop_label(),
             )
         )
+
+    def _parse_loop_body(self) -> list[exp.Expression]:
+        body = self._parse_statement_body(stop_tokens=(TokenType.END,), strict=False)
+        if not self._match(TokenType.END):
+            self.raise_error("Expected END to close loop")
+        if not self._match(TokenType.LOOP):
+            self.raise_error("Expected LOOP after END in loop")
+        return body or []
+
+    def _parse_loop_label(self) -> exp.Expression | None:
+        label = self._parse_id_var(any_token=True)
+        self._match(TokenType.SEMICOLON)
+        return label
+
     def _parse_pgassert(self) -> PGAssert:
         # Consume ASSERT keyword (dispatcher already matched this)
         self._advance()

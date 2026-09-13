@@ -1029,6 +1029,16 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
+    def test_for_range_spaced_separator(self) -> None:
+        sql = "BEGIN FOR i IN 1 .. 10 LOOP a := i; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), "BEGIN FOR i IN 1..10 LOOP a := i; END LOOP; END")
+
+    def test_for_range_negative_bounds(self) -> None:
+        sql = "BEGIN FOR i IN -5 .. -1 LOOP a := i; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), "BEGIN FOR i IN -5..-1 LOOP a := i; END LOOP; END")
+
     def test_for_range_nested_loop(self) -> None:
         sql = "BEGIN FOR i IN 1..3 LOOP LOOP CONTINUE; END LOOP; END LOOP; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)

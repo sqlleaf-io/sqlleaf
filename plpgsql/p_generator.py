@@ -8,7 +8,7 @@ from plpgsql.classes import *
 class Generator(PostgresGenerator):
     # Keep explicit TRANSFORMS to adhere to project guidance for this experimental dialect.
     TRANSFORMS = {
-        **getattr(PostgresGenerator, "TRANSFORMS", {}),
+        **PostgresGenerator.TRANSFORMS,
         PGBlock: lambda self, e: self.pgblock_sql(e),
         # PGDeclare: lambda self, e: self.pgdeclare_sql(e),
         exp.Declare: lambda self, e: self.pgdeclare_sql(e),
@@ -63,7 +63,7 @@ class Generator(PostgresGenerator):
 
         # DECLARE section first if present
         declare = expression.args.get("declare")
-        if declare and getattr(declare, "expressions", None):
+        if declare and declare.expressions:
             sql += self.sql(declare) + self.sep()
 
         # BEGIN ... statements ... [EXCEPTION ...] END
@@ -206,7 +206,7 @@ class Generator(PostgresGenerator):
 
     # Auto-discovered generator for PGSqlState
     def pgsqlstate_sql(self, expression: exp.Expression) -> str:
-        value = getattr(expression, "this", None)
+        value = expression.this
         if value is not None:
             return "SQLSTATE" + self.seg(self.sql(value))
         return "SQLSTATE"
@@ -222,14 +222,14 @@ class Generator(PostgresGenerator):
             e = expression.args.get("this")
             return f"RETURN NEXT {self.sql(e)}"
 
-        value = getattr(expression, "this", None)
+        value = expression.this
         if value is not None:
             return f"RETURN {self.sql(value)}"
         return "RETURN"
 
     # Shared Return node renderer (for interoperability)
     def return_sql(self, expression: exp.Return) -> str:
-        value = getattr(expression, "this", None)
+        value = expression.this
         if value is not None:
             return f"RETURN {self.sql(value)}"
         return "RETURN"
@@ -372,7 +372,7 @@ class Generator(PostgresGenerator):
 
         # Bound form: OPEN c or OPEN c(<args>)
         name_sql = self.sql(expression.this)
-        if getattr(expression, "expressions", None):
+        if expression.expressions:
             args_sql = ", ".join(self.sql(arg) for arg in expression.expressions)
             name_sql = f"{name_sql}({args_sql})"
         return f"OPEN {name_sql}"
