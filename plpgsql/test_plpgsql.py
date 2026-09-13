@@ -6,12 +6,12 @@ from plpgsql.classes import *
 
 
 class TestPlPgSQL(unittest.TestCase):
-    def test_perform_from_where_roundtrip(self) -> None:
+    def test_perform_from_where(self) -> None:
         sql = "PERFORM 1 FROM my_table WHERE a = 1;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
-    def test_perform_function_call_roundtrip(self) -> None:
+    def test_perform_function_call(self) -> None:
         sql = "PERFORM CREATE_MV('cs_session_page_requests_mv', my_query);"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
@@ -25,7 +25,7 @@ class TestPlPgSQL(unittest.TestCase):
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one("PERFORM;", dialect=plpgsql)
 
-    def test_begin_end_roundtrip(self) -> None:
+    def test_begin_end(self) -> None:
         sql = "BEGIN END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
@@ -50,7 +50,7 @@ class TestPlPgSQL(unittest.TestCase):
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one(sql, dialect=plpgsql)
 
-    def test_update_where_current_of_roundtrip(self) -> None:
+    def test_update_where_current_of(self) -> None:
         sql = "UPDATE foo SET dataval = myval WHERE CURRENT OF curs1;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
 
@@ -59,7 +59,7 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertIsInstance(expr.args["current_of"], exp.Identifier)
         self.assertEqual(expr.args["current_of"].name, "curs1")
 
-    def test_delete_where_current_of_roundtrip(self) -> None:
+    def test_delete_where_current_of(self) -> None:
         sql = "DELETE FROM foo WHERE CURRENT OF curs1;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
 
@@ -76,7 +76,7 @@ class TestPlPgSQL(unittest.TestCase):
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one("DELETE FROM foo WHERE CURRENT OF;", dialect=plpgsql)
 
-    def test_update_where_current_of_quoted_cursor_roundtrip(self) -> None:
+    def test_update_where_current_of_quoted_cursor(self) -> None:
         sql = 'UPDATE foo SET dataval = myval WHERE CURRENT OF "Curs1";'
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
 
@@ -84,17 +84,17 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertTrue(expr.args["current_of"].quoted)
         self.assertEqual(expr.args["current_of"].name, "Curs1")
 
-    def test_update_where_current_of_inside_block_roundtrip(self) -> None:
+    def test_update_where_current_of_inside_block(self) -> None:
         sql = "BEGIN UPDATE foo SET dataval = myval WHERE CURRENT OF curs1; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
-    def test_update_without_current_of_still_roundtrips(self) -> None:
+    def test_update_without_current_of_stills(self) -> None:
         sql = "UPDATE foo SET dataval = myval WHERE id = 1;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
-    def test_delete_without_current_of_still_roundtrips(self) -> None:
+    def test_delete_without_current_of_stills(self) -> None:
         sql = "DELETE FROM foo WHERE id = 1;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
@@ -139,7 +139,6 @@ class TestPlPgSQL(unittest.TestCase):
     # TODO:
     #  - myrow tablename%ROWTYPE;
     #  - myfield tablename.columnname%TYPE;
-    #  - cursors
 
     def test_plpgsql_declare_default(self) -> None:
         sql = """
@@ -425,7 +424,6 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
-    # TODO: don't rewrite := to =
     def test_raise_using_equals_normalized(self) -> None:
         sql = "BEGIN RAISE USING MESSAGE = 'x', HINT = 'y'; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
@@ -944,7 +942,7 @@ class TestPlPgSQL(unittest.TestCase):
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one(sql, dialect=plpgsql)
 
-    def test_case_statement_roundtrip(self) -> None:
+    def test_case_statement(self) -> None:
         sql = (
             "BEGIN CASE "
             "WHEN x BETWEEN 0 AND 10 THEN msg := 'value is between zero and ten'; "
@@ -954,7 +952,7 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
-    def test_case_statement_with_else_roundtrip(self) -> None:
+    def test_case_statement_with_else(self) -> None:
         sql = "BEGIN CASE WHEN x > 0 THEN msg := 'positive'; ELSE msg := 'non-positive'; END CASE; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
@@ -1042,8 +1040,8 @@ class TestPlPgSQL(unittest.TestCase):
 
     def test_for_in_query_empty_body_fails(self) -> None:
         sql = "BEGIN FOR r IN SELECT 1 LOOP END LOOP; END;"
-        with self.assertRaises(sqlglot.errors.ParseError):
-            sqlglot.parse_one(sql, dialect=plpgsql)
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_for_in_query_multiple_statements(self) -> None:
         sql = "BEGIN FOR r IN SELECT id FROM t LOOP a := 1; b := 2; END LOOP; END;"
@@ -1509,3 +1507,169 @@ class TestPlPgSQL(unittest.TestCase):
         not_nodes = [n for n in expr.walk() if isinstance(n, exp.Not)]
         self.assertTrue(not_nodes)
         self.assertIsInstance(not_nodes[0].this, PGFound)
+
+    def test_select_into_single_variable(self) -> None:
+        sql = "SELECT COUNT(*) INTO v_cnt FROM t;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_select_into_strict_no_row(self) -> None:
+        sql = "SELECT 1 INTO STRICT v FROM t WHERE FALSE;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_select_into_multiple_targets(self) -> None:
+        sql = "SELECT a, b INTO x, y FROM t LIMIT 1;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_insert_returning_into_variable(self) -> None:
+        sql = "INSERT INTO t(a) VALUES (1) RETURNING a INTO v;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_update_returning_into_record(self) -> None:
+        sql = "UPDATE t SET a = 2 WHERE id = 1 RETURNING * INTO r;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_delete_returning_into_strict(self) -> None:
+        sql = "DELETE FROM t WHERE id = 0 RETURNING id INTO STRICT v;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_perform_with_cte(self) -> None:
+        sql = "PERFORM (WITH x AS (SELECT 1 AS a) SELECT a FROM x);"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_perform_with_order_by_limit(self) -> None:
+        sql = "PERFORM id FROM t ORDER BY id DESC LIMIT 1;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_return_query_with_cte(self) -> None:
+        sql = "BEGIN RETURN QUERY WITH x AS (SELECT 1 AS a) SELECT a FROM x; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_return_query_with_values(self) -> None:
+        sql = "BEGIN RETURN QUERY VALUES (1, 'a'), (2, 'b'); END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_return_query_with_union(self) -> None:
+        sql = "BEGIN RETURN QUERY (SELECT 1 UNION ALL SELECT 2); END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_return_next_composite_row(self) -> None:
+        sql = "BEGIN RETURN NEXT ROW(1, 'a', CURRENT_TIMESTAMP); END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    # def test_loop_labeled_end(self) -> None:
+    #     sql = "<<outer>> LOOP EXIT; END LOOP outer;"
+    #     expr = sqlglot.parse_one(sql, dialect=plpgsql)
+    #     self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    # def test_exit_from_nested_loop_using_label(self) -> None:
+    #     sql = "<<outer>> LOOP LOOP EXIT outer; END LOOP; END LOOP;"
+    #     expr = sqlglot.parse_one(sql, dialect=plpgsql)
+    #     self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    # def test_continue_with_label_and_when(self) -> None:
+    #     sql = "<<l>> LOOP CONTINUE l WHEN i % 2 = 0; END LOOP;"
+    #     expr = sqlglot.parse_one(sql, dialect=plpgsql)
+    #     self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    # def test_while_with_label_and_exit_when(self) -> None:
+    #     sql = "<<w>> WHILE i < 10 LOOP EXIT w WHEN i = 5; END LOOP;"
+    #     expr = sqlglot.parse_one(sql, dialect=plpgsql)
+    #     self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_in_query_with_order_by_limit(self) -> None:
+        sql = "FOR r IN SELECT * FROM t ORDER BY 1 LIMIT 5 LOOP END LOOP;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_for_range_with_expressions_and_by_expression(self) -> None:
+        sql = "FOR i IN 1+1..n BY x LOOP END LOOP;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        # Allow generator to normalize spacing
+        self.assertEqual(expr.sql(dialect=plpgsql), "FOR i IN 1 + 1..n BY x LOOP END LOOP")
+
+    def test_foreach_slice_gt_one_over_array(self) -> None:
+        sql = "FOREACH x SLICE 2 IN ARRAY arr LOOP END LOOP;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_fetch_prior_from_cursor(self) -> None:
+        sql = "FETCH PRIOR FROM c INTO v;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_fetch_first_from_cursor(self) -> None:
+        sql = "FETCH FIRST FROM c INTO v;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_open_cursor_for_select_with_order_by(self) -> None:
+        sql = "OPEN c FOR SELECT * FROM t ORDER BY 1;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_get_stacked_diagnostics_multiple_items(self) -> None:
+        sql = "GET STACKED DIAGNOSTICS a = ROW_COUNT, b = PG_EXCEPTION_DETAIL;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_get_diagnostics_detail_and_hint(self) -> None:
+        sql = "GET DIAGNOSTICS d = PG_EXCEPTION_DETAIL, h = PG_EXCEPTION_HINT;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_raise_using_errcode_option(self) -> None:
+        sql = "BEGIN RAISE EXCEPTION USING ERRCODE = '22012', MESSAGE = 'bad'; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_raise_using_table_and_column_options(self) -> None:
+        sql = "BEGIN RAISE EXCEPTION USING TABLE = 't', COLUMN = 'c'; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_raise_condition_with_multiple_using_options(self) -> None:
+        sql = "BEGIN RAISE unique_violation USING HINT = 'fix', DETAIL = 'dup'; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    # def test_declare_variable_with_percent_type(self) -> None:
+    #     sql = "DECLARE v t.c%TYPE; BEGIN SELECT 1; END;"
+    #     expr = sqlglot.parse_one(sql, dialect=plpgsql)
+    #     self.assertEqual(expr.sql(dialect=plpgsql), "DECLARE v t.c%TYPE; BEGIN SELECT 1; END")
+
+    # def test_declare_record_with_rowtype(self) -> None:
+    #     sql = "DECLARE r t%ROWTYPE; BEGIN SELECT 1; END;"
+    #     expr = sqlglot.parse_one(sql, dialect=plpgsql)
+    #     self.assertEqual(expr.sql(dialect=plpgsql), "DECLARE r t%ROWTYPE; BEGIN SELECT 1; END")
+
+    def test_declare_array_type_with_default(self) -> None:
+        sql = "DECLARE a TEXT[] := ARRAY['x', 'y']; BEGIN SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_return_query_execute_with_format_and_using(self) -> None:
+        sql = "BEGIN RETURN QUERY EXECUTE FORMAT('SELECT %s', col) USING 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_execute_into_multiple_targets(self) -> None:
+        sql = "BEGIN EXECUTE 'SELECT 1, 2' INTO x, y; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_execute_with_using_and_order_by_in_command(self) -> None:
+        sql = "BEGIN EXECUTE 'SELECT * FROM t ORDER BY 1' USING 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])

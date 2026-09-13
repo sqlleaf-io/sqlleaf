@@ -623,6 +623,7 @@ class Parser(PostgresParser):
             parser = self.STATEMENT_PARSERS.get(self._curr.token_type)
             if parser:
                 return parser(self)
+        # self._advance()
         return super()._parse_statement()
 
     def _extract_trailing_where_current_of(self) -> tuple[int, exp.Identifier] | None:

@@ -76,7 +76,7 @@ class PGForIn(exp.Expression):
         "start": False,
         "end": False,
         "step": False,
-        "expressions": True,
+        "expressions": False,
         "label": False,
     }
 
@@ -95,7 +95,7 @@ class PGForEach(exp.Expression):
         "this": True,
         "slice": False,
         "expression": True,
-        "expressions": True,
+        "expressions": False,
         "label": False,
     }
 
