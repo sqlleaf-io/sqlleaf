@@ -407,9 +407,13 @@ class Parser(PostgresParser):
     def _parse_pgcase(self) -> PGCase:
         self._advance()
 
+        search_expr: exp.Expression | None = None
+        if not self._match(TokenType.WHEN, advance=False):
+            search_expr = self._parse_expression()
+
         branches: list[exp.Expression] = []
         while self._match(TokenType.WHEN, advance=False):
-            branches.append(self._parse_pgcasewhen())
+            branches.append(self._parse_pgcasewhen(search_expr))
 
         if not branches:
             self.raise_error("CASE requires at least one WHEN branch")
@@ -426,12 +430,24 @@ class Parser(PostgresParser):
         self._match_expect(TokenType.END)
         self._match_expect(TokenType.CASE)
 
-        return self.expression(PGCase(ifs=branches, default=default))
+        return self.expression(PGCase(this=search_expr, ifs=branches, default=default))
 
-    def _parse_pgcasewhen(self) -> PGWhen:
+    def _parse_pgcasewhen(self, search_expr: exp.Expression | None) -> PGWhen:
         self._match_expect(TokenType.WHEN)
-        condition = self._parse_expression()
-        self._match_expect(TokenType.THEN)
+
+        if search_expr is None:
+            condition = self._parse_expression()
+            self._match_expect(TokenType.THEN)
+        else:
+            if self._match(TokenType.THEN, advance=False):
+                self.raise_error("CASE search WHEN requires at least one expression before THEN")
+
+            comparisons = [exp.EQ(this=search_expr.copy(), expression=self._parse_expression())]
+            while self._match(TokenType.COMMA):
+                comparisons.append(exp.EQ(this=search_expr.copy(), expression=self._parse_expression()))
+
+            self._match_expect(TokenType.THEN)
+            condition = comparisons[0] if len(comparisons) == 1 else exp.or_(*comparisons)
 
         then_body = self._parse_statement_body(
             stop_tokens=(TokenType.ELSE, TokenType.END),

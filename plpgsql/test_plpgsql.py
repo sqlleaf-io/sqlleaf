@@ -928,6 +928,40 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
+    def test_case_statement_search_expression_simple(self) -> None:
+        sql = "BEGIN CASE x WHEN 1, 2 THEN msg := 'one or two'; ELSE msg := 'other'; END CASE; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        expected = "BEGIN CASE WHEN x = 1 OR x = 2 THEN msg := 'one or two'; ELSE msg := 'other'; END CASE; END"
+        self.assertEqual(expr.sql(dialect=plpgsql), expected)
+
+    def test_case_statement_search_expression_multiple_when_branches(self) -> None:
+        sql = (
+            "BEGIN CASE x "
+            "WHEN 1, 2 THEN msg := 'small'; "
+            "WHEN 3, 4, 5 THEN msg := 'bigger'; "
+            "ELSE msg := 'other'; END CASE; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        expected = (
+            "BEGIN CASE "
+            "WHEN x = 1 OR x = 2 THEN msg := 'small'; "
+            "WHEN x = 3 OR x = 4 OR x = 5 THEN msg := 'bigger'; "
+            "ELSE msg := 'other'; END CASE; END"
+        )
+        self.assertEqual(expr.sql(dialect=plpgsql), expected)
+
+    def test_case_statement_search_expression_without_else(self) -> None:
+        sql = "BEGIN CASE x WHEN 1 THEN msg := 'one'; WHEN 2, 3 THEN msg := 'two or three'; END CASE; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        expected = "BEGIN CASE WHEN x = 1 THEN msg := 'one'; WHEN x = 2 OR x = 3 THEN msg := 'two or three'; END CASE; END"
+        self.assertEqual(expr.sql(dialect=plpgsql), expected)
+
+    def test_case_statement_search_expression_nested_statements(self) -> None:
+        sql = "BEGIN CASE x WHEN 1, 2 THEN RAISE NOTICE 'hit'; msg := x; ELSE msg := 0; END CASE; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        expected = "BEGIN CASE WHEN x = 1 OR x = 2 THEN RAISE NOTICE 'hit'; msg := x; ELSE msg := 0; END CASE; END"
+        self.assertEqual(expr.sql(dialect=plpgsql), expected)
+
     def test_case_statement_missing_then_raises(self) -> None:
         sql = "BEGIN CASE WHEN x > 0 msg := 'positive'; END CASE; END;"
         with self.assertRaisesRegex(sqlglot.errors.ParseError, r"Expected token: THEN"):

@@ -52,7 +52,6 @@ class PGWhen(exp.Expression):
 
 class PGCase(exp.CaseStatement):
     """A CASE statement."""
-    arg_types = {"ifs": True, "default": False}
 
 
 class PGIfBranch(exp.Expression):
