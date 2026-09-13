@@ -15,6 +15,7 @@ class Generator(PostgresGenerator):
         PGDeclareItem: lambda self, e: self.pgdeclareitem_sql(e),
         PGException: lambda self, e: self.pgexception_sql(e),
         PGWhen: lambda self, e: self.pgwhen_sql(e),
+        PGCase: lambda self, e: self.pgcase_sql(e),
         PGIf: lambda self, e: self.pgif_sql(e),
         PGIfBranch: lambda self, e: self.pgifbranch_sql(e),
         PGLoop: lambda self, e: self.pgloop_sql(e),
@@ -193,6 +194,20 @@ class Generator(PostgresGenerator):
             sql_parts.append("ELSE" + (self.seg(else_body) if else_body else ""))
 
         sql_parts.append("END IF")
+        return self.sep().join(sql_parts) if self.pretty else " ".join(sql_parts)
+
+    def pgcase_sql(self, expression: PGCase) -> str:
+        branches = expression.args.get("ifs") or []
+        sql_parts = ["CASE", *[self.sql(branch) for branch in branches]]
+
+        default = expression.args.get("default")
+        if default is not None:
+            else_body = self.expressions(sqls=[self.sql(stmt) for stmt in default], sep=f";{self.sep()}")
+            if else_body:
+                else_body += ";"
+            sql_parts.append("ELSE" + (self.seg(else_body) if else_body else ""))
+
+        sql_parts.append("END CASE")
         return self.sep().join(sql_parts) if self.pretty else " ".join(sql_parts)
 
     def _pgifbranch_sql(self, branch: PGIfBranch, keyword: str) -> str:

@@ -895,6 +895,59 @@ class TestPlPgSQL(unittest.TestCase):
         with self.assertRaises(sqlglot.errors.ParseError):
             sqlglot.parse_one(sql, dialect=plpgsql)
 
+    def test_case_statement_roundtrip(self) -> None:
+        sql = (
+            "BEGIN CASE "
+            "WHEN x BETWEEN 0 AND 10 THEN msg := 'value is between zero and ten'; "
+            "WHEN x BETWEEN 11 AND 20 THEN msg := 'value is between eleven and twenty'; "
+            "END CASE; END;"
+        )
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_case_statement_with_else_roundtrip(self) -> None:
+        sql = "BEGIN CASE WHEN x > 0 THEN msg := 'positive'; ELSE msg := 'non-positive'; END CASE; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_case_statement_ast_shape(self) -> None:
+        sql = "BEGIN CASE WHEN x > 0 THEN msg := 'positive'; WHEN x <= 0 THEN msg := 'non-positive'; END CASE; END;"
+        block = sqlglot.parse_one(sql, dialect=plpgsql)
+        pg_case = block.find(PGCase)
+        self.assertIsNotNone(pg_case)
+        assert pg_case is not None
+        branches = pg_case.args["ifs"]
+        self.assertEqual(len(branches), 2)
+        self.assertIsInstance(branches[0], PGWhen)
+        self.assertIsInstance(branches[1], PGWhen)
+        self.assertIsInstance(branches[0].args["then"][0], sqlglot.exp.PropertyEQ)
+        self.assertIsInstance(branches[1].args["then"][0], sqlglot.exp.PropertyEQ)
+
+    def test_case_statement_nested_plpgsql_statements(self) -> None:
+        sql = "BEGIN CASE WHEN x > 0 THEN RAISE NOTICE 'positive'; msg := x; ELSE PERFORM HELLO(); END CASE; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_case_statement_missing_then_raises(self) -> None:
+        sql = "BEGIN CASE WHEN x > 0 msg := 'positive'; END CASE; END;"
+        with self.assertRaisesRegex(sqlglot.errors.ParseError, r"Expected token: THEN"):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_case_statement_missing_end_case_raises(self) -> None:
+        sql = "BEGIN CASE WHEN x > 0 THEN msg := 'positive'; END; END;"
+        with self.assertRaisesRegex(sqlglot.errors.ParseError, r"Expected token: CASE"):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_case_statement_without_when_raises(self) -> None:
+        sql = "BEGIN CASE ELSE msg := 'fallback'; END CASE; END;"
+        with self.assertRaisesRegex(sqlglot.errors.ParseError, r"CASE requires at least one WHEN branch"):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
+    def test_case_statement_empty_when_body_raises(self) -> None:
+        sql = "BEGIN CASE WHEN x > 0 THEN ELSE msg := 'fallback'; END CASE; END;"
+        with self.assertRaisesRegex(sqlglot.errors.ParseError, r"CASE WHEN body requires at least one statement"):
+            sqlglot.parse_one(sql, dialect=plpgsql)
+
     # FOR ... IN <query> LOOP tests
     def test_for_in_query_simple(self) -> None:
         sql = (

@@ -50,6 +50,11 @@ class PGWhen(exp.Expression):
     arg_types = {"condition": True, "then": True}
 
 
+class PGCase(exp.CaseStatement):
+    """A CASE statement."""
+    arg_types = {"ifs": True, "default": False}
+
+
 class PGIfBranch(exp.Expression):
     """An IF/ELSIF branch."""
     arg_types = {"condition": True, "then": True}

@@ -43,6 +43,7 @@ class Parser(PostgresParser):
         **PostgresParser.STATEMENT_PARSERS,
         TokenType.BEGIN: lambda self: self._parse_plpgsql_block(),
         TokenType.DECLARE: lambda self: self._parse_plpgsql_block(),
+        TokenType.CASE: lambda self: self._parse_pgcase(),
         TokenType.RETURN: lambda self: self._parse_pgreturn(),
         TokenType.WHILE: lambda self: self._parse_pgwhile(),
         TokenType.IF: lambda self: self._parse_pgif(),
@@ -249,19 +250,12 @@ class Parser(PostgresParser):
 
         exception = None
 
-        # Parse statements (including assignments) until EXCEPTION or END
-        def _parse_block_unit() -> exp.Expression | None:
-            assignment = self._parse_pg_assignment()
-            if assignment is not None:
-                return assignment
-            return self._parse_statement()
-
         expressions = self._parse_statement_body(
             stop_texts=("EXCEPTION",),
             stop_tokens=(TokenType.END,),
             error_msg="Invalid expression / Unexpected token",
             strict=True,
-            parse_one=_parse_block_unit,
+            parse_one=self._parse_block_unit,
         )
 
         # If EXCEPTION section follows, parse it now (helper didn't consume it)
@@ -410,6 +404,48 @@ class Parser(PostgresParser):
 
         return self.expression(PGIf(ifs=branches, default=default))
 
+    def _parse_pgcase(self) -> PGCase:
+        self._advance()
+
+        branches: list[exp.Expression] = []
+        while self._match(TokenType.WHEN, advance=False):
+            branches.append(self._parse_pgcasewhen())
+
+        if not branches:
+            self.raise_error("CASE requires at least one WHEN branch")
+
+        default: list[exp.Expression] | None = None
+        if self._match(TokenType.ELSE):
+            default = self._parse_statement_body(
+                stop_tokens=(TokenType.END,),
+                error_msg="Invalid expression in CASE ELSE body / Unexpected token",
+                strict=True,
+                parse_one=self._parse_block_unit,
+            )
+
+        self._match_expect(TokenType.END)
+        self._match_expect(TokenType.CASE)
+
+        return self.expression(PGCase(ifs=branches, default=default))
+
+    def _parse_pgcasewhen(self) -> PGWhen:
+        self._match_expect(TokenType.WHEN)
+        condition = self._parse_expression()
+        self._match_expect(TokenType.THEN)
+
+        then_body = self._parse_statement_body(
+            stop_tokens=(TokenType.ELSE, TokenType.END),
+            stop_texts=("WHEN",),
+            error_msg="Invalid expression in CASE WHEN body / Unexpected token",
+            strict=True,
+            parse_one=self._parse_block_unit,
+        )
+
+        if not then_body:
+            self.raise_error("CASE WHEN body requires at least one statement")
+
+        return self.expression(PGWhen(condition=condition, then=then_body))
+
     def _parse_pgif_branch(self) -> PGIfBranch:
         # Parse <condition> THEN <statements>
         condition = self._parse_expression()
@@ -422,20 +458,19 @@ class Parser(PostgresParser):
         return self.expression(PGIfBranch(condition=condition, then=then_body))
 
     def _parse_pgif_body(self) -> list[exp.Expression]:
-        # Reuse assignment-aware unit parser from block bodies
-        def _unit() -> exp.Expression | None:
-            assignment = self._parse_pg_assignment()
-            if assignment is not None:
-                return assignment
-            return self._parse_statement()
-
         return self._parse_statement_body(
             stop_texts=("ELSIF", "ELSEIF"),
             stop_tokens=(TokenType.ELSE, TokenType.END),
             error_msg="Invalid expression in IF body / Unexpected token",
             strict=True,
-            parse_one=_unit,
+            parse_one=self._parse_block_unit,
         )
+
+    def _parse_block_unit(self) -> exp.Expression | None:
+        assignment = self._parse_pg_assignment()
+        if assignment is not None:
+            return assignment
+        return self._parse_statement()
 
     def _parse_pldeclare(self) -> exp.Declare:
         items: list[exp.Expression] = self._parse_statement_body(
