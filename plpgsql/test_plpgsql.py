@@ -1537,13 +1537,38 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
+    def test_update_returning_into_strict_multiple(self) -> None:
+        sql = "UPDATE users SET username = 1 RETURNING id, name, age INTO STRICT a, b, c;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+        self.assertIsNotNone(expr.args.get("returning"))
+        into = expr.args["returning"].args["into"]
+        self.assertTrue(into.args.get("strict") is True)
+        self.assertEqual(len(into.args.get("expressions") or []), 3)
+
+    def test_update_returning_into_multiple_targets(self) -> None:
+        sql = "UPDATE users SET username = 1 RETURNING id, name, age INTO a, b, c;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_update_returning_into_strict_single(self) -> None:
+        sql = "UPDATE users SET username = 1 RETURNING id INTO STRICT a;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
     def test_delete_returning_into_strict(self) -> None:
         sql = "DELETE FROM t WHERE id = 0 RETURNING id INTO STRICT v;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
+    def test_delete_returning_into_multiple(self) -> None:
+        sql = "DELETE FROM t WHERE id = 0 RETURNING id, name, age INTO STRICT a, b, c;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
     def test_insert_returning_into_strict_multiple(self) -> None:
-        sql = "INSERT INTO users (username) VALUES (p_username) RETURNING id INTO STRICT a, b, c;"
+        sql = "INSERT INTO users (username) VALUES (p_username) RETURNING id, name, age INTO STRICT a, b, c;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
         into = expr.args["returning"].args["into"]
