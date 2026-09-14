@@ -81,9 +81,6 @@ class Parser(PostgresParser):
             self.raise_error(f"Expected token: {text.upper()}")
 
     def _parse_pggetdiagnostics(self) -> PGGetDiagnostics:
-        # 1. Consume GET (dispatcher already matched this)
-        self._advance()
-
         current = False
         stacked = False
         if self._match_texts(("CURRENT",)):
@@ -239,13 +236,12 @@ class Parser(PostgresParser):
         return out
 
     def _parse_plpgsql_block(self) -> PGBlock:
-        # Explicitly consume entry keyword (BEGIN or DECLARE)
         declare = None
-        if self._match(TokenType.BEGIN):
-            # Simple BEGIN ... END block
+
+        entry = self._prev.token_type if self._prev else None
+        if entry == TokenType.BEGIN:
             pass
-        elif self._match(TokenType.DECLARE):
-            # DECLARE section, then mandatory BEGIN
+        elif entry == TokenType.DECLARE:
             declare = self._parse_pldeclare()
             self._match_expect(TokenType.BEGIN)
         else:
@@ -386,9 +382,6 @@ class Parser(PostgresParser):
         return self._parse_id_var()
 
     def _parse_pgif(self) -> PGIf:
-        # Consume IF keyword (dispatcher already matched this)
-        self._advance()
-
         # First branch starts immediately after IF
         branches: list[exp.Expression] = [self._parse_pgif_branch()]
 
@@ -408,8 +401,6 @@ class Parser(PostgresParser):
         return self.expression(PGIf(ifs=branches, default=default))
 
     def _parse_pgcase(self) -> PGCase:
-        self._advance()
-
         search_expr: exp.Expression | None = None
         if not self._match(TokenType.WHEN, advance=False):
             search_expr = self._parse_expression()
@@ -620,20 +611,9 @@ class Parser(PostgresParser):
         return self.expression(PGCursorArg(this=name, kind=arg_type))
 
     def _parse_statement(self) -> exp.Expr | None:
-        if self._curr:
-            parser = self.STATEMENT_PARSERS.get(self._curr.token_type)
-            if parser:
-                return parser(self)
-        # self._advance()
         return super()._parse_statement()
 
     def _parse_pginsert(self) -> exp.Expression:
-        """Consume INSERT and delegate to the base _parse_insert.
-
-        Our class overrides _parse_returning, so any RETURNING clause will be
-        parsed with PL/pgSQL semantics (supporting INTO [STRICT] targets).
-        """
-        self._advance()
         return super()._parse_insert()
 
     def _parse_returning(self) -> exp.Returning | None:
@@ -719,7 +699,6 @@ class Parser(PostgresParser):
         return where_index, cursor
 
     def _parse_pg_dml_with_current_of(self, parse: t.Callable[[], exp.Expression]) -> tuple[exp.Expression, exp.Identifier | None]:
-        self._advance()
         current_of_info = self._extract_trailing_where_current_of()
         original_tokens_size = self._tokens_size
 
@@ -743,9 +722,6 @@ class Parser(PostgresParser):
         return self.expression(PGDelete(**delete.args, current_of=current_of))
 
     def _parse_pgwhile(self) -> exp.WhileBlock:
-        # Consume WHILE keyword (dispatcher already matched this)
-        self._advance()
-
         # Parse condition expression
         cond = self._parse_expression()
 
@@ -778,8 +754,6 @@ class Parser(PostgresParser):
         return self.expression(exp.WhileBlock(this=cond, body=body, label=label))
 
     def _parse_pgperform(self) -> PGPerform:
-        self._advance()
-
         if self._match(TokenType.SENTINEL, advance=False):
             self.raise_error("Expected query body after PERFORM")
 
@@ -800,9 +774,6 @@ class Parser(PostgresParser):
         return self.expression(PGPerform(**query.args))
 
     def _parse_pgfor(self) -> PGForIn:
-        # Consume FOR keyword (dispatcher already matched this)
-        self._advance()
-
         # Parse loop target identifier/variable
         target = self._parse_id_var()
 
@@ -842,7 +813,7 @@ class Parser(PostgresParser):
         # If the header begins with EXECUTE, parse via _parse_pgexecute and
         # explicitly reject INTO / INTO STRICT in this context, mirroring
         # RETURN QUERY EXECUTE semantics.
-        if self._match(TokenType.EXECUTE, advance=False):
+        if self._match(TokenType.EXECUTE):
             query = self._parse_pgexecute()
             if query.args.get("expressions") or query.args.get("strict"):
                 self.raise_error("INTO is not allowed in FOR IN EXECUTE")
@@ -876,9 +847,6 @@ class Parser(PostgresParser):
         )
 
     def _parse_pgforeach(self) -> PGForEach:
-        # Consume FOREACH keyword (dispatcher already matched this)
-        self._advance()
-
         # Loop target variable
         target = self._parse_id_var()
 
@@ -917,9 +885,6 @@ class Parser(PostgresParser):
         return label
 
     def _parse_pgassert(self) -> PGAssert:
-        # Consume ASSERT keyword (dispatcher already matched this)
-        self._advance()
-
         condition = self._parse_expression()
 
         message = None
@@ -929,9 +894,6 @@ class Parser(PostgresParser):
         return self.expression(PGAssert(condition=condition, message=message))
 
     def _parse_pgraise(self) -> PGRaise:
-        # Consume RAISE keyword (dispatcher already matched this)
-        self._advance()
-
         LEVELS = {"DEBUG", "LOG", "INFO", "NOTICE", "WARNING", "EXCEPTION"}
 
         level = None
@@ -1026,13 +988,10 @@ class Parser(PostgresParser):
         )
 
     def _parse_pgreturn(self) -> PGReturn:
-        # Consume RETURN keyword (dispatcher already matched this)
-        self._advance()
-
         # Support RETURN QUERY <query>; and RETURN QUERY EXECUTE ... [USING ...];
         if self._match_texts("QUERY"):
             # Fast-path for dynamic EXECUTE variant
-            if self._match(TokenType.EXECUTE, advance=False):
+            if self._match(TokenType.EXECUTE):
                 exec_node = self._parse_pgexecute()
 
                 # Prohibit INTO / INTO STRICT in RETURN QUERY EXECUTE form
@@ -1064,9 +1023,6 @@ class Parser(PostgresParser):
         return self.expression(PGReturn(this=expr))
 
     def _parse_pgloop(self) -> PGLoop:
-        # Consume LOOP keyword starting the construct (dispatcher already matched this)
-        self._advance()
-
         # Parse body statements until END using the shared helper
         body: list[exp.Expression] = self._parse_statement_body(
             stop_tokens=(TokenType.END,),
@@ -1085,9 +1041,6 @@ class Parser(PostgresParser):
 
         Syntax: <KEYWORD> [label] [WHEN <expr>]
         """
-        # Dispatcher already matched EXIT/CONTINUE, just consume it
-        self._advance()
-
         label = None
         condition = None
 
@@ -1145,9 +1098,6 @@ class Parser(PostgresParser):
         return self._parse_cursor_call_args()
 
     def _parse_pgopen(self) -> PGOpenCursor:
-        # Consume OPEN keyword (dispatcher already matched this)
-        self._advance()
-
         # Cursor variable identifier
         cursor = self._parse_id_var()
 
@@ -1172,7 +1122,7 @@ class Parser(PostgresParser):
             # If SCROLL/NO SCROLL was provided, FOR is required
             self._match_expect(TokenType.FOR)
 
-        if self._match(TokenType.EXECUTE, advance=False):
+        if self._match(TokenType.EXECUTE):
             query = self._parse_pgexecute()
             if query.args["expressions"]:
                 self.raise_error("INTO is not allowed in OPEN FOR EXECUTE")
@@ -1184,9 +1134,6 @@ class Parser(PostgresParser):
         return self.expression(PGOpenCursor(this=cursor, expression=query, scroll=scroll))
 
     def _parse_pgfetch(self) -> PGFetch:
-        # Consume FETCH keyword (dispatcher already matched this)
-        self._advance()
-
         # Parse optional direction, optional preposition (required when direction given), and cursor
         direction, preposition, cursor = self._parse_pg_direction_and_cursor(after_kw="FETCH")
 
@@ -1209,9 +1156,6 @@ class Parser(PostgresParser):
         )
 
     def _parse_pgmove(self) -> "PGMove":
-        # Consume MOVE keyword (dispatcher already matched this)
-        self._advance()
-
         # Parse optional direction, optional preposition (required when direction given), and cursor
         direction, preposition, cursor = self._parse_pg_direction_and_cursor(after_kw="MOVE")
 
@@ -1224,16 +1168,10 @@ class Parser(PostgresParser):
         )
 
     def _parse_pgclose(self) -> "PGClose":
-        # Consume CLOSE keyword (dispatcher already matched this)
-        self._advance()
-
         cursor = self._parse_id_var()
         return self.expression(PGClose(this=cursor))
 
     def _parse_pgexecute(self) -> PGExecute:
-        # Consume EXECUTE keyword (dispatcher already matched this)
-        self._advance()
-
         # Command-string: any scalar expression (literal, '||' concat, function call).
         # _parse_expression naturally stops at INTO / USING (non-alias tokens).
         command = self._parse_expression()

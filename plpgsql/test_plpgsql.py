@@ -40,6 +40,23 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
+    def test_merge_parses_without_custom_merge_wrapper(self) -> None:
+        sql = "MERGE INTO items AS i USING (VALUES (1, 5)) AS src(id, qty) ON i.id = src.id WHEN MATCHED THEN UPDATE SET qty = src.qty;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertIsInstance(expr, exp.Merge)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_non_wrapped_standard_statement_uses_fallback(self) -> None:
+        sql = "TRUNCATE TABLE items;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_begin_merge_end_uses_fallback(self) -> None:
+        sql = "BEGIN MERGE INTO items AS i USING (VALUES (1, 5)) AS src(id, qty) ON i.id = src.id WHEN MATCHED THEN UPDATE SET qty = src.qty; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+        self.assertIsInstance(expr.args["expressions"][0], exp.Merge)
+
     def test_begin_variable_assignment(self) -> None:
         sql = "BEGIN x := 1; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
@@ -192,6 +209,10 @@ class TestPlPgSQL(unittest.TestCase):
             with self.subTest(sql=sql):
                 expr = sqlglot.parse_one(sql, dialect=plpgsql)
                 self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_get_diagnostics_ast_node_type(self) -> None:
+        expr = sqlglot.parse_one("GET DIAGNOSTICS integer_var = ROW_COUNT;", dialect=plpgsql)
+        self.assertIsInstance(expr, PGGetDiagnostics)
 
     def test_get_diagnostics_nested(self) -> None:
         sqls = [
@@ -847,6 +868,7 @@ class TestPlPgSQL(unittest.TestCase):
         sql = "BEGIN IF FOUND THEN RETURN 1; END IF; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+        self.assertIsInstance(expr.args["expressions"][0], PGIf)
 
     # def test_if_simple_update(self) -> None:
     #     sql = (
@@ -1582,6 +1604,36 @@ class TestPlPgSQL(unittest.TestCase):
 
     def test_insert_returning_into_strict_single(self) -> None:
         sql = "INSERT INTO t (a) VALUES (1) RETURNING a INTO STRICT v;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_merge_returning_into_single_target(self) -> None:
+        sql = "MERGE INTO items AS i USING (VALUES (1, 5)) AS src(id, qty) ON i.id = src.id WHEN MATCHED THEN UPDATE SET qty = i.qty + src.qty RETURNING i.qty INTO v_new_qty;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+        returning = expr.args["returning"]
+        into = returning.args["into"]
+        self.assertFalse(into.args.get("strict"))
+        self.assertEqual(len(into.args.get("expressions") or [into.args.get("this")]), 1)
+
+    def test_merge_returning_into_strict_single_target(self) -> None:
+        sql = "MERGE INTO items AS i USING (VALUES (1, 5)) AS src(id, qty) ON i.id = src.id WHEN MATCHED THEN UPDATE SET qty = i.qty + src.qty RETURNING i.qty INTO STRICT v_new_qty;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+        returning = expr.args["returning"]
+        into = returning.args["into"]
+        self.assertTrue(into.args.get("strict"))
+        self.assertEqual(len(into.args.get("expressions") or [into.args.get("this")]), 1)
+
+    def test_merge_returning_into_multiple_targets(self) -> None:
+        sql = "MERGE INTO items AS i USING (VALUES (1, 5)) AS src(id, qty) ON i.id = src.id WHEN MATCHED THEN UPDATE SET qty = i.qty + src.qty RETURNING i.id, i.qty INTO v_id, v_qty;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_merge_returning_into_strict_multiple_targets(self) -> None:
+        sql = "MERGE INTO items AS i USING (VALUES (1, 5)) AS src(id, qty) ON i.id = src.id WHEN MATCHED THEN UPDATE SET qty = i.qty + src.qty RETURNING i.id, i.qty INTO STRICT v_id, v_qty;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
