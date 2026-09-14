@@ -1528,7 +1528,7 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertEqual(len(into.args.get("expressions") or []), 2)
 
     def test_insert_returning_into_variable(self) -> None:
-        sql = "INSERT INTO t(a) VALUES (1) RETURNING a INTO v;"
+        sql = "INSERT INTO t (a) VALUES (1) RETURNING a INTO v;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
@@ -1539,6 +1539,24 @@ class TestPlPgSQL(unittest.TestCase):
 
     def test_delete_returning_into_strict(self) -> None:
         sql = "DELETE FROM t WHERE id = 0 RETURNING id INTO STRICT v;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_insert_returning_into_strict_multiple(self) -> None:
+        sql = "INSERT INTO users (username) VALUES (p_username) RETURNING id INTO STRICT a, b, c;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+        into = expr.args["returning"].args["into"]
+        self.assertTrue(into.args.get("strict"))
+        self.assertEqual(len(into.args.get("expressions") or []), 3)
+
+    def test_insert_returning_into_multiple_targets(self) -> None:
+        sql = "INSERT INTO t (a, b) VALUES (1, 2) RETURNING a, b INTO x, y;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_insert_returning_into_strict_single(self) -> None:
+        sql = "INSERT INTO t (a) VALUES (1) RETURNING a INTO STRICT v;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 

@@ -166,6 +166,14 @@ class PGInto(exp.Into):
     }
 
 
+class PGReturning(exp.Returning):
+    """A RETURNING clause that may carry an INTO [STRICT] target list.
+
+    The existing `into` argument will hold a `PGInto` instance when present.
+    """
+    # Inherit arg_types from exp.Returning
+
+
 class PGMove(exp.Expression):
     """A MOVE statement."""
     arg_types = {

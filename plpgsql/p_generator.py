@@ -51,7 +51,7 @@ class Generator(PostgresGenerator):
         PGDelete: lambda self , e: self.pgdelete_sql(e),
         PGUpdate: lambda self , e: self.pgupdate_sql(e),
         PGInto: lambda self , e: self.pginto_sql(e),
-
+        PGReturning: lambda self , e: self.pgreturning_sql(e),
     }
 
     def _loop_control_sql(self, keyword: str, expression: exp.Expression) -> str:
@@ -452,6 +452,15 @@ class Generator(PostgresGenerator):
             target_sql = self.sql(expression, "this")
 
         return f"{self.seg('INTO')}{strict} {target_sql}"
+
+    def pgreturning_sql(self, expression: PGReturning) -> str:
+        # Start with base RETURNING expressions
+        base = f"{self.seg('RETURNING')} {self.expressions(expression, flat=True)}"
+        into = expression.args.get("into")
+        if into is not None:
+            # Delegate to pginto_sql which prefixes with a space via seg('INTO')
+            base += self.sql(into)
+        return base
 
     def pggetdiagnostics_sql(self, expression: PGGetDiagnostics) -> str:
         parts: list[str] = ["GET"]

@@ -43,6 +43,7 @@ class Parser(PostgresParser):
         **PostgresParser.STATEMENT_PARSERS,
         TokenType.BEGIN: lambda self: self._parse_plpgsql_block(),
         TokenType.DECLARE: lambda self: self._parse_plpgsql_block(),
+        TokenType.INSERT: lambda self: self._parse_pginsert(),
         TokenType.UPDATE: lambda self: self._parse_pgupdate(),
         TokenType.DELETE: lambda self: self._parse_pgdelete(),
         TokenType.CASE: lambda self: self._parse_pgcase(),
@@ -625,6 +626,40 @@ class Parser(PostgresParser):
                 return parser(self)
         # self._advance()
         return super()._parse_statement()
+
+    def _parse_pginsert(self) -> exp.Expression:
+        """Consume INSERT and delegate to the base _parse_insert.
+
+        Our class overrides _parse_returning, so any RETURNING clause will be
+        parsed with PL/pgSQL semantics (supporting INTO [STRICT] targets).
+        """
+        self._advance()
+        return super()._parse_insert()
+
+    def _parse_returning(self) -> exp.Returning | None:
+        # Override base to support INTO [STRICT] <target>[, ...]
+        if not self._match(TokenType.RETURNING):
+            return None
+
+        expressions = self._parse_csv(self._parse_expression)
+
+        into = None
+        if self._match(TokenType.INTO):
+            strict = self._match_texts(("STRICT",))
+            # Parse one or more identifier-like targets (variables)
+            targets = self._parse_csv(lambda: self._parse_id_var(any_token=True))
+            if not targets:
+                self.raise_error("Expected target list after INTO")
+
+            into = self.expression(
+                PGInto(
+                    this=targets[0],
+                    expressions=targets if len(targets) > 1 else None,
+                    strict=strict,
+                )
+            )
+
+        return self.expression(PGReturning(expressions=expressions, into=into))
 
     def _parse_into(self) -> exp.Into | None:
         if not self._match(TokenType.INTO):
