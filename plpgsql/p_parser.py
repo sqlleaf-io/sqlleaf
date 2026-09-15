@@ -632,7 +632,7 @@ class Parser(PostgresParser):
             return self.expression(PGTypeRef(this=ref, array=array, rowtype=rowtype))
 
         self._retreat(index)
-        return self._parse_type() or self._parse_types()
+        return self._parse_types() or self._parse_type()
 
     def _parse_pl_declare_cursor(
         self, ident: exp.Expression, is_constant: bool, scroll: bool | None

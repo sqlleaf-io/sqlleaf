@@ -119,39 +119,39 @@ class TestPlPgSQL(unittest.TestCase):
     def test_plpgsql_declare_defaults_to_null(self) -> None:
         sql = """
         DECLARE
-            my_id INTEGER;
+            my_id INT;
         BEGIN
             SELECT 1;
         END;
         """
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         out = expr.sql(dialect=plpgsql)
-        self.assertEqual(out, "DECLARE my_id INTEGER; BEGIN SELECT 1; END")
+        self.assertEqual(out, "DECLARE my_id INT; BEGIN SELECT 1; END")
 
     def test_plpgsql_declare_colon_equals(self) -> None:
         sql = """
         DECLARE
-            my_count INTEGER := 0;
+            my_count INT := 0;
         BEGIN
             SELECT 1;
         END;
         """
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         out = expr.sql(dialect=plpgsql)
-        self.assertEqual(out, "DECLARE my_count INTEGER := 0; BEGIN SELECT 1; END")
+        self.assertEqual(out, "DECLARE my_count INT := 0; BEGIN SELECT 1; END")
 
 
     def test_plpgsql_declare_equals(self) -> None:
         sql = """
         DECLARE
-            my_count INTEGER = 0;
+            my_count INT = 0;
         BEGIN
             SELECT 1;
         END;
         """
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         out = expr.sql(dialect=plpgsql)
-        self.assertEqual(out, "DECLARE my_count INTEGER = 0; BEGIN SELECT 1; END")
+        self.assertEqual(out, "DECLARE my_count INT = 0; BEGIN SELECT 1; END")
 
     def test_plpgsql_declare_column_type_ref(self) -> None:
         sql = "DECLARE myfield tablename.columnname%TYPE; BEGIN SELECT 1; END;"
@@ -164,7 +164,7 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_plpgsql_declare_variable_type_ref(self) -> None:
-        sql = "DECLARE v_base_price NUMERIC(10, 2) := 100.00; v_tax_amount v_base_price%TYPE; BEGIN SELECT 1; END;"
+        sql = "DECLARE v_base_price DECIMAL(10, 2) := 100.00; v_tax_amount v_base_price%TYPE; BEGIN SELECT 1; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
@@ -186,7 +186,7 @@ class TestPlPgSQL(unittest.TestCase):
             sqlglot.parse_one("DECLARE v t.c%TYPE[; BEGIN SELECT 1; END;", dialect=plpgsql)
 
     def test_plpgsql_declare_typeref_regression_with_normal_type(self) -> None:
-        sql = "DECLARE v_tax_amount v_base_price%TYPE; qty NUMERIC(10, 2); BEGIN SELECT 1; END;"
+        sql = "DECLARE v_tax_amount v_base_price%TYPE; qty DECIMAL(10, 2); BEGIN SELECT 1; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
@@ -220,40 +220,76 @@ class TestPlPgSQL(unittest.TestCase):
     def test_plpgsql_declare_default(self) -> None:
         sql = """
         DECLARE
-            my_count INTEGER DEFAULT 32;
+            my_count INT DEFAULT 32;
         BEGIN
             SELECT 1;
         END;
         """
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         out = expr.sql(dialect=plpgsql)
-        self.assertEqual(out, "DECLARE my_count INTEGER DEFAULT 32; BEGIN SELECT 1; END")
+        self.assertEqual(out, "DECLARE my_count INT DEFAULT 32; BEGIN SELECT 1; END")
 
 
     def test_plpgsql_declare_record(self) -> None:
         sql = """
         DECLARE
             my_count RECORD;
-            quantity numeric(5);
+            quantity DECIMAL(5);
         BEGIN
             SELECT 1;
         END;
         """
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         out = expr.sql(dialect=plpgsql)
-        self.assertEqual(out, "DECLARE my_count RECORD; quantity NUMERIC(5); BEGIN SELECT 1; END")
+        self.assertEqual(out, "DECLARE my_count RECORD; quantity DECIMAL(5); BEGIN SELECT 1; END")
 
     def test_plpgsql_declare_constant(self) -> None:
         sql = """
         DECLARE
-            amount CONSTANT integer := 5;
+            amount CONSTANT INT := 5;
         BEGIN
             SELECT 1;
         END;
         """
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         out = expr.sql(dialect=plpgsql)
-        self.assertEqual(out, "DECLARE amount CONSTANT INTEGER := 5; BEGIN SELECT 1; END")
+        self.assertEqual(out, "DECLARE amount CONSTANT INT := 5; BEGIN SELECT 1; END")
+
+    def test_plpgsql_declare_constant_timestamp_with_time_zone(self) -> None:
+        sql = """
+        DECLARE
+            transaction_time CONSTANT timestamp with time zone := CURRENT_TIMESTAMP;
+        BEGIN
+            SELECT 1;
+        END;
+        """
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        out = expr.sql(dialect=plpgsql)
+        self.assertEqual(
+            out,
+            "DECLARE transaction_time CONSTANT TIMESTAMPTZ := CURRENT_TIMESTAMP; BEGIN SELECT 1; END",
+        )
+
+    def test_plpgsql_declare_time_and_timestamp_with_without_time_zone(self) -> None:
+        cases = [
+            (
+                "DECLARE ts_without timestamp without time zone; BEGIN SELECT 1; END;",
+                "DECLARE ts_without TIMESTAMP; BEGIN SELECT 1; END",
+            ),
+            (
+                "DECLARE t_with time with time zone; BEGIN SELECT 1; END;",
+                "DECLARE t_with TIMETZ; BEGIN SELECT 1; END",
+            ),
+            (
+                "DECLARE t_without time without time zone; BEGIN SELECT 1; END;",
+                "DECLARE t_without TIME; BEGIN SELECT 1; END",
+            ),
+        ]
+
+        for sql, expected in cases:
+            with self.subTest(sql=sql):
+                expr = sqlglot.parse_one(sql, dialect=plpgsql)
+                self.assertEqual(expr.sql(dialect=plpgsql), expected)
 
     def test_get_diagnostics_basic(self) -> None:
         cases = [
@@ -322,6 +358,12 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         out = expr.sql(dialect=plpgsql)
         self.assertEqual(out, 'DECLARE local_b TEXT COLLATE "en_US" NOT NULL DEFAULT \'x\'; BEGIN SELECT 1; END')
+
+    def test_plpgsql_return_collate(self) -> None:
+        sql = """BEGIN RETURN a < b COLLATE "C"; END;"""
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        out = expr.sql(dialect=plpgsql)
+        self.assertEqual(out, sql[:-1])
 
     def test_plpgsql_declare_alias_for_parameter(self) -> None:
         sql = """
@@ -444,7 +486,7 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_declare_body_and_exception(self) -> None:
-        sql = "DECLARE a INTEGER; BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN RAISE; END;"
+        sql = "DECLARE a INT; BEGIN SELECT 1; EXCEPTION WHEN division_by_zero THEN RAISE; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
