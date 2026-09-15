@@ -76,6 +76,29 @@ class Parser(PostgresParser):
         "FOUND": lambda self: self.expression(PGFound()),
     }
 
+    # Class-level constant tables (hoisted from per-call definitions)
+    _NAMED_PAIR_OPS: dict[TokenType, type[exp.Expression]] = {
+        TokenType.COLON_EQ: exp.PropertyEQ,
+        TokenType.EQ: exp.EQ,
+        TokenType.FARROW: exp.Kwarg,
+    }
+
+    _RAISE_LEVELS = frozenset({
+        "DEBUG",
+        "LOG",
+        "INFO",
+        "NOTICE",
+        "WARNING",
+        "EXCEPTION",
+    })
+
+    _SIMPLE_FETCH_DIRS = {
+        "NEXT": PGNext,
+        "PRIOR": PGPrior,
+        "FIRST": PGFirst,
+        "LAST": PGLast,
+    }
+
     def _match_expect(self, token_type: TokenType, *, advance: bool = True) -> None:
         if not self._match(token_type, advance=advance):
             self.raise_error(f"Expected token: {token_type.name}")
@@ -103,24 +126,16 @@ class Parser(PostgresParser):
                 self.raise_error("Expected diagnostics item after operator")
             return ident
 
-        # 4. Parse first assignment pair (mandatory)
-        var = self._parse_id_var(any_token=True)
-        if var is None:
-            self.raise_error("Expected variable after DIAGNOSTICS")
-
-        pair = self._parse_named_pair(
-            var,
-            allowed_ops={TokenType.EQ, TokenType.COLON_EQ},
-            rhs_parser=parse_item,
-        )
-        if pair is None:
-            self.raise_error("Expected assignment operator (= or :=) after variable")
-        pairs.append(pair)
-
-        while self._match(TokenType.COMMA):
+        # Parse one-or-more pairs: <var> {:=|=} <item> [, ...]
+        while True:
             var = self._parse_id_var(any_token=True)
             if var is None:
-                self.raise_error("Expected variable after comma in GET DIAGNOSTICS")
+                self.raise_error(
+                    "Expected variable after DIAGNOSTICS"
+                    if not pairs
+                    else "Expected variable after comma in GET DIAGNOSTICS"
+                )
+
             pair = self._parse_named_pair(
                 var,
                 allowed_ops={TokenType.EQ, TokenType.COLON_EQ},
@@ -129,6 +144,9 @@ class Parser(PostgresParser):
             if pair is None:
                 self.raise_error("Expected assignment operator (= or :=) after variable")
             pairs.append(pair)
+
+            if not self._match(TokenType.COMMA):
+                break
 
         return self.expression(PGGetDiagnostics(current=current, stacked=stacked, expressions=pairs))
 
@@ -153,15 +171,8 @@ class Parser(PostgresParser):
 
         rhsp = rhs_parser or self._parse_expression
 
-        # Map supported operators to their expression classes
-        op_to_expr: dict[TokenType, type[exp.Expression]] = {
-            TokenType.COLON_EQ: exp.PropertyEQ,
-            TokenType.EQ: exp.EQ,
-            TokenType.FARROW: exp.Kwarg,
-        }
-
         # Filter to the allowed operators for this context
-        candidates = tuple(t for t in op_to_expr.keys() if t in allowed_ops)
+        candidates = tuple(t for t in self._NAMED_PAIR_OPS.keys() if t in allowed_ops)
         if not candidates:
             return None
 
@@ -172,7 +183,7 @@ class Parser(PostgresParser):
         # Consume the operator and build the corresponding expression
         op = self._curr.token_type
         self._advance()
-        klass = op_to_expr[op]
+        klass = self._NAMED_PAIR_OPS[op]
         return self.expression(klass(this=name_expr, expression=rhsp()))
 
     def _parse_statement_body(
@@ -375,15 +386,20 @@ class Parser(PostgresParser):
             return self.expression(PGOthers())
 
         if self._match_texts(("SQLSTATE",)):
-            # If a quoted literal follows, parse and attach it.
-            if self._match(TokenType.STRING, advance=False):
-                lit = self._parse_primary()
-                if isinstance(lit, exp.Literal) and lit.is_string:
-                    return self.expression(PGSqlState(this=lit))
-
-            self.raise_error("SQLSTATE must be followed by a quoted literal")
+            return self._parse_sqlstate()
 
         return self._parse_id_var()
+
+    def _parse_sqlstate(self) -> PGSqlState:
+        """Consume a quoted literal after SQLSTATE and wrap it in PGSqlState.
+
+        Precondition: the SQLSTATE keyword has already been matched.
+        """
+        if self._match(TokenType.STRING, advance=False):
+            lit = self._parse_primary()
+            if isinstance(lit, exp.Literal) and lit.is_string:
+                return self.expression(PGSqlState(this=lit))
+        self.raise_error("SQLSTATE must be followed by a quoted literal")
 
     def _parse_pgif(self) -> PGIf:
         # First branch starts immediately after IF
@@ -614,11 +630,6 @@ class Parser(PostgresParser):
         arg_type = self._parse_type() or self._parse_types()
         return self.expression(PGCursorArg(this=name, kind=arg_type))
 
-    def _parse_statement(self) -> exp.Expr | None:
-        return super()._parse_statement()
-
-    def _parse_pginsert(self) -> exp.Expression:
-        return super()._parse_insert()
 
     def _parse_returning(self) -> exp.Returning | None:
         # Override base to support INTO [STRICT] <target>[, ...]
@@ -739,17 +750,9 @@ class Parser(PostgresParser):
         else:
             self._match_expect(TokenType.LOOP)
 
-        # Parse body statements until END (lax mode to preserve original behavior)
-        body: list[exp.Expression] = self._parse_statement_body(
-            stop_tokens=(TokenType.END,),
-            strict=False,
-        )
-        self._match_expect(TokenType.END)
-        self._match_expect(TokenType.LOOP)
-
-        # Optional label
-        label = self._parse_id_var(any_token=True)
-        self._match(TokenType.SEMICOLON)
+        # Parse loop body and optional trailing label using shared helpers
+        body = self._parse_loop_body()
+        label = self._parse_loop_label()
 
         return self.expression(exp.WhileBlock(this=cond, body=body, label=label))
 
@@ -892,8 +895,6 @@ class Parser(PostgresParser):
         return self.expression(PGAssert(condition=condition, message=message))
 
     def _parse_pgraise(self) -> PGRaise:
-        LEVELS = {"DEBUG", "LOG", "INFO", "NOTICE", "WARNING", "EXCEPTION"}
-
         level = None
         message: exp.Expression | None = None
         fmt_args: list[exp.Expression] | None = None
@@ -902,7 +903,7 @@ class Parser(PostgresParser):
         using_args: list[exp.Expression] | None = None
 
         # Optional level
-        if self._curr is not None and self._curr.text.upper() in LEVELS:
+        if self._curr is not None and self._curr.text.upper() in self._RAISE_LEVELS:
             # Treat as identifier to keep minimal AST
             token = self._curr
             self._advance()
@@ -945,15 +946,7 @@ class Parser(PostgresParser):
             # Bare re-raise
             pass
         elif self._match_texts("SQLSTATE"):
-            # Expect a quoted literal next
-            if self._match(TokenType.STRING, advance=False):
-                lit = self._parse_primary()
-                if isinstance(lit, exp.Literal) and lit.is_string:
-                    sqlstate = self.expression(PGSqlState(this=lit))
-                else:
-                    self.raise_error("SQLSTATE must be followed by a quoted literal")
-            else:
-                self.raise_error("SQLSTATE must be followed by a quoted literal")
+            sqlstate = self._parse_sqlstate()
         elif self._match(TokenType.STRING, advance=False):
             # Message/format expression (typically a string)
             message = self._parse_expression()
@@ -1084,17 +1077,6 @@ class Parser(PostgresParser):
 
         return args
 
-    def _parse_open_args(self) -> list[exp.Expression]:
-        """Parse an OPEN cursor argument list and return the collected args.
-
-        Supports positional arguments, name := value (PropertyEQ), and
-        name => value (Kwarg).
-
-        Precondition: current token is '(' (not yet consumed).
-        Postcondition: the closing ')' is consumed.
-        """
-        return self._parse_cursor_call_args()
-
     def _parse_pgopen(self) -> PGOpenCursor:
         # Cursor variable identifier
         cursor = self._parse_id_var()
@@ -1102,7 +1084,8 @@ class Parser(PostgresParser):
         # Bound cursor with arguments: OPEN c(<args>) where args can be positional,
         # name := value (PropertyEQ), or name => value (Kwarg)
         if self._match(TokenType.L_PAREN, advance=False):
-            args = self._parse_open_args()
+            # Parse cursor call arguments directly (positional, name := value, name => value)
+            args = self._parse_cursor_call_args()
             return self.expression(PGOpenCursor(this=cursor, expressions=args))
 
         # Optional [[NO] SCROLL]
@@ -1227,13 +1210,6 @@ class Parser(PostgresParser):
             self.raise_error(msg)
             return ""
 
-        SIMPLE_DIRS = {
-            "NEXT": PGNext,
-            "PRIOR": PGPrior,
-            "FIRST": PGFirst,
-            "LAST": PGLast,
-        }
-
         # Handle FORWARD/BACKWARD with optional count/ALL
         if self._match_texts(("FORWARD", "BACKWARD")):
             which = (self._prev.text or "").upper()
@@ -1253,9 +1229,9 @@ class Parser(PostgresParser):
                 f"Expected FROM or IN after {after_kw} direction"
             )
 
-        elif self._match_texts(tuple(SIMPLE_DIRS.keys())):
+        elif self._match_texts(tuple(self._SIMPLE_FETCH_DIRS.keys())):
             kw = (self._prev.text or "").upper()
-            direction = self.expression(SIMPLE_DIRS[kw]())
+            direction = self.expression(self._SIMPLE_FETCH_DIRS[kw]())
             preposition = _parse_required_preposition(
                 f"Expected FROM or IN after {after_kw} direction"
             )
