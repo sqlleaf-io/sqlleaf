@@ -10,7 +10,7 @@ from sqlglot import tokenizer_core
 
 # Monkey patch sqlglot's tokenizer with PL/pgSQL keywords
 tt = tokenizer_core.TokenType
-new_tokens = [
+PLPGSQL_CUSTOM_TOKEN_NAMES = (
     "ASSERT",
     "BY",
     "CLOSE",
@@ -27,11 +27,16 @@ new_tokens = [
     "RETURN",
     "REVERSE",
     "WHILE",
-]
+)
+PLPGSQL_KEYWORD_TOKEN_NAMES = (
+    *(token for token in PLPGSQL_CUSTOM_TOKEN_NAMES if token != "DDOT"),
+    "DECLARE",
+    "GET",
+)
 token_dict = {m.name: m.value for m in TokenType}
 
 next_value = max(token_dict.values()) + 1
-for token in new_tokens:
+for token in PLPGSQL_CUSTOM_TOKEN_NAMES:
     token_dict[token] = next_value
     next_value += 1
 
@@ -43,7 +48,6 @@ class Parser(PostgresParser):
         **PostgresParser.STATEMENT_PARSERS,
         TokenType.BEGIN: lambda self: self._parse_plpgsql_block(),
         TokenType.DECLARE: lambda self: self._parse_plpgsql_block(),
-        TokenType.INSERT: lambda self: self._parse_pginsert(),
         TokenType.UPDATE: lambda self: self._parse_pgupdate(),
         TokenType.DELETE: lambda self: self._parse_pgdelete(),
         TokenType.CASE: lambda self: self._parse_pgcase(),
@@ -726,13 +730,11 @@ class Parser(PostgresParser):
         cond = self._parse_expression()
 
         # Guard against accidental aliasing like: <cond> AS LOOP
-        # TODO: read until LOOP as it is a reserved keyword
         if isinstance(cond, exp.Alias):
             alias = cond.args.get("alias")
             if isinstance(alias, exp.Identifier) and alias.name.upper() == "LOOP":
                 cond = cond.this
             else:
-                # Require LOOP explicitly after condition if not via alias
                 self._match_expect(TokenType.LOOP)
         else:
             self._match_expect(TokenType.LOOP)
@@ -742,12 +744,10 @@ class Parser(PostgresParser):
             stop_tokens=(TokenType.END,),
             strict=False,
         )
-
-        # Consume END then require LOOP
         self._match_expect(TokenType.END)
         self._match_expect(TokenType.LOOP)
 
-        # Optional label and optional semicolon
+        # Optional label
         label = self._parse_id_var(any_token=True)
         self._match(TokenType.SEMICOLON)
 
@@ -777,9 +777,7 @@ class Parser(PostgresParser):
         # Parse loop target identifier/variable
         target = self._parse_id_var()
 
-        # Require IN keyword
         self._match_expect(TokenType.IN)
-
         reverse = self._match(TokenType.REVERSE)
 
         # Try range form: <start> .. <end> [BY <step>] LOOP

@@ -4,7 +4,7 @@ from sqlglot.dialects.postgres import Postgres
 from sqlglot.tokens import Token
 
 from plpgsql.p_generator import Generator
-from plpgsql.p_parser import Parser, TokenType
+from plpgsql.p_parser import Parser, PLPGSQL_KEYWORD_TOKEN_NAMES, TokenType
 
 
 class PlPgSQL(Postgres):
@@ -14,23 +14,7 @@ class PlPgSQL(Postgres):
     class Tokenizer(Postgres.Tokenizer):
         KEYWORDS = {
             **Postgres.Tokenizer.KEYWORDS,
-            "ASSERT": TokenType.ASSERT,
-            "BY": TokenType.BY,
-            "CLOSE": TokenType.CLOSE,
-            "CONTINUE": TokenType.CONTINUE,
-            "DECLARE": TokenType.DECLARE,
-            "EXIT": TokenType.EXIT,
-            "FOREACH": TokenType.FOREACH,
-            "GET": TokenType.GET,
-            "IF": TokenType.IF,
-            "LOOP": TokenType.LOOP,
-            "MOVE": TokenType.MOVE,
-            "OPEN": TokenType.OPEN,
-            "PERFORM": TokenType.PERFORM,
-            "RAISE": TokenType.RAISE,
-            "RETURN": TokenType.RETURN,
-            "REVERSE": TokenType.REVERSE,
-            "WHILE": TokenType.WHILE,
+            **{keyword: getattr(TokenType, keyword) for keyword in PLPGSQL_KEYWORD_TOKEN_NAMES},
         }
 
         # In base sqlglot, FETCH and EXECUTE are treated as COMMANDs, which swallow the rest
