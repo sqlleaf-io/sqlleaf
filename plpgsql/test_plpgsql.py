@@ -153,9 +153,69 @@ class TestPlPgSQL(unittest.TestCase):
         out = expr.sql(dialect=plpgsql)
         self.assertEqual(out, "DECLARE my_count INTEGER = 0; BEGIN SELECT 1; END")
 
-    # TODO:
-    #  - myrow tablename%ROWTYPE;
-    #  - myfield tablename.columnname%TYPE;
+    def test_plpgsql_declare_column_type_ref(self) -> None:
+        sql = "DECLARE myfield tablename.columnname%TYPE; BEGIN SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_plpgsql_declare_column_type_ref_array(self) -> None:
+        sql = "DECLARE user_ids users.user_id%TYPE[]; BEGIN SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_plpgsql_declare_variable_type_ref(self) -> None:
+        sql = "DECLARE v_base_price NUMERIC(10, 2) := 100.00; v_tax_amount v_base_price%TYPE; BEGIN SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_plpgsql_declare_typeref_ast_node_type(self) -> None:
+        expr = sqlglot.parse_one("DECLARE v t.c%TYPE; BEGIN SELECT 1; END;", dialect=plpgsql)
+        declare = expr.args["declare"]
+        item = declare.expressions[0]
+        self.assertIsInstance(item.args["kind"], PGTypeRef)
+
+    def test_plpgsql_declare_typeref_preserves_case(self) -> None:
+        sql = "DECLARE v tablename.columnname%TYPE; BEGIN SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        out = expr.sql(dialect=plpgsql)
+        self.assertIn("tablename.columnname%TYPE", out)
+        self.assertNotIn("TABLENAME.COLUMNNAME%TYPE", out)
+
+    def test_plpgsql_declare_typeref_array_missing_rbracket_fails(self) -> None:
+        with self.assertRaises(sqlglot.errors.ParseError):
+            sqlglot.parse_one("DECLARE v t.c%TYPE[; BEGIN SELECT 1; END;", dialect=plpgsql)
+
+    def test_plpgsql_declare_typeref_regression_with_normal_type(self) -> None:
+        sql = "DECLARE v_tax_amount v_base_price%TYPE; qty NUMERIC(10, 2); BEGIN SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_plpgsql_declare_rowtype_ref(self) -> None:
+        sql = "DECLARE t2_row table2%ROWTYPE; BEGIN SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_plpgsql_declare_rowtype_qualified(self) -> None:
+        sql = "DECLARE r public.mytable%ROWTYPE; BEGIN SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_plpgsql_declare_rowtype_ast_node_type(self) -> None:
+        expr = sqlglot.parse_one("DECLARE r t%ROWTYPE; BEGIN SELECT 1; END;", dialect=plpgsql)
+        item = expr.args["declare"].expressions[0]
+        kind = item.args["kind"]
+        self.assertIsInstance(kind, PGTypeRef)
+        self.assertTrue(kind.args["rowtype"])
+
+    def test_plpgsql_declare_rowtype_array(self) -> None:
+        sql = "DECLARE rs mytable%ROWTYPE[]; BEGIN SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_plpgsql_declare_rowtype_and_typeref_mix(self) -> None:
+        sql = "DECLARE a t1%ROWTYPE; b t2.c%TYPE; BEGIN SELECT 1; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_plpgsql_declare_default(self) -> None:
         sql = """

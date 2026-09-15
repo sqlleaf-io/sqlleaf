@@ -13,6 +13,7 @@ class Generator(PostgresGenerator):
         # PGDeclare: lambda self, e: self.pgdeclare_sql(e),
         exp.Declare: lambda self, e: self.pgdeclare_sql(e),
         PGDeclareItem: lambda self, e: self.pgdeclareitem_sql(e),
+        PGTypeRef: lambda self, e: self.pgtyperef_sql(e),
         PGException: lambda self, e: self.pgexception_sql(e),
         PGWhen: lambda self, e: self.pgwhen_sql(e),
         PGCase: lambda self, e: self.pgcase_sql(e),
@@ -112,6 +113,12 @@ class Generator(PostgresGenerator):
         items_sql = self.expressions(sqls=[self.sql(item) for item in expression.expressions], sep=f";{self.sep()}")
         return "DECLARE" + self.seg(items_sql + ";")
 
+    def pgtyperef_sql(self, expression: PGTypeRef) -> str:
+        ref = self.sql(expression.this)
+        keyword = "%ROWTYPE" if expression.args.get("rowtype") else "%TYPE"
+        suffix = "[]" if expression.args.get("array") else ""
+        return ref + keyword + suffix
+
     def pgdeclareitem_sql(self, expression: PGDeclareItem) -> str:
         name = self.sql(expression.this)
         # Cursor declaration
@@ -141,9 +148,9 @@ class Generator(PostgresGenerator):
             target = self.sql(expression.args.get("expression"))
             return name + self.seg("ALIAS") + self.seg("FOR") + self.seg(target)
 
-        typ = self.sql(expression.args.get("kind")) if expression.args.get("kind") is not None else ""
-        # Normalize type rendering to uppercase to match Postgres style in tests
-        typ_render = typ.upper() if typ else ""
+        kind = expression.args.get("kind")
+        typ = self.sql(kind) if kind is not None else ""
+        typ_render = typ if isinstance(kind, PGTypeRef) else (typ.upper() if typ else "")
         const_kw = " CONSTANT" if expression.args.get("constant") else ""
         collate = expression.args.get("collate")
         collate_sql = (self.seg("COLLATE") + self.seg(self.sql(collate))) if collate is not None else ""

@@ -556,8 +556,7 @@ class Parser(PostgresParser):
         elif self._match_texts(("CURSOR",)):
             return self._parse_pl_declare_cursor(ident, is_constant, None)
 
-        # Parse a type expression (prefer singular _parse_type, fallback to plural helper)
-        type_expr = self._parse_type() or self._parse_types()
+        type_expr = self._parse_pl_type_or_typeref()
 
         # Optional COLLATE clause after type
         collate_expr = None
@@ -597,6 +596,43 @@ class Parser(PostgresParser):
                 constant=is_constant,
             )
         )
+
+    def _parse_pl_type_or_typeref(self) -> exp.Expression | None:
+        index = self._index
+
+        this = self._parse_id_var()
+        ref = None
+
+        if this is not None:
+            table = None
+            if self._match(TokenType.DOT):
+                column = self._parse_id_var()
+                if column is None:
+                    self._retreat(index)
+                    return self._parse_type() or self._parse_types()
+                table = this
+                this = column
+
+            ref = self.expression(exp.Column(this=this, table=table))
+
+        if ref is not None and self._match(TokenType.MOD):
+            rowtype = False
+            if self._match(TokenType.TYPE):
+                rowtype = False
+            elif self._match_text_seq("ROWTYPE"):
+                rowtype = True
+            else:
+                self._retreat(index)
+                return self._parse_type() or self._parse_types()
+
+            array = False
+            if self._match(TokenType.L_BRACKET):
+                self._match_expect(TokenType.R_BRACKET)
+                array = True
+            return self.expression(PGTypeRef(this=ref, array=array, rowtype=rowtype))
+
+        self._retreat(index)
+        return self._parse_type() or self._parse_types()
 
     def _parse_pl_declare_cursor(
         self, ident: exp.Expression, is_constant: bool, scroll: bool | None

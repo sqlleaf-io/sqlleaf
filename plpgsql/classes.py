@@ -35,6 +35,11 @@ class PGDeclareItem(exp.DeclareItem):
     }
 
 
+class PGTypeRef(exp.Expression):
+    """A `<reference>%TYPE` or `<reference>%ROWTYPE` type expression used in DECLARE items."""
+    arg_types = {"this": True, "array": False, "rowtype": False}
+
+
 class PGCursorArg(exp.Expression):
     """A cursor argument declaration."""
     arg_types = {"this": True, "kind": True}
