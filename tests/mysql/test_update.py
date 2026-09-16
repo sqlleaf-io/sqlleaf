@@ -30,3 +30,8 @@ def test_multi_table_update_join(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [["column[t2.val]", "column[t1.val]"]]
+
+
+#  The second assignment in the following statement sets col2 to the current (updated) col1 value, not the original col1 value. The result is that col1 and col2 have the same value. This behavior differs from standard SQL.
+#
+# UPDATE t1 SET col1 = col1 + 1, col2 = col1;

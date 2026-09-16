@@ -225,10 +225,13 @@ def test__cte_two_identical(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
-    assert h.paths == [['literal["a"]', "column[cte1.name]", "column[fruit.processed.name]"]]
-    assert [InsertQuery] == h.query_types
-    assert len(h.nodes) == 3
-    assert len(h.edges) == 2
+    assert h.paths == [
+        ['literal["a"]', "column[cte1.name]", "column[fruit.processed.name]"],
+        ['literal["a"]', "column[cte1.name]", "column[fruit.processed.name]"]
+    ]
+    assert [InsertQuery, InsertQuery] == h.query_types
+    assert len(h.nodes) == 5
+    assert len(h.edges) == 4
 
 
 def test__cte_two_same_name_different_query(holder):

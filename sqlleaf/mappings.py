@@ -248,7 +248,7 @@ class ObjectMapping(MappingSchema):
             table_expr = exp.Table(this=table)
 
         if str(table_expr).startswith("@"):
-            child_object_query = self.lookup_stage_query(table=table_expr, raise_on_missing=raise_on_missing)
+            child_object_query = self.lookup_stage_query(table=table_expr, raise_on_missing=False)
         else:
             child_object_query = self.lookup_table_query(table=table_expr, raise_on_missing=raise_on_missing)
 

@@ -176,9 +176,6 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         # Remove duplicate queries
         sql_text = stmt.sql(dialect=dialect)
         _id = util.short_sha256_hash(sql_text)
-        if _id in queries:
-            logger.debug(f"Skipping duplicate query: {sql_text}")
-            continue
 
         if not kind:
             stmt, kind = _determine_query_kind(stmt, dialect)
@@ -201,7 +198,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         if query:
             holder = QueryHolder(original=query)
             _collect_query_children(query, holder, dialect, object_mapping)
-            queries[_id] = holder
+            queries[_id + str(index)] = holder
             counts[kind] += 1
 
     logger.debug("Found statements: %s", dict(+counts))
@@ -228,7 +225,7 @@ def _determine_query_kind(statement: exp.Expr, dialect: str) -> t.Tuple[exp.Expr
     elif statement.key == "select" and "into" in statement.args:
         # sqlglot rewrites 'SELECT INTO' to 'CREATE TABLE AS' during parse()
         # but it's not shown until we produce it with sql(), so we re-parse it
-        if dialect in ["redshift", "postgres"]:
+        if dialect in ["redshift", "postgres", "mysql"]:
             statement = sqlglot.parse_one(statement.sql(dialect=""), dialect=dialect)
             kind = "ctas"
         else:

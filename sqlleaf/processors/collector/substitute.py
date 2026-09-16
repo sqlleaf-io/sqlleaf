@@ -9,6 +9,36 @@ from sqlleaf.models.query import CallQuery, CTASQuery, ExecuteQuery, FunctionPar
 logger = logging.getLogger("sqlleaf")
 
 
+def _replace_session_parameter(
+    node: exp.Expr,
+    session_variables: dict[str, exp.Expr],
+) -> exp.Expr:
+    if isinstance(node, exp.Parameter) and isinstance(node.this, exp.Var):
+        var_name = node.this.name.upper()
+        value = session_variables.get(var_name)
+        if value is not None:
+            logger.debug(f"Substituting session variable: ${var_name}")
+            return value.copy()
+    return node
+
+
+def _transform_dynamic_identifier(node: exp.Expr) -> exp.Expr:
+    if isinstance(node, exp.DynamicIdentifier):
+        inner = node.this
+        if isinstance(inner, exp.Literal) and inner.is_string:
+            resolved_name = inner.this
+
+            if isinstance(node.parent, exp.Table):
+                # FROM IDENTIFIER($b) → FROM my_table
+                # Here we modify the parent Table node's 'this' arg
+                node.parent.set("this", exp.to_identifier(resolved_name.upper()))
+                return node  # It's already disconnected or about to be ignored
+            else:
+                # SELECT IDENTIFIER($col) → SELECT col_name
+                return exp.column(resolved_name.upper())
+    return node
+
+
 def find_arg(args: t.List[exp.Expr], param: FunctionParam, index: int) -> t.Optional[exp.Expr]:
     """
     Finds the argument corresponding to a parameter by its name or position.
@@ -364,33 +394,25 @@ def substitute_session_variables(
     Replaces $var Parameter nodes with their stored session variable values,
     and resolves IDENTIFIER($var) DynamicIdentifier nodes to concrete identifiers.
     """
-    # 1. Walk and replace exp.Parameter nodes
-    for node in stmt.walk():
-        if isinstance(node, exp.Parameter):
-            var_name = node.this.name.upper()
-            if var_name in session_variables:
-                logger.debug(f"Substituting session variable: ${var_name}")
-                node.replace(session_variables[var_name].copy())
+    # Replace exp.Parameter nodes recursively.
+    # This ensures nested variables are fully resolved, e.g., $b where b = $a + 1
+    # and a = 1 should become 1 + 1 after two passes.
+    replace_parameter = lambda node: _replace_session_parameter(node, session_variables)
 
-    # 2. Resolve any remaining DynamicIdentifier nodes that wrap a resolved Literal
-    #    (e.g. IDENTIFIER('my_table') or IDENTIFIER($var) after step 1)
-    #    Use transform to handle replacements more robustly during traversal
-    def _transform_dynamic_identifiers(node):
-        if isinstance(node, exp.DynamicIdentifier):
-            inner = node.this
-            if isinstance(inner, exp.Literal) and inner.is_string:
-                resolved_name = inner.this
+    # Guard against cycles (e.g. SET a = $b; SET b = $a) by tracking seen AST states.
+    seen_states: set[str] = set()
+    while True:
+        state = repr(stmt.dump())
+        if state in seen_states:
+            break
+        seen_states.add(state)
 
-                if isinstance(node.parent, exp.Table):
-                    # FROM IDENTIFIER($b) → FROM my_table
-                    # Here we modify the parent Table node's 'this' arg
-                    node.parent.set("this", exp.to_identifier(resolved_name.upper()))
-                    return node  # It's already disconnected or about to be ignored
-                else:
-                    # SELECT IDENTIFIER($col) → SELECT col_name
-                    return exp.column(resolved_name.upper())
-        return node
+        stmt = stmt.transform(replace_parameter, copy=False)
+        if repr(stmt.dump()) == state:
+            break
 
-    stmt.transform(_transform_dynamic_identifiers, copy=False)
+    # Resolve any remaining DynamicIdentifier nodes that wrap a resolved Literal
+    # (e.g. IDENTIFIER('my_table') or IDENTIFIER($var)
+    stmt.transform(_transform_dynamic_identifier, copy=False)
 
     return stmt
