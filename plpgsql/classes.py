@@ -10,6 +10,7 @@ class PGBlock(exp.Block):
         "begin": False,
         "declare": False,
         "exception": False,
+        "label": False,
     }
 
 
@@ -70,6 +71,12 @@ class PGIf(exp.CaseStatement):
 
 class PGLoop(exp.LoopBlock):
     """A LOOP statement."""
+
+    arg_types = {
+        "body": True,
+        "label": False,
+        "end_label": False,
+    }
 
 
 class PGForIn(exp.Expression):

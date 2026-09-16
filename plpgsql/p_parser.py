@@ -3,6 +3,7 @@ import typing as t
 from enum import IntEnum
 
 from sqlglot.parsers.postgres import PostgresParser
+from sqlglot import exp
 from plpgsql.classes import *
 from plpgsql.p_tokenizer import TokenType
 
@@ -215,8 +216,12 @@ class PlPgSQLParser(PostgresParser):
         # Require END to close the block
         self._match_expect(TokenType.END)
 
+        # Optional trailing label and statement terminator
+        label = self._parse_id_var(any_token=True)
+        self._match(TokenType.SEMICOLON)
+
         return self.expression(
-            PGBlock(expressions=expressions, declare=declare, exception=exception, begin=True)
+            PGBlock(expressions=expressions, declare=declare, exception=exception, begin=True, label=label)
         )
 
     def _parse_pg_assignment(self) -> exp.PropertyEQ | None:
@@ -976,8 +981,10 @@ class PlPgSQLParser(PostgresParser):
         # Consume END and then require trailing LOOP
         self._match_expect(TokenType.END)
         self._match_expect(TokenType.LOOP)
+        # Optional trailing label and statement terminator
+        label = self._parse_loop_label()
 
-        return self.expression(PGLoop(body=body))
+        return self.expression(PGLoop(body=body, end_label=label))
 
     def _parse_pgexit_or_continue(self, *, token_type: TokenType, expr_cls: type[exp.Expression]):
         """Parse EXIT/CONTINUE constructs which share the same grammar.

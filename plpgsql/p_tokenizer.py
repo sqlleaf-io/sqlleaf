@@ -10,6 +10,9 @@ PLPGSQL_CUSTOM_TOKEN_NAMES = (
     "BY",
     "CLOSE",
     "CONTINUE",
+    # Synthetic tokens (not keywords)
+    "LABEL_BEGIN",  # <<
+    "LABEL_END",    # >>
     "DDOT",
     "EXIT",
     "FOREACH",
@@ -24,7 +27,7 @@ PLPGSQL_CUSTOM_TOKEN_NAMES = (
     "WHILE",
 )
 PLPGSQL_KEYWORD_TOKEN_NAMES = (
-    *(token for token in PLPGSQL_CUSTOM_TOKEN_NAMES if token != "DDOT"),
+    *(token for token in PLPGSQL_CUSTOM_TOKEN_NAMES if token not in {"DDOT", "LABEL_BEGIN", "LABEL_END"}),
     "DECLARE",
     "GET",
 )

@@ -69,6 +69,21 @@ class PlPgSQLGenerator(PostgresGenerator):
             return ""
         return self.seg(f"WHERE CURRENT OF {self.sql(current_of)}")
 
+    def _label_names(
+        self,
+        expression: exp.Expression,
+        label_key: str = "label",
+        end_label_key: str | None = None,
+    ) -> tuple[str, str]:
+        """
+        Return the leading and trailing labels for a labelled block.
+        """
+        label = expression.args.get(label_key)
+        end_label = expression.args.get(end_label_key or label_key)
+        prefix = f"<<{self.sql(label)}>> " if label is not None else ""
+        suffix = f" {self.sql(end_label)}" if end_label is not None else ""
+        return prefix, suffix
+
     def pgupdate_sql(self, expression: PGUpdate) -> str:
         update = exp.Update(**{k: v for k, v in expression.args.items() if k != "current_of"})
         return self.update_sql(update) + self._current_of_sql(expression)
@@ -79,7 +94,10 @@ class PlPgSQLGenerator(PostgresGenerator):
 
     # Also expose the auto-discovered method
     def pgblock_sql(self, expression: PGBlock) -> str:
-        sql = ""
+        # Leading label, if any
+        label = expression.args.get("label")
+        prefix = f"<<{self.sql(label)}>> " if label is not None else ""
+        sql = prefix
 
         # DECLARE section first if present
         declare = expression.args.get("declare")
@@ -98,6 +116,9 @@ class PlPgSQLGenerator(PostgresGenerator):
             sql += self.seg(self.sql(ex))
 
         sql += self.seg("END")
+        # Trailing END label when present
+        if label is not None:
+            sql += self.seg(self.sql(label))
         return sql
 
     def pgperform_sql(self, expression: PGPerform) -> str:
@@ -320,39 +341,36 @@ class PlPgSQLGenerator(PostgresGenerator):
     def pgloop_sql(self, expression: PGLoop) -> str:
         body = expression.args.get("body") or []
         body_sql = " ".join(f"{self.sql(stmt)};" for stmt in body)
-        label = expression.args.get("label")
-        suffix = f" {self.sql(label)}" if label is not None else ""
+        prefix, suffix = self._label_names(expression, end_label_key="end_label")
         # Render exactly: LOOP <stmts>; END LOOP [label]
         if body_sql:
-            return f"LOOP {body_sql} END LOOP{suffix}"
-        return f"LOOP END LOOP{suffix}"
+            return f"{prefix}LOOP {body_sql} END LOOP{suffix}"
+        return f"{prefix}LOOP END LOOP{suffix}"
 
     def whileblock_sql(self, expression: exp.WhileBlock) -> str:
         cond_sql = self.sql(expression.this)
         body = expression.args.get("body") or []
         body_sql = " ".join(f"{self.sql(stmt)};" for stmt in body)
-        label = expression.args.get("label")
-        suffix = f" {self.sql(label)}" if label is not None else ""
+        prefix, suffix = self._label_names(expression)
         if body_sql:
-            return f"WHILE {cond_sql} LOOP {body_sql} END LOOP{suffix}"
-        return f"WHILE {cond_sql} LOOP END LOOP{suffix}"
+            return f"{prefix}WHILE {cond_sql} LOOP {body_sql} END LOOP{suffix}"
+        return f"{prefix}WHILE {cond_sql} LOOP END LOOP{suffix}"
 
     def pgforin_sql(self, expression: PGForIn) -> str:
         target_sql = self.sql(expression.this)
         body_sql = " ".join(f"{self.sql(stmt)};" for stmt in expression.expressions)
-        label = expression.args.get("label")
-        suffix = f" {self.sql(label)}" if label is not None else ""
+        prefix, suffix = self._label_names(expression)
 
         query = expression.args.get("query")
         if query is not None:
-            header = f"FOR {target_sql} IN {self.sql(query)} LOOP"
+            header = f"{prefix}FOR {target_sql} IN {self.sql(query)} LOOP"
         else:
             reverse = "REVERSE " if expression.args.get("reverse") else ""
             start_sql = self.sql(expression.args.get("start"))
             end_sql = self.sql(expression.args.get("end"))
             step = expression.args.get("step")
             by_sql = f" BY {self.sql(step)}" if step is not None else ""
-            header = f"FOR {target_sql} IN {reverse}{start_sql}..{end_sql}{by_sql} LOOP"
+            header = f"{prefix}FOR {target_sql} IN {reverse}{start_sql}..{end_sql}{by_sql} LOOP"
 
         if body_sql:
             return f"{header} {body_sql} END LOOP{suffix}"
@@ -373,10 +391,9 @@ class PlPgSQLGenerator(PostgresGenerator):
         slice_expr = expression.args.get("slice")
         slice_sql = f" SLICE {self.sql(slice_expr)}" if slice_expr is not None else ""
 
-        label = expression.args.get("label")
-        suffix = f" {self.sql(label)}" if label is not None else ""
+        prefix, suffix = self._label_names(expression)
 
-        header = f"FOREACH {target_sql}{slice_sql} IN ARRAY {array_sql} LOOP"
+        header = f"{prefix}FOREACH {target_sql}{slice_sql} IN ARRAY {array_sql} LOOP"
         if body_sql:
             return f"{header} {body_sql} END LOOP{suffix}"
         return f"{header} END LOOP{suffix}"

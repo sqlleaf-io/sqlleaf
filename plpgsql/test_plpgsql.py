@@ -1,7 +1,9 @@
 import unittest
 
 import sqlglot
+from sqlglot.errors import ParseError
 from plpgsql.p_dialect import plpgsql
+from plpgsql.p_tokenizer import TokenType
 from plpgsql.classes import *
 
 
@@ -947,7 +949,7 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_plpgsql_while_with_label(self) -> None:
-        sql = "BEGIN WHILE TRUE LOOP EXIT; END LOOP mylabel; END;"
+        sql = "BEGIN <<mylabel>> WHILE TRUE LOOP EXIT; END LOOP mylabel; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
@@ -1173,7 +1175,7 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_for_in_query_with_label(self) -> None:
-        sql = "BEGIN FOR r IN SELECT 1 LOOP EXIT; END LOOP myloop; END;"
+        sql = "BEGIN <<myloop>> FOR r IN SELECT 1 LOOP EXIT; END LOOP myloop; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
@@ -1228,7 +1230,7 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_for_in_cursor_with_label(self) -> None:
-        sql = "BEGIN FOR rec IN cur LOOP EXIT; END LOOP myloop; END;"
+        sql = "BEGIN <<myloop>> FOR rec IN cur LOOP EXIT; END LOOP myloop; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
@@ -1292,7 +1294,7 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_for_range_with_label(self) -> None:
-        sql = "BEGIN FOR i IN 1..3 LOOP EXIT; END LOOP myloop; END;"
+        sql = "BEGIN <<myloop>> FOR i IN 1..3 LOOP EXIT; END LOOP myloop; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
@@ -1371,7 +1373,7 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_for_in_execute_with_label(self) -> None:
-        sql = "BEGIN FOR r IN EXECUTE q LOOP EXIT; END LOOP myloop; END;"
+        sql = "BEGIN <<myloop>> FOR r IN EXECUTE q LOOP EXIT; END LOOP myloop; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
@@ -1461,12 +1463,12 @@ class TestPlPgSQL(unittest.TestCase):
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_foreach_with_label(self) -> None:
-        sql = "BEGIN FOREACH x IN ARRAY $1 LOOP EXIT; END LOOP myloop; END;"
+        sql = "BEGIN <<myloop>> FOREACH x IN ARRAY $1 LOOP EXIT; END LOOP myloop; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
     def test_foreach_slice_with_label(self) -> None:
-        sql = "BEGIN FOREACH x SLICE 2 IN ARRAY $1 LOOP a := 1; END LOOP myloop; END;"
+        sql = "BEGIN <<myloop>> FOREACH x SLICE 2 IN ARRAY $1 LOOP a := 1; END LOOP myloop; END;"
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
@@ -1769,25 +1771,74 @@ class TestPlPgSQL(unittest.TestCase):
         expr = sqlglot.parse_one(sql, dialect=plpgsql)
         self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
-    # def test_loop_labeled_end(self) -> None:
-    #     sql = "<<outer>> LOOP EXIT; END LOOP outer;"
-    #     expr = sqlglot.parse_one(sql, dialect=plpgsql)
-    #     self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+    def test_loop_labeled_end(self) -> None:
+        sql = "BEGIN <<outer>> LOOP EXIT; END LOOP outer; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
-    # def test_exit_from_nested_loop_using_label(self) -> None:
-    #     sql = "<<outer>> LOOP LOOP EXIT outer; END LOOP; END LOOP;"
-    #     expr = sqlglot.parse_one(sql, dialect=plpgsql)
-    #     self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+    def test_exit_from_nested_loop_using_label(self) -> None:
+        sql = "BEGIN <<outer>> LOOP LOOP EXIT outer; END LOOP; END LOOP; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
-    # def test_continue_with_label_and_when(self) -> None:
-    #     sql = "<<l>> LOOP CONTINUE l WHEN i % 2 = 0; END LOOP;"
-    #     expr = sqlglot.parse_one(sql, dialect=plpgsql)
-    #     self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+    def test_continue_loop_with_label_and_when(self) -> None:
+        sql = "<<l>> LOOP CONTINUE l WHEN i % 2 = 0; END LOOP l;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
 
-    # def test_while_with_label_and_exit_when(self) -> None:
-    #     sql = "<<w>> WHILE i < 10 LOOP EXIT w WHEN i = 5; END LOOP;"
-    #     expr = sqlglot.parse_one(sql, dialect=plpgsql)
-    #     self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+    def test_while_with_label_and_exit_when(self) -> None:
+        sql = "<<w>> WHILE i < 10 LOOP EXIT w WHEN i = 5; END LOOP w;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    # New round-trip tests for labeled constructs
+    def test_roundtrip_loop_leading_and_trailing_label(self) -> None:
+        sql = "<<l>> LOOP EXIT; END LOOP l;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_roundtrip_while_leading_and_trailing_label(self) -> None:
+        sql = "<<w>> WHILE i < 10 LOOP EXIT; END LOOP w;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_roundtrip_for_range_with_leading_label(self) -> None:
+        sql = "<<f>> FOR i IN 1..3 LOOP EXIT; END LOOP f;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_roundtrip_for_query_with_leading_label(self) -> None:
+        sql = "<<f>> FOR r IN SELECT * FROM t LOOP EXIT; END LOOP f;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_roundtrip_foreach_with_leading_label(self) -> None:
+        sql = "<<fe>> FOREACH x IN ARRAY arr LOOP EXIT; END LOOP fe;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_roundtrip_begin_block_with_leading_and_trailing_label(self) -> None:
+        sql = "<<b>> BEGIN NULL; END b;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_roundtrip_declare_block_with_leading_label(self) -> None:
+        sql = "<<b>> DECLARE v INT; BEGIN NULL; END b;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_nested_labeled_block_inside_block_body(self) -> None:
+        sql = "BEGIN <<inner>> LOOP EXIT inner; END LOOP inner; END;"
+        expr = sqlglot.parse_one(sql, dialect=plpgsql)
+        self.assertEqual(expr.sql(dialect=plpgsql), sql[:-1])
+
+    def test_label_before_non_labelable_statement_fails(self) -> None:
+        with self.assertRaises(ParseError):
+            sqlglot.parse_one("<<x>> PERFORM 1;", dialect=plpgsql)
+
+    def test_tokenizer_label_sanity(self) -> None:
+        toks = plpgsql.Tokenizer().tokenize("<<lbl>>")
+        self.assertEqual([t.token_type for t in toks], [TokenType.LABEL_BEGIN, TokenType.VAR, TokenType.LABEL_END])
 
     def test_for_in_query_with_order_by_limit(self) -> None:
         sql = "FOR r IN SELECT * FROM t ORDER BY 1 LIMIT 5 LOOP END LOOP;"

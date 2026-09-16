@@ -37,6 +37,55 @@ class PlPgSQL(Postgres):
                 tok = tokens[i]
                 nxt = tokens[i + 1] if i + 1 < n else None
 
+                # Pattern 0: LABEL full pattern << id >>
+                # Merge only when we see LT LT <identifier-like> GT GT with strict adjacency
+                if (
+                    i + 4 < n
+                    and tok.token_type == TokenType.LT
+                    and nxt is not None and nxt.token_type == TokenType.LT and adjacent(tok, nxt)
+                ):
+                    ident_tok = tokens[i + 2]
+                    gt1 = tokens[i + 3]
+                    gt2 = tokens[i + 4]
+
+                    if (
+                        ident_tok is not None
+                        and ident_tok.text
+                        and (ident_tok.text[0].isalpha() or ident_tok.text[0] == "_")
+                        and all(ch.isalnum() or ch == "_" for ch in ident_tok.text)
+                        and gt1.token_type == TokenType.GT
+                        and gt2.token_type == TokenType.GT
+                        and adjacent(nxt, ident_tok)
+                        and adjacent(ident_tok, gt1)
+                        and adjacent(gt1, gt2)
+                    ):
+                        # Create LABEL_BEGIN spanning the two '<'
+                        lbegin = Token(
+                            TokenType.LABEL_BEGIN,
+                            "<<",
+                            line=tok.line,
+                            col=tok.col,
+                            start=tok.start,
+                            end=nxt.end,
+                            comments=tok.comments,
+                        )
+                        # Keep the identifier token as-is
+                        # Create LABEL_END spanning the two '>'
+                        lend = Token(
+                            TokenType.LABEL_END,
+                            ">>",
+                            line=gt1.line,
+                            col=gt1.col,
+                            start=gt1.start,
+                            end=gt2.end,
+                            comments=gt1.comments,
+                        )
+                        result.append(lbegin)
+                        result.append(ident_tok)
+                        result.append(lend)
+                        i += 5
+                        continue
+
                 # Pattern 1: NUMBER('...' endswith '.') immediately followed by DOT -> DDOT
                 if (
                     nxt is not None
