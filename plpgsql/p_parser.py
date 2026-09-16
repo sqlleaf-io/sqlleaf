@@ -3,47 +3,11 @@ import typing as t
 from enum import IntEnum
 
 from sqlglot.parsers.postgres import PostgresParser
-from sqlglot.tokens import TokenType
 from plpgsql.classes import *
-
-from sqlglot import tokenizer_core
-
-# Monkey patch sqlglot's tokenizer with PL/pgSQL keywords
-tt = tokenizer_core.TokenType
-PLPGSQL_CUSTOM_TOKEN_NAMES = (
-    "ASSERT",
-    "BY",
-    "CLOSE",
-    "CONTINUE",
-    "DDOT",
-    "EXIT",
-    "FOREACH",
-    "IF",
-    "LOOP",
-    "MOVE",
-    "OPEN",
-    "PERFORM",
-    "RAISE",
-    "RETURN",
-    "REVERSE",
-    "WHILE",
-)
-PLPGSQL_KEYWORD_TOKEN_NAMES = (
-    *(token for token in PLPGSQL_CUSTOM_TOKEN_NAMES if token != "DDOT"),
-    "DECLARE",
-    "GET",
-)
-token_dict = {m.name: m.value for m in TokenType}
-
-next_value = max(token_dict.values()) + 1
-for token in PLPGSQL_CUSTOM_TOKEN_NAMES:
-    token_dict[token] = next_value
-    next_value += 1
-
-TokenType = IntEnum('TokenType', token_dict)
+from plpgsql.p_tokenizer import TokenType
 
 
-class Parser(PostgresParser):
+class PlPgSQLParser(PostgresParser):
     STATEMENT_PARSERS = {
         **PostgresParser.STATEMENT_PARSERS,
         TokenType.BEGIN: lambda self: self._parse_plpgsql_block(),
@@ -156,19 +120,9 @@ class Parser(PostgresParser):
         allowed_ops: set[TokenType],
         rhs_parser: t.Callable[[], exp.Expression] | None = None,
     ) -> exp.PropertyEQ | exp.EQ | exp.Kwarg | None:
-        """Parse a named-argument style pair following a name expression.
-
-        Supported operators are provided via ``allowed_ops`` and map to:
-        - TokenType.COLON_EQ (:=)  -> exp.PropertyEQ
-        - TokenType.EQ (=)         -> exp.EQ
-        - TokenType.FARROW (=>)    -> exp.Kwarg
-
-        If the next token is not an allowed operator, return None and do not
-        consume anything. Otherwise, consume the operator, parse RHS via the
-        provided ``rhs_parser`` (defaults to full expression), and return the
-        appropriate expression node.
         """
-
+        Parse a named-argument style pair following a name expression.
+        """
         rhsp = rhs_parser or self._parse_expression
 
         # Filter to the allowed operators for this context
@@ -176,7 +130,6 @@ class Parser(PostgresParser):
         if not candidates:
             return None
 
-        # If the next token is not one of the allowed operators, do not consume
         if not self._match_set(candidates, advance=False):
             return None
 
@@ -195,21 +148,9 @@ class Parser(PostgresParser):
         strict: bool = True,
         parse_one: t.Callable[[], exp.Expression | None] | None = None,
     ) -> list[exp.Expression]:
-        """Parse a sequence of ';'-delimited statements until a terminator.
-
-        This advances through chunk-delimited statements, collecting one parsed
-        unit per chunk via ``parse_one`` (defaults to ``self._parse_statement``).
-
-        Terminators are only peeked (not consumed) so callers can decide how to
-        handle them (e.g., ``END``, ``WHEN``, ``EXCEPTION``, ``BEGIN``).
-
-        When ``strict`` is True, the helper enforces that each parsed unit
-        fully consumes its chunk, raises ``error_msg`` if unconsumed tokens
-        remain, calls ``check_errors()``, and then advances to the next chunk.
-        When ``strict`` is False, it simply advances to the next chunk after
-        each parsed unit without extra checks (matching existing laxer callers).
         """
-
+        Parse a sequence of ';'-delimited statements until a terminator.
+        """
         out: list[exp.Expression] = []
         parse = parse_one or self._parse_statement
 
@@ -221,15 +162,15 @@ class Parser(PostgresParser):
             if self._index >= self._tokens_size:
                 self._advance_chunk()
 
-            # No more tokens in this chunked stream
+            # No more tokens
             if not self._curr:
                 break
 
-            # Stop if a token-type terminator is next (but don't consume)
+            # Stop on a token-type terminator
             if stop_tokens and self._match_set(stop_tokens, advance=False):
                 break
 
-            # Stop if a lexeme (identifier-like) terminator is next
+            # Stop on a lexeme (identifier-like) terminator
             if stop_texts_upper and self._curr.text.upper() in stop_texts_upper:
                 break
 
@@ -242,10 +183,8 @@ class Parser(PostgresParser):
                 # After parsing a unit, there should be no leftover tokens in the chunk
                 if self._index < self._tokens_size:
                     self.raise_error(error_msg)
-                # Surface any accumulated errors (base Parser pattern)
                 self.check_errors()
 
-            # Proceed to the next chunk regardless of strictness
             self._advance_chunk()
 
         return out
@@ -254,15 +193,11 @@ class Parser(PostgresParser):
         declare = None
 
         entry = self._prev.token_type if self._prev else None
-        if entry == TokenType.BEGIN:
-            pass
-        elif entry == TokenType.DECLARE:
+        if entry == TokenType.DECLARE:
             declare = self._parse_pldeclare()
             self._match_expect(TokenType.BEGIN)
-        else:
+        elif entry != TokenType.BEGIN:
             self.raise_error("Expected BEGIN or DECLARE to start PL/pgSQL block")
-
-        exception = None
 
         expressions = self._parse_statement_body(
             stop_texts=("EXCEPTION",),
@@ -272,8 +207,9 @@ class Parser(PostgresParser):
             parse_one=self._parse_block_unit,
         )
 
+        exception = None
         # If EXCEPTION section follows, parse it now (helper didn't consume it)
-        if self._match_texts("EXCEPTION", advance=False):
+        if self._match_texts("EXCEPTION"):
             exception = self._parse_pgexception()
 
         # Require END to close the block
@@ -291,10 +227,7 @@ class Parser(PostgresParser):
         Notes:
         - We do NOT accept '=' as assignment. If we detect '<ident> =', raise a ParseError.
         - Parsing is local to the current chunk (terminated by ';').
-        - On non-match, parser state is restored and None is returned.
         """
-
-        # Use index-based backtracking instead of manual state juggling
         index = self._index
 
         # LHS must be an identifier-like variable
@@ -303,29 +236,21 @@ class Parser(PostgresParser):
             self._retreat(index)
             return None
 
-        # Preserve specific error for accidental '=' usage
         if self._match(TokenType.EQ, advance=False):
             self.raise_error("Use := for assignment in PL/pgSQL blocks")
-            return None  # unreachable, keeps type-checkers happy
 
-        # Delegate operator + RHS parsing to shared helper (only ':=')
         pair = self._parse_named_pair(
             lhs,
             allowed_ops={TokenType.COLON_EQ},
             rhs_parser=self._parse_expression,
         )
-
         if pair is None:
             self._retreat(index)
             return None
 
-        # Helper guarantees COLON_EQ -> PropertyEQ
-        return pair  # type: ignore[return-value]
+        return pair
 
     def _parse_pgexception(self) -> exp.Expression:
-        # Consume EXCEPTION keyword if not yet consumed
-        self._match_text_expect("EXCEPTION")
-
         whens: list[exp.Expression] = []
 
         # Parse one or more WHEN clauses
@@ -340,7 +265,6 @@ class Parser(PostgresParser):
     def _parse_pgwhen(self) -> exp.Expression:
         self._match_expect(TokenType.WHEN)
 
-        # Parse one or more condition identifiers separated by OR
         conditions: list[exp.Expression] = []
 
         # First condition (identifier or SQLSTATE 'xxxxx')
@@ -348,7 +272,7 @@ class Parser(PostgresParser):
         if cond is not None:
             conditions.append(cond)
 
-        # Additional conditions joined by OR
+        # Parse one or more condition identifiers separated by OR; AND is not allowed
         while self._match(TokenType.OR):
             more = self._parse_pgwhen_condition()
             if more is None:
@@ -374,14 +298,11 @@ class Parser(PostgresParser):
         # Combine multiple conditions into a single OR expression like exp.Case does
         condition_expr = conditions[0]
         if len(conditions) > 1:
-            # Use builder to combine with OR respecting nesting
             condition_expr = exp.or_(*conditions)
 
         return self.expression(PGWhen(condition=condition_expr, then=thens))
 
     def _parse_pgwhen_condition(self) -> exp.Expression | None:
-        # Support: identifier condition (e.g., division_by_zero)
-        # the keyword OTHERS, or the form: SQLSTATE ['XXXXX']
         if self._match_texts(("OTHERS",)):
             return self.expression(PGOthers())
 
@@ -390,11 +311,8 @@ class Parser(PostgresParser):
 
         return self._parse_id_var()
 
-    def _parse_sqlstate(self) -> PGSqlState:
-        """Consume a quoted literal after SQLSTATE and wrap it in PGSqlState.
-
-        Precondition: the SQLSTATE keyword has already been matched.
-        """
+    def _parse_sqlstate(self) -> PGSqlState | None:
+        """Consume a quoted literal after SQLSTATE."""
         if self._match(TokenType.STRING, advance=False):
             lit = self._parse_primary()
             if isinstance(lit, exp.Literal) and lit.is_string:
@@ -414,7 +332,6 @@ class Parser(PostgresParser):
         if self._match(TokenType.ELSE):
             default = self._parse_pgif_body()
 
-        # Require END IF to close
         self._match_expect(TokenType.END)
         self._match_expect(TokenType.IF)
 
@@ -551,7 +468,6 @@ class Parser(PostgresParser):
         if scroll is not None:
             if self._match_texts(("CURSOR",)):
                 return self._parse_pl_declare_cursor(ident, is_constant, scroll)
-            # Roll back if not actually a cursor declaration
             self._retreat(index)
         elif self._match_texts(("CURSOR",)):
             return self._parse_pl_declare_cursor(ident, is_constant, None)
@@ -848,7 +764,7 @@ class Parser(PostgresParser):
 
     def _parse_pgfor_query(self, target: exp.Expression) -> PGForIn:
         # If the header begins with EXECUTE, parse via _parse_pgexecute and
-        # explicitly reject INTO / INTO STRICT in this context, mirroring
+        # reject INTO / INTO STRICT in this context, mirroring
         # RETURN QUERY EXECUTE semantics.
         if self._match(TokenType.EXECUTE):
             query = self._parse_pgexecute()

@@ -3,8 +3,9 @@ from __future__ import annotations
 from sqlglot.dialects.postgres import Postgres
 from sqlglot.tokens import Token
 
-from plpgsql.p_generator import Generator
-from plpgsql.p_parser import Parser, PLPGSQL_KEYWORD_TOKEN_NAMES, TokenType
+from plpgsql.p_generator import PlPgSQLGenerator
+from plpgsql.p_parser import PlPgSQLParser
+from plpgsql.p_tokenizer import PLPGSQL_KEYWORD_TOKEN_NAMES, TokenType
 
 
 class PlPgSQL(Postgres):
@@ -92,7 +93,7 @@ class PlPgSQL(Postgres):
 
             return result
 
-    Generator = Generator
-    Parser = Parser
+    Generator = PlPgSQLGenerator
+    Parser = PlPgSQLParser
 
 plpgsql = PlPgSQL

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from sqlglot import exp
 from sqlglot.generators.postgres import PostgresGenerator
 from plpgsql.classes import *
 
 
-class Generator(PostgresGenerator):
+class PlPgSQLGenerator(PostgresGenerator):
     # Keep explicit TRANSFORMS to adhere to project guidance for this experimental dialect.
     TRANSFORMS = {
         **PostgresGenerator.TRANSFORMS,
