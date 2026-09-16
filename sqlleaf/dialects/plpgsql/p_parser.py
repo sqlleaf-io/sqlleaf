@@ -1,11 +1,11 @@
 from __future__ import annotations
 import typing as t
-from enum import IntEnum
 
 from sqlglot.parsers.postgres import PostgresParser
 from sqlglot import exp
-from plpgsql.classes import *
-from plpgsql.p_tokenizer import TokenType
+
+from sqlleaf.dialects.plpgsql.p_classes import *
+from sqlleaf.dialects.plpgsql.p_tokenizer import TokenType
 
 
 class PlPgSQLParser(PostgresParser):
@@ -71,6 +71,23 @@ class PlPgSQLParser(PostgresParser):
     def _match_text_expect(self, text: str, *, advance: bool = True) -> None:
         if not self._match_texts((text,), advance=advance):
             self.raise_error(f"Expected token: {text.upper()}")
+
+    def _parse_statement(self) -> exp.Expression | None:
+        if not self._match(TokenType.LABEL_BEGIN):
+            return super()._parse_statement()
+
+        label = self._parse_id_var(any_token=True)
+        if label is None:
+            self.raise_error("Expected label identifier after <<")
+
+        self._match_expect(TokenType.LABEL_END)
+
+        statement = super()._parse_statement()
+        if statement is None or not isinstance(statement, (PGBlock, PGLoop, PGForIn, PGForEach, exp.WhileBlock)):
+            self.raise_error("Label can only prefix BEGIN/DECLARE blocks and LOOP/FOR/FOREACH/WHILE statements")
+
+        statement.set("label", label)
+        return statement
 
     def _parse_pggetdiagnostics(self) -> PGGetDiagnostics:
         current = False

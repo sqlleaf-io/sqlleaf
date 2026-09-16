@@ -2,9 +2,8 @@ import unittest
 
 import sqlglot
 from sqlglot.errors import ParseError
-from plpgsql.p_dialect import plpgsql
-from plpgsql.p_tokenizer import TokenType
-from plpgsql.classes import *
+from sqlleaf.dialects.plpgsql.p_dialect import plpgsql, TokenType
+from sqlleaf.dialects.plpgsql.p_classes import *
 
 
 class TestPlPgSQL(unittest.TestCase):

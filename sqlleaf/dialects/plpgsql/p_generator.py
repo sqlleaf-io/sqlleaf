@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from sqlglot.generators.postgres import PostgresGenerator
-from plpgsql.classes import *
+from sqlleaf.dialects.plpgsql.p_classes import *
 
 
 class PlPgSQLGenerator(PostgresGenerator):
