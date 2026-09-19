@@ -31,7 +31,7 @@ class UserDefinedFunctionParameters:
         # Filter parameters to only include those that can be passed as input
         input_parameters = [p for p in parameters if p.is_input or p.is_variadic]
 
-        language = _extract_language(expr)
+        language = util.get_language_property(expr)
 
         body_expr = expr.args.get("expression")
         inner_statements = []
@@ -127,7 +127,7 @@ def get_user_defined_data_type(kind: t.Optional[str | exp.Identifier | exp.Dot] 
 
 @dataclass
 class FunctionParam:
-    """A parameter of a user-defined function."""
+    """A parameter of a user-defined function or procedure."""
 
     name: str
     type: exp.DataType
@@ -287,11 +287,3 @@ def _extract_return_info(
                         return_columns = found_query.get_column_defs()
 
     return return_type, return_columns
-
-
-def _extract_language(expression: exp.Create) -> t.Optional[str]:
-    """Extracts the language from a CREATE FUNCTION expression."""
-    for prop in expression.args.get("properties", {}).expressions:
-        if isinstance(prop, exp.LanguageProperty):
-            return prop.this.sql().lower()
-    return None

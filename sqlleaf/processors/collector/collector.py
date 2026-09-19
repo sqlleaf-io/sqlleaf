@@ -607,7 +607,7 @@ def _process_views_and_ctas(
 
 def _unnest_values_inside_select(statement: exp.Create, dialect: str):
     """
-    Replace SELECT * FROM (VALUES ()) with VALUES ().
+    Replace `SELECT * FROM (VALUES ())` with `VALUES ()`.
     This prevents sqlglot from assigning its own aliases.
     """
     # TODO: this should be done in a transform, checked against self.statement

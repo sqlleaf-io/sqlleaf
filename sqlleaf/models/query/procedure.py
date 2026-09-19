@@ -1,13 +1,62 @@
 from __future__ import annotations
 
 import typing as t
+from dataclasses import dataclass
 
 from sqlglot import exp
 
 from sqlleaf import mappings, util
 from sqlleaf.models.query.base import Query
-from sqlleaf.models.query.user_defined_function import _extract_function_info
+from sqlleaf.models.query.user_defined_function import _extract_function_info, FunctionParam
 from sqlleaf.typing import TargetInfo
+
+
+@dataclass(frozen=True)
+class ProcedureQueryProperties:
+    schema_name: t.Optional[str]
+    procedure_name: str
+    signature: str
+    language: t.Optional[str]
+    column_defs: t.List[exp.ColumnDef]
+    parameters: t.List[FunctionParam]
+    args: t.List[dict]
+    inner_statements: t.List[exp.Expr]
+
+    @classmethod
+    def from_expression(cls, expr: exp.Create, object_mapping: mappings.ObjectMapping) -> ProcedureQueryProperties:
+        table = util.get_table(expr)
+        schema_name = table.db
+        procedure_name = table.name
+
+        # Full signature as string (e.g., etl.my_proc(v_session_id VARCHAR))
+        signature = str(expr.this)
+
+        language = util.get_language_property(expr)
+        _, _, parameters = _extract_function_info(expr)
+
+        args = [{"name": p.name, "type": str(p.type)} for p in parameters]
+        column_defs: t.List[exp.ColumnDef] = expr.this.expressions
+
+        body_expr = expr.expression
+        inner_statements: t.List[exp.Expr] = []
+        if body_expr:
+            inner_statements = util.iter_inner_statements(body_expr, object_mapping.dialect, wrap=True)
+            inner_statements = [
+                stmt
+                for stmt in inner_statements
+                if not isinstance(stmt, (exp.EndStatement, exp.Column, exp.Identifier))
+            ]
+
+        return cls(
+            schema_name=schema_name,
+            procedure_name=procedure_name,
+            signature=signature,
+            language=language,
+            column_defs=column_defs,
+            parameters=parameters,
+            args=args,
+            inner_statements=inner_statements,
+        )
 
 
 class ProcedureQuery(Query):
@@ -35,29 +84,32 @@ class ProcedureQuery(Query):
             source_info=None,
             target_info=TargetInfo(expression=table, type=target_type),
         )
-        self.schema = table.db
-        self.procedure = table.name
-        self.signature = str(expr.this)  # e.g. etl.my_proc(v_session_id VARCHAR)
+        self.properties = ProcedureQueryProperties.from_expression(expr, object_mapping)
+        self.column_defs = self.properties.column_defs
 
-        # TODO: support 'default'
-        self.column_defs: t.List[exp.ColumnDef] = expr.this.expressions
-        _, _, self.parameters = _extract_function_info(expr)
-        self.args = [  # e.g. {'name': 'v_session_id', 'type': 'VARCHAR'}
-            {"name": p.name, "type": str(p.type)} for p in self.parameters
-        ]
-        self.inner_statements = self._extract_inner_statements(expr)
+    @property
+    def schema(self) -> t.Optional[str]:
+        return self.properties.schema_name
 
-    def _extract_inner_statements(self, expr: exp.Create) -> t.List[exp.Expr]:
-        body_expr = expr.args.get("expression")
-        if not body_expr:
-            return []
+    @property
+    def procedure(self) -> str:
+        return self.properties.procedure_name
 
-        inner_statements = util.iter_inner_statements(body_expr, self.dialect, wrap=True)
+    @property
+    def signature(self) -> str:
+        return self.properties.signature
 
-        # Filter out statements that do not contain lineage (e.g. END;)
-        return [
-            stmt for stmt in inner_statements if not isinstance(stmt, (exp.EndStatement, exp.Column, exp.Identifier))
-        ]
+    @property
+    def parameters(self):
+        return self.properties.parameters
+
+    @property
+    def args(self) -> t.List[dict]:
+        return self.properties.args
+
+    @property
+    def inner_statements(self) -> t.List[exp.Expr]:
+        return self.properties.inner_statements
 
     def to_dict(self):
         return {

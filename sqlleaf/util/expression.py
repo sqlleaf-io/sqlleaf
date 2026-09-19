@@ -76,6 +76,14 @@ def find_property(statement: exp.Create, child_object: TargetExprType, dialect: 
     return prop
 
 
+def get_language_property(expression: exp.Create) -> t.Optional[str]:
+    """Extracts the language from a CREATE FUNCTION expression."""
+    for prop in expression.args.get("properties", {}).expressions:
+        if isinstance(prop, exp.LanguageProperty):
+            return prop.this.sql().lower()
+    return None
+
+
 def get_location_property(expr: exp.Create, dialect: str) -> str | None:
     """
     Get the LOCATION value from a CREATE statement.

@@ -3,6 +3,8 @@ import typing as t
 import sqlglot
 from sqlglot import exp
 
+from sqlleaf import exception
+
 
 def default_column_index_iterator(dialect: str, elems: t.List[t.Any]) -> t.Generator[str]:
     """
@@ -17,16 +19,25 @@ def default_column_index_iterator(dialect: str, elems: t.List[t.Any]) -> t.Gener
             yield f"column{i + 1}"
 
 
-def iter_inner_statements(stmt: exp.Expr, dialect: str, wrap: bool = False) -> t.List[exp.Expr]:
+SUPPORTED_LANGUAGES = [
+    "SQL",
+    "PLPGSQL",
+]
+
+def iter_inner_statements(stmt: exp.Expr, dialect: str, wrap: bool = False, language: str = "SQL") -> t.List[exp.Expr]:
     """
     Iterate over the inner statements of a given expression.
     """
+    lang = language.upper()
+    if language.upper() not in SUPPORTED_LANGUAGES:
+        exception.raise_error(exception.UnsupportedFeatureError, message=f"Unsupported language for procedure/function: {lang}")
+
+    if dialect == "postgres" and lang == "PLPGSQL":
+        dialect = language
+
     if isinstance(stmt, (exp.Literal, exp.Heredoc)):
         body_text = stmt.this.strip()
-        try:
-            return sqlglot.parse(body_text, read=dialect)
-        except Exception:
-            return []
+        return sqlglot.parse(body_text, dialect=dialect)
     if isinstance(stmt, exp.Block):
         return stmt.expressions
     if isinstance(stmt, exp.Return):

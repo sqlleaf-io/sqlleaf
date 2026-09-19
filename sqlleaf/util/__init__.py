@@ -5,6 +5,7 @@ from sqlleaf.util.expression import (
     find_property as find_property,
     get_column_constraint_expression as get_column_constraint_expression,
     get_function_args as get_function_args,
+    get_language_property as get_language_property,
     get_location_property as get_location_property,
     get_selected_column_names as get_selected_column_names,
     get_table as get_table,
