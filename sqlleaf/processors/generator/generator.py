@@ -8,6 +8,9 @@ import networkx as nx
 from sqlglot import exp
 from sqlglot.optimizer import Scope, build_scope
 
+from sqlleaf.models.query.declare_item import DeclareItemQuery
+from sqlleaf.models.query.block import BlockQuery
+
 if t.TYPE_CHECKING:
     pass
 
@@ -21,14 +24,19 @@ from sqlleaf.models.node import (
     TargetNodeType,
 )
 from sqlleaf.models.query import (
+    CTASQuery,
+    CopyQuery,
+    InsertQuery,
     PutQuery,
     Q,
     QueryHolder,
     TableQuery,
+    UnloadQuery,
     UpdateQuery,
+    ViewQuery,
 )
 from sqlleaf.processors.generator.dialects.base import BaseGenerator
-from sqlleaf.typing import TableOrScopeType, TableType
+from sqlleaf.typing import TableOrScopeType, TableType, SqlObjectType
 from sqlleaf.util.expression import get_column_index, get_expression_for_column
 
 logger = logging.getLogger("sqlleaf")
@@ -48,6 +56,7 @@ def generate_lineage_for_query(query_holder: QueryHolder, graph: nx.MultiDiGraph
 
     logger.debug("---- Generator ----")
     logger.debug(f"Generating for: {type(query)}")
+
     statement = query.statement
     logger.debug(f"Getting lineage for query: {statement.sql(dialect=query.dialect)}")
     logger.debug(repr(statement))
@@ -83,7 +92,7 @@ def generate_lineage_for_columns(
     generator: BaseGenerator,
     gen_ctx: GeneratorContext,
     pos_ctx: PositionContext,
-):
+) -> None:
     """
     Generate the lineage for a set of columns from a given table.
     """
@@ -493,3 +502,47 @@ def check_for_external_table(generator: BaseGenerator, gen_ctx: GeneratorContext
                 walk_expressions_and_build_graph(generator=generator, gen_ctx=gen_ctx, pos_ctx=pos_ctx)
         return True
     return False
+
+
+QUERIES_WITH_LINEAGE = (
+    CTASQuery,
+    CopyQuery,
+    InsertQuery,
+    PutQuery,
+    TableQuery,
+    UnloadQuery,
+    UpdateQuery,
+    ViewQuery,
+)
+
+
+def query_has_lineage(query: Q) -> bool:
+    """
+    Check if a query has lineage within its expressions.
+
+    We distinguish between a query's definition and a query that is called.
+    That is, in order for a `CREATE FUNCTION` or `CREATE PROCEDURE` to have
+    lineage, it must be executed by an invoking statement, e.g. `CALL()` or `SELECT UDF()`
+    Simply having statements inside its definition is not sufficient to produce lineage.
+    """
+    has_lineage = True
+    if not isinstance(query, QUERIES_WITH_LINEAGE):
+        has_lineage = False
+    elif isinstance(query, CopyQuery) and query.source_info.type == SqlObjectType.VALUES:
+        # COPY TO STDOUT VALUES (..) # TODO: this should have lineage
+        has_lineage = False
+    elif isinstance(query, CopyQuery) and not query.is_query_active():
+        has_lineage = False
+    elif isinstance(query, CTASQuery) and not query.load_data:
+        # CREATE TABLE WITH NO DATA
+        has_lineage = False
+    elif isinstance(query, CTASQuery) and query.source_info.type == SqlObjectType.PREPARED_STATEMENT:
+        # CREATE TABLE AS EXECUTE
+        has_lineage = False
+    elif isinstance(query, TableQuery) and query.property != "external":
+        # CREATE EXTERNAL TABLE
+        has_lineage = False
+
+    if not has_lineage:
+        logger.debug(f"Query type '{query.__class__.__name__}' does NOT have lineage. Skipping.")
+    return has_lineage

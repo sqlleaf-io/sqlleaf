@@ -4,6 +4,7 @@ from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.qualify import qualify
 
+from sqlleaf.dialects.plpgsql import pgexp
 from sqlleaf import exception, mappings, util
 from sqlleaf.typing import E, SourceExprType, TargetExprType
 
@@ -288,3 +289,16 @@ def get_column_constraint_expression(expr: exp.ColumnDef) -> exp.ColumnConstrain
         c.kind for c in expr.constraints if isinstance(c, exp.ColumnConstraint) and isinstance(c.kind, types)
     ]
     return t.cast(exp.ColumnConstraintKind, constraints[0]) if constraints else None
+
+
+def count_block_depth(expr: exp.Expr) -> int:
+    """
+    Determine how many blocks deep we are, i.e. the number of `BEGIN .. END` statements.
+    """
+    block_depth = 0
+    parent = expr.parent
+    while parent:
+        if isinstance(parent, exp.Block):
+            block_depth += 1
+        parent = parent.parent
+    return block_depth

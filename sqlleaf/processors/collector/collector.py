@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 import sqlglot
 from sqlglot import TokenType, exp
 from sqlglot.expressions import ColumnDef
+
+from sqlleaf.models.query.block import BlockQuery
+from sqlleaf.models.query.declare_item import DeclareItemQuery
 from sqlleaf.processors.transformer import udf
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
@@ -42,6 +45,7 @@ from sqlleaf.models.query import (
 )
 from sqlleaf.processors.collector import substitute
 from sqlleaf.processors.transformer.expressions.row import simplify_row_in_values
+from sqlleaf.dialects.plpgsql import pgexp
 
 logger = logging.getLogger("sqlleaf")
 
@@ -258,7 +262,7 @@ def _collect_writable_cte_queries(
     for i, cte in enumerate(parent_query.get_ctes()):
         cte_expr = cte.this
 
-        if isinstance(cte_expr, exp.Select):
+        if isinstance(cte_expr, (exp.Select, exp.Union)):
             continue
 
         query = _process_unnamed(cte_expr, dialect, object_mapping, i)
@@ -279,8 +283,7 @@ def _collect_call_substitutions(
     object_mapping: mappings.ObjectMapping,
 ) -> None:
     """
-    Performs argument substitution for CallQuery, ExecuteQuery, CTASQuery (EXECUTE AS),
-    and any query containing UDF call sites.
+    Performs argument substitution for any query containing calls to UDFs or procedures.
     The resulting inner statements are classified as Queries and attached as downstream holders.
     """
     subst_statements: t.List[exp.Expr] = []
@@ -306,6 +309,7 @@ def _collect_call_substitutions(
             # after this function; only the extracted subst_statements matter.
             node.replace(exp.Null())
 
+    # A BlockQuery can get created here as well
     parent_index = query.get_statement_index()
     for i, stmt in enumerate(subst_statements):
         composite_index = f"{parent_index}:{i}"
@@ -315,14 +319,41 @@ def _collect_call_substitutions(
             object_mapping=object_mapping,
             statement_index=composite_index,
         )
-        if substituted_query:
-            downstream_holder = QueryHolder(original=substituted_query)
-            holder.add_downstream_holder(downstream_holder)
-            # Recurse: the substituted child may itself contain calls/UDFs
-            _collect_query_children(substituted_query, downstream_holder, dialect, object_mapping)
+        downstream_holder = QueryHolder(original=substituted_query)
+        holder.add_downstream_holder(downstream_holder)
+        # Recurse: the substituted child may itself contain calls/UDFs
+        _collect_query_children(substituted_query, downstream_holder, dialect, object_mapping)
 
 
-def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping):
+def _collect_block_children(query: BlockQuery, parent_holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping) -> None:
+    """
+    Collect all child queries inside a PL/pgSQL block.
+    """
+    statement_idx = 0
+
+    # Collect the statements between DECLARE .. BEGIN
+    if declare := query.statement.args.get("declare"):
+        declare_items: list[pgexp.PGDeclareItem] = declare.expressions
+        for item in declare_items:
+            declare_item_query = _process_unnamed(item, dialect, object_mapping, statement_index=statement_idx)
+            downstream_holder = QueryHolder(original=declare_item_query)
+            parent_holder.add_downstream_holder(downstream_holder)
+            statement_idx += 1
+
+    # Collect the statements between BEGIN .. END
+    for block_expr in query.statement.args.get("expressions", []):
+        if isinstance(block_expr, exp.Null):
+            # The single statement "NULL;" is valid inside PL/pgSQL
+            continue
+
+        child_query = _process_unnamed(block_expr, dialect, object_mapping, statement_idx)
+        downstream_holder = QueryHolder(original=child_query)
+        parent_holder.add_downstream_holder(downstream_holder)
+        _collect_query_children(child_query, downstream_holder, dialect, object_mapping)
+        statement_idx += 1
+
+
+def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping) -> None:
     """
     Collect any nested child queries for a given query and attach them to the holder.
     """
@@ -334,6 +365,8 @@ def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, 
         _collect_multitable_insert_children(query, parent_holder, object_mapping)
     elif isinstance(query, UserDefinedFunctionQuery):
         _collect_udf_children(query, parent_holder, dialect, object_mapping)
+    elif isinstance(query, BlockQuery):
+        _collect_block_children(query, parent_holder, dialect, object_mapping)
 
     # Always check for writable CTEs regardless of query type above
     if not isinstance(query, (CopyQuery, PutQuery)):
@@ -348,7 +381,7 @@ def _collect_udf_children(
     parent_holder: QueryHolder,
     dialect: str,
     object_mapping: mappings.ObjectMapping,
-):
+) -> None:
     """
     Extract the function body from the UDF and parse it into individual statements.
     Circular references in UDF/procedure definitions could cause infinite recursion.
@@ -357,7 +390,7 @@ def _collect_udf_children(
     if not body_expr:
         return
 
-    for i, stmt in enumerate(util.iter_inner_statements(body_expr, dialect)):
+    for i, stmt in enumerate(query.inner_statements):
         child_query = _process_unnamed(stmt, dialect, object_mapping, i)
 
         # If it's a simple select and _process_unnamed skipped it, create a SelectQuery
@@ -371,7 +404,7 @@ def _collect_udf_children(
             _collect_query_children(child_query, downstream_holder, dialect, object_mapping)
 
 
-def _collect_insert_children(query: InsertQuery, parent_holder: QueryHolder, object_mapping: mappings.ObjectMapping):
+def _collect_insert_children(query: InsertQuery, parent_holder: QueryHolder, object_mapping: mappings.ObjectMapping) -> None:
     """
     Collect any additional queries inside an INSERT. For Postgres, this is 'INSERT .. ON CONFLICT DO UPDATE'.
     """
@@ -396,7 +429,7 @@ def _collect_insert_children(query: InsertQuery, parent_holder: QueryHolder, obj
 
 def _collect_merge_children(
     parent_query: MergeQuery, parent_holder: QueryHolder, object_mapping: mappings.ObjectMapping
-):
+) -> None:
     """
     Transform any nested statements (INSERT or UPDATE) into fully qualified queries.
 
@@ -457,7 +490,7 @@ def _collect_merge_children(
 
 def _collect_multitable_insert_children(
     parent_query: MultitableInsertQuery, parent_holder: QueryHolder, object_mapping: mappings.ObjectMapping
-):
+) -> None:
     """
     Extract the ConditionalInsert (exp.Insert) branches from the Multitable statement.
     """
@@ -498,12 +531,15 @@ _UNNAMED_TYPE_MAP: dict[type, type] = {
     exp.Values: ValuesQuery,
     exp.Put: PutQuery,
     exp.Set: SetQuery,
+    # PL/pgSQL
+    pgexp.PGBlock: BlockQuery,
+    pgexp.PGDeclareItem: DeclareItemQuery,
 }
 
 
 def _process_unnamed(
     statement: exp.Expr, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int | str
-) -> Q | None:
+) -> Q:
     """
     Process an unnamed statement - one not inside a 'CREATE <name>' statement.
     """
@@ -536,12 +572,12 @@ def _process_unnamed(
         elif statement.kind == "VIEW":
             return _process_views_and_ctas(statement, dialect, object_mapping, statement_index)
 
-    return None
+    raise exception.UnsupportedFeatureError(f"Statement of type '{type(statement)}' does not have a collector.")
 
 
 def _process_tables(
     statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int | str
-) -> Q | None:
+) -> TableQuery | SequenceQuery | None:
     """
     Process a 'CREATE TABLE' statement.
     """

@@ -8,21 +8,12 @@ from sqlleaf import exception, mappings, path, util
 from sqlleaf.models.hook import Hook
 from sqlleaf.models.node import EdgeAttributes, GraphAttributes, N
 from sqlleaf.models.query import (
-    CopyQuery,
-    CTASQuery,
-    InsertQuery,
-    PutQuery,
     Q,
-    TableQuery,
-    UnloadQuery,
-    UpdateQuery,
-    ViewQuery,
 )
 from sqlleaf.path import LineagePath
 from sqlleaf.processors.collector import collector
 from sqlleaf.processors.generator import generator
 from sqlleaf.processors.transformer import transformer
-from sqlleaf.typing import SqlObjectType
 
 logging.getLogger("sqlglot").setLevel(logging.WARNING)
 logger = logging.getLogger("sqlleaf")
@@ -64,7 +55,7 @@ class Lineage:
 
             for holder in query_holders:
                 # Transform and produce lineage only for certain queries
-                if query_has_lineage(holder.original):
+                if generator.query_has_lineage(holder.original):
                     generator.generate_lineage_for_query(holder, graph, self.user_defined_hooks)
 
             # Associate the query with the graph even if it has no lineage
@@ -280,47 +271,3 @@ def new_graph() -> nx.MultiDiGraph:
     A graph has attributes along with its node and edges.
     """
     return nx.MultiDiGraph(attrs=GraphAttributes())
-
-
-QUERIES_WITH_LINEAGE = (
-    CTASQuery,
-    CopyQuery,
-    InsertQuery,
-    PutQuery,
-    TableQuery,
-    UnloadQuery,
-    UpdateQuery,
-    ViewQuery,
-)
-
-
-def query_has_lineage(query: Q) -> bool:
-    """
-    Check if a query has lineage within its expressions.
-
-    We distinguish between a query's definition and a query that is called.
-    That is, in order for a `CREATE FUNCTION` or `CREATE PROCEDURE` to have
-    lineage, it must be executed by an invoking statement, e.g. `CALL()` or `SELECT UDF()`
-    Simply having statements inside its definition is not sufficient to produce lineage.
-    """
-    has_lineage = True
-    if not isinstance(query, QUERIES_WITH_LINEAGE):
-        has_lineage = False
-    elif isinstance(query, CopyQuery) and query.source_info.type == SqlObjectType.VALUES:
-        # COPY TO STDOUT VALUES (..) # TODO: this should have lineage
-        has_lineage = False
-    elif isinstance(query, CopyQuery) and not query.is_query_active():
-        has_lineage = False
-    elif isinstance(query, CTASQuery) and not query.load_data:
-        # CREATE TABLE WITH NO DATA
-        has_lineage = False
-    elif isinstance(query, CTASQuery) and query.source_info.type == SqlObjectType.PREPARED_STATEMENT:
-        # CREATE TABLE AS EXECUTE
-        has_lineage = False
-    elif isinstance(query, TableQuery) and query.property != "external":
-        # CREATE EXTERNAL TABLE
-        has_lineage = False
-
-    if not has_lineage:
-        logger.debug(f"Query type '{query.__class__.__name__}' does NOT have lineage. Skipping.")
-    return has_lineage

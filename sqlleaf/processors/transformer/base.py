@@ -19,6 +19,7 @@ from sqlleaf.processors.transformer.expressions import (
 )
 from sqlleaf.settings import system_functions as get_system_functions
 from sqlleaf.typing import E, SqlObjectType
+from sqlleaf.dialects.plpgsql import pgexp
 
 logger = logging.getLogger("sqlleaf")
 
@@ -79,6 +80,10 @@ class BaseQueryTransformer:
         Run a set of transformations over every statement
         BEFORE the type-specific transformations.
         """
+        if isinstance(statement, pgexp.PGBlock):
+            self.query.object_mapping.push_variable_scope()
+            return statement
+
         statement = self._expand_to_query(statement)
         statement = self._convert_table_to_select(statement)
 
@@ -91,6 +96,13 @@ class BaseQueryTransformer:
             where_expr.pop()
 
         simplify_row(statement, self.query)
+
+        # Replace every column with the values in the variable stack
+        for column in statement.find_all(exp.Column):
+            variable = self.query.object_mapping.get_variable(column.name)
+            if variable:
+                logger.debug(f"Replacing column '{column.name}' with variable '{str(variable)}'")
+                column.replace(variable)
 
         if isinstance(statement, exp.Insert):
             statement = self._convert_insert_defaults_to_values(statement)

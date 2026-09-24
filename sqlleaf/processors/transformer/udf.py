@@ -192,8 +192,7 @@ def build_replacement_exprs(node: exp.Anonymous, query: UserDefinedFunctionQuery
     replacement_exprs = []
     # Collect all child queries from the holder
     for child in query.holder.downstream_holders:
-        stmt = child.original.statement
-        stmt = util.copy_expression(stmt)
+        stmt = util.copy_expression(child.original.statement)
         replacement_exprs.append(transform_inner_query(stmt, param_map, query, positional_map))
 
     return replacement_exprs

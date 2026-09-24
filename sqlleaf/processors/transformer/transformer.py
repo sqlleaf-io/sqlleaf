@@ -20,6 +20,7 @@ from sqlleaf.models.query import (
     UpdateQuery,
     ValuesQuery,
 )
+from sqlleaf.models.query.declare_item import DeclareItemQuery
 from sqlleaf.processors.transformer import (
     BaseQueryTransformer,
     CallTransformer,
@@ -66,6 +67,20 @@ def transform_query(query_holder: QueryHolder) -> None:
     """
     transformed_query = _transform_query_instance(query=query_holder.original)
     query_holder.set_transformed_query(query=transformed_query)
+    # Set the variables here
+    set_variables_in_scope(query=transformed_query)
+
+
+def set_variables_in_scope(query: Q) -> None:
+    """
+    Set variables for this scope.
+    """
+    if isinstance(query, DeclareItemQuery):
+        # No lineage edges for declarations; seed/update the current variable scope
+        name = query.statement.this.name
+        value = query.get_value()
+        query.object_mapping.set_variable(name=name, value=value)
+        logger.debug(f"Set variable value: {name} := {value.sql(dialect=query.dialect)}")
 
 
 def _transform_query_instance(query: Q) -> Q:
@@ -127,9 +142,10 @@ def _transform_statement(statement: E, query: Q) -> exp.Expr:
     """
     logger.debug("---- Transformer ---")
     logger.debug(f"Query: {statement.sql(dialect=query.dialect)}")
-    logger.debug(f"Transforming: {query.__class__.__name__} - {statement.__class__}")
 
     transformer_cls = _TRANSFORMER_MAP.get(type(query), BaseQueryTransformer)
+    logger.debug(f"Transforming: {query.__class__.__name__} - {statement.__class__} using {transformer_cls.__name__}")
+
     transformer = transformer_cls(statement, query)
     stmt = transformer.preprocess(statement)
     logger.debug(f"After pre-process: {type(stmt)} - {stmt.sql(dialect=query.dialect)}")

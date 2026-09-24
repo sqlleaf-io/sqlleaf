@@ -2,6 +2,7 @@ from sqlleaf.util.expression import (
     calculate_function_name as calculate_function_name,
     column_def_to_column as column_def_to_column,
     copy_expression as copy_expression,
+    count_block_depth as count_block_depth,
     find_property as find_property,
     get_column_constraint_expression as get_column_constraint_expression,
     get_function_args as get_function_args,

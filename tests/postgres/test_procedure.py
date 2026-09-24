@@ -1,20 +1,15 @@
 import os
 import sys
-import typing as t
 
 from sqlglot import exp
 
-from sqlleaf.models.query import CallQuery, InsertQuery, ProcedureQuery
+from sqlleaf.models.query import CallQuery, InsertQuery, ProcedureQuery, ValuesQuery
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 
 DIALECT = "postgres"
-
-
-def to_sql(expressions: t.List[exp.Expr]) -> t.List[str]:
-    return [e.sql(dialect="postgres") for e in expressions]
 
 
 def test_call_procedure_multi(holder):
@@ -43,8 +38,7 @@ def test_call_procedure_multi(holder):
 
     downstream_holders = h.holders[2].downstream_holders
     assert len(downstream_holders) == 2
-    # first inner statement: VALUES (5)
-    # second inner statement: INSERT INTO target ...
+    assert isinstance(downstream_holders[0].original, ValuesQuery)
     assert isinstance(downstream_holders[1].original, InsertQuery)
     assert (
         downstream_holders[1].transformed.statement.sql(dialect=DIALECT)
@@ -305,6 +299,8 @@ def test_procedure_begin_end(holder):
     assert isinstance(call_query, CallQuery)
     assert call_query.procedure == "hello"
 
+    assert h.paths == [['literal["world"]', "column[target.name]"]]
+
 
 # OUT params
 # NULL for out params
@@ -329,6 +325,7 @@ def test_call_procedure_positional_notation(holder):
         downstream_holder.transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO target (a, b) SELECT 10 AS a, 20 AS b"
     )
+    assert h.paths == [["literal[10]", "column[target.a]"], ["literal[20]", "column[target.b]"]]
 
 
 def test_call_procedure_mixed_notation(holder):

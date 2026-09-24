@@ -143,13 +143,13 @@ def transform_arguments(
 
 
 def substitute_parameters(
-    replacement_expr: exp.Expr,
+    expr: exp.Expr,
     query: UserDefinedFunctionQuery,
     param_map: t.Dict[str, exp.Expr],
     positional_map: t.Dict[str, exp.Expr],
 ) -> exp.Expr:
     """
-    Replaces parameter references within an expression with their corresponding arguments.
+    Replaces parameter references within an expression and its child expressions with their corresponding arguments.
 
     Example:
         Expression: `SELECT $1 + x`
@@ -157,21 +157,21 @@ def substitute_parameters(
         Result: `SELECT 5 + 10`
     """
     # 1. Handle case where the root replacement expression itself needs substitution (e.g., expression is just 'x')
-    if isinstance(replacement_expr, exp.Column) and not replacement_expr.table:
-        col_name = replacement_expr.this.name.lower()
+    if isinstance(expr, exp.Column) and not expr.table:
+        col_name = expr.this.name.lower()
         if col_name in param_map:
             return param_map[col_name].copy()
 
-    elif isinstance(replacement_expr, exp.Parameter):
-        param_id = replacement_expr.this.name
+    elif isinstance(expr, exp.Parameter):
+        param_id = expr.this.name
         if param_id in positional_map:
             return positional_map[param_id].copy()
 
     # 2. Walk and replace all references in the expression tree
-    for subnode in replacement_expr.walk():
+    for subnode in expr.walk():
         substitute_parameter_node(subnode, query, param_map, positional_map)
 
-    return replacement_expr
+    return expr
 
 
 def substitute_parameter_node(
@@ -303,7 +303,8 @@ def substitute_call(query: CallQuery) -> t.List[exp.Expr]:
     replacement_exprs = []
     for stmt in matched_proc.inner_statements:
         # Procedures can contain multiple statements
-        replacement_exprs.append(substitute_parameters(stmt.copy(), None, param_map, positional_map))
+        new_stmt = substitute_parameters(stmt.copy(), None, param_map, positional_map)
+        replacement_exprs.append(new_stmt)
 
     logger.debug(f"Substituted to {len(replacement_exprs)} statements:")
     for r in replacement_exprs:

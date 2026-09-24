@@ -40,7 +40,7 @@ class ProcedureQueryProperties:
         body_expr = expr.expression
         inner_statements: t.List[exp.Expr] = []
         if body_expr:
-            inner_statements = util.iter_inner_statements(body_expr, object_mapping.dialect, wrap=True)
+            inner_statements = util.iter_inner_statements(body_expr, object_mapping.dialect, wrap=True, language=language)
             inner_statements = [
                 stmt
                 for stmt in inner_statements

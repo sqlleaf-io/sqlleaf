@@ -25,7 +25,7 @@ class Query:
         statement_index: int,
         object_mapping: mappings.ObjectMapping,
         source_info: SourceInfo | None,
-        target_info: TargetInfo,
+        target_info: TargetInfo | None,
         skip_type_annotation: bool = False,
     ):
         self.kind = self.KIND
@@ -54,7 +54,7 @@ class Query:
             f"Created new query. Query => {self.__class__.__name__} | SourceType => {self.source_info and self.source_info.type.name} | TargetType => {self.target_info and self.target_info.type.name}"
         )
 
-    def set_holder(self, holder: QueryHolder):
+    def set_holder(self, holder: QueryHolder) -> None:
         self.holder = holder
 
     def _determine_expression_type(self, expr: exp.Expr | t.List[exp.Expr], dialect: str) -> SqlObjectType:

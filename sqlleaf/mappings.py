@@ -29,22 +29,50 @@ ColumnMapping = t.Union[t.Dict, str, t.List]
 
 class ObjectMapping(MappingSchema):
     """
-    Extends sqlglot.MappingSchema to provide additional functionality related to tracking exp.Table
+    Contains all the objects that get created, such as tables, procedures, functions, and sequences.
 
-    Specifically, we need to track the exp.Table inside the exp.Create statements, as they contain more information
-    than the exp.Table that we encounter later when parsing INSERT statements.
+    We extends sqlglot.MappingSchema to provide additional functionality related to tracking these objects,
+    while still allowing optimizer inside sqlglot to work (as it needs a mapping of objects to perform functions
+    like qualification and simplification).
     """
 
     def __init__(self, dialect: str):
-        """
-        Initialize a mapping of tables parts to exp.Table
-        """
         super().__init__(
             dialect=dialect, normalize=False
         )  # Set `normalize=False` to prevent an unnecessary second parse.
         self.kind_mapping = {}
         self.kind_mapping_trie = {}
+        # Session/global variables (e.g., SET var = ...)
         self.session_variables: dict[str, exp.Expr] = {}
+        # Block-scoped variables: one dict per active block, innermost scope at the end
+        self.variable_scopes: list[dict[str, exp.Expr]] = []
+
+    # ---- Variable scope API ----
+    def push_variable_scope(self) -> None:
+        """Enter a new block scope."""
+        self.variable_scopes.append({})
+
+    def pop_variable_scope(self) -> None:
+        """Leave the current block scope (cannot pop the global frame)."""
+        if len(self.variable_scopes) > 1:
+            self.variable_scopes.pop()
+
+    def set_variable(self, name: str, value: exp.Expr) -> None:
+        """Assign or declare a variable in the current scope."""
+        self.variable_scopes[-1][name] = value
+
+    def get_variable(self, name: str) -> exp.Expr | None:
+        """Resolve a variable by searching from innermost to outermost scopes, then session vars."""
+        for scope in reversed(self.variable_scopes):
+            if name in scope:
+                return scope[name]
+        return self.session_variables.get(name)
+
+    def get_scope(self) -> dict[str, exp.Expr]:
+        """Return the current scope dict (innermost)."""
+        return self.variable_scopes[-1]
+
+
 
     def add_database_query(self, query: DatabaseQuery) -> None:
         self._add_query(kind="database", query=query, dialect=query.dialect)
@@ -137,7 +165,7 @@ class ObjectMapping(MappingSchema):
         dialect: DialectType = None,
         normalize: t.Optional[bool] = None,
         match_depth: bool = False,
-    ):
+    ) -> None:
         super().add_table(
             table=table,
             column_mapping=column_mapping,
@@ -151,7 +179,7 @@ class ObjectMapping(MappingSchema):
         table: exp.Table,
         raise_on_missing: bool = True,
         ensure_data_types: bool = False,
-    ):
+    ) -> None:
         """
         A nicer name for the parent's function.
         """
