@@ -23,54 +23,58 @@ def normalize_values(query: Q, expr: exp.Expr) -> exp.Expr:
     if isinstance(expr, exp.Values):
         return _rewrite_values_statement(query, expression=expr, statement=expr)
 
-    unresolved_ids: t.Set[int] = set()
-
     # Walk the subtree and rewrite all Values occurrences
-    prev_value = None
-    while True:
-        values = _pick_next_values_node(expr, unresolved_ids)
-        if values and prev_value == values:
-            raise exception.InvalidQueryError("Infinite loop detected while searching for the next VALUES() expression.")
-
-        if values is None:
-            break
-
-        # Determine if there is a CTE ancestor within the current statement scope
-        cte = _cte_ancestor_in_scope(expr, values)
-        if cte is not None:
-            if cte.this is values:
-                _rewrite_values_statement(query, values, cte)
-            else:
-                unresolved_ids.add(id(values))
-        else:
-            # VALUES is directly the expression of an INSERT
-            parent = values.parent
-            if isinstance(parent, exp.Insert) and parent.expression is values:
-                # Inline of _handle_values_in_insert
-                converted = _rewrite_values_statement(query, values, parent)
-                if isinstance(converted, exp.Insert) and (parent is expr):
-                    expr = converted
-
-            # VALUES is directly the expression of a CREATE ... AS
-            elif isinstance(parent, exp.Create) and parent.expression is values:
-                _rewrite_values_statement(query, values, parent)
-
-            # VALUES is one of the sides of a UNION
-            elif isinstance(parent, exp.SetOperation):
-                _rewrite_values_statement(query, values, parent)
-
-            else:
-                # VALUES in a table position (wrapped by Subquery or direct FROM on SELECT/UPDATE)
-                from_ancestor = values.find_ancestor(exp.From)
-                if (
-                    values.find_ancestor(exp.Subquery) is not None
-                    or values.parent_select
-                    or (from_ancestor is not None and from_ancestor.this is values)
-                ):
-                    _rewrite_values_in_table_position(values, query.dialect)
-
-        prev_value = values
+    unresolved: t.Set[int] = set()
+    while (values := _pick_next_values_node(expr, unresolved)) is not None:
+        handled, expr = _dispatch_values(query, values, expr)
+        if not handled:
+            unresolved.add(id(values))
     return expr
+
+
+def _dispatch_values(query: Q, values: exp.Values, expr: exp.Expr) -> t.Tuple[bool, exp.Expr]:
+    """
+    Handle a single exp.Values node in its surrounding context.
+    """
+    # Determine if there is a CTE ancestor within the current statement scope
+    cte = _cte_ancestor_in_scope(expr, values)
+    if cte is not None:
+        if cte.this is values:
+            _rewrite_values_statement(query, values, cte)
+            return True, expr
+        return False, expr
+
+    parent = values.parent
+
+    # VALUES is directly the expression of an INSERT
+    if isinstance(parent, exp.Insert) and parent.expression is values:
+        converted = _rewrite_values_statement(query, values, parent)
+        if isinstance(converted, exp.Insert) and (parent is expr):
+            expr = converted
+        return True, expr
+
+    # VALUES is directly the expression of a CREATE ... AS
+    if isinstance(parent, exp.Create) and parent.expression is values:
+        _rewrite_values_statement(query, values, parent)
+        return True, expr
+
+    # VALUES is one of the sides of a UNION
+    if isinstance(parent, exp.SetOperation):
+        _rewrite_values_statement(query, values, parent)
+        return True, expr
+
+    # VALUES in a table position (wrapped by Subquery or direct FROM on SELECT/UPDATE)
+    from_ancestor = values.find_ancestor(exp.From)
+    if (
+        values.find_ancestor(exp.Subquery) is not None
+        or values.parent_select
+        or (from_ancestor is not None and from_ancestor.this is values)
+    ):
+        _rewrite_values_in_table_position(values, query.dialect)
+        return True, expr
+
+    # Nothing matched: defer.
+    return False, expr
 
 
 def _pick_next_values_node(statement: exp.Expr, unresolved: set[int]) -> exp.Values | None:
@@ -85,18 +89,43 @@ def _pick_next_values_node(statement: exp.Expr, unresolved: set[int]) -> exp.Val
 
 def _cte_ancestor_in_scope(statement: exp.Expr, values: exp.Values) -> exp.CTE | None:
     """
-    Return the enclosing CTE only if it belongs to the current statement's subtree.
-    This is to prevent us from using a CTE that does not enclose us.
+    Return the enclosing CTE only if it belongs to the current statement's WITH clause.
     """
     cte = values.find_ancestor(exp.CTE)
-    if cte is None:
+    if not cte:
         return None
 
-    ctes_in_scope = {id(c) for c in statement.find_all(exp.CTE)}
-    if id(cte) not in ctes_in_scope:
+    # The WITH node that owns this CTE
+    cte_with = cte.find_ancestor(exp.With)
+    if not cte_with:
         return None
 
-    return cte
+    # The CTE is in scope only if both WITHs are the same object
+    statement_with = statement.args.get("with_")
+    return cte if cte_with is statement_with else None
+
+
+def _ensure_subquery(node: exp.Expr) -> exp.Subquery:
+    """
+    Ensure the given expression is wrapped in a Subquery.
+    """
+    return node if isinstance(node, exp.Subquery) else node.subquery()
+
+
+def _unwrap_if_subquery(node: exp.Expr) -> exp.Expr:
+    """
+    If the given expression is a Subquery, return its inner expression; otherwise return as-is.
+    """
+    return node.this if isinstance(node, exp.Subquery) else node
+
+
+def _preserve_alias(dst: exp.Expr, src: exp.Expr) -> None:
+    """
+    Copy alias from src to dst if src has one and dst doesn't.
+    """
+    alias = src.args.get("alias")
+    if alias and not dst.args.get("alias"):
+        dst.set("alias", alias)
 
 
 def _rewrite_values_in_table_position(values: exp.Values, dialect: str) -> None:
@@ -115,8 +144,7 @@ def _rewrite_values_in_table_position(values: exp.Values, dialect: str) -> None:
     # SELECT (VALUES ...)
     outer_subquery = values.find_ancestor(exp.Subquery)
     if outer_subquery is not None and outer_subquery.this is values:
-        if isinstance(converted, exp.Subquery):
-            converted = converted.this  # unwrap nested Subquery
+        converted = _unwrap_if_subquery(converted)
         outer_subquery.set("this", converted)
         return
 
@@ -126,20 +154,15 @@ def _rewrite_values_in_table_position(values: exp.Values, dialect: str) -> None:
     from_ = parent_select and parent_select.args.get("from_")
     if from_ and from_.this is values:
         # Ensure we have a Subquery in FROM and preserve the alias/column names
-        original_alias = values.args.get("alias")
-        if original_alias and not converted.args.get("alias"):
-            converted.set("alias", original_alias)
+        _preserve_alias(converted, values)
         from_.set("this", converted)
         return
 
     # Case B: VALUES appears directly under a FROM of non-SELECT (e.g., UPDATE ... FROM (VALUES ...))
     from_ancestor = values.find_ancestor(exp.From)
     if from_ancestor is not None and from_ancestor.this is values:
-        original_alias = values.args.get("alias")
-        if not isinstance(converted, exp.Subquery):
-            converted = converted.subquery()
-        if original_alias and not converted.args.get("alias"):
-            converted.set("alias", original_alias)
+        converted = _ensure_subquery(converted)
+        _preserve_alias(converted, values)
         from_ancestor.set("this", converted)
 
 
@@ -242,6 +265,24 @@ def _rewrite_empty_values_or_values_with_column_names(
     return columns
 
 
+def _rebuild_insert_with_expression(statement: exp.Insert, new_statement: exp.Expr) -> exp.Insert:
+    """
+    Rebuild an Insert node with a new source expression, preserving metadata.
+    """
+    into_table = statement.find(exp.Table)
+    insert_columns = statement.this.expressions
+
+    insert_expr = exp.insert(
+        expression=new_statement,
+        columns=insert_columns,
+        into=into_table or statement.this,
+        returning=statement.args.get("returning"),
+    )
+    insert_expr.set("conflict", statement.args.get("conflict"))
+    statement.replace(insert_expr)
+    return insert_expr
+
+
 def _rewrite_values_statement(query: Q, expression: exp.Values, statement: E) -> E:
     """
     Convert a `VALUES(...)` statement into a `SELECT ... UNION ALL SELECT ...` statement
@@ -262,27 +303,12 @@ def _rewrite_values_statement(query: Q, expression: exp.Values, statement: E) ->
 
     # Rewrite the parent statement with the existing column list
     if isinstance(statement, exp.Insert):
-        into_table = statement.find(exp.Table)
-        insert_columns = statement.this.expressions
-
-        insert_expr = exp.insert(
-            expression=new_statement,
-            columns=insert_columns,
-            into=into_table or statement.this,
-            returning=statement.args.get("returning"),
-        )
-        insert_expr.set("conflict", statement.args.get("conflict"))
-        statement.replace(insert_expr)
-        statement = insert_expr
-    elif isinstance(statement, exp.Create):
-        expression.replace(new_statement)
-    elif isinstance(statement, exp.CTE):
-        if isinstance(new_statement, exp.Subquery):
-            new_statement = new_statement.this
-        expression.replace(new_statement)
+        statement = _rebuild_insert_with_expression(statement, new_statement)
     elif isinstance(statement, exp.Values):
         statement = new_statement
-    elif isinstance(statement, exp.SetOperation):
+    elif isinstance(statement, (exp.Create, exp.CTE, exp.SetOperation)):
+        if isinstance(statement, exp.CTE):
+            new_statement = _unwrap_if_subquery(new_statement)
         expression.replace(new_statement)
     else:
         raise exception.InvalidQueryError(message=f"Unknown statement type: {statement.__class__}")
@@ -294,7 +320,7 @@ def _values_to_select_expr(
     values: exp.Values,
     dialect: str,
     column_names: t.Optional[t.List[str]] = None,
-) -> exp.Expr:
+) -> exp.Select | exp.Union | exp.Subquery:
     """
     Convert an exp.Values into an exp.Select or exp.Union.
     """
