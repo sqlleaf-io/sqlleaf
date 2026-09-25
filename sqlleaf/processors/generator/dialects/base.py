@@ -314,6 +314,26 @@ class BaseGenerator:
                 logger.debug(f"Struct/Array access: processing base column {base.sql(dialect=self.dialect)}")
                 gen_ctx = gen_ctx.replace(expr=base)
                 yield from self.process(base, gen_ctx, pos_ctx)
+            elif isinstance(base, exp.Subquery) and isinstance(expr, exp.Dot) and isinstance(expr.expression, exp.Identifier):
+                # Composite access on an inline subquery, e.g.:
+                #   (SELECT source.name AS name, source.age AS age FROM source).name
+                # Resolve the selected field inside the subquery scope.
+                field_name = expr.expression.name
+                selected = next((sel for sel in base.selects if sel.alias_or_name == field_name), None)
+
+                if selected is None:
+                    return
+
+                scope = t.cast(Scope, gen_ctx.scope)
+                subquery_scope = next((s for s in scope.subquery_scopes if s.expression == base.this), None)
+                if subquery_scope is None:
+                    return
+
+                height, width = gen_ctx.scope_positions.get_position_for_expr(base.this)
+                child_ctx = pos_ctx.replace(query_depth=height, query_width=width)
+                selected_expr = selected.unalias()
+                selected_ctx = gen_ctx.replace(expr=selected_expr, scope=subquery_scope)
+                yield from self.process(selected_expr, selected_ctx, child_ctx)
             else:
                 # If the base isn't a Column (e.g., a schema-qualified routine),
                 # process only the right-hand side so that UDF/qualified-name dispatch still works

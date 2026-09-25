@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import sqlglot
 from sqlglot import exp
 
-from sqlleaf import mappings, util
+from sqlleaf import mappings
 from sqlleaf.models.query.base import Query
-from sqlleaf.typing import SourceInfo, SqlObjectType, TargetInfo
 from sqlleaf.dialects.plpgsql import pgexp
 
 
@@ -28,5 +26,5 @@ class DeclareItemQuery(Query):
             target_info=None,
         )
 
-    def get_value(self):
-        return self.statement.args.get("expression", None)
+    def get_value(self)-> exp.Expr | None:
+        return self.statement.args.get("expression") or exp.Null()

@@ -72,8 +72,6 @@ class ObjectMapping(MappingSchema):
         """Return the current scope dict (innermost)."""
         return self.variable_scopes[-1]
 
-
-
     def add_database_query(self, query: DatabaseQuery) -> None:
         self._add_query(kind="database", query=query, dialect=query.dialect)
 

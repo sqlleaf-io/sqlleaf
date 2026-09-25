@@ -3,10 +3,12 @@ import logging
 from sqlglot import exp
 
 from sqlleaf import util
+from sqlleaf.dialects.plpgsql import pgexp
 from sqlleaf.models.query import (
     CallQuery,
     CopyQuery,
     CTASQuery,
+    DeclareItemQuery,
     DeleteQuery,
     ExecuteQuery,
     InsertQuery,
@@ -15,12 +17,11 @@ from sqlleaf.models.query import (
     Q,
     QueryHolder,
     ReplaceQuery,
-    TableQuery,
+    SelectQuery,
     UnloadQuery,
     UpdateQuery,
     ValuesQuery,
 )
-from sqlleaf.models.query.declare_item import DeclareItemQuery
 from sqlleaf.processors.transformer import (
     BaseQueryTransformer,
     CallTransformer,
@@ -38,6 +39,7 @@ from sqlleaf.processors.transformer import (
 )
 from sqlleaf.typing import E
 
+# If a Query is missing from this map, we default to BaseQueryTransformer
 _TRANSFORMER_MAP: dict[type, type[BaseQueryTransformer]] = {
     CallQuery: CallTransformer,
     CTASQuery: CTASTransformer,
@@ -48,7 +50,6 @@ _TRANSFORMER_MAP: dict[type, type[BaseQueryTransformer]] = {
     MergeQuery: MergeTransformer,
     MultitableInsertQuery: MultitableInsertTransformer,
     ReplaceQuery: ReplaceTransformer,
-    TableQuery: BaseQueryTransformer,  # pass-through
     UnloadQuery: UnloadTransformer,
     UpdateQuery: UpdateTransformer,
     ValuesQuery: ValuesTransformer,
@@ -73,14 +74,24 @@ def transform_query(query_holder: QueryHolder) -> None:
 
 def set_variables_in_scope(query: Q) -> None:
     """
-    Set variables for this scope.
+    Set variables for this scope in the variable stack (VS).
     """
     if isinstance(query, DeclareItemQuery):
-        # No lineage edges for declarations; seed/update the current variable scope
+        # No lineage edges for declarations; seed/update the VS
         name = query.statement.this.name
         value = query.get_value()
         query.object_mapping.set_variable(name=name, value=value)
         logger.debug(f"Set variable value: {name} := {value.sql(dialect=query.dialect)}")
+    elif isinstance(query, SelectQuery):
+        # If the query is the source in 'FOR <var> IN <source>', update the VS
+        original_stmt = query.holder.original.statement
+        original_parent = original_stmt.parent
+
+        if isinstance(original_parent, pgexp.PGForIn) and original_parent.args["query"] == original_stmt:
+            # We are the source, not the inner statements
+            name = original_parent.this.name
+            value = query.statement
+            query.object_mapping.set_variable(name=name, value=value)
 
 
 def _transform_query_instance(query: Q) -> Q:
@@ -128,10 +139,6 @@ def _build_transformed_query(
 
     # Propagate shared metadata
     new_query.column_defs = original_query.column_defs
-    new_query.parent_query = original_query.parent_query
-    # Store a reference to the original query so that type-based checks in the
-    # generator (e.g. isinstance(query, UpdateQuery)) can inspect the original class.
-    new_query.original_query = original_query
     return new_query
 
 

@@ -5,12 +5,12 @@ from sqlleaf.models.query.base import Query
 from sqlleaf.dialects.plpgsql import pgexp
 
 
-class BlockQuery(Query):
-    KIND = "block"
+class ForInQuery(Query):
+    KIND = "for_in"
 
     def __init__(
         self,
-        expr: pgexp.PGBlock,
+        expr: pgexp.PGForIn,
         dialect: str,
         object_mapping: mappings.ObjectMapping,
         statement_index: int,

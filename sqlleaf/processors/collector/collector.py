@@ -5,20 +5,20 @@ from dataclasses import dataclass, field
 
 import sqlglot
 from sqlglot import TokenType, exp
-from sqlglot.expressions import ColumnDef
 
-from sqlleaf.models.query.block import BlockQuery
-from sqlleaf.models.query.declare_item import DeclareItemQuery
 from sqlleaf.processors.transformer import udf
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
 from sqlleaf import exception, mappings, settings, util, typing
 from sqlleaf.models.query import (
+    BlockQuery,
     CallQuery,
     CopyQuery,
     CTASQuery,
     DatabaseQuery,
+    DeclareItemQuery,
     DeleteQuery,
+    ForInQuery,
     ExecuteQuery,
     InsertQuery,
     MergeQuery,
@@ -44,7 +44,7 @@ from sqlleaf.models.query import (
     ViewQuery,
 )
 from sqlleaf.processors.collector import substitute
-from sqlleaf.processors.transformer.expressions.row import simplify_row_in_values
+from sqlleaf.processors.transformer.expressions import simplify_row_in_values
 from sqlleaf.dialects.plpgsql import pgexp
 
 logger = logging.getLogger("sqlleaf")
@@ -266,10 +266,6 @@ def _collect_writable_cte_queries(
             continue
 
         query = _process_unnamed(cte_expr, dialect, object_mapping, i)
-        if not query:
-            logger.warning(f"Skipping unsupported query type in CTE: {type(cte_expr)}")
-            continue
-
         # Detach the query in the AST so that certain transformations work later
         downstream_holder = QueryHolder(original=query)
         parent_holder.add_downstream_holder(downstream_holder)
@@ -367,6 +363,8 @@ def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, 
         _collect_udf_children(query, parent_holder, dialect, object_mapping)
     elif isinstance(query, BlockQuery):
         _collect_block_children(query, parent_holder, dialect, object_mapping)
+    elif isinstance(query, ForInQuery):
+        _collect_for_in_children(query, parent_holder, dialect, object_mapping)
 
     # Always check for writable CTEs regardless of query type above
     if not isinstance(query, (CopyQuery, PutQuery)):
@@ -374,6 +372,32 @@ def _collect_query_children(query: Q, parent_holder: QueryHolder, dialect: str, 
 
     # Perform call-site substitution immediately at collection time
     _collect_call_substitutions(query, parent_holder, dialect, object_mapping)
+
+
+def _collect_for_in_children(
+    query: ForInQuery,
+    parent_holder: QueryHolder,
+    dialect: str,
+    object_mapping: mappings.ObjectMapping,
+) -> None:
+    """
+    Collect all child queries inside a 'FOR <var> IN <query> LOOP <expressions> END LOOP' query.
+    """
+    source_expr: exp.Expr = query.statement.args["query"]
+
+    # Process the '<query>'.
+    # The indexing here is a bit weird; 0 is for the source query, so the inner queries must start at 1.
+    source_query = _process_unnamed(source_expr, dialect, object_mapping, 0)
+    downstream_holder = QueryHolder(original=source_query)
+    parent_holder.add_downstream_holder(downstream_holder)
+    _collect_query_children(source_query, downstream_holder, dialect, object_mapping)
+
+    # Process the '<expressions>' (inner statements).
+    for i, stmt in enumerate(query.statement.expressions):
+        child_query = _process_unnamed(stmt, dialect, object_mapping, i+1)
+        downstream_holder = QueryHolder(original=child_query)
+        parent_holder.add_downstream_holder(downstream_holder)
+        _collect_query_children(child_query, downstream_holder, dialect, object_mapping)
 
 
 def _collect_udf_children(
@@ -392,16 +416,9 @@ def _collect_udf_children(
 
     for i, stmt in enumerate(query.inner_statements):
         child_query = _process_unnamed(stmt, dialect, object_mapping, i)
-
-        # If it's a simple select and _process_unnamed skipped it, create a SelectQuery
-        # TODO: VALUES and SELECT should be collected
-        if not child_query and isinstance(stmt, exp.Select):
-            child_query = SelectQuery(expr=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=i)
-
-        if child_query:
-            downstream_holder = QueryHolder(original=child_query)
-            parent_holder.add_downstream_holder(downstream_holder)
-            _collect_query_children(child_query, downstream_holder, dialect, object_mapping)
+        downstream_holder = QueryHolder(original=child_query)
+        parent_holder.add_downstream_holder(downstream_holder)
+        _collect_query_children(child_query, downstream_holder, dialect, object_mapping)
 
 
 def _collect_insert_children(query: InsertQuery, parent_holder: QueryHolder, object_mapping: mappings.ObjectMapping) -> None:
@@ -534,6 +551,7 @@ _UNNAMED_TYPE_MAP: dict[type, type] = {
     # PL/pgSQL
     pgexp.PGBlock: BlockQuery,
     pgexp.PGDeclareItem: DeclareItemQuery,
+    pgexp.PGForIn: ForInQuery,
 }
 
 
@@ -667,7 +685,7 @@ def _unnest_values_inside_select(statement: exp.Create, dialect: str):
 
 def _determine_column_defs(
     statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping
-) -> t.List[ColumnDef]:
+) -> t.List[exp.ColumnDef]:
     """
     Look up the columns for 'y' in 'INSERT INTO x TABLE y'
     """

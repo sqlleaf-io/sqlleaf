@@ -33,6 +33,12 @@ EXCLUDE_OPTIMIZER_RULES = [
 LOG_TRANSFORMATIONS = True
 
 
+def _as_subquery(expression: exp.Expr) -> exp.Subquery:
+    if isinstance(expression, exp.Subquery):
+        return expression.copy()
+    return expression.subquery(copy=True)
+
+
 class BaseQueryTransformer:
     """
     Base class holding shared transformation helpers.
@@ -80,7 +86,7 @@ class BaseQueryTransformer:
         Run a set of transformations over every statement
         BEFORE the type-specific transformations.
         """
-        if isinstance(statement, pgexp.PGBlock):
+        if isinstance(statement, (pgexp.PGBlock, pgexp.PGForIn)):
             self.query.object_mapping.push_variable_scope()
             return statement
 
@@ -97,12 +103,7 @@ class BaseQueryTransformer:
 
         simplify_row(statement, self.query)
 
-        # Replace every column with the values in the variable stack
-        for column in statement.find_all(exp.Column):
-            variable = self.query.object_mapping.get_variable(column.name)
-            if variable:
-                logger.debug(f"Replacing column '{column.name}' with variable '{str(variable)}'")
-                column.replace(variable)
+        statement = self.replace_variables_in_expression(statement)
 
         if isinstance(statement, exp.Insert):
             statement = self._convert_insert_defaults_to_values(statement)
@@ -135,6 +136,34 @@ class BaseQueryTransformer:
             raise exception.InvalidQueryError(
                 f"VALUES() found in expression but should have been transformed: {statement.sql(self.query.dialect)}"
             )
+        return statement
+
+    def replace_variables_in_expression(self, statement: E) -> E:
+        """
+        Replace columns that reference variables in the variable stack.
+        Two cases:
+          1. a single variable, e.g. `my_name` -> variable value
+          2. a field access, e.g. `src.name` -> (variable-query).name
+        """
+        for column in list(statement.find_all(exp.Column)):
+            if column.parent is None:
+                continue
+
+            table_name = column.table
+
+            if table_name:
+                variable = self.query.object_mapping.get_variable(table_name)
+                if variable is not None and isinstance(variable, exp.Query):
+                    replacement = exp.Dot(this=_as_subquery(variable), expression=exp.to_identifier(column.name))
+                    logger.debug(f"Replacing field access '{column.sql(self.query.dialect)}' with '{replacement.sql(self.query.dialect)}'")
+                    column.replace(replacement)
+                    continue
+
+            variable = self.query.object_mapping.get_variable(column.name)
+            if variable is not None:
+                logger.debug(f"Replacing column '{column.name}' with variable '{str(variable)}'")
+                column.replace(variable.copy())
+
         return statement
 
     def _expand_to_query(self, statement: E) -> E:

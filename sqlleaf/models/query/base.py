@@ -31,7 +31,6 @@ class Query:
         self.kind = self.KIND
         self.dialect = dialect
         self.object_mapping = object_mapping
-        self.parent_query = None
         self.child_queries = []
         self.column_defs: t.List[exp.ColumnDef] = []
         self.property = ""
@@ -198,11 +197,7 @@ class Query:
         """
         Get the statement index for this query (including its parents).
         """
-        if self.parent_query:
-            index = self.parent_query.get_statement_index()
-            return index + ":" + str(self.statement_index)
-        else:
-            return str(self.statement_index)
+        return str(self.statement_index)
 
     def get_ctes(self) -> t.List:
         return []
@@ -220,10 +215,6 @@ class Query:
     @property
     def id(self) -> str:
         return "query:" + util.short_sha256_hash(self.statement.sql() + ":" + str(self.statement_index))
-
-    def add_child_query(self, child_query):
-        child_query.parent_query = self
-        self.child_queries.append(child_query)
 
     def get_all_queries(self, types: t.Tuple | None = None):
         """

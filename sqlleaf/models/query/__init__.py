@@ -1,12 +1,15 @@
 import typing as t
 
 from sqlleaf.models.query.base import Query as Query
+from sqlleaf.models.query.block import BlockQuery as BlockQuery
 from sqlleaf.models.query.call import CallQuery as CallQuery
 from sqlleaf.models.query.copy import CopyQuery as CopyQuery
 from sqlleaf.models.query.ctas import CTASQuery as CTASQuery
 from sqlleaf.models.query.database import DatabaseQuery as DatabaseQuery
+from sqlleaf.models.query.declare_item import DeclareItemQuery as DeclareItemQuery
 from sqlleaf.models.query.delete import DeleteQuery as DeleteQuery
 from sqlleaf.models.query.execute import ExecuteQuery as ExecuteQuery
+from sqlleaf.models.query.for_in import ForInQuery as ForInQuery
 from sqlleaf.models.query.holder import QueryHolder as QueryHolder
 from sqlleaf.models.query.insert import InsertQuery as InsertQuery
 from sqlleaf.models.query.merge import MergeQuery as MergeQuery

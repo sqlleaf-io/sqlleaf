@@ -9,6 +9,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 DIALECT = "plpgsql"
 
+# TODO: variables should be included in the lineage graph too
 
 def test_call_procedure_in_out_params(holder):
     sql = """
@@ -35,3 +36,30 @@ def test_call_procedure_in_out_params(holder):
         insert_query.statement.sql(dialect=DIALECT) == "INSERT INTO target (name, age) SELECT 'hello' AS name, 1 AS age"
     )
     assert h.paths == [['literal["hello"]', "column[target.name]"], ["literal[1]", "column[target.age]"]]
+
+
+def test_call_procedure_cursor(holder):
+    sql = """
+    CREATE TABLE source (name TEXT, age INTEGER);
+    CREATE TABLE target (name TEXT, age INTEGER);
+
+    CREATE OR REPLACE PROCEDURE hello(name TEXT)
+    LANGUAGE PLPGSQL
+    AS $$
+        DECLARE
+            src RECORD;
+        BEGIN
+            FOR src IN SELECT * FROM source LOOP
+                INSERT INTO target (name) SELECT src.name;
+            END LOOP;
+        END;
+    $$;
+
+    CALL hello('hello');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    insert_query = h.holders[3].downstream_holders[0].downstream_holders[1].downstream_holders[1].transformed
+    # TODO: this a bug - only one column should be returned in the subquery
+    assert insert_query.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT (SELECT source.name AS name, source.age AS age FROM source AS source).name AS name"
+    assert h.paths == [["column[source.name]", "column[target.name]"]]
