@@ -38,6 +38,38 @@ def test_call_procedure_in_out_params(holder):
     assert h.paths == [['literal["hello"]', "column[target.name]"], ["literal[1]", "column[target.age]"]]
 
 
+def test_procedure_variable_assignment(holder):
+    sql = """
+    CREATE TABLE target (name TEXT, age INTEGER);
+
+    CREATE PROCEDURE hello(name TEXT)
+    LANGUAGE PLPGSQL
+    AS $$
+        DECLARE
+            my_name varchar := $1;
+            my_age integer := 1;
+        BEGIN
+            my_age := 2;
+            my_name := 'there';
+            INSERT INTO target (name, age) SELECT my_name, my_age;
+        END;
+    $$;
+
+    CALL hello('hello');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    call_downstream: QueryHolder = h.holders[2].downstream_holders[0]
+    insert_query: InsertQuery = call_downstream.downstream_holders[4].transformed
+    assert (
+        insert_query.statement.sql(dialect=DIALECT) == "INSERT INTO target (name, age) SELECT 'there' AS name, 2 AS age"
+    )
+    assert h.paths == [
+        ['literal["there"]', "column[target.name]"],
+        ["literal[2]", "column[target.age]"]
+    ]
+
+
 def test_call_procedure_cursor(holder):
     sql = """
     CREATE TABLE source (name TEXT, age INTEGER);
