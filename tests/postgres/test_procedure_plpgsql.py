@@ -1,7 +1,7 @@
 import os
 import sys
 
-from sqlleaf.models.query import InsertQuery, QueryHolder
+from sqlleaf.models.query import InsertQuery, QueryHolder, PerformQuery
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -95,3 +95,29 @@ def test_call_procedure_cursor(holder):
     # TODO: this a bug - only one column should be returned in the subquery
     assert insert_query.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT (SELECT source.name AS name, source.age AS age FROM source AS source).name AS name"
     assert h.paths == [["column[source.name]", "column[target.name]"]]
+
+
+def test_procedure_perform_simple_select(holder):
+    sql = """
+    CREATE FUNCTION my_adder(a int, b int)
+    RETURNS INTEGER
+    RETURN a + b;
+
+    CREATE TABLE t (a INT, b INT);
+
+    CREATE PROCEDURE hello()
+    LANGUAGE PLPGSQL
+    AS $$
+    BEGIN
+        PERFORM my_adder(2, 3);
+    END;
+    $$;
+
+    CALL hello();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    perform_query = h.holders[3].downstream_holders[0].downstream_holders[0].parent_holder.downstream_holders[0].transformed
+    assert isinstance(perform_query, PerformQuery)
+    assert perform_query.statement.sql(dialect=DIALECT) == "PERFORM (SELECT 5 AS _col_0) AS _col_0"
+    assert h.paths == []

@@ -8,7 +8,7 @@ import networkx as nx
 from sqlglot import exp
 from sqlglot.optimizer import Scope, build_scope
 
-from sqlleaf.models.query.declare_item import DeclareItemQuery
+from sqlleaf.models.query.declare_item import AssignmentQuery
 from sqlleaf.models.query.block import BlockQuery
 
 if t.TYPE_CHECKING:

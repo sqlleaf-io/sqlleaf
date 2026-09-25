@@ -7,12 +7,12 @@ from sqlleaf.models.query.base import Query
 from sqlleaf.dialects.plpgsql import pgexp
 
 
-class DeclareItemQuery(Query):
-    KIND = "declare_item"
+class AssignmentQuery(Query):
+    KIND = "assignment"
 
     def __init__(
         self,
-        expr: pgexp.PGDeclareItem,
+        expr: pgexp.PGDeclareItem | exp.PropertyEQ,
         dialect: str,
         object_mapping: mappings.ObjectMapping,
         statement_index: int,

@@ -16,7 +16,7 @@ from sqlleaf.models.query import (
     CopyQuery,
     CTASQuery,
     DatabaseQuery,
-    DeclareItemQuery,
+    AssignmentQuery,
     DeleteQuery,
     ForInQuery,
     ExecuteQuery,
@@ -31,6 +31,7 @@ from sqlleaf.models.query import (
     ReplaceQuery,
     SchemaQuery,
     SelectQuery,
+    PerformQuery,
     SequenceQuery,
     SetQuery,
     StageQuery,
@@ -550,8 +551,10 @@ _UNNAMED_TYPE_MAP: dict[type, type] = {
     exp.Set: SetQuery,
     # PL/pgSQL
     pgexp.PGBlock: BlockQuery,
-    pgexp.PGDeclareItem: DeclareItemQuery,
+    pgexp.PGDeclareItem: AssignmentQuery,
     pgexp.PGForIn: ForInQuery,
+    pgexp.PGPerform: PerformQuery,
+    exp.PropertyEQ: AssignmentQuery,
 }
 
 

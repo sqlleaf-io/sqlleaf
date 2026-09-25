@@ -6,7 +6,7 @@ from sqlleaf.models.query.call import CallQuery as CallQuery
 from sqlleaf.models.query.copy import CopyQuery as CopyQuery
 from sqlleaf.models.query.ctas import CTASQuery as CTASQuery
 from sqlleaf.models.query.database import DatabaseQuery as DatabaseQuery
-from sqlleaf.models.query.declare_item import DeclareItemQuery as DeclareItemQuery
+from sqlleaf.models.query.declare_item import AssignmentQuery as AssignmentQuery
 from sqlleaf.models.query.delete import DeleteQuery as DeleteQuery
 from sqlleaf.models.query.execute import ExecuteQuery as ExecuteQuery
 from sqlleaf.models.query.for_in import ForInQuery as ForInQuery
@@ -20,6 +20,7 @@ from sqlleaf.models.query.put import PutQuery as PutQuery
 from sqlleaf.models.query.replace import ReplaceQuery as ReplaceQuery
 from sqlleaf.models.query.schema import SchemaQuery as SchemaQuery
 from sqlleaf.models.query.select import SelectQuery as SelectQuery
+from sqlleaf.models.query.perform import PerformQuery as PerformQuery
 from sqlleaf.models.query.sequence import SequenceQuery as SequenceQuery
 from sqlleaf.models.query.set import SetQuery as SetQuery
 from sqlleaf.models.query.stage import StageQuery as StageQuery

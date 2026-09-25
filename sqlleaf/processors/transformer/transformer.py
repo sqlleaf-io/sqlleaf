@@ -8,7 +8,7 @@ from sqlleaf.models.query import (
     CallQuery,
     CopyQuery,
     CTASQuery,
-    DeclareItemQuery,
+    AssignmentQuery,
     DeleteQuery,
     ExecuteQuery,
     InsertQuery,
@@ -76,7 +76,7 @@ def set_variables_in_scope(query: Q) -> None:
     """
     Set variables for this scope in the variable stack (VS).
     """
-    if isinstance(query, DeclareItemQuery):
+    if isinstance(query, AssignmentQuery):
         # No lineage edges for declarations; seed/update the VS
         name = query.statement.this.name
         value = query.get_value()
