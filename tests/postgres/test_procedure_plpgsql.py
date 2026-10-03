@@ -1,7 +1,7 @@
 import os
 import sys
 
-from sqlleaf.models.query import InsertQuery, QueryHolder, PerformQuery
+from sqlleaf.models.query import InsertQuery, QueryHolder, PerformQuery, ExecuteDynamicQuery, SelectQuery
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -149,3 +149,29 @@ def test_nested_block_variable_shadowing(holder):
         ['literal["outer"]', "column[target.name]"],
         ["literal[1]", "column[target.age]"],
     ]
+
+def test_execute_dynamic(holder):
+    sql = """
+    CREATE TABLE target (name VARCHAR);
+
+    CREATE PROCEDURE hello(name TEXT)
+    LANGUAGE PLPGSQL
+    AS $$
+        DECLARE
+            my_name varchar := $1;
+        BEGIN
+            EXECUTE 'INSERT INTO target (name) SELECT $1' USING my_name;
+        END;
+    $$;
+
+    CALL hello('there');
+    """
+
+    h = holder(sql=sql, dialect=DIALECT)
+
+    call_downstream: QueryHolder = h.holders[2].downstream_holders[0]
+    execute_holder: QueryHolder = call_downstream.downstream_holders[1]
+    assert isinstance(execute_holder.original, ExecuteDynamicQuery)
+    insert_query: InsertQuery = execute_holder.downstream_holders[0].transformed
+    assert insert_query.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'there' AS name"
+    assert h.paths == [['literal["there"]', "column[target.name]"]]

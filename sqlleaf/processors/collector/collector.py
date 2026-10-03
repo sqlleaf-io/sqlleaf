@@ -17,6 +17,7 @@ from sqlleaf.models.query import (
     CTASQuery,
     DatabaseQuery,
     DeleteQuery,
+    ExecuteDynamicQuery,
     ExecuteQuery,
     ForInQuery,
     InsertQuery,
@@ -126,6 +127,8 @@ def _resolve_call_sites(
         subst_statements = substitute.substitute_call(query=query)
     elif isinstance(query, ExecuteQuery):
         subst_statements = substitute.substitute_execute(query=query)
+    elif isinstance(query, ExecuteDynamicQuery):
+        subst_statements = substitute.substitute_execute_dynamic(query=query)
     elif isinstance(query, CTASQuery) and query.source_info.type == typing.SqlObjectType.PREPARED_STATEMENT:
         subst_statements = [substitute.substitute_create_execute(query=query)]
     elif isinstance(query, UserDefinedFunctionQuery):
@@ -441,6 +444,7 @@ _UNNAMED_TYPE_MAP: dict[type, type] = {
     pgexp.PGDeclareItem: AssignmentQuery,
     pgexp.PGForIn: ForInQuery,
     pgexp.PGPerform: PerformQuery,
+    pgexp.PGExecute: ExecuteDynamicQuery,
     exp.PropertyEQ: AssignmentQuery,
 }
 
@@ -741,6 +745,7 @@ _QUERY_PROCESSORS: dict[str, t.Callable] = {
     "pgdeclareitem": _process_unnamed,
     "pgforin": _process_unnamed,
     "pgperform": _process_unnamed,
+    "pgexecute": _process_unnamed,
     "propertyeq": _process_unnamed,
 }
 

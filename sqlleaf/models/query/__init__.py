@@ -9,6 +9,7 @@ from sqlleaf.models.query.database import DatabaseQuery as DatabaseQuery
 from sqlleaf.models.query.declare_item import AssignmentQuery as AssignmentQuery
 from sqlleaf.models.query.delete import DeleteQuery as DeleteQuery
 from sqlleaf.models.query.execute import ExecuteQuery as ExecuteQuery
+from sqlleaf.models.query.execute_dynamic import ExecuteDynamicQuery as ExecuteDynamicQuery
 from sqlleaf.models.query.for_in import ForInQuery as ForInQuery
 from sqlleaf.models.query.holder import QueryHolder as QueryHolder
 from sqlleaf.models.query.insert import InsertQuery as InsertQuery

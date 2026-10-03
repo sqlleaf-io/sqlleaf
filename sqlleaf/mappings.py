@@ -68,6 +68,26 @@ class ObjectMapping(MappingSchema):
                 return scope[name]
         return self.session_variables.get(name)
 
+    def get_variables(self, exprs: t.List[exp.Expr]) -> t.List[exp.Expr]:
+        """
+        Given a list of expressions as keys, fetch their values from the variable scope if they exist.
+
+        Example:
+            exprs = [ Literal[42], Column[name] ]
+            variable scope = { Column[name] -> Literal['john'] }
+            ->
+            [ Literal['john'] ]
+        """
+        resolved = []
+        for expr in exprs:
+            if isinstance(expr, exp.Column) and not expr.table:
+                variable = self.get_variable(expr.name)
+                if variable is not None:
+                    resolved.append(variable.copy())
+                    continue
+            resolved.append(expr)
+        return resolved
+
     def get_scope(self) -> dict[str, exp.Expr]:
         """Return the current scope dict (innermost)."""
         return self.variable_scopes[-1]

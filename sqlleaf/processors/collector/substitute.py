@@ -1,10 +1,18 @@
 import logging
 import typing as t
 
+import sqlglot
 from sqlglot import exp
 
 from sqlleaf import mappings, util, exception
-from sqlleaf.models.query import CallQuery, CTASQuery, ExecuteQuery, FunctionParam, UserDefinedFunctionQuery
+from sqlleaf.models.query import (
+    CallQuery,
+    CTASQuery,
+    ExecuteDynamicQuery,
+    ExecuteQuery,
+    FunctionParam,
+    UserDefinedFunctionQuery,
+)
 
 logger = logging.getLogger("sqlleaf")
 
@@ -357,6 +365,38 @@ def substitute_execute(query: ExecuteQuery) -> t.List[exp.Expr]:
     execute_args = query.parameters.arguments
 
     return substitute_execute_with_plan(execute_name, execute_args, query.object_mapping)
+
+
+def substitute_execute_dynamic(query: ExecuteDynamicQuery) -> t.List[exp.Expr]:
+    """
+    Parse the dynamic command string of an EXECUTE statement and substitute its
+    positional parameters ($1, $2, ...) with the resolved USING arguments.
+
+    Example:
+        DECLARE my_name varchar := 'there';
+        EXECUTE 'INSERT INTO target (name) SELECT $1' USING my_name;
+        ->
+        INSERT INTO target (name) SELECT 'there'
+    """
+    command = query.command
+    if not (isinstance(command, exp.Literal) and command.is_string):
+        exception.raise_error(
+            exception.UnsupportedFeatureError,
+            f"Dynamic EXECUTE with a non-literal command string is not supported yet: "
+            f"{query.statement.sql(dialect=query.dialect)}",
+        )
+        return []
+
+    logger.debug(f"Substituting dynamic EXECUTE command: {command.this}")
+    downstream_stmt = sqlglot.parse_one(command.this, dialect=query.dialect)
+
+    resolved_using = query.object_mapping.get_variables(query.using)
+    positional_map = {str(i + 1): value for i, value in enumerate(resolved_using)}
+
+    if positional_map:
+        downstream_stmt = substitute_parameters(downstream_stmt, None, {}, positional_map)
+
+    return [downstream_stmt]
 
 
 def substitute_create_execute(query: CTASQuery) -> exp.Expr:
