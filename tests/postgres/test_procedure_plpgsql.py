@@ -1,7 +1,7 @@
 import os
 import sys
 
-from sqlleaf.models.query import InsertQuery, QueryHolder, PerformQuery, ExecuteDynamicQuery, SelectQuery
+from sqlleaf.models.query import ExecuteDynamicQuery, InsertQuery, PerformQuery, QueryHolder
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -10,32 +10,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 DIALECT = "plpgsql"
 
 # TODO: variables should be included in the lineage graph too
-
-def test_call_procedure_in_out_params(holder):
-    sql = """
-    CREATE TABLE target (name TEXT, age INTEGER);
-
-    CREATE PROCEDURE hello(name TEXT)
-    LANGUAGE PLPGSQL
-    AS $$
-        DECLARE
-            my_name varchar := $1;
-            my_age integer := 1;
-        BEGIN
-            INSERT INTO target (name, age) SELECT my_name, my_age;
-        END;
-    $$;
-
-    CALL hello('hello');
-    """
-    h = holder(sql=sql, dialect=DIALECT)
-
-    call_downstream: QueryHolder = h.holders[2].downstream_holders[0]
-    insert_query: InsertQuery = call_downstream.downstream_holders[2].transformed
-    assert (
-        insert_query.statement.sql(dialect=DIALECT) == "INSERT INTO target (name, age) SELECT 'hello' AS name, 1 AS age"
-    )
-    assert h.paths == [['literal["hello"]', "column[target.name]"], ["literal[1]", "column[target.age]"]]
 
 
 def test_procedure_variable_assignment(holder):
@@ -66,11 +40,11 @@ def test_procedure_variable_assignment(holder):
     )
     assert h.paths == [
         ['literal["there"]', "column[target.name]"],
-        ["literal[2]", "column[target.age]"]
+        ["literal[2]", "column[target.age]"],
     ]
 
 
-def test_call_procedure_cursor(holder):
+def test_procedure_for_in_select(holder):
     sql = """
     CREATE TABLE source (name TEXT, age INTEGER);
     CREATE TABLE target (name TEXT, age INTEGER);
@@ -93,7 +67,10 @@ def test_call_procedure_cursor(holder):
 
     insert_query = h.holders[3].downstream_holders[0].downstream_holders[1].downstream_holders[1].transformed
     # TODO: this a bug - only one column should be returned in the subquery
-    assert insert_query.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT (SELECT source.name AS name, source.age AS age FROM source AS source).name AS name"
+    assert (
+        insert_query.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name) SELECT (SELECT source.name AS name, source.age AS age FROM source AS source).name AS name"
+    )
     assert h.paths == [["column[source.name]", "column[target.name]"]]
 
 
@@ -117,13 +94,15 @@ def test_procedure_perform_simple_select(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    perform_query = h.holders[3].downstream_holders[0].downstream_holders[0].parent_holder.downstream_holders[0].transformed
+    perform_query = (
+        h.holders[3].downstream_holders[0].downstream_holders[0].parent_holder.downstream_holders[0].transformed
+    )
     assert isinstance(perform_query, PerformQuery)
     assert perform_query.statement.sql(dialect=DIALECT) == "PERFORM (SELECT 5 AS _col_0) AS _col_0"
     assert h.paths == []
 
 
-def test_nested_block_variable_shadowing(holder):
+def test_procedure_nested_block_variable_shadowing(holder):
     sql = """
     CREATE TABLE target (name TEXT, age INTEGER);
 
@@ -150,7 +129,8 @@ def test_nested_block_variable_shadowing(holder):
         ["literal[1]", "column[target.age]"],
     ]
 
-def test_execute_dynamic(holder):
+
+def test_procedure_execute_dynamic_using(holder):
     sql = """
     CREATE TABLE target (name VARCHAR);
 
@@ -160,7 +140,7 @@ def test_execute_dynamic(holder):
         DECLARE
             my_name varchar := $1;
         BEGIN
-            EXECUTE 'INSERT INTO target (name) SELECT $1' USING my_name;
+            EXECUTE 'INSERT INTO target (name) SELECT $1' USING UPPER(my_name);
         END;
     $$;
 
@@ -173,5 +153,90 @@ def test_execute_dynamic(holder):
     execute_holder: QueryHolder = call_downstream.downstream_holders[1]
     assert isinstance(execute_holder.original, ExecuteDynamicQuery)
     insert_query: InsertQuery = execute_holder.downstream_holders[0].transformed
-    assert insert_query.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 'there' AS name"
-    assert h.paths == [['literal["there"]', "column[target.name]"]]
+    assert insert_query.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT UPPER('there') AS name"
+    assert h.paths == [['literal["there"]', "function[UPPER]", "column[target.name]"]]
+
+
+def test_procedure_execute_dynamic_variable(holder):
+    sql = """
+    CREATE TABLE target (age INT);
+
+    CREATE PROCEDURE hello(num INT)
+    LANGUAGE PLPGSQL
+    AS $$
+        DECLARE
+            my_query varchar := 'INSERT INTO target (age) SELECT $1';
+        BEGIN
+            EXECUTE my_query USING $1;
+        END;
+    $$;
+
+    CALL hello(4);
+    """
+
+    h = holder(sql=sql, dialect=DIALECT)
+
+    call_downstream: QueryHolder = h.holders[2].downstream_holders[0]
+    execute_holder: QueryHolder = call_downstream.downstream_holders[1]
+    assert isinstance(execute_holder.original, ExecuteDynamicQuery)
+    insert_query: InsertQuery = execute_holder.downstream_holders[0].transformed
+    assert insert_query.statement.sql(dialect=DIALECT) == "INSERT INTO target (age) SELECT 4 AS age"
+    assert h.paths == [["literal[4]", "column[target.age]"]]
+
+
+def test_execute_dynamic_concat(holder):
+    sql = """
+    CREATE TABLE target (name VARCHAR);
+
+    CREATE PROCEDURE hello(name VARCHAR)
+    LANGUAGE PLPGSQL
+    AS $$
+        BEGIN
+            EXECUTE 'INSERT INTO target (name) SELECT * FROM ' || $1;
+        END;
+    $$;
+
+    CALL hello('target');
+    """
+
+    h = holder(sql=sql, dialect=DIALECT)
+
+    call_downstream: QueryHolder = h.holders[2].downstream_holders[0]
+    execute_holder: QueryHolder = call_downstream.downstream_holders[0]
+    assert isinstance(execute_holder.original, ExecuteDynamicQuery)
+    insert_query: InsertQuery = execute_holder.downstream_holders[0].transformed
+    assert (
+        insert_query.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name) SELECT target.name AS name FROM target AS target"
+    )
+    assert h.paths == [["column[target.name]", "column[target.name]"]]
+
+
+def test_procedure_for_in_execute(holder):
+    sql = """
+    CREATE TABLE source (name TEXT, age INTEGER);
+    CREATE TABLE target (name TEXT, age INTEGER);
+
+    CREATE OR REPLACE PROCEDURE hello(name TEXT)
+    LANGUAGE PLPGSQL
+    AS $$
+        DECLARE
+            src RECORD;
+        BEGIN
+            FOR src IN EXECUTE 'SELECT * FROM source' LOOP
+                INSERT INTO target (name) SELECT src.name;
+            END LOOP;
+        END;
+    $$;
+
+    CALL hello('hello');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    insert_query = h.holders[3].downstream_holders[0].downstream_holders[1].downstream_holders[1].transformed
+    # TODO: this a bug - only one column should be returned in the subquery
+    assert (
+        insert_query.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name) SELECT (SELECT source.name AS name, source.age AS age FROM source AS source).name AS name"
+    )
+    assert h.paths == [["column[source.name]", "column[target.name]"]]

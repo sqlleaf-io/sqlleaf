@@ -3,6 +3,7 @@ import typing as t
 
 import sqlglot
 from sqlglot import exp
+from sqlglot.optimizer.simplify import simplify
 
 from sqlleaf import mappings, util, exception
 from sqlleaf.models.query import (
@@ -379,27 +380,49 @@ def substitute_execute_dynamic(query: ExecuteDynamicQuery) -> t.List[exp.Expr]:
         INSERT INTO target (name) SELECT 'there'
     """
     command = query.command
-    if not (isinstance(command, exp.Literal) and command.is_string):
+    logger.debug(f"Substituting dynamic EXECUTE command: {command}")
+
+    if isinstance(command, exp.Literal):
+        # The command is a string, e.g. EXECUTE 'SELECT 1';
+        resolved_command = command
+    elif isinstance(command, exp.Column):
+        # The command is a variable, e.g. EXECUTE my_query;
+        resolved_command = query.object_mapping.get_variable(name=command.name)
+
+        if not isinstance(resolved_command, exp.Literal):
+            exception.raise_error(
+                exception.UnsupportedFeatureError,
+                f"Dynamic EXECUTE with a variable of type {type(command)} is not supported yet: "
+                f"{query.statement.sql(dialect=query.dialect)}",
+            )
+            return []
+
+    elif isinstance(command, exp.DPipe):
+        # The command is a concatenation, e.g. EXECUTE 'SELECT * FROM ' || 'target';
+        resolved_command = simplify(command, dialect="postgres")
+
+    else:
         exception.raise_error(
             exception.UnsupportedFeatureError,
-            f"Dynamic EXECUTE with a non-literal command string is not supported yet: "
+            f"Dynamic EXECUTE with a command string of type {type(command)} is not supported yet: "
             f"{query.statement.sql(dialect=query.dialect)}",
         )
         return []
 
-    logger.debug(f"Substituting dynamic EXECUTE command: {command.this}")
-    downstream_stmt = sqlglot.parse_one(command.this, dialect=query.dialect)
+    downstream_stmt = sqlglot.parse_one(resolved_command.this, dialect=query.dialect)
 
-    resolved_using = query.object_mapping.get_variables(query.using)
-    positional_map = {str(i + 1): value for i, value in enumerate(resolved_using)}
+    if query.using:
+        # Substitute the 'USING' variables in EXECUTE 'SELECT $1' USING x;
+        resolved_using = query.object_mapping.get_variables_for(expressions=query.using)
 
-    if positional_map:
-        downstream_stmt = substitute_parameters(downstream_stmt, None, {}, positional_map)
+        if resolved_using:
+            positional_map = {str(i + 1): value for i, value in enumerate(resolved_using)}
+            downstream_stmt = substitute_parameters(downstream_stmt, None, {}, positional_map)
 
     return [downstream_stmt]
 
 
-def substitute_create_execute(query: CTASQuery) -> exp.Expr:
+def substitute_ctas_execute(query: CTASQuery) -> exp.Create:
     """
     Substitutes 'EXECUTE <plan>' in 'CREATE TABLE AS' with the actual query.
 

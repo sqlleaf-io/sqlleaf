@@ -69,6 +69,7 @@ def process_statement(
     object_mapping: mappings.ObjectMapping,
     statement_index: int | str,
     kind: str = "",
+    parent_holder: QueryHolder = None,
 ) -> QueryHolder | None:
     """
     Classify, transform, and build a query holder for a single statement.
@@ -97,6 +98,8 @@ def process_statement(
         return None
 
     holder = QueryHolder(original=query)
+    if parent_holder:
+        parent_holder.add_downstream_holder(holder)
 
     if isinstance(query, (BlockQuery, ForInQuery)):
         # Immediately transform queries inside a dynamic SQL block so that subsequent statements can used their values
@@ -130,7 +133,7 @@ def _resolve_call_sites(
     elif isinstance(query, ExecuteDynamicQuery):
         subst_statements = substitute.substitute_execute_dynamic(query=query)
     elif isinstance(query, CTASQuery) and query.source_info.type == typing.SqlObjectType.PREPARED_STATEMENT:
-        subst_statements = [substitute.substitute_create_execute(query=query)]
+        subst_statements = [substitute.substitute_ctas_execute(query=query)]
     elif isinstance(query, UserDefinedFunctionQuery):
         return
     else:
@@ -151,9 +154,7 @@ def _resolve_call_sites(
                     subst_dml = substitute.substitute_parameters(
                         raw_stmt.copy(), matched_udf, param_map, positional_map
                     )
-                    child_holder = process_statement(subst_dml, dialect, object_mapping, f"{parent_index}:{idx}")
-                    if child_holder is not None:
-                        holder.add_downstream_holder(child_holder)
+                    process_statement(subst_dml, dialect, object_mapping, f"{parent_index}:{idx}", parent_holder=holder)
 
             target_node = udf.get_target_node(node)
             replacement_exprs = udf.build_replacement_exprs(node, matched_udf)
@@ -167,9 +168,7 @@ def _resolve_call_sites(
 
     parent_index = query.get_statement_index()
     for i, stmt in enumerate(subst_statements):
-        child_holder = process_statement(stmt, dialect, object_mapping, f"{parent_index}:{i}")
-        if child_holder is not None:
-            holder.add_downstream_holder(child_holder)
+        process_statement(stmt, dialect, object_mapping, f"{parent_index}:{i}", parent_holder=holder)
 
 
 def _collect_sequential_children(
@@ -186,15 +185,11 @@ def _collect_sequential_children(
             statement_idx = 0
             if declare := query.statement.args.get("declare"):
                 for item in declare.expressions:
-                    child_holder = process_statement(item, dialect, object_mapping, statement_idx)
-                    if child_holder is not None:
-                        holder.add_downstream_holder(child_holder)
+                    process_statement(item, dialect, object_mapping, statement_idx, parent_holder=holder)
                     statement_idx += 1
 
             for block_expr in query.statement.expressions:
-                child_holder = process_statement(block_expr, dialect, object_mapping, statement_idx)
-                if child_holder is not None:
-                    holder.add_downstream_holder(child_holder)
+                process_statement(block_expr, dialect, object_mapping, statement_idx, parent_holder=holder)
                 statement_idx += 1
         finally:
             object_mapping.pop_variable_scope()
@@ -202,14 +197,10 @@ def _collect_sequential_children(
     elif isinstance(query, ForInQuery):
         object_mapping.push_variable_scope()
         try:
-            source_holder = process_statement(query.statement.args["query"], dialect, object_mapping, 0)
-            if source_holder is not None:
-                holder.add_downstream_holder(source_holder)
+            process_statement(query.statement.args["query"], dialect, object_mapping, 0, parent_holder=holder)
 
             for i, stmt in enumerate(query.statement.expressions):
-                child_holder = process_statement(stmt, dialect, object_mapping, i + 1)
-                if child_holder is not None:
-                    holder.add_downstream_holder(child_holder)
+                process_statement(stmt, dialect, object_mapping, i + 1, parent_holder=holder)
         finally:
             object_mapping.pop_variable_scope()
 

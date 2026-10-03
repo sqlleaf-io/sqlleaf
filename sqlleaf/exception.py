@@ -6,12 +6,12 @@ ERROR_LEVEL = "stop"
 logger = logging.getLogger("sqlleaf")
 
 
-def raise_error(clazz: type, message: str):
+def raise_error(cls: type, message: str):
     """
     Raise a custom exception based on the error level.
     """
     if ERROR_LEVEL == "stop":
-        raise clazz(message)
+        raise cls(message)
     elif ERROR_LEVEL == "continue":
         logger.error(message)
 

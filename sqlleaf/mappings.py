@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import typing as t
 
 from sqlglot import MappingSchema, exp
@@ -25,6 +26,8 @@ from sqlleaf.models.query import (
 )
 
 ColumnMapping = t.Union[t.Dict, str, t.List]
+
+logger = logging.getLogger("sqlleaf")
 
 
 class ObjectMapping(MappingSchema):
@@ -60,6 +63,7 @@ class ObjectMapping(MappingSchema):
     def set_variable(self, name: str, value: exp.Expr) -> None:
         """Assign or declare a variable in the current scope."""
         self.variable_scopes[-1][name] = value
+        logger.debug(f"Set variable value: {name} := {value.sql()}")
 
     def get_variable(self, name: str) -> exp.Expr | None:
         """Resolve a variable by searching from innermost to outermost scopes, then session vars."""
@@ -68,18 +72,18 @@ class ObjectMapping(MappingSchema):
                 return scope[name]
         return self.session_variables.get(name)
 
-    def get_variables(self, exprs: t.List[exp.Expr]) -> t.List[exp.Expr]:
+    def get_variables_for(self, expressions: t.List[exp.Expr]) -> t.List[exp.Expr]:
         """
         Given a list of expressions as keys, fetch their values from the variable scope if they exist.
 
         Example:
-            exprs = [ Literal[42], Column[name] ]
+            expressions = [ Literal[42], Column[name] ]
             variable scope = { Column[name] -> Literal['john'] }
             ->
             [ Literal['john'] ]
         """
         resolved = []
-        for expr in exprs:
+        for expr in expressions:
             if isinstance(expr, exp.Column) and not expr.table:
                 variable = self.get_variable(expr.name)
                 if variable is not None:
@@ -93,45 +97,45 @@ class ObjectMapping(MappingSchema):
         return self.variable_scopes[-1]
 
     def add_database_query(self, query: DatabaseQuery) -> None:
-        self._add_query(kind="database", query=query, dialect=query.dialect)
+        self._add_query(query=query, dialect=query.dialect)
 
     def add_prepare_query(self, query: PrepareQuery) -> None:
-        self._add_query(kind="prepare", query=query, dialect=query.dialect)
+        self._add_query(query=query, dialect=query.dialect)
 
     def add_procedure_query(self, query: ProcedureQuery) -> None:
-        self._add_query(kind="procedure", query=query, dialect=query.dialect)
+        self._add_query(query=query, dialect=query.dialect)
 
     def add_schema_query(self, query: SchemaQuery) -> None:
-        self._add_query(kind="schema", query=query, dialect=query.dialect)
+        self._add_query(query=query, dialect=query.dialect)
 
     def add_sequence_query(self, query: SequenceQuery) -> None:
-        self._add_query(kind="sequence", query=query, dialect=query.dialect)
+        self._add_query(query=query, dialect=query.dialect)
 
     def add_stage_query(self, query: StageQuery) -> None:
-        self._add_query(kind="stage", query=query, dialect=query.dialect)
+        self._add_query(query=query, dialect=query.dialect)
 
     def add_table_query(
         self, query: TableQuery | ViewQuery | CTASQuery, column_mapping: t.Optional[ColumnMapping] = None
     ) -> None:
-        self._add_query(kind="table", query=query, column_mapping=column_mapping, dialect=query.dialect)
+        self._add_query(query=query, column_mapping=column_mapping, dialect=query.dialect, kind="table")
 
     def add_trigger_query(self, query: TriggerQuery) -> None:
-        self._add_query(kind="trigger", query=query, dialect=query.dialect)
+        self._add_query(query=query, dialect=query.dialect)
 
     def add_type_query(self, query: TypeQuery) -> None:
-        self._add_query(kind="type", query=query, dialect=query.dialect)
+        self._add_query( query=query, dialect=query.dialect)
 
     def add_udf_query(self, query: UserDefinedFunctionQuery, column_mapping: t.Optional[ColumnMapping] = None) -> None:
-        self._add_query(kind="udf", query=query, column_mapping=column_mapping, dialect=query.dialect)
+        self._add_query(query=query, column_mapping=column_mapping, dialect=query.dialect)
 
     def _add_query(
         self,
-        kind: str,
         query: Q,
         column_mapping: t.Optional[ColumnMapping] = None,
         dialect: DialectType = None,
         normalize: t.Optional[bool] = None,
         match_depth: bool = False,
+        kind: str = ""
     ) -> None:
         """
         Register or update a table. Updates are only performed if a new column mapping is provided.
@@ -146,6 +150,9 @@ class ObjectMapping(MappingSchema):
             match_depth: whether to enforce that the table must match the schema's depth or not.
         """
         # Initialize the structures. These are required by sqlglot.
+        if not kind:
+            kind = query.kind
+
         if kind not in self.kind_mapping:
             self.kind_mapping[kind] = {}
             self.kind_mapping_trie[kind] = new_trie({})

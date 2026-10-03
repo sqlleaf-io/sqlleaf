@@ -12,6 +12,7 @@ from sqlleaf.models.query import (
     DeleteQuery,
     ExecuteDynamicQuery,
     ExecuteQuery,
+    ForInQuery,
     InsertQuery,
     MergeQuery,
     MultitableInsertQuery,
@@ -80,21 +81,28 @@ def set_variables_in_scope(query: Q) -> None:
     Set variables for this scope in the variable stack (VS).
     """
     if isinstance(query, AssignmentQuery):
-        # No lineage edges for declarations; seed/update the VS
+        # `my_var := 42`
         name = query.statement.this.name
         value = query.get_value()
         query.object_mapping.set_variable(name=name, value=value)
-        logger.debug(f"Set variable value: {name} := {value.sql(dialect=query.dialect)}")
     elif isinstance(query, SelectQuery):
-        # If the query is the source in 'FOR <var> IN <source>', update the VS
         original_stmt = query.holder.original.statement
         original_parent = original_stmt.parent
+        parent_holder = query.holder.parent_holder
 
         if isinstance(original_parent, pgexp.PGForIn) and original_parent.args["query"] == original_stmt:
-            # We are the source, not the inner statements
+            # `FOR .. IN SELECT ..`
             name = original_parent.this.name
             value = query.statement
             query.object_mapping.set_variable(name=name, value=value)
+        elif parent_holder and isinstance(parent_holder.original, ExecuteDynamicQuery):
+            # `FOR .. IN EXECUTE 'SELECT ..'`
+            grandparent_holder = query.holder.parent_holder.parent_holder
+            if grandparent_holder and isinstance(grandparent_holder.transformed, ForInQuery):
+                for_in_stmt = grandparent_holder.transformed.statement
+                name = for_in_stmt.this.name
+                value = query.statement
+                query.object_mapping.set_variable(name=name, value=value)
 
 
 def _transform_query_instance(query: Q) -> Q:
