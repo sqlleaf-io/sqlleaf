@@ -190,9 +190,8 @@ def build_replacement_exprs(node: exp.Anonymous, query: UserDefinedFunctionQuery
     param_map, positional_map = substitute.transform_arguments(node, query)
 
     replacement_exprs = []
-    # Collect all child queries from the holder
-    for child in query.holder.downstream_holders:
-        stmt = util.copy_expression(child.original.statement)
+    for stmt in query.inner_statements:
+        stmt = util.copy_expression(stmt)
         replacement_exprs.append(transform_inner_query(stmt, param_map, query, positional_map))
 
     return replacement_exprs

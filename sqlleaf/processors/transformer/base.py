@@ -86,10 +86,6 @@ class BaseQueryTransformer:
         Run a set of transformations over every statement
         BEFORE the type-specific transformations.
         """
-        if isinstance(statement, (pgexp.PGBlock, pgexp.PGForIn)):
-            self.query.object_mapping.push_variable_scope()
-            return statement
-
         statement = self._expand_to_query(statement)
         statement = self._convert_table_to_select(statement)
 
@@ -122,7 +118,6 @@ class BaseQueryTransformer:
 
         validate_columns, exclusion_rules = self._get_validation_and_exclusion_rules(statement)
 
-        statement = self._apply_udf_substitutions(statement)
         statement = self._add_aliases_to_udfs(statement)
         statement = self._qualify_function_columns(statement)
         statement = self._apply_qualify(statement, validate_columns)
@@ -201,58 +196,6 @@ class BaseQueryTransformer:
                 subquery = inner_query.subquery()
                 table_from_rows.replace(subquery)
 
-        return statement
-
-    @_validate_syntax
-    def _apply_udf_substitutions(self, statement: E) -> E:
-        """
-        Replaces UDF call sites in the transformed statement with their inlined body.
-        Must run before _add_aliases_to_udfs so raw exp.Anonymous nodes are still present.
-
-        Example:
-            Given a UDF defined as:
-                CREATE FUNCTION hello() RETURNS TEXT LANGUAGE SQL RETURN 'Hello';
-
-            And an INSERT statement:
-                INSERT INTO target (name) SELECT hello();
-
-            The call site `hello()` is replaced with the inlined UDF body, producing:
-                INSERT INTO target (name) SELECT (SELECT 'Hello');
-        """
-        while True:
-            annotated = statement
-            node, matched_udf = udf.find_next_udf_call(annotated, self.query.object_mapping)
-            if not node:
-                break
-
-            target_node = udf.get_target_node(node)
-            replacement_exprs = udf.build_replacement_exprs(node, matched_udf)
-            if not replacement_exprs:
-                break
-
-            if len(replacement_exprs) > 1:
-                # Multi-statement UDF body: branch the entire query for each expression,
-                # then recursively process each branch to handle remaining UDF calls.
-                node_index = next((i for i, n in enumerate(annotated.walk()) if n is target_node), -1)
-                if node_index == -1:
-                    break
-                final_results = []
-                for repl_expr in replacement_exprs:
-                    new_statement = annotated.copy()
-                    for i, n in enumerate(new_statement.walk()):
-                        if i == node_index:
-                            udf.apply_replacement(n, repl_expr, matched_udf)
-                            break
-                    # Recursively substitute any remaining UDF calls in this branch
-                    substituted = self._apply_udf_substitutions(new_statement)
-                    final_results.append(substituted)
-
-                # Return the last statement as the primary statement; for scalar UDFs the last
-                # statement is the return value. Others are discarded.
-                if final_results:
-                    return final_results[-1]
-                break
-            udf.apply_replacement(target_node, replacement_exprs[0], matched_udf)
         return statement
 
     @_validate_syntax

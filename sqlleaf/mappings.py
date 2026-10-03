@@ -53,8 +53,8 @@ class ObjectMapping(MappingSchema):
         self.variable_scopes.append({})
 
     def pop_variable_scope(self) -> None:
-        """Leave the current block scope (cannot pop the global frame)."""
-        if len(self.variable_scopes) > 1:
+        """Leave the current block scope."""
+        if self.variable_scopes:
             self.variable_scopes.pop()
 
     def set_variable(self, name: str, value: exp.Expr) -> None:

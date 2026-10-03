@@ -13,7 +13,6 @@ from sqlleaf.models.query import (
 from sqlleaf.path import LineagePath
 from sqlleaf.processors.collector import collector
 from sqlleaf.processors.generator import generator
-from sqlleaf.processors.transformer import transformer
 
 logging.getLogger("sqlglot").setLevel(logging.WARNING)
 logger = logging.getLogger("sqlleaf")
@@ -51,10 +50,7 @@ class Lineage:
             query_holders = parent_holder.get_all_holders()
 
             for holder in query_holders:
-                transformer.transform_query(holder)
-
-            for holder in query_holders:
-                # Transform and produce lineage only for certain queries
+                # Produce lineage only for certain queries
                 if generator.query_has_lineage(holder.original):
                     generator.generate_lineage_for_query(holder, graph, self.user_defined_hooks)
 

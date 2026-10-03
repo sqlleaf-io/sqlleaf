@@ -121,3 +121,31 @@ def test_procedure_perform_simple_select(holder):
     assert isinstance(perform_query, PerformQuery)
     assert perform_query.statement.sql(dialect=DIALECT) == "PERFORM (SELECT 5 AS _col_0) AS _col_0"
     assert h.paths == []
+
+
+def test_nested_block_variable_shadowing(holder):
+    sql = """
+    CREATE TABLE target (name TEXT, age INTEGER);
+
+    BEGIN
+        DECLARE
+            my_age integer := 1;
+        BEGIN
+            BEGIN
+                DECLARE
+                    my_age integer := 2;
+                BEGIN
+                    INSERT INTO target (name, age) SELECT 'inner', my_age;
+                END;
+            END;
+            INSERT INTO target (name, age) SELECT 'outer', my_age;
+        END;
+    END;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+    assert h.paths == [
+        ['literal["inner"]', "column[target.name]"],
+        ["literal[2]", "column[target.age]"],
+        ['literal["outer"]', "column[target.name]"],
+        ["literal[1]", "column[target.age]"],
+    ]
