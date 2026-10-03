@@ -1,29 +1,28 @@
 import logging
 import typing as t
-from collections import Counter
 from dataclasses import dataclass, field
 
 import sqlglot
-from sqlglot import TokenType, exp
-
-from sqlleaf.processors.transformer import transformer, udf
+from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
-from sqlleaf import exception, mappings, settings, util, typing
+from sqlleaf import exception, mappings, settings, typing, util
+from sqlleaf.dialects.plpgsql import pgexp
 from sqlleaf.models.query import (
+    AssignmentQuery,
     BlockQuery,
     CallQuery,
     CopyQuery,
     CTASQuery,
     DatabaseQuery,
-    AssignmentQuery,
     DeleteQuery,
-    ForInQuery,
     ExecuteQuery,
+    ForInQuery,
     InsertQuery,
     MergeQuery,
     MultitableInsertQuery,
+    PerformQuery,
     PrepareQuery,
     ProcedureQuery,
     PutQuery,
@@ -32,7 +31,6 @@ from sqlleaf.models.query import (
     ReplaceQuery,
     SchemaQuery,
     SelectQuery,
-    PerformQuery,
     SequenceQuery,
     SetQuery,
     StageQuery,
@@ -46,15 +44,15 @@ from sqlleaf.models.query import (
     ViewQuery,
 )
 from sqlleaf.processors.collector import substitute
+from sqlleaf.processors.collector.classify import _classify_command, _determine_query_kind
+from sqlleaf.processors.transformer import transformer, udf
 from sqlleaf.processors.transformer.expressions import simplify_row_in_values
-from sqlleaf.dialects.plpgsql import pgexp
 
 logger = logging.getLogger("sqlleaf")
 
 """
 Parses text for SQL statements and collects them into Query models.
 """
-
 
 
 @dataclass(frozen=True)
@@ -150,9 +148,7 @@ def _resolve_call_sites(
                     subst_dml = substitute.substitute_parameters(
                         raw_stmt.copy(), matched_udf, param_map, positional_map
                     )
-                    child_holder = process_statement(
-                        subst_dml, dialect, object_mapping, f"{parent_index}:{idx}"
-                    )
+                    child_holder = process_statement(subst_dml, dialect, object_mapping, f"{parent_index}:{idx}")
                     if child_holder is not None:
                         holder.add_downstream_holder(child_holder)
 
@@ -168,9 +164,7 @@ def _resolve_call_sites(
 
     parent_index = query.get_statement_index()
     for i, stmt in enumerate(subst_statements):
-        child_holder = process_statement(
-            stmt, dialect, object_mapping, f"{parent_index}:{i}"
-        )
+        child_holder = process_statement(stmt, dialect, object_mapping, f"{parent_index}:{i}")
         if child_holder is not None:
             holder.add_downstream_holder(child_holder)
 
@@ -189,17 +183,13 @@ def _collect_sequential_children(
             statement_idx = 0
             if declare := query.statement.args.get("declare"):
                 for item in declare.expressions:
-                    child_holder = process_statement(
-                        item, dialect, object_mapping, statement_idx
-                    )
+                    child_holder = process_statement(item, dialect, object_mapping, statement_idx)
                     if child_holder is not None:
                         holder.add_downstream_holder(child_holder)
                     statement_idx += 1
 
             for block_expr in query.statement.expressions:
-                child_holder = process_statement(
-                    block_expr, dialect, object_mapping, statement_idx
-                )
+                child_holder = process_statement(block_expr, dialect, object_mapping, statement_idx)
                 if child_holder is not None:
                     holder.add_downstream_holder(child_holder)
                 statement_idx += 1
@@ -209,9 +199,7 @@ def _collect_sequential_children(
     elif isinstance(query, ForInQuery):
         object_mapping.push_variable_scope()
         try:
-            source_holder = process_statement(
-                query.statement.args["query"], dialect, object_mapping, 0
-            )
+            source_holder = process_statement(query.statement.args["query"], dialect, object_mapping, 0)
             if source_holder is not None:
                 holder.add_downstream_holder(source_holder)
 
@@ -242,82 +230,6 @@ def _collect_structural_children(
 
     for child_holder in list(holder.downstream_holders):
         _collect_structural_children(child_holder.original, child_holder, dialect, object_mapping)
-
-
-def _is_prepare_supported(stmt: exp.Command) -> bool:
-    """
-    Check if a PREPARE statement for Postgres is supported.
-    Syntax: PREPARE name AS statement
-    The variant where parameters are provided is not yet supported.
-    """
-    expression_name = stmt.expression.name
-    tokens = sqlglot.tokenize(expression_name, dialect="postgres")
-
-    if len(tokens) < 3:
-        raise exception.InvalidQueryError(f"Invalid syntax for PREPARE expression: {stmt.sql(dialect='postgres')}")
-
-    # We cannot process arguments yet
-    if tokens[1].token_type != TokenType.ALIAS or tokens[1].text.upper() != "AS":
-        if tokens[1].token_type == TokenType.L_PAREN:
-            logger.warning("PREPARE with arguments is not currently supported.")
-        return False
-
-    # Ensure there's an 'AS' token
-    if not any(t.token_type == TokenType.ALIAS and t.text.upper() == "AS" for t in tokens):
-        raise exception.InvalidQueryError(f"Could not find 'AS' in PREPARE expression: {expression_name}")
-
-    return True
-
-
-def _is_execute_supported(stmt: exp.Command) -> bool:
-    """
-    Check if an EXECUTE statement for Postgres is supported.
-    Syntax: EXECUTE name [ ( parameter [, ...] ) ]
-
-    Only the bare-name form (exactly one token, no argument parentheses) is supported.
-    If the expression contains more than one token it means arguments were supplied
-    (e.g. EXECUTE my_plan(arg1, arg2)), which is not yet handled.
-    """
-    expression_name = stmt.expression.name
-    tokens = sqlglot.tokenize(expression_name, dialect="postgres")
-
-    if not tokens or len(tokens) > 1:
-        raise exception.InvalidQueryError(f"Invalid syntax for EXECUTE expression: {stmt.sql(dialect='postgres')}")
-
-    return True
-
-
-def _is_replace_supported(stmt: exp.Command, dialect: str) -> bool:
-    """
-    Check if a REPLACE statement is supported.
-    Transform to INSERT INTO to verify syntax.
-    """
-    expression = stmt.args.get("expression")
-    new_sql = f"INSERT {expression.this}" if expression else "INSERT"
-    try:
-        sqlglot.parse_one(new_sql, dialect=dialect)
-        return True
-    except Exception as e:
-        logger.warning(f"Invalid REPLACE statement syntax: {e}")
-        return False
-
-
-def _classify_command(stmt: exp.Command, dialect: str) -> tuple[str, bool]:
-    """
-    Classify an exp.Command node into a (kind, is_supported) pair.
-    kind='' means the command is not recognised and should be treated as unsupported.
-    """
-    if dialect in ["athena", "redshift"] and stmt.name == "UNLOAD":
-        return "unload", True
-    if dialect == "postgres" and stmt.name == "PREPARE":
-        return "prepare", _is_prepare_supported(stmt)
-    if dialect == "postgres" and stmt.name == "EXECUTE":
-        return "execute", _is_execute_supported(stmt)
-    if dialect == "mysql" and stmt.name == "REPLACE":
-        return "replace", _is_replace_supported(stmt, dialect)
-    if stmt.this.upper() == "CALL":
-        return "call", True
-    return "", False
 
 
 def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapping) -> CollectQueryResult:
@@ -365,33 +277,6 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     return CollectQueryResult(queries=queries, unknown=unknown, unsupported=unsupported)
 
 
-def _determine_query_kind(statement: exp.Expr, dialect: str) -> t.Tuple[exp.Expr, str]:
-    """
-    Determine a query's "kind" from the expression, which maps to how it will be processed.
-    """
-    if statement.key == "create" and isinstance(statement, exp.Create):
-        if statement.kind == "TABLE":
-            if isinstance(statement.expression, (exp.Select, exp.Values)) or statement.find(exp.ExecuteAsProperty):
-                kind = "ctas"
-            else:
-                kind = "table"
-        else:
-            kind = (statement.kind or "").lower()
-    elif statement.key == "select" and "into" in statement.args:
-        # sqlglot rewrites 'SELECT INTO' to 'CREATE TABLE AS' during parse()
-        # but it's not shown until we produce it with sql(), so we re-parse it
-        if dialect in ["redshift", "postgres", "mysql"]:
-            statement = sqlglot.parse_one(statement.sql(dialect=""), dialect=dialect)
-            kind = "ctas"
-        else:
-            message = f"Expression 'SELECT INTO' has not been implemented yet for dialect: {dialect}"
-            raise exception.UnsupportedFeatureError(message=message)
-    else:
-        kind = statement.key.lower()
-
-    return statement, kind
-
-
 def _collect_writable_cte_queries(
     parent_query: Q, parent_holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping
 ) -> None:
@@ -422,7 +307,9 @@ def _collect_writable_cte_queries(
         parent_holder.add_downstream_holder(downstream_holder)
 
 
-def _collect_insert_children(query: InsertQuery, parent_holder: QueryHolder, object_mapping: mappings.ObjectMapping) -> None:
+def _collect_insert_children(
+    query: InsertQuery, parent_holder: QueryHolder, object_mapping: mappings.ObjectMapping
+) -> None:
     """
     Collect any additional queries inside an INSERT. For Postgres, this is 'INSERT .. ON CONFLICT DO UPDATE'.
     """
