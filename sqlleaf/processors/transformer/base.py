@@ -107,7 +107,7 @@ class BaseQueryTransformer:
         statement = normalize_values(self.query, statement)
         return statement
 
-    @t.final
+    #@t.final
     def postprocess(self, statement: E) -> E:
         """
         Run a set of transformations over every statement
@@ -143,6 +143,11 @@ class BaseQueryTransformer:
         for column in list(statement.find_all(exp.Column)):
             if column.parent is None:
                 continue
+
+            # If the column is after 'INTO', skip it.
+            if isinstance(statement, pgexp.PGFetch):
+                if column in statement.args.get("expressions", []):
+                    continue
 
             table_name = column.table
 

@@ -1,18 +1,16 @@
 from __future__ import annotations
 
-from sqlglot import exp
-
 from sqlleaf import mappings
 from sqlleaf.models.query.base import Query
 from sqlleaf.dialects.plpgsql import pgexp
 
 
-class ForInQuery(Query):
-    KIND = "for_in"
+class FetchQuery(Query):
+    KIND = "fetch"
 
     def __init__(
         self,
-        expr: pgexp.PGForIn,
+        expr: pgexp.PGFetch,
         dialect: str,
         object_mapping: mappings.ObjectMapping,
         statement_index: int,
@@ -25,7 +23,3 @@ class ForInQuery(Query):
             source_info=None,
             target_info=None,
         )
-
-    @property
-    def inner_statements(self) -> list[exp.Expr]:
-        return self.statement.expressions

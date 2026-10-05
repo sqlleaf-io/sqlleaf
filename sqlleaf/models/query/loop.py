@@ -7,12 +7,12 @@ from sqlleaf.models.query.base import Query
 from sqlleaf.dialects.plpgsql import pgexp
 
 
-class ForInQuery(Query):
-    KIND = "for_in"
+class LoopQuery(Query):
+    KIND = "loop"
 
     def __init__(
         self,
-        expr: pgexp.PGForIn,
+        expr: pgexp.PGLoop,
         dialect: str,
         object_mapping: mappings.ObjectMapping,
         statement_index: int,
@@ -28,4 +28,4 @@ class ForInQuery(Query):
 
     @property
     def inner_statements(self) -> list[exp.Expr]:
-        return self.statement.expressions
+        return self.statement.args["body"]

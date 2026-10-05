@@ -25,7 +25,7 @@ class PlPgSQLGenerator(PostgresGenerator):
         PGContinue: lambda self, e: self.pgcontinue_sql(e),
         PGRaise: lambda self, e: self.pgraise_sql(e),
         PGSqlState: lambda self, e: self.pgsqlstate_sql(e),
-        PGOpenCursor: lambda self, e: self.pgopencursor_sql(e),
+        PGOpen: lambda self, e: self.pgopen_sql(e),
         PGFetch: lambda self, e: self.pgfetch_sql(e),
         PGMove: lambda self, e: self.pgmove_sql(e),
         PGClose: lambda self, e: self.pgclose_sql(e),
@@ -419,7 +419,7 @@ class PlPgSQLGenerator(PostgresGenerator):
             return f"{self.sql(dir_expr)} {prep} {self.sql(expression.this)}"
         return self.sql(expression.this)
 
-    def pgopencursor_sql(self, expression: PGOpenCursor) -> str:
+    def pgopen_sql(self, expression: PGOpen) -> str:
         # Unbound form: OPEN c [NO|SCROLL] FOR <query>
         if expression.args.get("expression") is not None:
             parts: list[str] = ["OPEN", self.sql(expression.this)]

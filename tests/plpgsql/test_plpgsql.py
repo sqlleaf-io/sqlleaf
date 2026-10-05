@@ -786,7 +786,7 @@ class TestPlPgSQL(unittest.TestCase):
     def test_open_cursor_for_execute_ast_shape(self) -> None:
         sql = "BEGIN OPEN c FOR EXECUTE 'SELECT 1' USING x; END;"
         block = sqlglot.parse_one(sql, dialect=plpgsql)
-        open_node = block.find(PGOpenCursor)
+        open_node = block.find(PGOpen)
         self.assertIsNotNone(open_node)
         assert open_node is not None  # for type checkers
         self.assertIsInstance(open_node.args["expression"], PGExecute)

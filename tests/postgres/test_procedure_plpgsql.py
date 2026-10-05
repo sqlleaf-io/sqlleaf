@@ -1,7 +1,7 @@
 import os
 import sys
 
-from sqlleaf.models.query import ExecuteDynamicQuery, InsertQuery, PerformQuery, QueryHolder
+from sqlleaf.models.query import BlockQuery, ExecuteDynamicQuery, FetchQuery, InsertQuery, LoopQuery, PerformQuery, QueryHolder
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -234,6 +234,109 @@ def test_procedure_for_in_execute(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     insert_query = h.holders[3].downstream_holders[0].downstream_holders[1].downstream_holders[1].transformed
+    # TODO: this a bug - only one column should be returned in the subquery
+    assert (
+        insert_query.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name) SELECT (SELECT source.name AS name, source.age AS age FROM source AS source).name AS name"
+    )
+    assert h.paths == [["column[source.name]", "column[target.name]"]]
+
+
+def test_procedure_open_cursor_bound(holder):
+    sql = """
+    CREATE TABLE source (name TEXT, age INTEGER);
+    CREATE TABLE target (name TEXT, age INTEGER);
+
+    CREATE OR REPLACE PROCEDURE hello(name TEXT)
+    LANGUAGE PLPGSQL
+    AS $$
+        DECLARE
+            r_name RECORD;
+            curs CURSOR FOR SELECT * FROM source;
+        BEGIN
+            OPEN curs;
+            LOOP
+                FETCH curs INTO r_name;
+                INSERT INTO target (name) SELECT r_name.name; 
+            END LOOP;
+        END;
+    $$;
+
+    CALL hello('hello');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    block_query: BlockQuery = h.holders[3].downstream_holders[0]
+    insert_query: InsertQuery = block_query.downstream_holders[3].downstream_holders[1].transformed
+    # TODO: this a bug - only one column should be returned in the subquery
+    assert (
+        insert_query.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name) SELECT (SELECT source.name AS name, source.age AS age FROM source AS source).name AS name"
+    )
+    assert h.paths == [["column[source.name]", "column[target.name]"]]
+
+
+def test_procedure_open_cursor_unbound(holder):
+    sql = """
+    CREATE TABLE source (name TEXT, age INTEGER);
+    CREATE TABLE target (name TEXT, age INTEGER);
+
+    CREATE OR REPLACE PROCEDURE hello(name TEXT)
+    LANGUAGE PLPGSQL
+    AS $$
+        DECLARE
+            r_name RECORD;
+            curs refcursor;
+        BEGIN
+            OPEN curs FOR SELECT * FROM source;
+            LOOP
+                FETCH curs INTO r_name;
+                INSERT INTO target (name) SELECT r_name.name; 
+            END LOOP;
+        END;
+    $$;
+
+    CALL hello('hello');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    block_holder: QueryHolder = h.holders[3].downstream_holders[0]
+    loop_holder: QueryHolder = block_holder.downstream_holders[3]
+    insert_query: InsertQuery = loop_holder.downstream_holders[1].transformed
+    # TODO: this a bug - only one column should be returned in the subquery
+    assert (
+        insert_query.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name) SELECT (SELECT source.name AS name, source.age AS age FROM source AS source).name AS name"
+    )
+    assert h.paths == [["column[source.name]", "column[target.name]"]]
+
+
+def test_procedure_open_cursor_execute(holder):
+    sql = """
+    CREATE TABLE source (name TEXT, age INTEGER);
+    CREATE TABLE target (name TEXT, age INTEGER);
+
+    CREATE OR REPLACE PROCEDURE hello(name TEXT)
+    LANGUAGE PLPGSQL
+    AS $$
+        DECLARE
+            curs refcursor;
+        BEGIN
+            OPEN curs FOR EXECUTE 'SELECT * FROM source';
+            LOOP
+                FETCH curs INTO r_name;
+                INSERT INTO target (name) SELECT r_name.name; 
+            END LOOP;
+        END;
+    $$;
+
+    CALL hello('hello');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    block_holder: QueryHolder = h.holders[3].downstream_holders[0]
+    loop_holder: QueryHolder = block_holder.downstream_holders[2]
+    insert_query: InsertQuery = loop_holder.downstream_holders[1].transformed
     # TODO: this a bug - only one column should be returned in the subquery
     assert (
         insert_query.statement.sql(dialect=DIALECT)

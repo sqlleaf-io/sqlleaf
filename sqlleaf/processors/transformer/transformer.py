@@ -12,10 +12,12 @@ from sqlleaf.models.query import (
     DeleteQuery,
     ExecuteDynamicQuery,
     ExecuteQuery,
+    FetchQuery,
     ForInQuery,
     InsertQuery,
     MergeQuery,
     MultitableInsertQuery,
+    OpenQuery,
     Q,
     QueryHolder,
     ReplaceQuery,
@@ -25,6 +27,7 @@ from sqlleaf.models.query import (
     ValuesQuery,
 )
 from sqlleaf.processors.transformer import (
+    AssignmentTransformer,
     BaseQueryTransformer,
     CallTransformer,
     CopyTransformer,
@@ -43,7 +46,9 @@ from sqlleaf.processors.transformer import (
 from sqlleaf.typing import E
 
 # If a Query is missing from this map, we default to BaseQueryTransformer
+# TODO: auto-map these?
 _TRANSFORMER_MAP: dict[type, type[BaseQueryTransformer]] = {
+    AssignmentQuery: AssignmentTransformer,
     CallQuery: CallTransformer,
     CTASQuery: CTASTransformer,
     CopyQuery: CopyTransformer,
@@ -82,9 +87,10 @@ def set_variables_in_scope(query: Q) -> None:
     """
     if isinstance(query, AssignmentQuery):
         # `my_var := 42`
-        name = query.statement.this.name
+        name = query.get_key()
         value = query.get_value()
         query.object_mapping.set_variable(name=name, value=value)
+
     elif isinstance(query, SelectQuery):
         original_stmt = query.holder.original.statement
         original_parent = original_stmt.parent
@@ -95,6 +101,16 @@ def set_variables_in_scope(query: Q) -> None:
             name = original_parent.this.name
             value = query.statement
             query.object_mapping.set_variable(name=name, value=value)
+
+        elif (
+            isinstance(original_parent, pgexp.PGOpen)
+            and original_parent.args.get("expression") == original_stmt
+        ):
+            # `OPEN .. FOR SELECT ..`
+            name = original_parent.this.name
+            value = query.statement
+            query.object_mapping.set_variable(name=name, value=value)
+
         elif parent_holder and isinstance(parent_holder.original, ExecuteDynamicQuery):
             # `FOR .. IN EXECUTE 'SELECT ..'`
             grandparent_holder = query.holder.parent_holder.parent_holder
@@ -103,6 +119,22 @@ def set_variables_in_scope(query: Q) -> None:
                 name = for_in_stmt.this.name
                 value = query.statement
                 query.object_mapping.set_variable(name=name, value=value)
+            elif grandparent_holder and isinstance(grandparent_holder.transformed, OpenQuery):
+                # `OPEN .. FOR EXECUTE 'SELECT ..'`
+                open_stmt = grandparent_holder.transformed.statement
+                name = open_stmt.this.name
+                value = query.statement
+                query.object_mapping.set_variable(name=name, value=value)
+
+    elif isinstance(query, FetchQuery):
+        # FETCH <source> INTO <target>;
+        # Look up the value for the key and write it to the new key.
+        # TODO: should we just substitute the query as the variable?
+        var_key: exp.Identifier = query.statement.this
+        var_val = query.object_mapping.get_variable(name=var_key.name)
+        # TODO: support multiple targets
+        new_key: exp.Column = query.statement.args["expressions"][0]
+        query.object_mapping.set_variable(name=new_key.name, value=var_val)
 
 
 def _transform_query_instance(query: Q) -> Q:

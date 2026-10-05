@@ -146,7 +146,7 @@ class PGGetDiagnostics(exp.Expression):
     arg_types = {"current": False, "stacked": False, "expressions": True}
 
 
-class PGOpenCursor(exp.Expression):
+class PGOpen(exp.Expression):
     """An OPEN cursor statement."""
     arg_types = {"this": True, "expression": False, "scroll": False, "expressions": False}
 

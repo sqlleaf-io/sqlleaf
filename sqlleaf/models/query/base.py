@@ -214,7 +214,7 @@ class Query:
 
     @property
     def id(self) -> str:
-        return "query:" + util.short_sha256_hash(self.statement.sql() + ":" + str(self.statement_index))
+        return "query:" + util.short_sha256_hash(self.statement.sql(dialect=self.dialect) + ":" + str(self.statement_index))
 
     def get_all_queries(self, types: t.Tuple | None = None):
         """

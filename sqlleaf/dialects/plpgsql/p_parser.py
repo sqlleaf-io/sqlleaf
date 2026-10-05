@@ -1053,7 +1053,7 @@ class PlPgSQLParser(PostgresParser):
 
         return args
 
-    def _parse_pgopen(self) -> PGOpenCursor:
+    def _parse_pgopen(self) -> PGOpen:
         # Cursor variable identifier
         cursor = self._parse_id_var()
 
@@ -1062,7 +1062,7 @@ class PlPgSQLParser(PostgresParser):
         if self._match(TokenType.L_PAREN, advance=False):
             # Parse cursor call arguments directly (positional, name := value, name => value)
             args = self._parse_cursor_call_args()
-            return self.expression(PGOpenCursor(this=cursor, expressions=args))
+            return self.expression(PGOpen(this=cursor, expressions=args))
 
         # Optional [[NO] SCROLL]
         scroll: bool | None = None
@@ -1075,7 +1075,7 @@ class PlPgSQLParser(PostgresParser):
         # If there's no FOR and no SCROLL/NO SCROLL, treat as bound cursor with zero args: OPEN c;
         if not self._match(TokenType.FOR):
             if scroll is None:
-                return self.expression(PGOpenCursor(this=cursor))
+                return self.expression(PGOpen(this=cursor))
             # If SCROLL/NO SCROLL was provided, FOR is required
             self._match_expect(TokenType.FOR)
 
@@ -1088,7 +1088,7 @@ class PlPgSQLParser(PostgresParser):
             if query is None:
                 self.raise_error("Expected query after OPEN ... FOR")
 
-        return self.expression(PGOpenCursor(this=cursor, expression=query, scroll=scroll))
+        return self.expression(PGOpen(this=cursor, expression=query, scroll=scroll))
 
     def _parse_pgfetch(self) -> PGFetch:
         # Parse optional direction, optional preposition (required when direction given), and cursor

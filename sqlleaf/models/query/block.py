@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from sqlglot import exp
+
 from sqlleaf import mappings
 from sqlleaf.models.query.base import Query
 from sqlleaf.dialects.plpgsql import pgexp
@@ -23,3 +25,11 @@ class BlockQuery(Query):
             source_info=None,
             target_info=None,
         )
+
+    @property
+    def declare_statements(self)-> list[exp.Expr]:
+        return self.statement.args.get("declare") or []
+
+    @property
+    def inner_statements(self) -> list[exp.Expr]:
+        return self.statement.expressions

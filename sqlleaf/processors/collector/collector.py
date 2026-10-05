@@ -19,10 +19,13 @@ from sqlleaf.models.query import (
     DeleteQuery,
     ExecuteDynamicQuery,
     ExecuteQuery,
+    FetchQuery,
     ForInQuery,
     InsertQuery,
+    LoopQuery,
     MergeQuery,
     MultitableInsertQuery,
+    OpenQuery,
     PerformQuery,
     PrepareQuery,
     ProcedureQuery,
@@ -43,6 +46,7 @@ from sqlleaf.models.query import (
     UserDefinedFunctionQuery,
     ValuesQuery,
     ViewQuery,
+    WhileQuery,
 )
 from sqlleaf.processors.collector import substitute
 from sqlleaf.processors.collector.classify import _classify_command, _determine_query_kind
@@ -50,6 +54,8 @@ from sqlleaf.processors.transformer import transformer, udf
 from sqlleaf.processors.transformer.expressions import simplify_row_in_values
 
 logger = logging.getLogger("sqlleaf")
+
+IMMEDIATE_TRANSFORM = (BlockQuery, ForInQuery, LoopQuery, OpenQuery, WhileQuery)
 
 """
 Parses text for SQL statements and collects them into Query models.
@@ -101,7 +107,7 @@ def process_statement(
     if parent_holder:
         parent_holder.add_downstream_holder(holder)
 
-    if isinstance(query, (BlockQuery, ForInQuery)):
+    if isinstance(query, IMMEDIATE_TRANSFORM):
         # Immediately transform queries inside a dynamic SQL block so that subsequent statements can used their values
         transformer.transform_query(holder)
         _collect_sequential_children(query, holder, dialect, object_mapping)
@@ -179,30 +185,35 @@ def _collect_sequential_children(
     This transforms queries as soon as they are discovered, allowing subsequent queries
     to use their results (e.g. variables/state).
     """
-    if isinstance(query, BlockQuery):
+    if isinstance(query, (BlockQuery, ForInQuery, LoopQuery, WhileQuery)):
         object_mapping.push_variable_scope()
-        try:
-            statement_idx = 0
-            if declare := query.statement.args.get("declare"):
-                for item in declare.expressions:
-                    process_statement(item, dialect, object_mapping, statement_idx, parent_holder=holder)
-                    statement_idx += 1
 
-            for block_expr in query.statement.expressions:
-                process_statement(block_expr, dialect, object_mapping, statement_idx, parent_holder=holder)
-                statement_idx += 1
-        finally:
-            object_mapping.pop_variable_scope()
+    if isinstance(query, BlockQuery):
+        statement_idx = 0
+        for item in query.declare_statements:
+            process_statement(item, dialect, object_mapping, statement_idx, parent_holder=holder)
+            statement_idx += 1
+
+        for block_expr in query.inner_statements:
+            process_statement(block_expr, dialect, object_mapping, statement_idx, parent_holder=holder)
+            statement_idx += 1
 
     elif isinstance(query, ForInQuery):
-        object_mapping.push_variable_scope()
-        try:
-            process_statement(query.statement.args["query"], dialect, object_mapping, 0, parent_holder=holder)
+        process_statement(query.statement.args["query"], dialect, object_mapping, 0, parent_holder=holder)
 
-            for i, stmt in enumerate(query.statement.expressions):
-                process_statement(stmt, dialect, object_mapping, i + 1, parent_holder=holder)
-        finally:
-            object_mapping.pop_variable_scope()
+        for i, stmt in enumerate(query.inner_statements):
+            process_statement(stmt, dialect, object_mapping, i + 1, parent_holder=holder)
+
+    elif isinstance(query, OpenQuery):
+        if query_expr := query.statement.args.get("expression"):
+            process_statement(query_expr, dialect, object_mapping, 0, parent_holder=holder)
+
+    elif isinstance(query, (LoopQuery, WhileQuery)):
+        for i, stmt in enumerate(query.inner_statements):
+            process_statement(stmt, dialect, object_mapping, i + 1, parent_holder=holder)
+
+    if isinstance(query, (BlockQuery, ForInQuery, LoopQuery, WhileQuery)):
+        object_mapping.pop_variable_scope()
 
 
 def _collect_structural_children(
@@ -433,10 +444,14 @@ _UNNAMED_TYPE_MAP: dict[type, type] = {
     # PL/pgSQL
     pgexp.PGBlock: BlockQuery,
     pgexp.PGDeclareItem: AssignmentQuery,
+    pgexp.PGFetch: FetchQuery,
     pgexp.PGForIn: ForInQuery,
+    pgexp.PGOpen: OpenQuery,
     pgexp.PGPerform: PerformQuery,
     pgexp.PGExecute: ExecuteDynamicQuery,
+    pgexp.PGLoop: LoopQuery,
     exp.PropertyEQ: AssignmentQuery,
+    exp.WhileBlock: WhileQuery,
 }
 
 
@@ -704,7 +719,7 @@ def _process_database(
     object_mapping.add_database_query(query)
     return query
 
-
+# TODO: if not in list, use '_process_unnamed'
 _QUERY_PROCESSORS: dict[str, t.Callable] = {
     "table": _process_tables,
     "ctas": _process_views_and_ctas,
@@ -734,7 +749,10 @@ _QUERY_PROCESSORS: dict[str, t.Callable] = {
     "type": _process_type,
     "pgblock": _process_unnamed,
     "pgdeclareitem": _process_unnamed,
+    "pgfetch": _process_unnamed,
     "pgforin": _process_unnamed,
+    "pgloop": _process_unnamed,
+    "pgopen": _process_unnamed,
     "pgperform": _process_unnamed,
     "pgexecute": _process_unnamed,
     "propertyeq": _process_unnamed,

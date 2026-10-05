@@ -26,5 +26,8 @@ class AssignmentQuery(Query):
             target_info=None,
         )
 
+    def get_key(self) -> exp.Expr:
+        return self.statement.this.name
+
     def get_value(self)-> exp.Expr | None:
-        return self.statement.args.get("expression") or exp.Null()
+        return self.statement.args.get("expression") or self.statement.args.get("query") or exp.Null()

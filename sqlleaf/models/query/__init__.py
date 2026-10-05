@@ -10,11 +10,14 @@ from sqlleaf.models.query.declare_item import AssignmentQuery as AssignmentQuery
 from sqlleaf.models.query.delete import DeleteQuery as DeleteQuery
 from sqlleaf.models.query.execute import ExecuteQuery as ExecuteQuery
 from sqlleaf.models.query.execute_dynamic import ExecuteDynamicQuery as ExecuteDynamicQuery
+from sqlleaf.models.query.fetch import FetchQuery as FetchQuery
 from sqlleaf.models.query.for_in import ForInQuery as ForInQuery
 from sqlleaf.models.query.holder import QueryHolder as QueryHolder
 from sqlleaf.models.query.insert import InsertQuery as InsertQuery
+from sqlleaf.models.query.loop import LoopQuery as LoopQuery
 from sqlleaf.models.query.merge import MergeQuery as MergeQuery
 from sqlleaf.models.query.multitable_insert import MultitableInsertQuery as MultitableInsertQuery
+from sqlleaf.models.query.open import OpenQuery as OpenQuery
 from sqlleaf.models.query.prepare import PrepareQuery as PrepareQuery
 from sqlleaf.models.query.procedure import ProcedureQuery as ProcedureQuery
 from sqlleaf.models.query.put import PutQuery as PutQuery
@@ -34,5 +37,6 @@ from sqlleaf.models.query.user_defined_function import FunctionParam as Function
 from sqlleaf.models.query.user_defined_function import UserDefinedFunctionQuery as UserDefinedFunctionQuery
 from sqlleaf.models.query.values import ValuesQuery as ValuesQuery
 from sqlleaf.models.query.view import ViewQuery as ViewQuery
+from sqlleaf.models.query.while_ import WhileQuery as WhileQuery
 
 Q = t.TypeVar("Q", bound=Query)
