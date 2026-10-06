@@ -54,7 +54,7 @@ def pg_format(template: str, *args: object) -> str:
     if "%" not in template:
         return template
 
-    cursor = itertools.count[int](1)
+    cursor = itertools.count(1)
 
     def replace(match: re.Match[str]) -> str:
         """Process a single format specifier regex match into its formatted string value."""

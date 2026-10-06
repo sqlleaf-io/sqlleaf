@@ -5,8 +5,11 @@ from sqlleaf.processors.transformer.expressions.row import (
 )
 from sqlleaf.processors.transformer.expressions.values import (
     normalize_values as normalize_values,
-    _rewrite_values_statement as _rewrite_values_statement,
+    rewrite_values_statement as rewrite_values_statement,
 )
 from sqlleaf.processors.transformer.expressions.functional_notation import (
     rewrite_functional_notation_columns as rewrite_functional_notation_columns,
+)
+from sqlleaf.processors.transformer.expressions.format import (
+    simplify_format as simplify_format,
 )

@@ -21,7 +21,7 @@ def normalize_values(query: Q, expr: exp.Expr) -> exp.Expr:
     - When it is inside another query, e.g. nested in an expression
     """
     if isinstance(expr, exp.Values):
-        return _rewrite_values_statement(query, expression=expr, statement=expr)
+        return rewrite_values_statement(query, expression=expr, statement=expr)
 
     # Walk the subtree and rewrite all Values occurrences
     unresolved: t.Set[int] = set()
@@ -40,7 +40,7 @@ def _dispatch_values(query: Q, values: exp.Values, expr: exp.Expr) -> t.Tuple[bo
     cte = _cte_ancestor_in_scope(expr, values)
     if cte is not None:
         if cte.this is values:
-            _rewrite_values_statement(query, values, cte)
+            rewrite_values_statement(query, values, cte)
             return True, expr
         return False, expr
 
@@ -48,19 +48,19 @@ def _dispatch_values(query: Q, values: exp.Values, expr: exp.Expr) -> t.Tuple[bo
 
     # VALUES is directly the expression of an INSERT
     if isinstance(parent, exp.Insert) and parent.expression is values:
-        converted = _rewrite_values_statement(query, values, parent)
+        converted = rewrite_values_statement(query, values, parent)
         if isinstance(converted, exp.Insert) and (parent is expr):
             expr = converted
         return True, expr
 
     # VALUES is directly the expression of a CREATE ... AS
     if isinstance(parent, exp.Create) and parent.expression is values:
-        _rewrite_values_statement(query, values, parent)
+        rewrite_values_statement(query, values, parent)
         return True, expr
 
     # VALUES is one of the sides of a UNION
     if isinstance(parent, exp.SetOperation):
-        _rewrite_values_statement(query, values, parent)
+        rewrite_values_statement(query, values, parent)
         return True, expr
 
     # VALUES in a table position (wrapped by Subquery or direct FROM on SELECT/UPDATE)
@@ -283,7 +283,7 @@ def _rebuild_insert_with_expression(statement: exp.Insert, new_statement: exp.Ex
     return insert_expr
 
 
-def _rewrite_values_statement(query: Q, expression: exp.Values, statement: E) -> E:
+def rewrite_values_statement(query: Q, expression: exp.Values, statement: E) -> E:
     """
     Convert a `VALUES(...)` statement into a `SELECT ... UNION ALL SELECT ...` statement
     and rewrite the parent statement in-place.

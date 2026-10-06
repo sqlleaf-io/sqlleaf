@@ -9,12 +9,11 @@ from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, util
 from sqlleaf.models.query import Q
-from sqlleaf.processors.transformer import udf
 from sqlleaf.processors.transformer.expressions import (
-    _rewrite_values_statement,
     add_parens_for_composite_field_access,
     normalize_values,
     rewrite_functional_notation_columns,
+    rewrite_values_statement,
     simplify_row,
 )
 from sqlleaf.settings import system_functions as get_system_functions
@@ -298,7 +297,7 @@ class BaseQueryTransformer:
                     values_node = from_.this
 
                 if values_node is not None:
-                    _rewrite_values_statement(self.query, expression=values_node, statement=cte_expr)
+                    rewrite_values_statement(self.query, expression=values_node, statement=cte_expr)
                 else:
                     normalize_values(self.query, cte_expr.this)
 
