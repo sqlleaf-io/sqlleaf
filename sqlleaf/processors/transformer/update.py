@@ -5,12 +5,14 @@ UpdateTransformer — handles UPDATE (and MERGE → UPDATE, ON CONFLICT) stateme
 from sqlglot import exp
 
 from sqlleaf import exception
+from sqlleaf.models.query import UpdateQuery
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
 from sqlleaf.processors.transformer.expressions import normalize_values
 
 
 class UpdateTransformer(BaseQueryTransformer):
     """Transformer for UPDATE statements."""
+    QUERY = UpdateQuery
 
     def transform(self, statement: exp.Insert) -> exp.Insert:
         statement = self._convert_on_conflict_to_update(statement)

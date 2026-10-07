@@ -4,11 +4,13 @@ CTASTransformer — handles CREATE TABLE AS SELECT (CTAS) statement transformati
 
 from sqlglot import exp
 
+from sqlleaf.models.query import CTASQuery
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
 
 
 class CTASTransformer(BaseQueryTransformer):
     """Transformer for CTAS (CREATE TABLE AS) statements."""
+    QUERY = CTASQuery
 
     def transform(self, statement: exp.Create) -> exp.Create:
         # Note: VALUES->SELECT conversion is already performed by preprocess() (via

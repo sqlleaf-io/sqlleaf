@@ -5,64 +5,21 @@ from sqlglot import exp
 from sqlleaf import util
 from sqlleaf.dialects.plpgsql import pgexp
 from sqlleaf.models.query import (
-    CallQuery,
     CopyQuery,
-    CTASQuery,
     AssignmentQuery,
-    DeleteQuery,
     ExecuteDynamicQuery,
-    ExecuteQuery,
     FetchQuery,
     ForInQuery,
     InsertQuery,
-    MergeQuery,
-    MultitableInsertQuery,
     OpenQuery,
     Q,
     QueryHolder,
-    ReplaceQuery,
     SelectQuery,
     UnloadQuery,
-    UpdateQuery,
-    ValuesQuery,
 )
-from sqlleaf.processors.transformer import (
-    AssignmentTransformer,
-    BaseQueryTransformer,
-    CallTransformer,
-    CopyTransformer,
-    CTASTransformer,
-    DeleteTransformer,
-    ExecuteDynamicTransformer,
-    ExecuteTransformer,
-    InsertTransformer,
-    MergeTransformer,
-    MultitableInsertTransformer,
-    ReplaceTransformer,
-    UnloadTransformer,
-    UpdateTransformer,
-    ValuesTransformer,
-)
+from sqlleaf.processors.transformer import BaseQueryTransformer
 from sqlleaf.typing import E
 
-# If a Query is missing from this map, we default to BaseQueryTransformer
-# TODO: auto-map these?
-_TRANSFORMER_MAP: dict[type, type[BaseQueryTransformer]] = {
-    AssignmentQuery: AssignmentTransformer,
-    CallQuery: CallTransformer,
-    CTASQuery: CTASTransformer,
-    CopyQuery: CopyTransformer,
-    DeleteQuery: DeleteTransformer,
-    ExecuteDynamicQuery: ExecuteDynamicTransformer,
-    ExecuteQuery: ExecuteTransformer,
-    InsertQuery: InsertTransformer,
-    MergeQuery: MergeTransformer,
-    MultitableInsertQuery: MultitableInsertTransformer,
-    ReplaceQuery: ReplaceTransformer,
-    UnloadQuery: UnloadTransformer,
-    UpdateQuery: UpdateTransformer,
-    ValuesQuery: ValuesTransformer,
-}
 
 logger = logging.getLogger("sqlleaf")
 
@@ -90,6 +47,9 @@ def set_variables_in_scope(query: Q) -> None:
         name = query.get_key()
         value = query.get_value()
         query.object_mapping.set_variable(name=name, value=value)
+
+    elif isinstance(query, OpenQuery):
+        pass
 
     elif isinstance(query, SelectQuery):
         original_stmt = query.holder.original.statement
@@ -193,10 +153,11 @@ def _transform_statement(statement: E, query: Q) -> exp.Expr:
     logger.debug("---- Transformer ---")
     logger.debug(f"Query: {statement.sql(dialect=query.dialect)}")
 
-    transformer_cls = _TRANSFORMER_MAP.get(type(query), BaseQueryTransformer)
-    logger.debug(f"Transforming: {query.__class__.__name__} - {statement.__class__} using {transformer_cls.__name__}")
+    transformer = BaseQueryTransformer.from_query(query.__class__)
+    transformer.prepare(statement, query)
 
-    transformer = transformer_cls(statement, query)
+    logger.debug(f"Transforming: {type(query).__name__} - {statement.__class__} using {type(transformer).__name__}")
+
     stmt = transformer.preprocess(statement)
     logger.debug(f"After pre-process: {type(stmt)} - {stmt.sql(dialect=query.dialect)}")
     stmt = transformer.transform(stmt)

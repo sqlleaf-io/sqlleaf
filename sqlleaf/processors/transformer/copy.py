@@ -4,12 +4,14 @@ CopyTransformer — handles COPY statement transformations.
 
 from sqlglot import exp
 
+from sqlleaf.models.query import CopyQuery
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
 from sqlleaf.util import expression as util
 
 
 class CopyTransformer(BaseQueryTransformer):
     """Transformer for COPY statements."""
+    QUERY = CopyQuery
 
     def transform(self, statement: exp.Insert) -> exp.Insert:
         return self._convert_copy_to_insert()

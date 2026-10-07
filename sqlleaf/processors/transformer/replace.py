@@ -1,12 +1,14 @@
 import sqlglot
 from sqlglot import exp
 
+from sqlleaf.models.query import ReplaceQuery
 from sqlleaf.processors.transformer.expressions import normalize_values
 from sqlleaf.processors.transformer.insert import InsertTransformer
 
 
 class ReplaceTransformer(InsertTransformer):
     """Transformer for REPLACE statements."""
+    QUERY = ReplaceQuery
 
     def transform(self, statement: exp.Insert) -> exp.Insert:
         # Transform REPLACE to INSERT

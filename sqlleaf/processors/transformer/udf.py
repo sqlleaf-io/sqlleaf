@@ -12,10 +12,7 @@ from sqlleaf.processors.transformer.expressions.row import transform_row_functio
 logger = logging.getLogger("sqlleaf")
 
 
-
-
-
-def find_next_udf_call(
+def _find_next_udf_call(
     expression: exp.Expr, object_mapping: mappings.ObjectMapping
 ) -> t.Tuple[t.Optional[exp.Anonymous], t.Optional[UserDefinedFunctionQuery]]:
     """
@@ -43,7 +40,7 @@ def _get_alias(node: exp.Expr) -> t.Optional[str]:
     return alias
 
 
-def create_subquery_with_alias(
+def _create_subquery_with_alias(
     replacement_expr: exp.Expr, query: UserDefinedFunctionQuery, alias: str = "t"
 ) -> exp.Subquery:
     """Creates a Subquery with a table alias and the UDF's return columns."""
@@ -56,7 +53,7 @@ def create_subquery_with_alias(
     )
 
 
-def transform_udf_to_subquery_if_table_reference(
+def _transform_udf_to_subquery_if_table_reference(
     node: exp.Anonymous, replacement_expr: exp.Expr, query: UserDefinedFunctionQuery
 ) -> None:
     """
@@ -68,12 +65,12 @@ def transform_udf_to_subquery_if_table_reference(
     """
     if query.return_columns:
         alias = _get_alias(node) or "t"
-        replacement_expr = create_subquery_with_alias(replacement_expr, query, alias=alias)
+        replacement_expr = _create_subquery_with_alias(replacement_expr, query, alias=alias)
 
     node.parent.replace(replacement_expr)
 
 
-def replace_scalar_call(target_node: exp.Expr, replacement_expr: exp.Expr) -> None:
+def _replace_scalar_call(target_node: exp.Expr, replacement_expr: exp.Expr) -> None:
     """
     Replaces a scalar UDF call, wrapping query-like expressions in a Subquery.
 
@@ -88,7 +85,7 @@ def replace_scalar_call(target_node: exp.Expr, replacement_expr: exp.Expr) -> No
     target_node.replace(copied)
 
 
-def get_target_node(node: exp.Anonymous) -> exp.Expr:
+def _get_target_node(node: exp.Anonymous) -> exp.Expr:
     """
     Returns the node to be replaced.
     """
@@ -99,7 +96,7 @@ def get_target_node(node: exp.Anonymous) -> exp.Expr:
     return node
 
 
-def resolve_returning_to_select(
+def _resolve_returning_to_select(
     stmt: exp.Expr,
     param_map: t.Dict[str, exp.Expr],
     query: UserDefinedFunctionQuery,
@@ -139,7 +136,7 @@ def resolve_returning_to_select(
     return exp.select(*resolved)
 
 
-def transform_inner_query(
+def _transform_inner_query(
     stmt: exp.Expr,
     param_map: t.Dict[str, exp.Expr],
     query: UserDefinedFunctionQuery,
@@ -157,7 +154,7 @@ def transform_inner_query(
     """
     # handle INSERT/UPDATE/DELETE/MERGE ... RETURNING inside a UDF body
     if isinstance(stmt, (exp.Insert, exp.Update, exp.Delete, exp.Merge)) and stmt.args.get("returning"):
-        return resolve_returning_to_select(stmt, param_map, query, positional_map)
+        return _resolve_returning_to_select(stmt, param_map, query, positional_map)
 
     if isinstance(stmt, exp.Values):
         stmt = normalize_values(query, stmt)
@@ -173,7 +170,7 @@ def transform_inner_query(
     return new_expr
 
 
-def build_replacement_exprs(node: exp.Anonymous, query: UserDefinedFunctionQuery) -> t.List[exp.Expr]:
+def substitute_udf(node: exp.Anonymous, query: UserDefinedFunctionQuery) -> t.List[exp.Expr]:
     """
     Builds the expressions that will replace a UDF call.
 
@@ -192,21 +189,9 @@ def build_replacement_exprs(node: exp.Anonymous, query: UserDefinedFunctionQuery
     replacement_exprs = []
     for stmt in query.inner_statements:
         stmt = util.copy_expression(stmt)
-        replacement_exprs.append(transform_inner_query(stmt, param_map, query, positional_map))
+        replacement_exprs.append(_transform_inner_query(stmt, param_map, query, positional_map))
 
     return replacement_exprs
-
-
-def substitute_udf(
-    node: exp.Anonymous,
-    query: UserDefinedFunctionQuery,
-) -> t.List[exp.Expr]:
-    """
-    Returns the UDF's inner body with arguments substituted.
-    Does NOT modify the caller query.
-    Mirrors the contract of substitute_call / substitute_execute_with_plan.
-    """
-    return build_replacement_exprs(node, query)
 
 
 def apply_replacement(target_node: exp.Expr, replacement_expr: exp.Expr, query: UserDefinedFunctionQuery) -> None:
@@ -227,7 +212,7 @@ def apply_replacement(target_node: exp.Expr, replacement_expr: exp.Expr, query: 
 
     if isinstance(target_node.parent, exp.Table):
         logger.debug("Applying Table reference replacement")
-        transform_udf_to_subquery_if_table_reference(target_node, replacement_expr, query)
+        _transform_udf_to_subquery_if_table_reference(target_node, replacement_expr, query)
     else:
         logger.debug("Applying Scalar call replacement")
-        replace_scalar_call(target_node, replacement_expr)
+        _replace_scalar_call(target_node, replacement_expr)

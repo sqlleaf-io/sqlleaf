@@ -32,19 +32,28 @@ EXCLUDE_OPTIMIZER_RULES = [
 LOG_TRANSFORMATIONS = True
 
 
-def _as_subquery(expression: exp.Expr) -> exp.Subquery:
-    if isinstance(expression, exp.Subquery):
-        return expression.copy()
-    return expression.subquery(copy=True)
-
-
 class BaseQueryTransformer:
     """
     Base class holding shared transformation helpers.
     Subclasses call these helpers from their transform() method.
     """
+    _TRANSFORMERS = {}
+    QUERY = ""
 
-    def __init__(self, statement: E, query: Q) -> None:
+    def __init_subclass__(cls, **kwargs) -> None:
+        """Automatically registers subclasses when they are defined."""
+        super().__init_subclass__(**kwargs)
+        BaseQueryTransformer._TRANSFORMERS[cls.QUERY] = cls
+
+    @classmethod
+    def from_query(cls, query_class) -> BaseQueryTransformer:
+        """Instantiates a class from the registry by name."""
+        target_class = cls._TRANSFORMERS.get(query_class)
+        if not target_class:
+            return BaseQueryTransformer()
+        return target_class()
+
+    def prepare(self, statement: E, query: Q) -> None:
         self.statement = statement
         self.query = query
 
@@ -106,7 +115,6 @@ class BaseQueryTransformer:
         statement = normalize_values(self.query, statement)
         return statement
 
-    #@t.final
     def postprocess(self, statement: E) -> E:
         """
         Run a set of transformations over every statement
@@ -139,6 +147,11 @@ class BaseQueryTransformer:
           1. a single variable, e.g. `my_name` -> variable value
           2. a field access, e.g. `src.name` -> (variable-query).name
         """
+        def _as_subquery(expression: exp.Expr) -> exp.Subquery:
+            if isinstance(expression, exp.Subquery):
+                return expression.copy()
+            return expression.subquery(copy=True)
+
         for column in list(statement.find_all(exp.Column)):
             if column.parent is None:
                 continue

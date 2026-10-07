@@ -3,12 +3,14 @@ import typing as t
 from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
 
+from sqlleaf.models.query import InsertQuery
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
 from sqlleaf.typing import E
 
 
 class InsertTransformer(BaseQueryTransformer):
     """Transformer for INSERT statements."""
+    QUERY = InsertQuery
 
     def transform(self, statement: exp.Insert) -> exp.Insert:
         statement = self._add_information_from_merge(statement)

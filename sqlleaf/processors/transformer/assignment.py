@@ -1,5 +1,6 @@
 import logging
 
+from sqlleaf.models.query import AssignmentQuery
 from sqlleaf.processors.transformer import base
 from sqlleaf.typing import E
 
@@ -7,6 +8,8 @@ logger = logging.getLogger("sqlleaf")
 
 
 class AssignmentTransformer(base.BaseQueryTransformer):
+    QUERY = AssignmentQuery
+
     def postprocess(self, statement: E) -> E:
         if qry := statement.args.get("query"):
             super().postprocess(qry)

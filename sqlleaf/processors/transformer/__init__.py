@@ -10,6 +10,7 @@ from sqlleaf.processors.transformer.execute_dynamic import ExecuteDynamicTransfo
 from sqlleaf.processors.transformer.insert import InsertTransformer
 from sqlleaf.processors.transformer.merge import MergeTransformer
 from sqlleaf.processors.transformer.multitable_insert import MultitableInsertTransformer
+from sqlleaf.processors.transformer.open import OpenTransformer
 from sqlleaf.processors.transformer.replace import ReplaceTransformer
 from sqlleaf.processors.transformer.unload import UnloadTransformer
 from sqlleaf.processors.transformer.update import UpdateTransformer
@@ -28,6 +29,7 @@ __all__ = [
     "InsertTransformer",
     "MergeTransformer",
     "MultitableInsertTransformer",
+    "OpenTransformer",
     "ReplaceTransformer",
     "UnloadTransformer",
     "UpdateTransformer",

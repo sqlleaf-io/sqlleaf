@@ -145,7 +145,7 @@ def _resolve_call_sites(
     else:
         annotate_types(query.statement, dialect=dialect, schema=object_mapping)
         while True:
-            node, matched_udf = udf.find_next_udf_call(query.statement, query.object_mapping)
+            node, matched_udf = udf._find_next_udf_call(query.statement, query.object_mapping)
             if not node:
                 break
 
@@ -162,8 +162,8 @@ def _resolve_call_sites(
                     )
                     process_statement(subst_dml, dialect, object_mapping, f"{parent_index}:{idx}", parent_holder=holder)
 
-            target_node = udf.get_target_node(node)
-            replacement_exprs = udf.build_replacement_exprs(node, matched_udf)
+            target_node = udf._get_target_node(node)
+            replacement_exprs = udf.substitute_udf(node, matched_udf)
             if not replacement_exprs:
                 break
 
