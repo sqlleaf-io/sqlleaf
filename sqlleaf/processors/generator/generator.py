@@ -520,10 +520,10 @@ def query_has_lineage(query: Q) -> bool:
     """
     Check if a query has lineage within its expressions.
 
-    We distinguish between a query's definition and a query that is called.
-    That is, in order for a `CREATE FUNCTION` or `CREATE PROCEDURE` to have
-    lineage, it must be executed by an invoking statement, e.g. `CALL()` or `SELECT UDF()`
     Simply having statements inside its definition is not sufficient to produce lineage.
+    Some queries must be *called* in order to have their inner statements processed for lineage.
+    For example, `CREATE FUNCTION` or `CREATE PROCEDURE` statements must be executed by an
+    calling statement, such as `SELECT UDF()` or `CALL()`, respectively.
     """
     has_lineage = True
     if not isinstance(query, QUERIES_WITH_LINEAGE):

@@ -6,6 +6,7 @@ from sqlglot import exp
 from sqlglot.optimizer.simplify import simplify
 
 from sqlleaf import mappings, util, exception
+from sqlleaf.dialects.plpgsql import pgexp
 from sqlleaf.models.query import (
     CallQuery,
     CTASQuery,
@@ -108,24 +109,21 @@ def find_arg(args: t.List[exp.Expr], param: FunctionParam, index: int) -> t.Opti
     return None
 
 
-def transform_arguments(
-    node: exp.Anonymous, query: UserDefinedFunctionQuery
+def build_param_maps(
+    args: t.List[exp.Expr], params: t.List[FunctionParam]
 ) -> t.Tuple[t.Dict[str, exp.Expr], t.Dict[str, exp.Expr]]:
     """
-    Transforms every argument passed to the UDF into the correct format.
+    Builds the parameter and positional maps for a list of actual arguments against a list of declared parameters.
 
     Example:
-        For a UDF with parameters `(x, y)` called as `my_udf(1, y => 2)`, returns:
+        For parameters `(x, y)` called as `my_func(1, y => 2)`, returns:
         param_map = {"x": 1, "y": 2}
         positional_map = {"1": 1, "2": 2}
     """
     param_map = {}
     positional_map = {}
-    args = node.expressions
 
-    logger.debug(f"Transforming arguments for UDF: {query.name}")
-
-    for i, param in enumerate(query.parameters):
+    for i, param in enumerate(params):
         arg_expr = find_arg(args, param, i) or param.default
 
         if arg_expr:
@@ -149,6 +147,40 @@ def transform_arguments(
             positional_map[str(i + 1)] = arg_expr
 
     return param_map, positional_map
+
+
+def transform_udf_arguments(
+    node: exp.Anonymous, query: UserDefinedFunctionQuery
+) -> t.Tuple[t.Dict[str, exp.Expr], t.Dict[str, exp.Expr]]:
+    """
+    Transforms every argument passed to the UDF into the correct format.
+
+    Example:
+        For a UDF with parameters `(x, y)` called as `my_udf(1, y => 2)`, returns:
+        param_map = {"x": 1, "y": 2}
+        positional_map = {"1": 1, "2": 2}
+    """
+    logger.debug(f"Transforming arguments for UDF: {query.name}")
+    return build_param_maps(args=node.expressions, params=query.parameters)
+
+
+def substitute_cursor_parameters(
+    cursor_query: exp.Expr,
+    call_args: t.List[exp.Expr],
+    cursor_args: t.List[pgexp.PGCursorArg],
+) -> exp.Expr:
+    """
+    Substitutes a cursor's declared parameters with the actual arguments passed to its OPEN call.
+
+    Example:
+        Cursor query: `SELECT UPPER(key) AS name`
+        Declared parameters: `(key VARCHAR)`
+        Call arguments: `('abc')`
+        Result: `SELECT UPPER('abc') AS name`
+    """
+    params = [FunctionParam(name=arg.this.name, type=arg.args.get("kind")) for arg in cursor_args]
+    param_map, positional_map = build_param_maps(args=call_args, params=params)
+    return substitute_parameters(cursor_query, None, param_map, positional_map)
 
 
 def substitute_parameters(
@@ -370,7 +402,7 @@ def substitute_execute(query: ExecuteQuery) -> t.List[exp.Expr]:
 
 def substitute_execute_dynamic(query: ExecuteDynamicQuery) -> t.List[exp.Expr]:
     """
-    Parse the dynamic command string of an EXECUTE statement and substitute its
+    Parse the dynamic command string of an EXECUTE statement in PL/pgSQL and substitute its
     positional parameters ($1, $2, ...) with the resolved USING arguments.
 
     Example:

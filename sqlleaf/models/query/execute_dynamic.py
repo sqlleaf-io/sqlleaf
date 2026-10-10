@@ -67,3 +67,9 @@ class ExecuteDynamicQuery(Query):
     @property
     def into(self) -> list[exp.Expr]:
         return self.properties.into
+
+    def source(self) -> exp.Expr | None:
+        return self.command
+
+    def target(self)-> list[exp.Expr]:
+        return self.into

@@ -34,6 +34,7 @@ def transform_query(query_holder: QueryHolder) -> None:
     """
     transformed_query = _transform_query_instance(query=query_holder.original)
     query_holder.set_transformed_query(query=transformed_query)
+
     # Set the variables here
     set_variables_in_scope(query=transformed_query)
 
@@ -42,14 +43,15 @@ def set_variables_in_scope(query: Q) -> None:
     """
     Set variables for this scope in the variable stack (VS).
     """
+    # TODO: separate this into its own 'variable' object/class (along with transformer.replace_variables_in_expression())
     if isinstance(query, AssignmentQuery):
         # `my_var := 42`
         name = query.get_key()
         value = query.get_value()
+        cursor_args = query.statement.args.get("cursor_args")
+        if cursor_args:
+            value.meta["cursor_args"] = cursor_args
         query.object_mapping.set_variable(name=name, value=value)
-
-    elif isinstance(query, OpenQuery):
-        pass
 
     elif isinstance(query, SelectQuery):
         original_stmt = query.holder.original.statement
@@ -96,13 +98,24 @@ def set_variables_in_scope(query: Q) -> None:
         new_key: exp.Column = query.statement.args["expressions"][0]
         query.object_mapping.set_variable(name=new_key.name, value=var_val)
 
+    elif isinstance(query, OpenQuery):
+        query.object_mapping.set_variable(name=query.target().name, value=query.source())
+
 
 def _transform_query_instance(query: Q) -> Q:
     """
     Helper to transform a Query instance.
     """
-    statement_to_transform = util.copy_expression(query.statement)
+    initial_statement = util.copy_expression(query.statement)
+
+    # TODO: figure out a proper way to select the statement to transform
+    statement_to_transform = initial_statement
+
+
     transformed_statement = _transform_statement(statement=statement_to_transform, query=query)
+
+    if isinstance(initial_statement, pgexp.PGOpen):
+        transformed_statement = initial_statement
 
     return _build_transformed_query(
         original_query=query,
@@ -153,8 +166,7 @@ def _transform_statement(statement: E, query: Q) -> exp.Expr:
     logger.debug("---- Transformer ---")
     logger.debug(f"Query: {statement.sql(dialect=query.dialect)}")
 
-    transformer = BaseQueryTransformer.from_query(query.__class__)
-    transformer.prepare(statement, query)
+    transformer = BaseQueryTransformer.from_query(query)
 
     logger.debug(f"Transforming: {type(query).__name__} - {statement.__class__} using {type(transformer).__name__}")
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from sqlglot import exp
+
 from sqlleaf import mappings
 from sqlleaf.models.query.base import Query
 from sqlleaf.dialects.plpgsql import pgexp
@@ -23,3 +25,9 @@ class OpenQuery(Query):
             source_info=None,
             target_info=None,
         )
+
+    def source(self)-> exp.Expr | None:
+        return self.statement.args.get("expression")
+
+    def target(self)-> exp.Identifier:
+        return self.statement.this

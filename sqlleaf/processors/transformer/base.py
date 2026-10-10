@@ -40,22 +40,21 @@ class BaseQueryTransformer:
     _TRANSFORMERS = {}
     QUERY = ""
 
+    def __init__(self, query: Q):
+        self.query = query
+
     def __init_subclass__(cls, **kwargs) -> None:
         """Automatically registers subclasses when they are defined."""
         super().__init_subclass__(**kwargs)
         BaseQueryTransformer._TRANSFORMERS[cls.QUERY] = cls
 
     @classmethod
-    def from_query(cls, query_class) -> BaseQueryTransformer:
+    def from_query(cls, query: Q) -> BaseQueryTransformer:
         """Instantiates a class from the registry by name."""
-        target_class = cls._TRANSFORMERS.get(query_class)
+        target_class = cls._TRANSFORMERS.get(query.__class__)
         if not target_class:
-            return BaseQueryTransformer()
-        return target_class()
-
-    def prepare(self, statement: E, query: Q) -> None:
-        self.statement = statement
-        self.query = query
+            return BaseQueryTransformer(query)
+        return target_class(query)
 
     def transform(self, statement: E) -> E:
         """
@@ -70,7 +69,7 @@ class BaseQueryTransformer:
 
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs) -> E:
-            statement = args[0] if args else kwargs.get("statement", self.statement)
+            statement = args[0] if args else kwargs.get("statement", self.query.statement)
             query = self.query
 
             if LOG_TRANSFORMATIONS:
@@ -88,14 +87,15 @@ class BaseQueryTransformer:
 
         return wrapper
 
-    @t.final
     def preprocess(self, statement: E) -> E:
         """
         Run a set of transformations over every statement
         BEFORE the type-specific transformations.
         """
-        statement = self._expand_to_query(statement)
-        statement = self._convert_table_to_select(statement)
+        # TODO: put this function and set_variables_in_scope() into a dedicated variable scope class
+        self.replace_variables_in_expression(statement)
+        self._expand_to_query(statement)
+        self._convert_table_to_select(statement)
 
         # Remove any FILTER clauses (not used for lineage)
         for filter_expr in statement.find_all(exp.Filter):
@@ -107,10 +107,8 @@ class BaseQueryTransformer:
 
         simplify_row(statement, self.query)
 
-        statement = self.replace_variables_in_expression(statement)
-
         if isinstance(statement, exp.Insert):
-            statement = self._convert_insert_defaults_to_values(statement)
+            self._convert_insert_defaults_to_values(statement)
 
         statement = normalize_values(self.query, statement)
         return statement
@@ -140,7 +138,7 @@ class BaseQueryTransformer:
             )
         return statement
 
-    def replace_variables_in_expression(self, statement: E) -> E:
+    def replace_variables_in_expression(self, statement: E) -> None:
         """
         Replace columns that reference variables in the variable stack.
         Two cases:
@@ -149,8 +147,12 @@ class BaseQueryTransformer:
         """
         def _as_subquery(expression: exp.Expr) -> exp.Subquery:
             if isinstance(expression, exp.Subquery):
-                return expression.copy()
-            return expression.subquery(copy=True)
+                return expression
+            return expression.subquery(copy=False)
+
+        # Skip replacement of variables *inside* inner block statements; these are done for each individual statement later.
+        if isinstance(statement, (pgexp.PGBlock, pgexp.PGForIn, pgexp.PGLoop, exp.WhileBlock)):
+            return
 
         for column in list(statement.find_all(exp.Column)):
             if column.parent is None:
@@ -164,21 +166,21 @@ class BaseQueryTransformer:
             table_name = column.table
 
             if table_name:
-                variable = self.query.object_mapping.get_variable(table_name)
-                if variable is not None and isinstance(variable, exp.Query):
-                    replacement = exp.Dot(this=_as_subquery(variable), expression=exp.to_identifier(column.name))
-                    logger.debug(f"Replacing field access '{column.sql(self.query.dialect)}' with '{replacement.sql(self.query.dialect)}'")
-                    column.replace(replacement)
-                    continue
+                table_query = self.query.object_mapping.lookup_table_query(table=exp.to_table(table_name))
+                if not table_query:
+                    variable = self.query.object_mapping.get_variable(table_name, raise_on_missing=False)
+                    if variable is not None and isinstance(variable, exp.Query):
+                        replacement = exp.Dot(this=_as_subquery(variable), expression=exp.to_identifier(column.name))
+                        logger.debug(f"Replacing field access '{column.sql(self.query.dialect)}' with '{replacement.sql(self.query.dialect)}'")
+                        column.replace(replacement)
+                        continue
 
-            variable = self.query.object_mapping.get_variable(column.name)
+            variable = self.query.object_mapping.get_variable(column.name, raise_on_missing=False)
             if variable is not None:
                 logger.debug(f"Replacing column '{column.name}' with variable '{str(variable)}'")
                 column.replace(variable.copy())
 
-        return statement
-
-    def _expand_to_query(self, statement: E) -> E:
+    def _expand_to_query(self, statement: E) -> None:
         """
         Expand Snowflake TABLE(TO_QUERY(SQL => '...')) into an inline subquery.
 
@@ -213,10 +215,8 @@ class BaseQueryTransformer:
                 subquery = inner_query.subquery()
                 table_from_rows.replace(subquery)
 
-        return statement
-
-    @_validate_syntax
-    def _convert_table_to_select(self, statement: E) -> E:
+    #@_validate_syntax
+    def _convert_table_to_select(self, statement: E) -> None:
         """
         Convert the statement "TABLE x" to "SELECT * FROM x"
         """
@@ -225,7 +225,6 @@ class BaseQueryTransformer:
             if source:
                 table = source.pop()
                 statement.set("expression", exp.select("*").from_(table))
-        return statement
 
     @_validate_syntax
     def _add_aliases_to_udfs(self, statement: E) -> E:
@@ -319,8 +318,8 @@ class BaseQueryTransformer:
 
         return statement
 
-    @_validate_syntax
-    def _convert_insert_defaults_to_values(self, statement: exp.Insert) -> exp.Insert:
+    #@_validate_syntax
+    def _convert_insert_defaults_to_values(self, statement: exp.Insert) -> None:
         """
         Transform the query:
             INSERT INTO x DEFAULT VALUES
@@ -340,12 +339,12 @@ class BaseQueryTransformer:
         values = statement.expression
 
         if not (isinstance(values, exp.Values) or is_default_values):
-            return statement
+            return
 
         child_table = query.get_target_as_table()
         table_query = query.object_mapping.lookup_table_query(table=child_table)
         if not table_query:
-            return statement
+            return
 
         table_columns = table_query.get_column_defs()
 
@@ -371,7 +370,6 @@ class BaseQueryTransformer:
                             column_name=named_columns[i],
                             table_columns=table_columns,
                         )
-        return statement
 
     def _replace_default_with_value(
         self,

@@ -151,7 +151,7 @@ def _resolve_call_sites(
 
             # Check for any DML inner statements (e.g. INSERT ... VALUES ... RETURNING)
             raw_inner = matched_udf.inner_statements
-            param_map, positional_map = substitute.transform_arguments(node, matched_udf)
+            param_map, positional_map = substitute.transform_udf_arguments(node, matched_udf)
             parent_index = query.get_statement_index()
             for idx, raw_stmt in enumerate(raw_inner):
                 if isinstance(raw_stmt, (exp.Insert, exp.Update, exp.Delete, exp.Merge)) and raw_stmt.args.get(
@@ -203,10 +203,6 @@ def _collect_sequential_children(
 
         for i, stmt in enumerate(query.inner_statements):
             process_statement(stmt, dialect, object_mapping, i + 1, parent_holder=holder)
-
-    elif isinstance(query, OpenQuery):
-        if query_expr := query.statement.args.get("expression"):
-            process_statement(query_expr, dialect, object_mapping, 0, parent_holder=holder)
 
     elif isinstance(query, (LoopQuery, WhileQuery)):
         for i, stmt in enumerate(query.inner_statements):

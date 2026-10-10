@@ -65,12 +65,14 @@ class ObjectMapping(MappingSchema):
         self.variable_scopes[-1][name] = value
         logger.debug(f"Set variable value: {name} := {value.sql()}")
 
-    def get_variable(self, name: str) -> exp.Expr | None:
+    def get_variable(self, name: str, raise_on_missing: bool = True) -> exp.Expr | None:
         """Resolve a variable by searching from innermost to outermost scopes, then session vars."""
         for scope in reversed(self.variable_scopes):
             if name in scope:
                 return scope[name]
-        return self.session_variables.get(name)
+        if raise_on_missing:
+            raise exception.MappingError(f"Could not find value for variable: {name}")
+        return None
 
     def get_variables_for(self, expressions: t.List[exp.Expr]) -> t.List[exp.Expr]:
         """

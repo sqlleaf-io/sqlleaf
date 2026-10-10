@@ -184,7 +184,7 @@ def substitute_udf(node: exp.Anonymous, query: UserDefinedFunctionQuery) -> t.Li
     if query.return_type and query.return_type.this == exp.DataType.Type.NULL:
         return [exp.select(exp.Null())]
 
-    param_map, positional_map = substitute.transform_arguments(node, query)
+    param_map, positional_map = substitute.transform_udf_arguments(node, query)
 
     replacement_exprs = []
     for stmt in query.inner_statements:
