@@ -1,0 +1,49 @@
+[project]
+name = "sqlleaf"
+version = "0.0.1"
+authors = [
+    {name = "zac", email = "zac@sqlleaf.io"}
+]
+description = "Trace your data"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "networkx==3.6.1",
+    "pytest>=9.1.1",
+    "pytest-xdist>=3.8.0",
+    "sqlglot==30.17.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/sqlleaf-io/sqlleaf"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+include = ["sqlleaf", "sqlleaf.*"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+preview = true
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Automatically detect the appropriate line ending.
+line-ending = "auto"
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I"]
+ignore = ["E501"]
