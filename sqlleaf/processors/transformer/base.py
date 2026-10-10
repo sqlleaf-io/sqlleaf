@@ -500,16 +500,11 @@ class BaseQueryTransformer:
     @_validate_syntax
     def _apply_qualify(self, statement: E, validate_columns: bool) -> E:
         """
-        Run sqlglot's qualify() function against the statement for schema validation and
-        naming/aliasing population.
-
-        We pass infer_schema=True to source unqualified columns from the source table (if missing from `schema` param)
-        so that e.g. `INSERT INTO my.other SELECT name FROM my.table` produces `my.table.name -> my.other.name`
+        Run sqlglot's qualify() function against the statement for schema validation and naming/aliasing population.
         """
         qualify.qualify(
             statement,
             schema=self.query.object_mapping,
-            infer_schema=True,
             dialect=self.query.dialect,
             isolate_tables=False,
             validate_qualify_columns=validate_columns,

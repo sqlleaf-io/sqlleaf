@@ -185,7 +185,7 @@ def walk_query_scope(column: exp.Column | int, scope: Scope) -> t.Generator[Scop
         # UNION, EXCEPT, etc
         index = get_column_index(column, scope.expression)
 
-        sources = scope.union_scopes
+        sources = scope.set_operation_scopes
         for source in sources:
             logger.debug("Yielding from union scope")
             yield from walk_query_scope(

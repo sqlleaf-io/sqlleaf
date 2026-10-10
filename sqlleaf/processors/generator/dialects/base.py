@@ -356,6 +356,31 @@ class BaseGenerator:
         parent = self.create_node(VarNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx, name=gen_ctx.expr.name))
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
+    @process.register(exp.TableColumn)
+    def process_table_column(
+        self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
+        scope = gen_ctx.scope
+
+        if scope.scope_type == ScopeType.SUBQUERY and isinstance(expr, exp.TableColumn):
+            # A UDTF such as 'string_agg(my_table)'
+            source_table = dict(scope.references).get(expr.name)  # Should be UNNEST()
+
+            parent = ColumnNode(
+                catalog="",
+                schema="",
+                table=expr.name,
+                column=expr.name,
+                gen_ctx=gen_ctx,
+                pos_ctx=pos_ctx,
+                source=source_table,
+            )
+            # Preserve the object as we need to access the object's properties below
+            if maybe_parent := self.create_node(parent):
+                yield EdgeToCreate(maybe_parent, gen_ctx.child_node)
+        else:
+            raise exception.GeneratorError(f"Unexpected scope type: {scope.scope_type}")
+
     @process.register
     def process_column(
         self, expr: exp.Column, gen_ctx: GeneratorContext, pos_ctx: PositionContext

@@ -208,7 +208,6 @@ def qualify_and_annotate(
         expand_stars=True,
         expand_alias_refs=True,
         qualify_columns=True,
-        infer_schema=False,
         dialect=dialect,
         isolate_tables=False,
         validate_qualify_columns=False,

@@ -81,7 +81,7 @@ def test__datetime_date_part(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert h.paths == [
-        ["var[month]", "function[EXTRACT]", "column[fruit.processed.age]"],
+        ["var[MONTH]", "function[EXTRACT]", "column[fruit.processed.age]"],
         ["column[fruit.processed.created_at]", "function[EXTRACT]", "column[fruit.processed.age]"],
     ]
 

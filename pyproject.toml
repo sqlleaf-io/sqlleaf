@@ -11,7 +11,7 @@ dependencies = [
     "networkx==3.6.1",
     "pytest>=9.1.1",
     "pytest-xdist>=3.8.0",
-    "sqlglot==30.17.0",
+    "sqlglot==30.22.0",
 ]
 
 [project.urls]
