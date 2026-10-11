@@ -5,7 +5,7 @@ import sqlglot
 from sqlglot import exp
 from sqlglot.optimizer.simplify import simplify
 
-from sqlleaf import mappings, util, exception
+from sqlleaf import exception, mappings, util
 from sqlleaf.dialects.plpgsql import pgexp
 from sqlleaf.models.query import (
     CallQuery,
@@ -13,8 +13,11 @@ from sqlleaf.models.query import (
     ExecuteDynamicQuery,
     ExecuteQuery,
     FunctionParam,
+    Q,
     UserDefinedFunctionQuery,
 )
+from sqlleaf.processors.transformer.expressions import normalize_values
+from sqlleaf.processors.transformer.expressions.row import transform_row_function_to_subquery
 
 logger = logging.getLogger("sqlleaf")
 
@@ -49,7 +52,7 @@ def _transform_dynamic_identifier(node: exp.Expr) -> exp.Expr:
     return node
 
 
-def find_arg(args: t.List[exp.Expr], param: FunctionParam, index: int) -> t.Optional[exp.Expr]:
+def _find_arg(args: t.List[exp.Expr], param: FunctionParam, index: int) -> t.Optional[exp.Expr]:
     """
     Finds the argument corresponding to a parameter by its name or position.
 
@@ -109,7 +112,7 @@ def find_arg(args: t.List[exp.Expr], param: FunctionParam, index: int) -> t.Opti
     return None
 
 
-def build_param_maps(
+def _build_param_maps(
     args: t.List[exp.Expr], params: t.List[FunctionParam]
 ) -> t.Tuple[t.Dict[str, exp.Expr], t.Dict[str, exp.Expr]]:
     """
@@ -124,7 +127,7 @@ def build_param_maps(
     positional_map = {}
 
     for i, param in enumerate(params):
-        arg_expr = find_arg(args, param, i) or param.default
+        arg_expr = _find_arg(args, param, i) or param.default
 
         if arg_expr:
             # Normalize people.* to people
@@ -149,7 +152,7 @@ def build_param_maps(
     return param_map, positional_map
 
 
-def transform_udf_arguments(
+def transform_function_arguments(
     node: exp.Anonymous, query: UserDefinedFunctionQuery
 ) -> t.Tuple[t.Dict[str, exp.Expr], t.Dict[str, exp.Expr]]:
     """
@@ -161,7 +164,7 @@ def transform_udf_arguments(
         positional_map = {"1": 1, "2": 2}
     """
     logger.debug(f"Transforming arguments for UDF: {query.name}")
-    return build_param_maps(args=node.expressions, params=query.parameters)
+    return _build_param_maps(args=node.expressions, params=query.parameters)
 
 
 def substitute_cursor_parameters(
@@ -179,7 +182,7 @@ def substitute_cursor_parameters(
         Result: `SELECT UPPER('abc') AS name`
     """
     params = [FunctionParam(name=arg.this.name, type=arg.args.get("kind")) for arg in cursor_args]
-    param_map, positional_map = build_param_maps(args=call_args, params=params)
+    param_map, positional_map = _build_param_maps(args=call_args, params=params)
     return substitute_parameters(cursor_query, None, param_map, positional_map)
 
 
@@ -210,12 +213,12 @@ def substitute_parameters(
 
     # 2. Walk and replace all references in the expression tree
     for subnode in expr.walk():
-        substitute_parameter_node(subnode, query, param_map, positional_map)
+        _substitute_parameter_node(subnode, query, param_map, positional_map)
 
     return expr
 
 
-def substitute_parameter_node(
+def _substitute_parameter_node(
     node: exp.Expr,
     query: UserDefinedFunctionQuery,
     param_map: t.Dict[str, exp.Expr],
@@ -264,10 +267,10 @@ def substitute_parameter_node(
 
     # 3. Handle member access (e.g. SELECT x.name)
     elif isinstance(node, exp.Dot):
-        replace_dot_reference(node, param_map, positional_map)
+        _replace_dot_reference(node, param_map, positional_map)
 
 
-def replace_dot_reference(
+def _replace_dot_reference(
     node: exp.Dot, param_map: t.Dict[str, exp.Expr], positional_map: t.Dict[str, exp.Expr]
 ) -> None:
     """
@@ -335,7 +338,7 @@ def substitute_call(query: CallQuery) -> t.List[exp.Expr]:
     args = query.args
 
     for i, param in enumerate(matched_proc.parameters):
-        arg_expr = find_arg(args, param, i) or param.default
+        arg_expr = _find_arg(args, param, i) or param.default
 
         if arg_expr:
             param_map[param.name.lower()] = arg_expr
@@ -512,3 +515,240 @@ def substitute_session_variables(
     stmt.transform(_transform_dynamic_identifier, copy=False)
 
     return stmt
+
+
+def _substitute_udf(node: exp.Anonymous, query: UserDefinedFunctionQuery) -> t.List[exp.Expr]:
+    """
+    Builds the expressions that will replace a UDF call.
+
+    Example:
+        Given a UDF `hello()` defined as `SELECT 'Hello'` and a call site `hello()`:
+            → [SELECT 'Greetings!' AS greeting]
+
+        Given a UDF `hello()` with a RETURNING body `INSERT INTO people (age) VALUES (5) RETURNING age`:
+            → [SELECT people.age FROM people]
+    """
+    if query.return_type and query.return_type.this == exp.DataType.Type.NULL:
+        return [exp.select(exp.Null())]
+
+    param_map, positional_map = transform_function_arguments(node, query)
+
+    replacement_exprs = []
+    for stmt in query.inner_statements:
+        stmt = util.copy_expression(stmt)
+        replacement_exprs.append(_transform_inner_query(stmt, param_map, query, positional_map))
+
+    return replacement_exprs
+
+
+def substitute_udf(query: Q) -> t.Generator[tuple[exp.Expr, str]]:
+    """
+    Substitute UDFs in-place for an expression.
+
+    For example,
+    """
+    while True:
+        node, matched_udf = _find_next_udf_call(query.statement, query.object_mapping)
+        if not node:
+            break
+
+        # Check for any DML inner statements (e.g. INSERT ... VALUES ... RETURNING)
+        raw_inner = matched_udf.inner_statements
+        param_map, positional_map = transform_function_arguments(node, matched_udf)
+        parent_index = query.get_statement_index()
+        for idx, raw_stmt in enumerate(raw_inner):
+            if isinstance(raw_stmt, (exp.Insert, exp.Update, exp.Delete, exp.Merge)) and raw_stmt.args.get("returning"):
+                subst_expr = substitute_parameters(raw_stmt.copy(), matched_udf, param_map, positional_map)
+                yield subst_expr, f"{parent_index}:{idx}"
+
+        target_node = _get_target_node(node)
+        replacement_exprs = _substitute_udf(node, matched_udf)
+        if not replacement_exprs:
+            break
+
+        if len(replacement_exprs) > 1:
+            apply_replacement(target_node, replacement_exprs[-1], matched_udf)
+        else:
+            apply_replacement(target_node, replacement_exprs[0], matched_udf)
+
+
+def _find_next_udf_call(
+    expression: exp.Expr, object_mapping: mappings.ObjectMapping
+) -> t.Tuple[t.Optional[exp.Anonymous], t.Optional[UserDefinedFunctionQuery]]:
+    """
+    Searches the AST for the next UDF call that matches any of the provided UDF definitions.
+    Returns the call node and the matched UDF definition.
+    """
+    for node in expression.find_all(exp.Anonymous):
+        best_match = object_mapping.lookup_udf_call(node)
+        if best_match:
+            return node, best_match
+
+    return None, None
+
+
+def _get_alias(node: exp.Expr) -> t.Optional[str]:
+    """Helper to extract an alias from a node or its parent."""
+    alias = node.alias
+    if not alias:
+        if isinstance(node.parent, exp.Table):
+            alias = node.parent.alias
+
+    if not alias and hasattr(node, "this"):
+        alias = node.this
+
+    return alias
+
+
+def _create_subquery_with_alias(
+    replacement_expr: exp.Expr, query: UserDefinedFunctionQuery, alias: str = "t"
+) -> exp.Subquery:
+    """Creates a Subquery with a table alias and the UDF's return columns."""
+    return exp.Subquery(
+        this=replacement_expr,
+        alias=exp.TableAlias(
+            this=exp.Identifier(this=alias, quoted=False),
+            columns=[c.this if isinstance(c, exp.ColumnDef) else exp.to_identifier(c) for c in query.return_columns],
+        ),
+    )
+
+
+def _transform_udf_to_subquery_if_table_reference(
+    node: exp.Anonymous, replacement_expr: exp.Expr, query: UserDefinedFunctionQuery
+) -> None:
+    """
+    Transforms a UDF call into a subquery when used in a FROM clause as a table.
+
+    Example:
+        SELECT FROM hello() -> SELECT FROM (SELECT ...) AS t(name, age)
+        where hello() returns (name, age)
+    """
+    if query.return_columns:
+        alias = _get_alias(node) or "t"
+        replacement_expr = _create_subquery_with_alias(replacement_expr, query, alias=alias)
+
+    node.parent.replace(replacement_expr)
+
+
+def _replace_scalar_call(target_node: exp.Expr, replacement_expr: exp.Expr) -> None:
+    """
+    Replaces a scalar UDF call, wrapping query-like expressions in a Subquery.
+
+    Example:
+        Given hello() as `SELECT 1`,
+        Before: `SELECT hello()`
+        After: `SELECT (SELECT 1)`
+    """
+    if isinstance(replacement_expr, (exp.Select, exp.Values)):
+        replacement_expr = exp.Subquery(this=replacement_expr)
+    copied = replacement_expr.copy()
+    target_node.replace(copied)
+
+
+def _get_target_node(node: exp.Anonymous) -> exp.Expr:
+    """
+    Returns the node to be replaced.
+    """
+    parent = node.parent
+    # Qualified with a schema (e.g., myschema.myfunc())
+    if isinstance(parent, exp.Dot) and isinstance(parent.left, exp.Identifier):
+        return parent
+    return node
+
+
+def _resolve_returning_to_select(
+    stmt: exp.Expr,
+    param_map: t.Dict[str, exp.Expr],
+    query: UserDefinedFunctionQuery,
+    positional_map: t.Dict[str, exp.Expr],
+) -> exp.Select:
+    """
+    Given a statement with a RETURNING clause (INSERT, UPDATE, DELETE, MERGE),
+    resolve each RETURNING expression and return a SELECT expression.
+
+    Notes on INSERT ... VALUES ... RETURNING:
+    - We intentionally resolve INSERT ... VALUES ... RETURNING by selecting the
+      requested columns from the target table rather than from the VALUES-derived
+      UNION. This preserves the semantics that RETURNING reflects the post-insert
+      target-row value.
+
+    Example:
+        INSERT INTO people (age) VALUES (5), (2) RETURNING age
+        → SELECT people.age FROM people
+    """
+    returning_node = stmt.args.get("returning")
+    if isinstance(stmt, exp.Insert) and isinstance(stmt.expression, exp.Values):
+        # TODO: this shouldn't be the select expr, but just direct lineage from the target column to the returning column
+        # For INSERT ... VALUES ... RETURNING, select the RETURNING columns from the target table.
+        table = stmt.find(exp.Table)
+        returning_select = exp.select(*[r.copy() for r in returning_node.expressions]).from_(table.copy())
+        return substitute_parameters(returning_select, query, param_map, positional_map)
+
+    col_to_val = {}
+    resolved = []
+    for ret_col in returning_node.expressions:
+        col_name = ret_col.name if isinstance(ret_col, exp.Column) else ret_col.alias_or_name
+        resolved_val = col_to_val.get(col_name, ret_col).copy()
+        # Apply parameter substitution on the resolved value
+        resolved_val = substitute_parameters(resolved_val, query, param_map, positional_map)
+        resolved.append(resolved_val)
+
+    return exp.select(*resolved)
+
+
+def _transform_inner_query(
+    stmt: exp.Expr,
+    param_map: t.Dict[str, exp.Expr],
+    query: UserDefinedFunctionQuery,
+    positional_map: t.Dict[str, exp.Expr],
+) -> exp.Expr:
+    """
+    Performs replacement and transformations over a UDF's inner query.
+
+    Example:
+        Given a UDF body statement `SELECT $1 * 2 AS val` with param_map `{"$1": 5}`:
+            → SELECT 5 * 2 AS val
+
+        Given a UDF body statement `INSERT INTO people (age) VALUES (5) RETURNING age`:
+            → SELECT people.age FROM people
+    """
+    # handle INSERT/UPDATE/DELETE/MERGE ... RETURNING inside a UDF body
+    if isinstance(stmt, (exp.Insert, exp.Update, exp.Delete, exp.Merge)) and stmt.args.get("returning"):
+        return _resolve_returning_to_select(stmt, param_map, query, positional_map)
+
+    if isinstance(stmt, exp.Values):
+        stmt = normalize_values(query, stmt)
+
+    logger.debug(f"Transforming inner query: {stmt.sql()}")
+    replacement_expr = substitute_parameters(stmt, query, param_map, positional_map)
+    logger.debug(f"Query after parameter substitution: {replacement_expr.sql()}")
+
+    # Handle ROW(...)::table_name replacement (composite/table type casting)
+    replacement_expr = transform_row_function_to_subquery(replacement_expr, query)
+
+    new_expr = replacement_expr
+    return new_expr
+
+
+def apply_replacement(target_node: exp.Expr, replacement_expr: exp.Expr, query: UserDefinedFunctionQuery) -> None:
+    """
+    Applies the replacement of a UDF call node with its body logic.
+
+    Dispatches to the appropriate replacement strategy based on the call context:
+    - LATERAL context: wraps the replacement in a LATERAL subquery.
+    - Table reference context: wraps the replacement as a derived table.
+    - Field access (dot notation): replaces with a field-access subquery.
+    - Scalar call: replaces the call node inline.
+
+    Example:
+        Given `SELECT hello()` where `hello()` resolves to `SELECT 'Greetings!' AS greeting`:
+            → SELECT (SELECT 'Greetings!' AS greeting) AS hello
+    """
+    logger.debug(f"Applying replacement for UDF: {query.name}")
+
+    if isinstance(target_node.parent, exp.Table):
+        logger.debug("Applying Table reference replacement")
+        _transform_udf_to_subquery_if_table_reference(target_node, replacement_expr, query)
+    else:
+        logger.debug("Applying Scalar call replacement")
+        _replace_scalar_call(target_node, replacement_expr)

@@ -9,48 +9,10 @@ from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
 from sqlleaf import exception, mappings, settings, typing, util
 from sqlleaf.dialects.plpgsql import pgexp
-from sqlleaf.models.query import (
-    AssignmentQuery,
-    BlockQuery,
-    CallQuery,
-    CopyQuery,
-    CTASQuery,
-    DatabaseQuery,
-    DeleteQuery,
-    ExecuteDynamicQuery,
-    ExecuteQuery,
-    FetchQuery,
-    ForInQuery,
-    InsertQuery,
-    LoopQuery,
-    MergeQuery,
-    MultitableInsertQuery,
-    OpenQuery,
-    PerformQuery,
-    PrepareQuery,
-    ProcedureQuery,
-    PutQuery,
-    Q,
-    QueryHolder,
-    ReplaceQuery,
-    SchemaQuery,
-    SelectQuery,
-    SequenceQuery,
-    SetQuery,
-    StageQuery,
-    TableQuery,
-    TriggerQuery,
-    TypeQuery,
-    UnloadQuery,
-    UpdateQuery,
-    UserDefinedFunctionQuery,
-    ValuesQuery,
-    ViewQuery,
-    WhileQuery,
-)
-from sqlleaf.processors.collector import substitute
+from sqlleaf.models.query import *
 from sqlleaf.processors.collector.classify import _classify_command, _determine_query_kind
-from sqlleaf.processors.transformer import transformer, udf
+from sqlleaf.processors.substitutor import substitute
+from sqlleaf.processors.transformer import transformer
 from sqlleaf.processors.transformer.expressions import simplify_row_in_values
 
 logger = logging.getLogger("sqlleaf")
@@ -144,37 +106,14 @@ def _resolve_call_sites(
         return
     else:
         annotate_types(query.statement, dialect=dialect, schema=object_mapping)
-        while True:
-            node, matched_udf = udf._find_next_udf_call(query.statement, query.object_mapping)
-            if not node:
-                break
 
-            # Check for any DML inner statements (e.g. INSERT ... VALUES ... RETURNING)
-            raw_inner = matched_udf.inner_statements
-            param_map, positional_map = substitute.transform_udf_arguments(node, matched_udf)
-            parent_index = query.get_statement_index()
-            for idx, raw_stmt in enumerate(raw_inner):
-                if isinstance(raw_stmt, (exp.Insert, exp.Update, exp.Delete, exp.Merge)) and raw_stmt.args.get(
-                    "returning"
-                ):
-                    subst_dml = substitute.substitute_parameters(
-                        raw_stmt.copy(), matched_udf, param_map, positional_map
-                    )
-                    process_statement(subst_dml, dialect, object_mapping, f"{parent_index}:{idx}", parent_holder=holder)
-
-            target_node = udf._get_target_node(node)
-            replacement_exprs = udf.substitute_udf(node, matched_udf)
-            if not replacement_exprs:
-                break
-
-            if len(replacement_exprs) > 1:
-                udf.apply_replacement(target_node, replacement_exprs[-1], matched_udf)
-            else:
-                udf.apply_replacement(target_node, replacement_exprs[0], matched_udf)
+        for subst_stmt, stmt_index in substitute.substitute_udf(query):
+            process_statement(subst_stmt, dialect, object_mapping, stmt_index, parent_holder=holder)
 
     parent_index = query.get_statement_index()
     for i, stmt in enumerate(subst_statements):
         process_statement(stmt, dialect, object_mapping, f"{parent_index}:{i}", parent_holder=holder)
+
 
 
 def _collect_sequential_children(

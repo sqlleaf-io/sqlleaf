@@ -1,4 +1,3 @@
-from sqlleaf.processors.transformer import udf
 from sqlleaf.processors.transformer.assignment import AssignmentTransformer
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
 from sqlleaf.processors.transformer.call import CallTransformer
@@ -17,7 +16,6 @@ from sqlleaf.processors.transformer.update import UpdateTransformer
 from sqlleaf.processors.transformer.values import ValuesTransformer
 
 __all__ = [
-    "udf",
     "AssignmentTransformer",
     "BaseQueryTransformer",
     "CallTransformer",

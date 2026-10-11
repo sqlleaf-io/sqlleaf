@@ -4,7 +4,7 @@ from sqlglot import exp
 
 from sqlleaf.dialects.plpgsql import pgexp
 from sqlleaf.models.query import OpenQuery
-from sqlleaf.processors.collector import substitute
+from sqlleaf.processors.substitutor import substitute
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
 from sqlleaf.typing import E
 
