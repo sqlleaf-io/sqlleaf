@@ -81,12 +81,6 @@ def set_variables_in_scope(query: Q) -> None:
                 name = for_in_stmt.this.name
                 value = query.statement
                 query.object_mapping.set_variable(name=name, value=value)
-            elif grandparent_holder and isinstance(grandparent_holder.transformed, OpenQuery):
-                # `OPEN .. FOR EXECUTE 'SELECT ..'`
-                open_stmt = grandparent_holder.transformed.statement
-                name = open_stmt.this.name
-                value = query.statement
-                query.object_mapping.set_variable(name=name, value=value)
 
     elif isinstance(query, FetchQuery):
         # FETCH <source> INTO <target>;

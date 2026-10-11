@@ -403,6 +403,47 @@ def substitute_execute(query: ExecuteQuery) -> t.List[exp.Expr]:
     return substitute_execute_with_plan(execute_name, execute_args, query.object_mapping)
 
 
+def resolve_dynamic_sql_command(
+    command: exp.Expr | None,
+    using: t.List[exp.Expr],
+    object_mapping: mappings.ObjectMapping,
+    dialect: str,
+    error_statement: exp.Expr,
+) -> exp.Expr | None:
+    """
+    Resolve the query inside an 'EXECUTE <command-string> [USING ...]' query.
+    """
+    logger.debug(f"Resolving dynamic SQL command: {command}")
+    if isinstance(command, exp.Literal):
+        resolved_command = command
+    elif isinstance(command, exp.Column):
+        resolved_command = object_mapping.get_variable(name=command.name)
+        if not isinstance(resolved_command, exp.Literal):
+            exception.raise_error(
+                exception.UnsupportedFeatureError,
+                f"Dynamic EXECUTE with a variable of type {type(command)} is not supported yet: "
+                f"{error_statement.sql(dialect=dialect)}",
+            )
+            return None
+    elif isinstance(command, exp.DPipe):
+        resolved_command = simplify(command, dialect="postgres")
+    else:
+        exception.raise_error(
+            exception.UnsupportedFeatureError,
+            f"Dynamic EXECUTE with a command string of type {type(command)} is not supported yet: "
+            f"{error_statement.sql(dialect=dialect)}",
+        )
+        return None
+
+    resolved_stmt = sqlglot.parse_one(resolved_command.this, dialect=dialect)
+    if using:
+        resolved_using = object_mapping.get_variables_for(expressions=using)
+        if resolved_using:
+            positional_map = {str(i + 1): value for i, value in enumerate(resolved_using)}
+            resolved_stmt = substitute_parameters(resolved_stmt, None, {}, positional_map)
+    return resolved_stmt
+
+
 def substitute_execute_dynamic(query: ExecuteDynamicQuery) -> t.List[exp.Expr]:
     """
     Parse the dynamic command string of an EXECUTE statement in PL/pgSQL and substitute its
@@ -414,47 +455,14 @@ def substitute_execute_dynamic(query: ExecuteDynamicQuery) -> t.List[exp.Expr]:
         ->
         INSERT INTO target (name) SELECT 'there'
     """
-    command = query.command
-    logger.debug(f"Substituting dynamic EXECUTE command: {command}")
-
-    if isinstance(command, exp.Literal):
-        # The command is a string, e.g. EXECUTE 'SELECT 1';
-        resolved_command = command
-    elif isinstance(command, exp.Column):
-        # The command is a variable, e.g. EXECUTE my_query;
-        resolved_command = query.object_mapping.get_variable(name=command.name)
-
-        if not isinstance(resolved_command, exp.Literal):
-            exception.raise_error(
-                exception.UnsupportedFeatureError,
-                f"Dynamic EXECUTE with a variable of type {type(command)} is not supported yet: "
-                f"{query.statement.sql(dialect=query.dialect)}",
-            )
-            return []
-
-    elif isinstance(command, exp.DPipe):
-        # The command is a concatenation, e.g. EXECUTE 'SELECT * FROM ' || 'target';
-        resolved_command = simplify(command, dialect="postgres")
-
-    else:
-        exception.raise_error(
-            exception.UnsupportedFeatureError,
-            f"Dynamic EXECUTE with a command string of type {type(command)} is not supported yet: "
-            f"{query.statement.sql(dialect=query.dialect)}",
-        )
-        return []
-
-    downstream_stmt = sqlglot.parse_one(resolved_command.this, dialect=query.dialect)
-
-    if query.using:
-        # Substitute the 'USING' variables in EXECUTE 'SELECT $1' USING x;
-        resolved_using = query.object_mapping.get_variables_for(expressions=query.using)
-
-        if resolved_using:
-            positional_map = {str(i + 1): value for i, value in enumerate(resolved_using)}
-            downstream_stmt = substitute_parameters(downstream_stmt, None, {}, positional_map)
-
-    return [downstream_stmt]
+    resolved = resolve_dynamic_sql_command(
+        command=query.command,
+        using=query.using,
+        object_mapping=query.object_mapping,
+        dialect=query.dialect,
+        error_statement=query.statement,
+    )
+    return [resolved] if resolved is not None else []
 
 
 def substitute_ctas_execute(query: CTASQuery) -> exp.Create:

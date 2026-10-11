@@ -31,3 +31,9 @@ class OpenQuery(Query):
 
     def target(self)-> exp.Identifier:
         return self.statement.this
+
+    def get_source_expression(self) -> exp.Expr | None:
+        return self.source()
+
+    def get_target_expression(self) -> exp.Identifier:
+        return self.target()

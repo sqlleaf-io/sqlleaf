@@ -373,45 +373,45 @@ def test_procedure_open_cursor_unbound(holder):
     )
     assert h.paths == [["column[source.name]", "column[target.name]"]]
 
-#
-# def test_procedure_open_cursor_execute(holder):
-#     sql = """
-#     CREATE TABLE source (name TEXT, age INTEGER);
-#     CREATE TABLE target (name TEXT, age INTEGER);
-#
-#     CREATE OR REPLACE PROCEDURE hello(name TEXT)
-#     LANGUAGE PLPGSQL
-#     AS $$
-#         DECLARE
-#             curs refcursor;
-#         BEGIN
-#             OPEN curs FOR EXECUTE 'SELECT * FROM source'; -- TODO: OPEN curs 'SELECT name, age FROM source'
-#             LOOP
-#                 FETCH curs INTO r_name;
-#                 INSERT INTO target (name) SELECT r_name.name;
-#             END LOOP;
-#         END;
-#     $$;
-#
-#     CALL hello('hello');
-#     """
-#     h = holder(sql=sql, dialect=DIALECT)
-#
-#     block_holder: QueryHolder = h.holders[3].downstream_holders[0]
-#     open_query: OpenQuery = block_holder.downstream_holders[1].transformed
-#     assert (
-#         open_query.statement.sql(dialect=DIALECT)
-#         == "OPEN curs FOR SELECT UPPER('abc') AS name"
-#     )
-#
-#     loop_holder: QueryHolder = block_holder.downstream_holders[2]
-#     insert_query: InsertQuery = loop_holder.downstream_holders[1].transformed
-#     # TODO: this a bug - only one column should be returned in the subquery
-#     assert (
-#         insert_query.statement.sql(dialect=DIALECT)
-#         == "INSERT INTO target (name) SELECT (SELECT source.name AS name, source.age AS age FROM source AS source).name AS name"
-#     )
-#     assert h.paths == [["column[source.name]", "column[target.name]"]]
+def test_procedure_open_cursor_execute(holder):
+    sql = """
+    CREATE TABLE source (name TEXT, age INTEGER);
+    CREATE TABLE target (name TEXT, age INTEGER);
+
+    CREATE OR REPLACE PROCEDURE hello(name TEXT)
+    LANGUAGE PLPGSQL
+    AS $$
+        DECLARE
+            r_name RECORD;
+            curs refcursor;
+        BEGIN
+            OPEN curs FOR EXECUTE 'SELECT * FROM source';
+            LOOP
+                FETCH curs INTO r_name;
+                INSERT INTO target (name) SELECT r_name.name;
+            END LOOP;
+        END;
+    $$;
+
+    CALL hello('hello');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    block_holder: QueryHolder = h.holders[3].downstream_holders[0]
+    open_query: OpenQuery = block_holder.downstream_holders[2].transformed
+    assert (
+        open_query.statement.sql(dialect=DIALECT)
+        == "OPEN curs FOR SELECT source.name AS name, source.age AS age FROM source AS source"
+    )
+
+    loop_holder: QueryHolder = block_holder.downstream_holders[3]
+    insert_query: InsertQuery = loop_holder.downstream_holders[1].transformed
+    # TODO: this a bug - only one column should be returned in the subquery
+    assert (
+        insert_query.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name) SELECT (SELECT source.name AS name, source.age AS age FROM source AS source).name AS name"
+    )
+    assert h.paths == [["column[source.name]", "column[target.name]"]]
 
 
 def test_procedure_open_cursor_bound_parameters(holder):

@@ -46,9 +46,19 @@ class OpenTransformer(BaseQueryTransformer):
         #  lift, substitute and transform `SELECT UPPER(key) as name;`
 
         # Transformation 4:
-        #  `OPEN curs CURSOR FOR EXECUTE 'SELECT * FROM source';`
+        #  `OPEN curs FOR EXECUTE 'SELECT * FROM source';`
         #  ->
         #  transform `SELECT * FROM source;`
+        if isinstance(cursor_expr, pgexp.PGExecute):
+            resolved_expr = substitute.resolve_dynamic_sql_command(
+                command=cursor_expr.this,
+                using=cursor_expr.args.get("using", []),
+                object_mapping=self.query.object_mapping,
+                dialect=self.query.dialect,
+                error_statement=statement,
+            )
+            statement.set("expression", resolved_expr)
+            cursor_expr = resolved_expr
 
         return super().preprocess(cursor_expr)
 
