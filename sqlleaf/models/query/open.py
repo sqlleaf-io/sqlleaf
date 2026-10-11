@@ -37,3 +37,18 @@ class OpenQuery(Query):
 
     def get_target_expression(self) -> exp.Identifier:
         return self.target()
+
+    def get_cursor_args(self) -> list[pgexp.PGCursorArg]:
+        """
+        Get the arguments for a cursor.
+
+        Example:
+            curs CURSOR (key VARCHAR) FOR SELECT UPPER(key) as name;
+            ->
+            [key]
+        """
+        cursor_name = self.target()
+        cursor_expr = self.object_mapping.get_variable(name=cursor_name.name)
+        if cursor_expr.parent:
+            return cursor_expr.parent.args.get("cursor_args")
+        return []

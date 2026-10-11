@@ -113,7 +113,9 @@ def _find_arg(args: t.List[exp.Expr], param: FunctionParam, index: int) -> t.Opt
 
 
 def _build_param_maps(
-    args: t.List[exp.Expr], params: t.List[FunctionParam]
+    args: t.List[exp.Expr],
+    params: t.List[FunctionParam],
+    params_from_variables: t.Dict[str, exp.Expr | None],
 ) -> t.Tuple[t.Dict[str, exp.Expr], t.Dict[str, exp.Expr]]:
     """
     Builds the parameter and positional maps for a list of actual arguments against a list of declared parameters.
@@ -127,7 +129,13 @@ def _build_param_maps(
     positional_map = {}
 
     for i, param in enumerate(params):
-        arg_expr = _find_arg(args, param, i) or param.default
+        arg_expr = _find_arg(args, param, i)
+        if arg_expr is None:
+            var_val = params_from_variables.get(param.name)
+            if var_val is not None:
+                arg_expr = var_val.copy()
+        if arg_expr is None:
+            arg_expr = param.default
 
         if arg_expr:
             # Normalize people.* to people
@@ -164,16 +172,18 @@ def transform_function_arguments(
         positional_map = {"1": 1, "2": 2}
     """
     logger.debug(f"Transforming arguments for UDF: {query.name}")
-    return _build_param_maps(args=node.expressions, params=query.parameters)
+    return _build_param_maps(args=node.expressions, params=query.parameters, params_from_variables={})
 
 
 def substitute_cursor_parameters(
     cursor_query: exp.Expr,
-    call_args: t.List[exp.Expr],
+    call_args: t.Optional[t.List[exp.Expr]],
     cursor_args: t.List[pgexp.PGCursorArg],
+    object_mapping: t.Optional[mappings.ObjectMapping] = None,
 ) -> exp.Expr:
     """
-    Substitutes a cursor's declared parameters with the actual arguments passed to its OPEN call.
+    Substitutes a cursor's declared parameters with the actual arguments passed to its OPEN call,
+    or with variables from the surrounding scope if not provided.
 
     Example:
         Cursor query: `SELECT UPPER(key) AS name`
@@ -182,7 +192,8 @@ def substitute_cursor_parameters(
         Result: `SELECT UPPER('abc') AS name`
     """
     params = [FunctionParam(name=arg.this.name, type=arg.args.get("kind")) for arg in cursor_args]
-    param_map, positional_map = _build_param_maps(args=call_args, params=params)
+    params_from_variables = {param.name: object_mapping.get_variable(param.name, raise_on_missing=False) for param in params}
+    param_map, positional_map = _build_param_maps(args=call_args or [], params=params, params_from_variables=params_from_variables)
     return substitute_parameters(cursor_query, None, param_map, positional_map)
 
 

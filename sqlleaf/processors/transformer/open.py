@@ -2,6 +2,7 @@ import typing as t
 
 from sqlglot import exp
 
+from sqlleaf import mappings
 from sqlleaf.dialects.plpgsql import pgexp
 from sqlleaf.models.query import OpenQuery
 from sqlleaf.processors.substitutor import substitute
@@ -16,39 +17,25 @@ class OpenTransformer(BaseQueryTransformer):
     def preprocess(self, statement: pgexp.PGOpen) -> exp.Expr:
         """
         Override the preprocess() function because we need to select and transform OPEN's cursor expression.
+        We do the transformation here, which just lifts the referenced cursor query, transforms it, and assigns
+        it back to the OPEN statement.
         """
-        cursor_expr: pgexp.PGOpen = statement.args.get("expression")
-        # It looks like we need to do the transformation here just to lift the query from the cursor and into
-        # this expression because the statement itself may not be associated with the OPEN. For example, it's easier
-        # to have the cursor's expression already added to the OPEN so that we can do transformations in place.
+        cursor_expr: pgexp.PGOpen = self.query.source()
+        cursor_name: exp.Identifier = self.query.target()
 
-    ###########################
-
-        # Transformation 1:
-        #  `OPEN curs CURSOR FOR SELECT * FROM source;`
-        #  ->
-        #  transform `SELECT * FROM source;`
-
-        # Transformation 2:
-        #  `curs CURSOR FOR SELECT * FROM source;`
-        #  `OPEN curs;`
-        #  ->
-        #  lift and transform `SELECT * FROM source;`
+        # Fetch the cursor's expression and attach it to this query
         if not cursor_expr:
-            # I only need to do this one because the other statements will collect transformed queries (inside the collector)
-            cursor_expr = self.query.object_mapping.get_variable(name=statement.args["this"].name)
+            cursor_expr = self.query.object_mapping.get_variable(name=cursor_name.name)
+            cursor_expr = cursor_expr.copy()
             statement.set("expression", cursor_expr)
 
-        # Transformation 3:
-        #  `curs CURSOR (key VARCHAR) FOR SELECT UPPER(key) as name;`
-        #  `OPEN curs('abc');`
-        #  ->
-        #  lift, substitute and transform `SELECT UPPER(key) as name;`
+        # Add any cursor arguments
+        cursor_args = self.query.get_cursor_args()
+        if cursor_args:
+            cursor_expr = self._substitute_cursor_parameters(cursor_expr, cursor_args)
+            statement.set("expression", cursor_expr)
 
-        # Transformation 4:
-        #  `OPEN curs FOR EXECUTE 'SELECT * FROM source';`
-        #  ->
-        #  transform `SELECT * FROM source;`
+        # Transform the EXECUTE command, e.g. `OPEN curs FOR EXECUTE 'SELECT * FROM source';`
         if isinstance(cursor_expr, pgexp.PGExecute):
             resolved_expr = substitute.resolve_dynamic_sql_command(
                 command=cursor_expr.this,
@@ -63,20 +50,21 @@ class OpenTransformer(BaseQueryTransformer):
         return super().preprocess(cursor_expr)
 
     def transform(self, statement: exp.Expr) -> pgexp.PGOpen:
-        return self._substitute_cursor_parameters(statement)
+        return statement
 
-    def _substitute_cursor_parameters(self, statement: E) -> E:
+    def _substitute_cursor_parameters(self, statement: E, cursor_args: t.List[pgexp.PGCursorArg]) -> E:
         """
         Substitute cursor parameters into the referenced cursor.
         """
         call_args = self.query.statement.args.get("expressions")
-        cursor_args = statement.meta.get("cursor_args")
 
-        if call_args and cursor_args:
-            return substitute.substitute_cursor_parameters(statement, call_args, cursor_args)
+        if cursor_args:
+            return substitute.substitute_cursor_parameters(
+                statement, call_args, cursor_args, object_mapping=self.query.object_mapping
+            )
 
         return statement
-    #
+
     def postprocess(self, statement: exp.Expr) -> pgexp.PGOpen:
         """
         Ensure that the OPEN expression returned, not the transformed cursor expression.

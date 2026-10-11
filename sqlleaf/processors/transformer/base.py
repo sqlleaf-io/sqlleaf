@@ -154,6 +154,11 @@ class BaseQueryTransformer:
         if isinstance(statement, (pgexp.PGBlock, pgexp.PGForIn, pgexp.PGLoop, exp.WhileBlock)):
             return
 
+        # Skip replacement of variables inside cursor declarations; cursors are instantiated when OPEN is executed.
+        # e.g. if 'key' is an existing variable in `curs CURSOR (key VARCHAR) FOR SELECT UPPER(key) as name;`
+        if isinstance(statement, pgexp.PGDeclareItem) and (statement.args.get("cursor") or statement.args.get("cursor_args")):
+            return
+
         for column in list(statement.find_all(exp.Column)):
             if column.parent is None:
                 continue

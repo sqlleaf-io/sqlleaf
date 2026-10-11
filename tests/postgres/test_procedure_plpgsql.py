@@ -454,15 +454,118 @@ def test_procedure_open_cursor_bound_parameters(holder):
     assert h.paths == [['literal["abc"]', "function[UPPER]", "column[target.name]"]]
 
 
-##################### STEP 1 #####################
-# Transform FetchQuery into a 'FETCH (SELECT .. ) INTO x'
+def test_procedure_open_cursor_bound_parameters_with_variable(holder):
+    sql = """
+    CREATE TABLE source (name TEXT, age INTEGER);
+    CREATE TABLE target (name TEXT, age INTEGER);
+
+    CREATE OR REPLACE PROCEDURE hello(name TEXT)
+    LANGUAGE PLPGSQL
+    AS $$
+        DECLARE
+            key varchar;
+            curs CURSOR (key VARCHAR) FOR SELECT UPPER(key) as name;
+        BEGIN
+            key := 'abc';
+            OPEN curs;
+            LOOP
+                FETCH curs INTO r_name;
+                INSERT INTO target (name) SELECT r_name.name;
+            END LOOP;
+        END;
+    $$;
+
+    CALL hello('hello');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    block_holder: QueryHolder = h.holders[3].downstream_holders[0]
+    open_query: OpenQuery = block_holder.downstream_holders[3].transformed
+    assert (
+        open_query.statement.sql(dialect=DIALECT)
+        == "OPEN curs FOR SELECT UPPER('abc') AS name"
+    )
+
+    loop_holder: QueryHolder = block_holder.downstream_holders[4]
+    insert_query: InsertQuery = loop_holder.downstream_holders[1].transformed
+    # TODO: this a bug - only one column should be returned in the subquery
+    assert (
+        insert_query.statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name) SELECT (SELECT UPPER('abc') AS name).name AS name"
+    )
+    assert h.paths == [['literal["abc"]', "function[UPPER]", "column[target.name]"]]
 
 
-"""
--- You can also do the equivalent:
-key := 42;
-OPEN curs;
-"""
+def test_procedure_open_cursor_bound_parameters_precedence(holder):
+    sql = """
+    CREATE TABLE source (name TEXT, age INTEGER);
+    CREATE TABLE target (name TEXT, age INTEGER);
+
+    CREATE OR REPLACE PROCEDURE hello(name TEXT)
+    LANGUAGE PLPGSQL
+    AS $$
+        DECLARE
+            key varchar;
+            curs CURSOR (key VARCHAR) FOR SELECT UPPER(key) as name;
+        BEGIN
+            key := 'from_var';
+            OPEN curs('explicit');
+            LOOP
+                FETCH curs INTO r_name;
+                INSERT INTO target (name) SELECT r_name.name;
+            END LOOP;
+        END;
+    $$;
+
+    CALL hello('hello');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    block_holder: QueryHolder = h.holders[3].downstream_holders[0]
+    open_query: OpenQuery = block_holder.downstream_holders[3].transformed
+    assert (
+        open_query.statement.sql(dialect=DIALECT)
+        == "OPEN curs FOR SELECT UPPER('explicit') AS name"
+    )
+    assert h.paths == [['literal["explicit"]', "function[UPPER]", "column[target.name]"]]
+
+
+def test_procedure_open_cursor_bound_parameters_multiple_and_unrelated_variable(holder):
+    sql = """
+    CREATE TABLE source (name TEXT, age INTEGER);
+    CREATE TABLE target (name TEXT, age INTEGER);
+
+    CREATE OR REPLACE PROCEDURE hello(name TEXT)
+    LANGUAGE PLPGSQL
+    AS $$
+        DECLARE
+            k1 varchar;
+            k2 varchar;
+            unrelated varchar;
+            curs CURSOR (k1 VARCHAR, k2 VARCHAR) FOR SELECT UPPER(k1) as name, LOWER(k2) as other_name;
+        BEGIN
+            k1 := 'abc';
+            unrelated := 'xyz';
+            OPEN curs(k2 => 'def');
+            LOOP
+                FETCH curs INTO r_name;
+                INSERT INTO target (name) SELECT r_name.name;
+            END LOOP;
+        END;
+    $$;
+
+    CALL hello('hello');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    block_holder: QueryHolder = h.holders[3].downstream_holders[0]
+    open_query: OpenQuery = block_holder.downstream_holders[6].transformed
+    assert (
+        open_query.statement.sql(dialect=DIALECT)
+        == "OPEN curs FOR SELECT UPPER('abc') AS name, LOWER('def') AS other_name"
+    )
+    assert h.paths == [['literal["abc"]', "function[UPPER]", "column[target.name]"]]
+
 
 """
 CREATE OR REPLACE FUNCTION get_simple_cursor(refcursor)

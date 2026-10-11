@@ -115,7 +115,6 @@ def _resolve_call_sites(
         process_statement(stmt, dialect, object_mapping, f"{parent_index}:{i}", parent_holder=holder)
 
 
-
 def _collect_sequential_children(
     query: Q, holder: QueryHolder, dialect: str, object_mapping: mappings.ObjectMapping
 ) -> None:

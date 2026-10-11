@@ -48,9 +48,6 @@ def set_variables_in_scope(query: Q) -> None:
         # `my_var := 42`
         name = query.get_key()
         value = query.get_value()
-        cursor_args = query.statement.args.get("cursor_args")
-        if cursor_args:
-            value.meta["cursor_args"] = cursor_args
         query.object_mapping.set_variable(name=name, value=value)
 
     elif isinstance(query, SelectQuery):
