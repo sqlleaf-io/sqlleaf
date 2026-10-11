@@ -52,7 +52,7 @@ def _transform_dynamic_identifier(node: exp.Expr) -> exp.Expr:
     return node
 
 
-def _find_arg(args: t.List[exp.Expr], param: FunctionParam, index: int) -> t.Optional[exp.Expr]:
+def _find_arg(args: list[exp.Expr], param: FunctionParam, index: int) -> exp.Expr | None:
     """
     Finds the argument corresponding to a parameter by its name or position.
 
@@ -113,10 +113,10 @@ def _find_arg(args: t.List[exp.Expr], param: FunctionParam, index: int) -> t.Opt
 
 
 def _build_param_maps(
-    args: t.List[exp.Expr],
-    params: t.List[FunctionParam],
-    params_from_variables: t.Dict[str, exp.Expr | None],
-) -> t.Tuple[t.Dict[str, exp.Expr], t.Dict[str, exp.Expr]]:
+    args: list[exp.Expr],
+    params: list[FunctionParam],
+    params_from_variables: dict[str, exp.Expr | None],
+) -> tuple[dict[str, exp.Expr], dict[str, exp.Expr]]:
     """
     Builds the parameter and positional maps for a list of actual arguments against a list of declared parameters.
 
@@ -162,7 +162,7 @@ def _build_param_maps(
 
 def transform_function_arguments(
     node: exp.Anonymous, query: UserDefinedFunctionQuery
-) -> t.Tuple[t.Dict[str, exp.Expr], t.Dict[str, exp.Expr]]:
+) -> tuple[dict[str, exp.Expr], dict[str, exp.Expr]]:
     """
     Transforms every argument passed to the UDF into the correct format.
 
@@ -177,9 +177,9 @@ def transform_function_arguments(
 
 def substitute_cursor_parameters(
     cursor_query: exp.Expr,
-    call_args: t.Optional[t.List[exp.Expr]],
-    cursor_args: t.List[pgexp.PGCursorArg],
-    object_mapping: t.Optional[mappings.ObjectMapping] = None,
+    call_args: list[exp.Expr],
+    cursor_args: list[pgexp.PGCursorArg],
+    object_mapping: mappings.ObjectMapping | None = None,
 ) -> exp.Expr:
     """
     Substitutes a cursor's declared parameters with the actual arguments passed to its OPEN call,
@@ -200,8 +200,8 @@ def substitute_cursor_parameters(
 def substitute_parameters(
     expr: exp.Expr,
     query: UserDefinedFunctionQuery,
-    param_map: t.Dict[str, exp.Expr],
-    positional_map: t.Dict[str, exp.Expr],
+    param_map: dict[str, exp.Expr],
+    positional_map: dict[str, exp.Expr],
 ) -> exp.Expr:
     """
     Replaces parameter references within an expression and its child expressions with their corresponding arguments.
@@ -232,8 +232,8 @@ def substitute_parameters(
 def _substitute_parameter_node(
     node: exp.Expr,
     query: UserDefinedFunctionQuery,
-    param_map: t.Dict[str, exp.Expr],
-    positional_map: t.Dict[str, exp.Expr],
+    param_map: dict[str, exp.Expr],
+    positional_map: dict[str, exp.Expr],
 ) -> None:
     """
     Replaces parameter references and member access for a single node.
@@ -282,7 +282,7 @@ def _substitute_parameter_node(
 
 
 def _replace_dot_reference(
-    node: exp.Dot, param_map: t.Dict[str, exp.Expr], positional_map: t.Dict[str, exp.Expr]
+    node: exp.Dot, param_map: dict[str, exp.Expr], positional_map: dict[str, exp.Expr]
 ) -> None:
     """
     Replacements related to member access on parameters (e.g., $1.field -> table.field).
@@ -321,7 +321,7 @@ def _replace_dot_reference(
         node.set("this", exp.Paren(this=sub.copy()))
 
 
-def substitute_call(query: CallQuery) -> t.List[exp.Expr]:
+def substitute_call(query: CallQuery) -> list[exp.Expr]:
     """
     Substitutes a CALL statement's arguments into the statmenets inside its body and returns them.
     Circular references in procedure-to-procedure calls could cause infinite recursion.
@@ -368,8 +368,8 @@ def substitute_call(query: CallQuery) -> t.List[exp.Expr]:
 
 
 def substitute_execute_with_plan(
-    execute_name: str, execute_arguments: t.List[exp.Literal], object_mapping: mappings.ObjectMapping
-) -> t.List[exp.Expr]:
+    execute_name: str, execute_arguments: list[exp.Literal], object_mapping: mappings.ObjectMapping
+) -> list[exp.Expr]:
     """
     Example:
         PREPARE stmt AS SELECT 1;
@@ -398,7 +398,7 @@ def substitute_execute_with_plan(
     return [result_expr]
 
 
-def substitute_execute(query: ExecuteQuery) -> t.List[exp.Expr]:
+def substitute_execute(query: ExecuteQuery) -> list[exp.Expr]:
     """
     Substitutes an EXECUTE statement with the statement of the PREPARE it refers to.
 
@@ -416,7 +416,7 @@ def substitute_execute(query: ExecuteQuery) -> t.List[exp.Expr]:
 
 def resolve_dynamic_sql_command(
     command: exp.Expr | None,
-    using: t.List[exp.Expr],
+    using: list[exp.Expr],
     object_mapping: mappings.ObjectMapping,
     dialect: str,
     error_statement: exp.Expr,
@@ -455,7 +455,7 @@ def resolve_dynamic_sql_command(
     return resolved_stmt
 
 
-def substitute_execute_dynamic(query: ExecuteDynamicQuery) -> t.List[exp.Expr]:
+def substitute_execute_dynamic(query: ExecuteDynamicQuery) -> list[exp.Expr]:
     """
     Parse the dynamic command string of an EXECUTE statement in PL/pgSQL and substitute its
     positional parameters ($1, $2, ...) with the resolved USING arguments.
@@ -536,7 +536,7 @@ def substitute_session_variables(
     return stmt
 
 
-def _substitute_udf(node: exp.Anonymous, query: UserDefinedFunctionQuery) -> t.List[exp.Expr]:
+def _substitute_udf(node: exp.Anonymous, query: UserDefinedFunctionQuery) -> list[exp.Expr]:
     """
     Builds the expressions that will replace a UDF call.
 
@@ -593,7 +593,7 @@ def substitute_udf(query: Q) -> t.Generator[tuple[exp.Expr, str]]:
 
 def _find_next_udf_call(
     expression: exp.Expr, object_mapping: mappings.ObjectMapping
-) -> t.Tuple[t.Optional[exp.Anonymous], t.Optional[UserDefinedFunctionQuery]]:
+) -> tuple[exp.Anonymous, UserDefinedFunctionQuery] | tuple[None, None]:
     """
     Searches the AST for the next UDF call that matches any of the provided UDF definitions.
     Returns the call node and the matched UDF definition.
@@ -606,7 +606,7 @@ def _find_next_udf_call(
     return None, None
 
 
-def _get_alias(node: exp.Expr) -> t.Optional[str]:
+def _get_alias(node: exp.Expr) -> str | None:
     """Helper to extract an alias from a node or its parent."""
     alias = node.alias
     if not alias:
@@ -677,9 +677,9 @@ def _get_target_node(node: exp.Anonymous) -> exp.Expr:
 
 def _resolve_returning_to_select(
     stmt: exp.Expr,
-    param_map: t.Dict[str, exp.Expr],
+    param_map: dict[str, exp.Expr],
     query: UserDefinedFunctionQuery,
-    positional_map: t.Dict[str, exp.Expr],
+    positional_map: dict[str, exp.Expr],
 ) -> exp.Select:
     """
     Given a statement with a RETURNING clause (INSERT, UPDATE, DELETE, MERGE),
@@ -717,9 +717,9 @@ def _resolve_returning_to_select(
 
 def _transform_inner_query(
     stmt: exp.Expr,
-    param_map: t.Dict[str, exp.Expr],
+    param_map: dict[str, exp.Expr],
     query: UserDefinedFunctionQuery,
-    positional_map: t.Dict[str, exp.Expr],
+    positional_map: dict[str, exp.Expr],
 ) -> exp.Expr:
     """
     Performs replacement and transformations over a UDF's inner query.

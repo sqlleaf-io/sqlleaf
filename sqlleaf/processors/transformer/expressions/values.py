@@ -24,7 +24,7 @@ def normalize_values(query: Q, expr: exp.Expr) -> exp.Expr:
         return rewrite_values_statement(query, expression=expr, statement=expr)
 
     # Walk the subtree and rewrite all Values occurrences
-    unresolved: t.Set[int] = set()
+    unresolved: set[int] = set()
     while (values := _pick_next_values_node(expr, unresolved)) is not None:
         handled, expr = _dispatch_values(query, values, expr)
         if not handled:
@@ -32,7 +32,7 @@ def normalize_values(query: Q, expr: exp.Expr) -> exp.Expr:
     return expr
 
 
-def _dispatch_values(query: Q, values: exp.Values, expr: exp.Expr) -> t.Tuple[bool, exp.Expr]:
+def _dispatch_values(query: Q, values: exp.Values, expr: exp.Expr) -> tuple[bool, exp.Expr]:
     """
     Handle a single exp.Values node in its surrounding context.
     """
@@ -182,7 +182,7 @@ def _resolve_values_column_names(values: exp.Values, parent: exp.Expr, query: Q)
         child_table = query.target_info.expression
         if isinstance(child_table, exp.Table):
             cols = query.object_mapping.find_columns_for_table(child_table)
-            values_lists: t.List[exp.Tuple] = values.expressions
+            values_lists: list[exp.Tuple] = values.expressions
             columns = list(cols)[: len(values_lists[0].expressions)]
 
     # Returning empty will populate dialect defaults
@@ -229,8 +229,8 @@ def _substitute_default_column_references(query: Q, values: exp.Values, target_t
 
 
 def _rewrite_empty_values_or_values_with_column_names(
-    query: Q, expression: exp.Values, statement: E, columns: t.List[str]
-) -> t.List[str]:
+    query: Q, expression: exp.Values, statement: E, columns: list[str]
+) -> list[str]:
     """
     MySQL-only handling for INSERT ... VALUES lists:
     - Expand empty VALUES() to refer to all target columns so DEFAULTs can be applied.
@@ -319,12 +319,12 @@ def rewrite_values_statement(query: Q, expression: exp.Values, statement: E) -> 
 def _values_to_select_expr(
     values: exp.Values,
     dialect: str,
-    column_names: t.Optional[t.List[str]] = None,
+    column_names: list[str] | None = None,
 ) -> exp.Select | exp.Union | exp.Subquery:
     """
     Convert an exp.Values into an exp.Select or exp.Union.
     """
-    values_lists: t.List[exp.Tuple] = values.expressions
+    values_lists: list[exp.Tuple] = values.expressions
     if not column_names:
         column_names = list(default_column_index_iterator(dialect, values_lists[0].expressions))
 

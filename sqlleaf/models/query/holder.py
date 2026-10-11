@@ -23,7 +23,7 @@ class QueryHolder:
     def __init__(self, original: Query):
         self.original: Query = original
         self.transformed: Query | None = None
-        self.downstream_holders: t.List[QueryHolder] = []
+        self.downstream_holders: list[QueryHolder] = []
         self.parent_holder: QueryHolder | None = None
 
         self.original.set_holder(self)
@@ -32,7 +32,7 @@ class QueryHolder:
         holder.parent_holder = self
         self.downstream_holders.append(holder)
 
-    def get_all_holders(self, types: t.Tuple | None = None) -> t.List[QueryHolder]:
+    def get_all_holders(self, types: tuple | None = None) -> list[QueryHolder]:
         """
         Recursively collect all holders (self + children).
         Optionally filter by the type of their `original` query.

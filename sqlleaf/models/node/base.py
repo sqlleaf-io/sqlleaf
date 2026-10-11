@@ -142,7 +142,7 @@ class EdgeAttributes:
 
 class GraphAttributes:
     def __init__(self):
-        self.queries: t.List[QueryHolder] = []
+        self.queries: list[QueryHolder] = []
 
     def add_query_to_graph(self, holder: QueryHolder):
         self.queries.append(holder)

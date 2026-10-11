@@ -47,10 +47,10 @@ class TableQuery(Query):
             target_info=TargetInfo(expression=target, type=target_type),
             skip_type_annotation=True,
         )
-        self.column_defs: t.List[exp.ColumnDef] = []
-        self.system_column_defs: t.List[exp.ColumnDef] = []
-        self.inherits: t.List[TableQuery] = []
-        self.inherited_by: t.List[TableQuery] = []
+        self.column_defs: list[exp.ColumnDef] = []
+        self.system_column_defs: list[exp.ColumnDef] = []
+        self.inherits: list[TableQuery] = []
+        self.inherited_by: list[TableQuery] = []
 
         self.property: str = util.find_property(expr, self.target_info.expression, dialect)
 
@@ -61,10 +61,10 @@ class TableQuery(Query):
     def is_external(self) -> bool:
         return
 
-    def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
+    def get_column_defs(self, include_system: bool = False) -> list[exp.ColumnDef]:
         return self.column_defs + self.system_column_defs if include_system else self.column_defs
 
-    def get_column_names_with_types(self, include_system: bool = False) -> t.Dict[str, str]:
+    def get_column_names_with_types(self, include_system: bool = False) -> dict[str, str]:
         """
         Used by sqlglot's MappingSchema
         """
@@ -102,8 +102,8 @@ class TableQuery(Query):
         self.system_column_defs = settings.system_columns(self.dialect)
 
     def _collect_inherited_columns(
-        self, inherits_properties: t.List[exp.InheritsProperty]
-    ) -> t.List[exp.ColumnDef]:
+        self, inherits_properties: list[exp.InheritsProperty]
+    ) -> list[exp.ColumnDef]:
         """
         Search for tables referenced as 'CREATE TABLE b INHERITS (a)' and collect all their columns.
         A table can have multiple tables in an INHERITS clause.
@@ -129,7 +129,7 @@ class TableQuery(Query):
 
     def _collect_like_columns(
         self, like_property: exp.LikeProperty, object_mapping: mappings.ObjectMapping, child_object: exp.Table
-    ) -> t.List[exp.ColumnDef]:
+    ) -> list[exp.ColumnDef]:
         """
         Search for tables referenced as 'CREATE TABLE b (LIKE a)'.
         A table can have multiple LIKE clauses.
@@ -176,7 +176,7 @@ class TableQuery(Query):
 
         return columns
 
-    def _get_properties_to_include(self, options: t.List[str]) -> t.Dict:
+    def _get_properties_to_include(self, options: list[str]) -> dict:
         """
         Determine which column properties to keep within a LIKE according to the rules below.
 

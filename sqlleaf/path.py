@@ -12,7 +12,7 @@ logger = logging.getLogger("sqlleaf")
 
 
 class LineagePath:
-    def __init__(self, hops: t.List[EdgeAttributes]):
+    def __init__(self, hops: list[EdgeAttributes]):
         self.hops = hops
         self.length = len(hops)
 
@@ -20,7 +20,7 @@ class LineagePath:
     def id(self) -> str:
         return "path:" + util.short_sha256_hash(":".join(self.get_edge_ids()))
 
-    def node_hops(self) -> t.List[N]:
+    def node_hops(self) -> list[N]:
         """
         Return the list of nodes on this path.
         """
@@ -105,8 +105,8 @@ def find_all_paths(graph: nx.MultiDiGraph) -> t.Generator[LineagePath]:
 
 
 def find_edges_along_cycle_path(
-    g: nx.MultiDiGraph, cycle: t.List[str], path: t.Optional[t.List[EdgeAttributes]] = None
-) -> t.Generator[t.List[EdgeAttributes]]:
+    g: nx.MultiDiGraph, cycle: list[str], path: list[EdgeAttributes] | None = None
+) -> t.Generator[list[EdgeAttributes]]:
     """
     Given a cycle, find all the edges along it and return these as the new path.
     A path must be provided so that iteration doesn't deviate into non-cycle paths.
@@ -127,8 +127,8 @@ def find_edges_along_cycle_path(
 
 
 def find_edges_from_root(
-    g: nx.MultiDiGraph, node: str, path: t.Optional[t.List[EdgeAttributes]] = None, seen: t.Optional[t.Set[str]] = None
-) -> t.Generator[t.List[EdgeAttributes]]:
+    g: nx.MultiDiGraph, node: str, path: list[EdgeAttributes] | None = None, seen: set[str] | None = None
+) -> t.Generator[list[EdgeAttributes]]:
     """
     Find all the complete paths in a graph by traversing the descendants of a node until we find
     a node without any descendants.
@@ -178,8 +178,8 @@ def find_edges_from_root(
 
 
 def _traverse_path_along_edges(
-    g: nx.MultiDiGraph, node_src: str, node_dst: str, path: t.Optional[t.List] = None, seen: t.Optional[t.Set] = None
-) -> t.Generator[t.List[EdgeAttributes]]:
+    g: nx.MultiDiGraph, node_src: str, node_dst: str, path: list | None = None, seen: set | None = None
+) -> t.Generator[list[EdgeAttributes]]:
     """
     Get the list of edges between two node, and find the paths for each of them.
     """

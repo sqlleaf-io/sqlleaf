@@ -18,7 +18,7 @@ class CTASQuery(Query):
         expr: exp.Create,
         dialect: str,
         object_mapping: mappings.ObjectMapping,
-        columns: t.List[exp.ColumnDef],
+        columns: list[exp.ColumnDef],
         statement_index: int,
     ):
         source = expr.expression
@@ -39,9 +39,9 @@ class CTASQuery(Query):
             source_info=SourceInfo(expression=source, type=source_type),
             target_info=TargetInfo(expression=target, type=target_type),
         )
-        self.column_defs: t.List[exp.ColumnDef] = columns
-        self.system_column_defs: t.List[exp.ColumnDef] = []
-        self.inherited_by: t.List[TableQuery] = []
+        self.column_defs: list[exp.ColumnDef] = columns
+        self.system_column_defs: list[exp.ColumnDef] = []
+        self.inherited_by: list[TableQuery] = []
 
         self.load_data: bool = True
         if props := expr.args["properties"]:
@@ -50,10 +50,10 @@ class CTASQuery(Query):
 
         self.property: str = util.find_property(expr, self.target_info.expression, dialect)
 
-    def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
+    def get_column_defs(self, include_system: bool = False) -> list[exp.ColumnDef]:
         return self.column_defs + self.system_column_defs if include_system else self.column_defs
 
-    def get_column_names_with_types(self, include_system: bool = False) -> t.Dict[str, str]:
+    def get_column_names_with_types(self, include_system: bool = False) -> dict[str, str]:
         """
         Used by sqlglot's MappingSchema
         """

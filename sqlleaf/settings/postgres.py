@@ -19,14 +19,14 @@ class PostgresSettings(BaseDialectSettings):
     }
 
     @property
-    def system_columns(self) -> t.List[exp.ColumnDef]:
+    def system_columns(self) -> list[exp.ColumnDef]:
         return [
             exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(kind, self.DIALECT))
             for name, kind in self.PSEUDOCOLUMNS.items()
         ]
 
     @property
-    def system_functions(self) -> t.Dict[str, t.List[str]]:
+    def system_functions(self) -> dict[str, list[str]]:
         """
         Map function names to their returned column names.
         """

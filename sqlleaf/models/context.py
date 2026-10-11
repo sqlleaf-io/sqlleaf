@@ -17,7 +17,7 @@ logger = logging.getLogger("sqlleaf")
 
 class ScopePositions:
     def __init__(self):
-        self.positions: t.Dict[int, t.Dict[int, int]] = {}
+        self.positions: dict[int, dict[int, int]] = {}
 
     def get_position_for_expr(self, expr: exp.Expr) -> dict[int, int]:
         return self.positions[id(expr)]

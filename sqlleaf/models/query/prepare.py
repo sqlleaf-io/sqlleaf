@@ -42,7 +42,7 @@ class PrepareQuery(Query):
         params = [int(p.name) for p in source.find_all(exp.Parameter) if p.name.isdigit()]
         return max(params) if params else 0
 
-    def get_source_and_target_expressions(self, statement: exp.Command) -> t.Tuple[exp.Expr, exp.Table]:
+    def get_source_and_target_expressions(self, statement: exp.Command) -> tuple[exp.Expr, exp.Table]:
         """
         Parse a PREPARE statement for Postgres.
         Syntax: PREPARE name AS statement

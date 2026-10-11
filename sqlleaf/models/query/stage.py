@@ -55,7 +55,7 @@ class StageQuery(Query):
             target_info=TargetInfo(expression=target, type=target_type),
         )
 
-        self.column_defs: t.List[exp.ColumnDef] = []
+        self.column_defs: list[exp.ColumnDef] = []
         # Needed due to a bug in sqlglot. Never access the table name via print()!
         #  as it prints double-double quotes
         target.this.set("this", "@" + str(target.this))

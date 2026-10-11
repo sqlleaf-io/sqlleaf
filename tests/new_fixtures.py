@@ -46,7 +46,7 @@ class LineageHolderDummy:
         return self._all_edges
 
     @property
-    def queries_original(self) -> t.List[Q]:
+    def queries_original(self) -> list[Q]:
         return [h.original for h in self.holders]
 
     @property
@@ -54,7 +54,7 @@ class LineageHolderDummy:
         return [h.transformed for h in self.holders]
 
     @property
-    def holders(self) -> t.List[QueryHolder]:
+    def holders(self) -> list[QueryHolder]:
         new_holders = []
         for holder in self.lineage.collected_queries.queries:
             query = holder.original
@@ -67,14 +67,14 @@ class LineageHolderDummy:
         return new_holders
 
     @property
-    def paths(self) -> t.List[str]:
+    def paths(self) -> list[str]:
         paths = []
         for path in self._all_paths:
             paths.append([hop.friendly_name for hop in path.node_hops()])
         return paths
 
     @property
-    def paths_full(self) -> t.List[str]:
+    def paths_full(self) -> list[str]:
         paths = []
         for path in self._all_paths:
             paths.append([hop.full_name for hop in path.node_hops()])
@@ -85,7 +85,7 @@ class LineageHolderDummy:
         return self._collected_queries
 
     @property
-    def query_types(self) -> t.List:
+    def query_types(self) -> list:
         types = [type(h.original) for h in self.holders]
         return types
 
@@ -104,7 +104,7 @@ def holder():
     return _create_holder
 
 
-def to_sql(expressions: t.List[exp.Expr], dialect: str) -> t.List[str]:
+def to_sql(expressions: list[exp.Expr], dialect: str) -> list[str]:
     return [e.sql(dialect=dialect) for e in expressions]
 
 

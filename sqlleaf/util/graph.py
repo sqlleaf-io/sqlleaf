@@ -11,7 +11,7 @@ logger = logging.getLogger("sqlleaf")
 # TODO: add a function called 'find_unique_paths' to prevent traversal of duplicate edges
 
 
-def find_edges_downward(g: nx.MultiDiGraph, node: str, seen: t.Optional[t.Set[str]] = None, depth: int = 0):
+def find_edges_downward(g: nx.MultiDiGraph, node: str, seen: set[str] | None = None, depth: int = 0):
     """
     Traverse the graph, returning any unseen edges.
 
@@ -35,7 +35,7 @@ def find_edges_downward(g: nx.MultiDiGraph, node: str, seen: t.Optional[t.Set[st
                 yield from find_edges_downward(g, n, seen.union([n]), depth + 1)
 
 
-def find_paths(g: nx.MultiDiGraph, start=0, path: t.Optional[t.List[int]] = None, seen: t.Optional[t.Set[int]] = None):
+def find_paths(g: nx.MultiDiGraph, start=0, path: list[int] | None = None, seen: set[int] | None = None):
     """
     Find all the complete paths in a graph by traversing the descendants of a node until we find
     a node without any descendants.
@@ -57,7 +57,7 @@ def find_paths(g: nx.MultiDiGraph, start=0, path: t.Optional[t.List[int]] = None
                 yield from find_paths(g, n, path + [n], seen.union([n]))
 
 
-def get_root_nodes(graph: nx.MultiDiGraph) -> t.List[str]:
+def get_root_nodes(graph: nx.MultiDiGraph) -> list[str]:
     """
     Get the root node of a graph. A root node has no parents.
     """

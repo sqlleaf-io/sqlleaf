@@ -26,9 +26,9 @@ Parses text for SQL statements and collects them into Query models.
 
 @dataclass(frozen=True)
 class CollectQueryResult:
-    queries: t.List[QueryHolder] = field(default_factory=list)  # Successfully processed, top-level queries
-    unknown: t.Dict[str, int] = field(default_factory=dict)  # Unsupported by sqlleaf (no handler)
-    unsupported: t.List[t.Tuple[int, exp.Expr]] = field(default_factory=list)  # Unsupported by sqlglot (no grammar)
+    queries: list[QueryHolder] = field(default_factory=list)  # Successfully processed, top-level queries
+    unknown: dict[str, int] = field(default_factory=dict)  # Unsupported by sqlleaf (no handler)
+    unsupported: list[tuple[int, exp.Expr]] = field(default_factory=list)  # Unsupported by sqlglot (no grammar)
 
 
 def process_statement(
@@ -93,7 +93,7 @@ def _resolve_call_sites(
     Resolve and substitute function, procedure, or prepared statement call sites within a query.
     Extract child statements and inline user-defined functions into downstream query holders.
     """
-    subst_statements: t.List[exp.Expr] = []
+    subst_statements: list[exp.Expr] = []
     if isinstance(query, CallQuery):
         subst_statements = substitute.substitute_call(query=query)
     elif isinstance(query, ExecuteQuery):
@@ -182,9 +182,9 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     The statements must be provided in the order in which they depend on each other.
     If B depends on A, A must be created before B.
     """
-    queries: t.List[QueryHolder] = []
-    unknown: t.Dict[str, int] = {}
-    unsupported: t.List[t.Tuple[int, exp.Expr]] = []
+    queries: list[QueryHolder] = []
+    unknown: dict[str, int] = {}
+    unsupported: list[tuple[int, exp.Expr]] = []
 
     parsed = _split_combined_statements(sqlglot.parse(text, dialect=dialect))
     for index, stmt in enumerate(parsed):
@@ -519,7 +519,7 @@ def _unnest_values_inside_select(statement: exp.Create, dialect: str):
 
 def _determine_column_defs(
     statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping
-) -> t.List[exp.ColumnDef]:
+) -> list[exp.ColumnDef]:
     """
     Look up the columns for 'y' in 'INSERT INTO x TABLE y'
     """
@@ -693,7 +693,7 @@ _QUERY_PROCESSORS: dict[str, t.Callable] = {
 }
 
 
-def _split_combined_statements(parsed: t.List[exp.Expr]) -> t.List[exp.Expr]:
+def _split_combined_statements(parsed: list[exp.Expr]) -> list[exp.Expr]:
     """
     Workaround for sqlglot incorrectly bundling statements following a block-based CREATE.
     For example, with the statement "CREATE PROCEDURE .. BEGIN .. END; CALL();" the CALL()

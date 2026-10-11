@@ -12,13 +12,13 @@ from sqlleaf.typing import TargetInfo
 
 @dataclass(frozen=True)
 class UserDefinedFunctionParameters:
-    schema_name: t.Optional[str]
+    schema_name: str | None
     function_name: str
-    return_type: t.Optional[exp.DataType]
-    language: t.Optional[str]
-    parameters: t.List[FunctionParam]
-    return_columns: t.List[exp.ColumnDef]
-    inner_statements: t.List[exp.Expr]
+    return_type: exp.DataType | None
+    language: str | None
+    parameters: list[FunctionParam]
+    return_columns: list[exp.ColumnDef]
+    inner_statements: list[exp.Expr]
 
     @classmethod
     def from_expression(cls, expr: exp.Create, object_mapping: mappings.ObjectMapping) -> UserDefinedFunctionParameters:
@@ -78,11 +78,11 @@ class UserDefinedFunctionQuery(Query):
         self.column_defs = self.properties.return_columns
 
     @property
-    def parameters(self) -> t.List[FunctionParam]:
+    def parameters(self) -> list[FunctionParam]:
         return self.properties.parameters
 
     @property
-    def schema_name(self) -> t.Optional[str]:
+    def schema_name(self) -> str | None:
         return self.properties.schema_name
 
     @property
@@ -90,19 +90,19 @@ class UserDefinedFunctionQuery(Query):
         return self.properties.function_name
 
     @property
-    def return_type(self) -> t.Optional[exp.DataType]:
+    def return_type(self) -> exp.DataType | None:
         return self.properties.return_type
 
     @property
-    def language(self) -> t.Optional[str]:
+    def language(self) -> str | None:
         return self.properties.language
 
     @property
-    def return_columns(self) -> t.List[exp.ColumnDef]:
+    def return_columns(self) -> list[exp.ColumnDef]:
         return self.properties.return_columns
 
     @property
-    def inner_statements(self) -> t.List[exp.Expr]:
+    def inner_statements(self) -> list[exp.Expr]:
         return self.properties.inner_statements
 
     @property
@@ -113,7 +113,7 @@ class UserDefinedFunctionQuery(Query):
         return UserDefinedFunctionParameters.from_expression(self.statement, self.object_mapping)
 
 
-def get_user_defined_data_type(kind: t.Optional[str | exp.Identifier | exp.Dot] = None) -> exp.DataType:
+def get_user_defined_data_type(kind: str | exp.Identifier | exp.Dot | None = None) -> exp.DataType:
     if kind:
         if isinstance(kind, str):
             if "." in kind:
@@ -131,13 +131,13 @@ class FunctionParam:
 
     name: str
     type: exp.DataType
-    default: t.Optional[exp.Expression] = None
+    default: exp.Expression | None = None
     is_input: bool = True
     is_output: bool = False
     is_variadic: bool = False
 
 
-def _extract_function_info(expression: exp.Create) -> t.Tuple[str, t.Optional[str], t.List[FunctionParam]]:
+def _extract_function_info(expression: exp.Create) -> tuple[str, str | None, list[FunctionParam]]:
     """Extracts the name, schema, and parameters from a CREATE FUNCTION expression."""
     target = expression.this
     parameters = []
@@ -237,14 +237,14 @@ def _is_unnamed_parameter(col_def: exp.ColumnDef) -> bool:
 
 
 def _extract_return_info(
-    expression: exp.Create, parameters: t.List[FunctionParam], object_mapping: mappings.ObjectMapping
-) -> t.Tuple[t.Optional[exp.DataType], t.List[exp.ColumnDef]]:
+    expression: exp.Create, parameters: list[FunctionParam], object_mapping: mappings.ObjectMapping
+) -> tuple[exp.DataType | None, list[exp.ColumnDef]]:
     """Extracts return type and return columns from a CREATE FUNCTION expression."""
     return_type = None
     return_columns = []
 
     # Check for OUT/INOUT parameters that determine the return structure
-    out_params: t.List[FunctionParam] = [p for p in parameters if p.is_output]
+    out_params: list[FunctionParam] = [p for p in parameters if p.is_output]
 
     if out_params:
         if len(out_params) == 1:

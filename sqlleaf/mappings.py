@@ -25,7 +25,7 @@ from sqlleaf.models.query import (
     ViewQuery,
 )
 
-ColumnMapping = t.Union[t.Dict, str, t.List]
+ColumnMapping = t.Union[dict, str, list]
 
 logger = logging.getLogger("sqlleaf")
 
@@ -74,7 +74,7 @@ class ObjectMapping(MappingSchema):
             raise exception.MappingError(f"Could not find value for variable: {name}")
         return None
 
-    def get_variables_for(self, expressions: t.List[exp.Expr]) -> t.List[exp.Expr]:
+    def get_variables_for(self, expressions: list[exp.Expr]) -> list[exp.Expr]:
         """
         Given a list of expressions as keys, fetch their values from the variable scope if they exist.
 
@@ -117,7 +117,7 @@ class ObjectMapping(MappingSchema):
         self._add_query(query=query, dialect=query.dialect)
 
     def add_table_query(
-        self, query: TableQuery | ViewQuery | CTASQuery, column_mapping: t.Optional[ColumnMapping] = None
+        self, query: TableQuery | ViewQuery | CTASQuery, column_mapping: ColumnMapping | None = None
     ) -> None:
         self._add_query(query=query, column_mapping=column_mapping, dialect=query.dialect, kind="table")
 
@@ -127,15 +127,15 @@ class ObjectMapping(MappingSchema):
     def add_type_query(self, query: TypeQuery) -> None:
         self._add_query( query=query, dialect=query.dialect)
 
-    def add_udf_query(self, query: UserDefinedFunctionQuery, column_mapping: t.Optional[ColumnMapping] = None) -> None:
+    def add_udf_query(self, query: UserDefinedFunctionQuery, column_mapping: ColumnMapping | None = None) -> None:
         self._add_query(query=query, column_mapping=column_mapping, dialect=query.dialect)
 
     def _add_query(
         self,
         query: Q,
-        column_mapping: t.Optional[ColumnMapping] = None,
+        column_mapping: ColumnMapping | None = None,
         dialect: DialectType = None,
-        normalize: t.Optional[bool] = None,
+        normalize: bool | None = None,
         match_depth: bool = False,
         kind: str = ""
     ) -> None:
@@ -188,9 +188,9 @@ class ObjectMapping(MappingSchema):
     def _add_columns_for_table(
         self,
         table: exp.Table,
-        column_mapping: t.Optional[ColumnMapping] = None,
+        column_mapping: ColumnMapping | None = None,
         dialect: DialectType = None,
-        normalize: t.Optional[bool] = None,
+        normalize: bool | None = None,
         match_depth: bool = False,
     ) -> None:
         super().add_table(
@@ -239,7 +239,7 @@ class ObjectMapping(MappingSchema):
 
     def lookup_udf_query(
         self, table: exp.Table, raise_on_missing: bool = True
-    ) -> t.List[UserDefinedFunctionQuery] | None:
+    ) -> list[UserDefinedFunctionQuery] | None:
         # A UDF can have multiple names but different types, thus we return a list
         return self._lookup_query(kind="udf", object=table, raise_on_missing=raise_on_missing)
 
@@ -289,7 +289,7 @@ class ObjectMapping(MappingSchema):
 
     # Override sqlglot's property. It seems to be buggy when using different dict sizes (catalog, schema, etc)
     @property
-    def supported_table_args(self) -> t.Tuple[str, ...]:
+    def supported_table_args(self) -> tuple[str, ...]:
         return exp.TABLE_PARTS
 
     def get_table_or_stage(
@@ -315,7 +315,7 @@ class ObjectMapping(MappingSchema):
     def lookup_udf_call(
         self,
         node: exp.Anonymous,
-    ) -> t.Optional[UserDefinedFunctionQuery]:
+    ) -> UserDefinedFunctionQuery | None:
         """
         Looks up the UDF definition for a single exp.Anonymous node.
         Returns the matched UDF definition, or None if not found.
@@ -330,8 +330,8 @@ class ObjectMapping(MappingSchema):
 
 
 def resolve_overloaded_function(
-    node: exp.Anonymous, candidates: t.List[UserDefinedFunctionQuery]
-) -> t.Optional[UserDefinedFunctionQuery]:
+    node: exp.Anonymous, candidates: list[UserDefinedFunctionQuery]
+) -> UserDefinedFunctionQuery | None:
     """
     Resolves the best function candidate for an overloaded function call.
     Applies some precedence rules (e.g., type matching, or non-variadic > variadic) but many are currently
@@ -378,7 +378,7 @@ def resolve_overloaded_function(
     return matches[0]
 
 
-def match_function_arguments(args: t.List[exp.Expr], candidate: UserDefinedFunctionQuery) -> bool:
+def match_function_arguments(args: list[exp.Expr], candidate: UserDefinedFunctionQuery) -> bool:
     """
     Checks if the provided arguments match the function candidate's parameters.
     Handles exact types, polymorphic types (anyelement, anyarray), and VARIADIC parameters.

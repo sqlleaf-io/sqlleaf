@@ -2,7 +2,7 @@ import hashlib
 import typing as t
 
 
-def unique(sequence: t.List):
+def unique(sequence: list):
     """
     Return a list of unique elements in a list while preserving insertion order.
     """
@@ -10,7 +10,7 @@ def unique(sequence: t.List):
     return [x for x in sequence if not (x in seen or seen.add(x))]
 
 
-def flatten(lst: t.List):
+def flatten(lst: list):
     """
     Flatten a potentially nested list into a single list.
     For example,

@@ -13,14 +13,14 @@ from sqlleaf.typing import TargetInfo
 
 @dataclass(frozen=True)
 class ProcedureQueryProperties:
-    schema_name: t.Optional[str]
+    schema_name: str | None
     procedure_name: str
     signature: str
-    language: t.Optional[str]
-    column_defs: t.List[exp.ColumnDef]
-    parameters: t.List[FunctionParam]
-    args: t.List[dict]
-    inner_statements: t.List[exp.Expr]
+    language: str | None
+    column_defs: list[exp.ColumnDef]
+    parameters: list[FunctionParam]
+    args: list[dict]
+    inner_statements: list[exp.Expr]
 
     @classmethod
     def from_expression(cls, expr: exp.Create, object_mapping: mappings.ObjectMapping) -> ProcedureQueryProperties:
@@ -35,10 +35,10 @@ class ProcedureQueryProperties:
         _, _, parameters = _extract_function_info(expr)
 
         args = [{"name": p.name, "type": str(p.type)} for p in parameters]
-        column_defs: t.List[exp.ColumnDef] = expr.this.expressions
+        column_defs: list[exp.ColumnDef] = expr.this.expressions
 
         body_expr = expr.expression
-        inner_statements: t.List[exp.Expr] = []
+        inner_statements: list[exp.Expr] = []
         if body_expr:
             inner_statements = util.iter_inner_statements(body_expr, object_mapping.dialect, wrap=True, language=language)
             inner_statements = [
@@ -88,7 +88,7 @@ class ProcedureQuery(Query):
         self.column_defs = self.properties.column_defs
 
     @property
-    def schema(self) -> t.Optional[str]:
+    def schema(self) -> str | None:
         return self.properties.schema_name
 
     @property
@@ -104,11 +104,11 @@ class ProcedureQuery(Query):
         return self.properties.parameters
 
     @property
-    def args(self) -> t.List[dict]:
+    def args(self) -> list[dict]:
         return self.properties.args
 
     @property
-    def inner_statements(self) -> t.List[exp.Expr]:
+    def inner_statements(self) -> list[exp.Expr]:
         return self.properties.inner_statements
 
     def to_dict(self):

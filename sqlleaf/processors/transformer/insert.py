@@ -115,7 +115,7 @@ class InsertTransformer(BaseQueryTransformer):
         return insert_expr
 
     @staticmethod
-    def _extract_value_lists(expression: exp.Expression) -> t.List[t.List[exp.Expression]]:
+    def _extract_value_lists(expression: exp.Expression) -> list[list[exp.Expression]]:
         """
         Handles exp.Tuple, exp.Select, and exp.Union.
         """

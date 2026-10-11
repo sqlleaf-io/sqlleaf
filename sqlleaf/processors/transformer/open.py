@@ -52,11 +52,11 @@ class OpenTransformer(BaseQueryTransformer):
     def transform(self, statement: exp.Expr) -> pgexp.PGOpen:
         return statement
 
-    def _substitute_cursor_parameters(self, statement: E, cursor_args: t.List[pgexp.PGCursorArg]) -> E:
+    def _substitute_cursor_parameters(self, statement: E, cursor_args: list[pgexp.PGCursorArg]) -> E:
         """
         Substitute cursor parameters into the referenced cursor.
         """
-        call_args = self.query.statement.args.get("expressions")
+        call_args = self.query.statement.args.get("expressions") or []
 
         if cursor_args:
             return substitute.substitute_cursor_parameters(

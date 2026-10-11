@@ -13,7 +13,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 DIALECT = "postgres"
 
 
-def to_sql(expressions: t.List[exp.Expr]) -> t.List[str]:
+def to_sql(expressions: list[exp.Expr]) -> list[str]:
     return [e.sql(dialect="postgres") for e in expressions]
 
 

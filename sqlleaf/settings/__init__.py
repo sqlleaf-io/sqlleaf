@@ -9,11 +9,11 @@ from sqlleaf.settings.postgres import PostgresSettings as PostgresSettings
 
 
 @cache
-def system_columns(dialect: str) -> t.List[exp.ColumnDef]:
+def system_columns(dialect: str) -> list[exp.ColumnDef]:
     return BaseDialectSettings.from_dialect(dialect).system_columns
 
 
 @cache
-def system_functions(dialect: str) -> t.Dict[str, t.List[str]]:
+def system_functions(dialect: str) -> dict[str, list[str]]:
     # TODO: refactor this into a set of objects that can be loaded into the mapping
     return BaseDialectSettings.from_dialect(dialect).system_functions

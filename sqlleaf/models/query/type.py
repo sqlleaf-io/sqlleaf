@@ -28,7 +28,7 @@ class TypeQuery(Query):
             source_info=source,
             target_info=TargetInfo(expression=target, type=target_type),
         )
-        self.column_defs: t.List[exp.ColumnDef] = []
+        self.column_defs: list[exp.ColumnDef] = []
         self._collect()
 
     def _collect(self) -> None:

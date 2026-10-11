@@ -14,7 +14,7 @@ from sqlleaf.typing import SqlObjectType, TargetInfo
 @dataclass(frozen=True)
 class ExecuteQueryProperties:
     name: str
-    arguments: t.List[exp.Literal]
+    arguments: list[exp.Literal]
 
     @classmethod
     def from_expression(cls, expr: exp.Command, dialect: str):
@@ -62,5 +62,5 @@ class ExecuteQuery(Query):
         return self.parameters.name
 
     @property
-    def arguments(self) -> t.List[exp.Literal]:
+    def arguments(self) -> list[exp.Literal]:
         return self.parameters.arguments

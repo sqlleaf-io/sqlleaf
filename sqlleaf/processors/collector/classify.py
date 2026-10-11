@@ -10,7 +10,7 @@ from sqlleaf import exception
 logger = logging.getLogger("sqlleaf")
 
 
-def _determine_query_kind(statement: exp.Expr, dialect: str) -> t.Tuple[exp.Expr, str]:
+def _determine_query_kind(statement: exp.Expr, dialect: str) -> tuple[exp.Expr, str]:
     """
     Determine a query's "kind" from the expression, which maps to how it will be processed.
     """

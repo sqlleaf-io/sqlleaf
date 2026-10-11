@@ -77,7 +77,7 @@ def find_property(statement: exp.Create, child_object: TargetExprType, dialect: 
     return prop
 
 
-def get_language_property(expression: exp.Create) -> t.Optional[str]:
+def get_language_property(expression: exp.Create) -> str | None:
     """Extracts the language from a CREATE FUNCTION expression."""
     for prop in expression.args.get("properties", {}).expressions:
         if isinstance(prop, exp.LanguageProperty):
@@ -97,7 +97,7 @@ def get_location_property(expr: exp.Create, dialect: str) -> str | None:
     return location
 
 
-def column_def_to_column(column_def: exp.ColumnDef, parent_table: t.Optional[exp.Table] = None) -> exp.Column:
+def column_def_to_column(column_def: exp.ColumnDef, parent_table: exp.Table | None = None) -> exp.Column:
     """
     Convert an exp.ColumnDef to an exp.Column
     """
@@ -147,7 +147,7 @@ def get_udf_name(expr: exp.Anonymous) -> tuple[str, str]:
     return schema, function
 
 
-def get_function_args(expr: exp.Func) -> t.List[exp.Expr]:
+def get_function_args(expr: exp.Func) -> list[exp.Expr]:
     """
     Get all the argument expressions inside a function.
     Example: "a, b, c" in "SELECT my.func(a,b,c)"
@@ -186,7 +186,7 @@ def rename_if_stage(source: SourceExprType, target: TargetExprType) -> None:
                 target.this.set("this", str(target).upper())
 
 
-def get_selected_column_names(statement: exp.Expr) -> t.List[str]:
+def get_selected_column_names(statement: exp.Expr) -> list[str]:
     if isinstance(statement.expression, exp.Values):
         return [s.name for s in statement.this.expressions]
     return [s.alias_or_name for s in statement.selects]

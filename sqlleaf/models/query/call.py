@@ -16,9 +16,9 @@ if t.TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CallQueryProperties:
-    schema: t.Optional[str]
+    schema: str | None
     procedure: str
-    args: t.List[exp.Expr]
+    args: list[exp.Expr]
 
     @classmethod
     def from_expression(cls, statement: exp.Command, dialect: str) -> CallQueryProperties:
@@ -86,7 +86,7 @@ class CallQuery(Query):
         )
 
     @property
-    def schema(self) -> t.Optional[str]:
+    def schema(self) -> str | None:
         return self.properties.schema
 
     @property
@@ -94,7 +94,7 @@ class CallQuery(Query):
         return self.properties.procedure
 
     @property
-    def args(self) -> t.List[exp.Expr]:
+    def args(self) -> list[exp.Expr]:
         return self.properties.args
 
     @property

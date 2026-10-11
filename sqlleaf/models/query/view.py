@@ -18,7 +18,7 @@ class ViewQuery(Query):
         expr: exp.Create,
         dialect: str,
         object_mapping: mappings.ObjectMapping,
-        columns: t.List[exp.ColumnDef],
+        columns: list[exp.ColumnDef],
         statement_index: int,
     ):
         source = expr.expression
@@ -35,7 +35,7 @@ class ViewQuery(Query):
             source_info=SourceInfo(expression=source, type=source_type),
             target_info=TargetInfo(expression=target, type=target_type),
         )
-        self.column_defs: t.List[exp.ColumnDef] = columns
-        self.inherited_by: t.List[TableQuery] = []
+        self.column_defs: list[exp.ColumnDef] = columns
+        self.inherited_by: list[TableQuery] = []
 
         self.property: str = util.find_property(expr, self.target_info.expression, dialect)

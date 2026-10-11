@@ -38,5 +38,5 @@ class MultitableInsertQuery(Query):
             target_info=TargetInfo(expression=target, type=SqlObjectType.TABLE),
         )
 
-    def get_ctes(self) -> t.List[exp.CTE]:
+    def get_ctes(self) -> list[exp.CTE]:
         return getattr(self.statement, "ctes", [])

@@ -115,8 +115,8 @@ class BaseGenerator:
 
     def do_grandparents(
         self,
-        grandparents: t.List[exp.Expr],
-        parent: t.Optional[N],
+        grandparents: list[exp.Expr],
+        parent: N | None,
         gen_ctx: GeneratorContext,
         pos_ctx: PositionContext,
     ) -> t.Iterator[EdgeToCreate]:
@@ -566,7 +566,7 @@ class BaseGenerator:
 
     def iter_child_nodes(
         self, gen_ctx: GeneratorContext, pos_ctx: PositionContext
-    ) -> t.Generator[t.Tuple[TargetNodeType | None, ColumnNode | None]]:
+    ) -> t.Generator[tuple[TargetNodeType | None, ColumnNode | None]]:
         """
         Iterate over every column of a table that was either selected in a query or has a default expression.
         """

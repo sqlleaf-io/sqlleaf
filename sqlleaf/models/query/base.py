@@ -32,7 +32,7 @@ class Query:
         self.dialect = dialect
         self.object_mapping = object_mapping
         self.child_queries = []
-        self.column_defs: t.List[exp.ColumnDef] = []
+        self.column_defs: list[exp.ColumnDef] = []
         self.property = ""
 
         # Remove comments at initialization
@@ -56,7 +56,7 @@ class Query:
     def set_holder(self, holder: QueryHolder) -> None:
         self.holder = holder
 
-    def _determine_expression_type(self, expr: exp.Expr | t.List[exp.Expr], dialect: str) -> SqlObjectType:
+    def _determine_expression_type(self, expr: exp.Expr | list[exp.Expr], dialect: str) -> SqlObjectType:
         """
         Determine the type of object that an expression represents.
         For example, the literal "/tmp/data.csv" is of type FILE; identifier "STDIN" is of type STREAM.
@@ -125,7 +125,7 @@ class Query:
     def get_transformed_self(self) -> Query | None:
         return self.holder.transformed
 
-    def get_columns_from_target(self) -> t.List[exp.ColumnDef]:
+    def get_columns_from_target(self) -> list[exp.ColumnDef]:
         """
         Given a query, figure out its target object, including its columns.
 
@@ -159,7 +159,7 @@ class Query:
     def _get_column_defs(
         self,
         expr: SourceExprType | TargetExprType,
-    ) -> t.List[exp.ColumnDef]:
+    ) -> list[exp.ColumnDef]:
         """
         Most of the time, the sources and target are tables.
         However, with COPY/UNLOAD, they can be files or streams.
@@ -199,13 +199,13 @@ class Query:
         """
         return str(self.statement_index)
 
-    def get_ctes(self) -> t.List:
+    def get_ctes(self) -> list:
         return []
 
-    def get_column_defs(self, include_system: bool = False) -> t.List[exp.ColumnDef]:
+    def get_column_defs(self, include_system: bool = False) -> list[exp.ColumnDef]:
         return self.column_defs
 
-    def get_column_names_with_types(self, include_system: bool = False) -> t.Dict[str, str]:
+    def get_column_names_with_types(self, include_system: bool = False) -> dict[str, str]:
         """
         Used by sqlglot's MappingSchema
         """
@@ -216,7 +216,7 @@ class Query:
     def id(self) -> str:
         return "query:" + util.short_sha256_hash(self.statement.sql(dialect=self.dialect) + ":" + str(self.statement_index))
 
-    def get_all_queries(self, types: t.Tuple | None = None):
+    def get_all_queries(self, types: tuple | None = None):
         """
         Collect all queries (self + children recursively), optionally filtered by type.
         """

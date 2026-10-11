@@ -6,7 +6,7 @@ from sqlglot import exp
 from sqlleaf import exception
 
 
-def default_column_index_iterator(dialect: str, elems: t.List[t.Any]) -> t.Generator[str]:
+def default_column_index_iterator(dialect: str, elems: list[t.Any]) -> t.Generator[str]:
     """
     Generates default columns defined for a specific SQL dialect.
     """
@@ -24,7 +24,7 @@ SUPPORTED_LANGUAGES = [
     "PLPGSQL",
 ]
 
-def iter_inner_statements(stmt: exp.Expr, dialect: str, wrap: bool = False, language: str = "SQL") -> t.List[exp.Expr]:
+def iter_inner_statements(stmt: exp.Expr, dialect: str, wrap: bool = False, language: str = "SQL") -> list[exp.Expr]:
     """
     Iterate over the inner statements of a given expression.
     """

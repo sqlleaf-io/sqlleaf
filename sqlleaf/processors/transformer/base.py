@@ -380,7 +380,7 @@ class BaseQueryTransformer:
         self,
         expression: exp.Expr,
         column_name: str,
-        table_columns: t.List[exp.ColumnDef],
+        table_columns: list[exp.ColumnDef],
     ) -> None:
         """
         Replace a 'DEFAULT' expression with the column's default value or NULL.
@@ -393,7 +393,7 @@ class BaseQueryTransformer:
             else:
                 expression.replace(exp.Null())
 
-    def _optimizer_rules(self, exclude_rules: t.List[str]):
+    def _optimizer_rules(self, exclude_rules: list[str]):
         """
         Return a list of sqlglot.optimizer rules to use.
         """
@@ -413,7 +413,7 @@ class BaseQueryTransformer:
         ->
             SELECT * FROM JSON_EACH_TEXT() AS JSON_EACH_TEXT(key, value)
         """
-        fn_columns_map: dict[str, t.List[str]] = get_system_functions(self.query.dialect)
+        fn_columns_map: dict[str, list[str]] = get_system_functions(self.query.dialect)
         if not fn_columns_map:
             return statement
 
@@ -457,7 +457,7 @@ class BaseQueryTransformer:
 
         return statement
 
-    def _get_validation_and_exclusion_rules(self, statement: E) -> t.Tuple[bool, t.List[str]]:
+    def _get_validation_and_exclusion_rules(self, statement: E) -> tuple[bool, list[str]]:
         """
         Determine some settings used in the main transformer functions.
         """
@@ -482,7 +482,7 @@ class BaseQueryTransformer:
         return validate_columns, exclude_rules
 
     @_validate_syntax
-    def _apply_optimizations(self, statement: E, exclusion_rules: t.List[str]) -> E:
+    def _apply_optimizations(self, statement: E, exclusion_rules: list[str]) -> E:
         """
         Call sqlglot's optimization functions, which simplify a range of expressions.
         """
@@ -758,7 +758,7 @@ class BaseQueryTransformer:
 
     def _extract_insert_columns(
         self, statement: exp.Insert, target: exp.Table | exp.Schema, include_system: bool = False
-    ) -> t.List[str]:
+    ) -> list[str]:
         """
         Returns a list of column names for an exp.Insert statement.
         If they are not found, fall back to the columns for table `target`.
@@ -792,7 +792,7 @@ class BaseQueryTransformer:
         """
         query = self.query
         _UPDATE_FROM_TABLE_ARGS_TO_MOVE = {"joins", "laterals", "pivot"}
-        _UPDATE_ARGS_NOT_SUPPORTED_BY_SELECT: t.Set[str] = set(exp.Update.arg_types.keys()) - set(
+        _UPDATE_ARGS_NOT_SUPPORTED_BY_SELECT: set[str] = set(exp.Update.arg_types.keys()) - set(
             exp.Select.arg_types.keys()
         )
 

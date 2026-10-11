@@ -54,14 +54,14 @@ def simplify_row(statement: exp.Expr, query: Q) -> None:
         _simplify_field_access(row_nodes, statement, query)
 
 
-def _collect_row_functions(statement: exp.Expr) -> t.Set[exp.Anonymous]:
+def _collect_row_functions(statement: exp.Expr) -> set[exp.Anonymous]:
     """
     Collect all ROW() expressions from the statement.
     """
     return {node for node in statement.find_all(exp.Anonymous) if node.name.upper() == "ROW"}
 
 
-def _expand_row_cast_aliases(row_nodes: t.Set[exp.Anonymous], statement: exp.Expr, query: Q) -> None:
+def _expand_row_cast_aliases(row_nodes: set[exp.Anonymous], statement: exp.Expr, query: Q) -> None:
     """
     Expand ROWs with casts into lists of columns, as well as expressions of the form '(alias_name).field'.
 
@@ -98,7 +98,7 @@ def _expand_row_cast_aliases(row_nodes: t.Set[exp.Anonymous], statement: exp.Exp
         _expand_to_select_list(alias_node, row_exprs, fields)
 
 
-def _simplify_field_access(row_nodes: t.Set[exp.Anonymous], statement: exp.Expr, query: Q) -> None:
+def _simplify_field_access(row_nodes: set[exp.Anonymous], statement: exp.Expr, query: Q) -> None:
     """
     Simplify field access patterns on ROW casts.
 
@@ -159,7 +159,7 @@ def _simplify_column_field_access(dot: exp.Dot, column: exp.Column, field: exp.I
     dot.replace(new_col)
 
 
-def _resolve_field_index(cast_node: exp.Cast, field_name: str, query: Q) -> t.Optional[t.Tuple[t.List[str], int]]:
+def _resolve_field_index(cast_node: exp.Cast, field_name: str, query: Q) -> tuple[list[str], int] | None:
     """
     Look up the field index for `field_name` in the composite type of `cast_node`.
     Returns (fields, index) or None if the type or field is unknown.
@@ -204,14 +204,14 @@ def _simplify_field_of_case_row(
     case_node: exp.Case,
     right: exp.Identifier,
     query: Q,
-    row_node_set: t.Set[exp.Anonymous],
+    row_node_set: set[exp.Anonymous],
 ) -> None:
     """Simplify CASE statements when a field selector is used on its result.
 
     Examples:
         `(CASE WHEN x > 1 THEN ROW(a, b)::t ELSE ROW(0, '')::t END).a` -> `CASE WHEN x > 1 THEN a ELSE 0 END`
     """
-    branch_casts: t.List[exp.Cast] = []
+    branch_casts: list[exp.Cast] = []
     for if_node in case_node.args.get("ifs", []):
         c = _get_row_cast(if_node.args.get("true").unnest(), row_node_set)
         if c is None:
@@ -239,7 +239,7 @@ def _is_direct_select_expression(node: exp.Expr) -> bool:
     return isinstance(node.parent, exp.Select) and node in node.parent.expressions
 
 
-def _find_subquery_table_alias(select_parent: exp.Expr) -> t.Optional[str]:
+def _find_subquery_table_alias(select_parent: exp.Expr) -> str | None:
     """
     Walk up from a SELECT to find a Subquery or Lateral with an alias.
     """
@@ -254,7 +254,7 @@ def _find_subquery_table_alias(select_parent: exp.Expr) -> t.Optional[str]:
 
 
 def _rewrite_field_references(
-    alias_node: exp.Alias, row_exprs: t.List[exp.Expr], fields: t.List[str], statement: exp.Expr
+    alias_node: exp.Alias, row_exprs: list[exp.Expr], fields: list[str], statement: exp.Expr
 ) -> None:
     """Rewrite (alias_name).field references to the associated column or expression.
 
@@ -293,7 +293,7 @@ def _rewrite_field_references(
         dot.replace(replacement)
 
 
-def _expand_to_select_list(node: exp.Expr, expressions: t.List[exp.Expr], aliases: t.List[str]) -> None:
+def _expand_to_select_list(node: exp.Expr, expressions: list[exp.Expr], aliases: list[str]) -> None:
     """
     Expand a node into multiple aliased expressions in its parent SELECT list.
 
@@ -322,7 +322,7 @@ def _is_row_cast(node: exp.Expr) -> bool:
     )
 
 
-def _get_row_cast(inner: exp.Expr, row_node_set: t.Set[exp.Anonymous]) -> t.Optional[exp.Cast]:
+def _get_row_cast(inner: exp.Expr, row_node_set: set[exp.Anonymous]) -> exp.Cast | None:
     """
     Return the Cast node if it wraps a ROW().
 
@@ -342,7 +342,7 @@ def _is_inside_unnest(node: exp.Expr) -> bool:
     return node.find_ancestor(exp.Unnest, exp.Array) is not None
 
 
-def _lookup_type_fields(type_name: str, query: Q) -> t.List[str]:
+def _lookup_type_fields(type_name: str, query: Q) -> list[str]:
     """
     Return ordered field names for a composite type.
 
@@ -405,7 +405,7 @@ def transform_row_function_to_subquery(replacement_expr: exp.Expr, query: UserDe
 
 def transform_row_to_subquery(
     node: exp.Cast, replacement_expr: exp.Expr, query: UserDefinedFunctionQuery
-) -> t.Optional[exp.Expr]:
+) -> exp.Expr | None:
     """
     Transforms the ROW(...)::table_name pattern into a SELECT subquery.
 

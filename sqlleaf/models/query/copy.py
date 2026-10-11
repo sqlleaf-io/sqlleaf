@@ -31,7 +31,7 @@ class CopyQueryProperties:
             Input: "COPY FROM ... FORMAT AS CSV NOLOAD"
             Params: ["FORMAT AS CSV", "NOLOAD"]
         """
-        params_dict: t.Dict[str, t.Any] = {}
+        params_dict: dict[str, t.Any] = {}
 
         params_list = []
         # Filter for the parameters we need
@@ -113,7 +113,7 @@ class CopyQuery(Query):
 
     def get_source_and_target_expressions(
         self, expr: exp.Copy, dialect: str
-    ) -> t.Tuple[SourceExprType, TargetExprType]:
+    ) -> tuple[SourceExprType, TargetExprType]:
         """
         Determine the source and target expressions of the query.
         """

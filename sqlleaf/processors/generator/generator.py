@@ -229,7 +229,7 @@ def walk_expressions_and_build_graph(
     generator: BaseGenerator,
     gen_ctx: GeneratorContext,
     pos_ctx: PositionContext,
-) -> t.List[N]:
+) -> list[N]:
     """
     Collect the leaves of an expression so that we can get the full set of data sources and function arguments
     for a particular column.
@@ -272,7 +272,7 @@ def walk_expressions_and_build_graph(
 
 def find_inherited_columns_for_parent(
     column_node: N, generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: PositionContext
-) -> t.List[ColumnNode]:
+) -> list[ColumnNode]:
     """
     Find the inherited columns for a particular column, but only for the form 'SELECT FROM ONLY <table>'
     TODO fix comments etc
@@ -301,7 +301,7 @@ def find_inherited_columns_for_parent(
 
 def find_inherited_columns_for_child(
     column_node: N | None, generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: PositionContext
-) -> t.List[ColumnNode]:
+) -> list[ColumnNode]:
     """
     Find the inherited columns for a particular column, but only for the form 'MERGE|UPDATE ONLY <table>'
     """
@@ -321,7 +321,7 @@ def find_inherited_columns_for_child(
 
 def find_inherited_columns(
     column_node: ColumnNode, generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: PositionContext
-) -> t.List[ColumnNode]:
+) -> list[ColumnNode]:
     """
     Find all inherited columns from a table that are similar to some column.
 
@@ -418,7 +418,7 @@ class ScopeTraversal:
     select_index: int
 
 
-# def set_cte_properties(path: t.List[ScopeTraversal]) -> None:
+# def set_cte_properties(path: list[ScopeTraversal]) -> None:
 #     """
 #     Check for properties related to recursive CTEs.
 #

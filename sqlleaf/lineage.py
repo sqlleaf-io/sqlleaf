@@ -25,8 +25,8 @@ class Lineage:
 
     def __init__(self):
         self.graph = new_graph()  # The graph that contains all lineage
-        self.subgraphs: t.List[nx.MultiDiGraph] = []  # The subgraphs that make up the main graph
-        self.paths: t.Dict[str, t.List[LineagePath]] = {}  # The paths throughout the graph
+        self.subgraphs: list[nx.MultiDiGraph] = []  # The subgraphs that make up the main graph
+        self.paths: dict[str, list[LineagePath]] = {}  # The paths throughout the graph
         self.collected_queries: collector.CollectQueryResult | None = None
         self.user_defined_hooks: list[Hook] = []
         self.object_mapping: mappings.ObjectMapping | None = None
@@ -83,14 +83,14 @@ class Lineage:
 
         self.graph.add_edges_from(subgraph.edges(data=True))
 
-    def get_edges(self) -> t.List[EdgeAttributes]:
+    def get_edges(self) -> list[EdgeAttributes]:
         edges = [data["attrs"] for par, chi, data in self.graph.edges(data=True)]
         edges = sorted(edges, key=lambda e: (e.parent.full_name, e.child.full_name))
         for edge in edges:
             logger.debug(f"Found edge: {edge.parent.friendly_name} -> {edge.child.friendly_name}")
         return edges
 
-    def get_nodes(self) -> t.List[N]:
+    def get_nodes(self) -> list[N]:
         nodes = [data["attrs"] for n, data in self.graph.nodes(data=True)]
         # TODO: sort on selected index?
         nodes = sorted(
@@ -98,13 +98,13 @@ class Lineage:
         )
         return nodes
 
-    def get_original_queries(self) -> t.List[Q]:
+    def get_original_queries(self) -> list[Q]:
         """
         Get the original queries from the graph.
         """
         return [q.original for q in self.graph.graph["attrs"].queries]
 
-    def get_transformed_queries(self) -> t.List[Q]:
+    def get_transformed_queries(self) -> list[Q]:
         """
         Get the transformed queries from the graph.
         """

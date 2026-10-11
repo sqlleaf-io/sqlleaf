@@ -23,14 +23,14 @@ class BaseDialectSettings:
         return target_class()
 
     @property
-    def system_columns(self) -> t.List[exp.ColumnDef]:
+    def system_columns(self) -> list[exp.ColumnDef]:
         """
         Represents system columns.
         """
         return []
 
     @property
-    def system_functions(self) -> t.Dict[str, t.List[str]]:
+    def system_functions(self) -> dict[str, list[str]]:
         """
         Represents system functions.
         """
