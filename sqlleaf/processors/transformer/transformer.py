@@ -85,9 +85,21 @@ def set_variables_in_scope(query: Q) -> None:
         # TODO: should we just substitute the query as the variable?
         var_key: exp.Identifier = query.statement.this
         var_val = query.object_mapping.get_variable(name=var_key.name)
-        # TODO: support multiple targets
-        new_key: exp.Column = query.statement.args["expressions"][0]
-        query.object_mapping.set_variable(name=new_key.name, value=var_val)
+        targets = query.statement.args["expressions"]
+
+        if len(targets) == 1:
+            query.object_mapping.set_variable(name=targets[0].name, value=var_val)
+        else:
+            source_columns = var_val.selects if isinstance(var_val, exp.Query) else []
+            for i, target in enumerate(targets):
+                if i < len(source_columns):
+                    value = exp.Dot(
+                        this=var_val.subquery(),
+                        expression=exp.to_identifier(source_columns[i].alias_or_name),
+                    )
+                else:
+                    value = var_val
+                query.object_mapping.set_variable(name=target.name, value=value)
 
     elif isinstance(query, OpenQuery):
         query.object_mapping.set_variable(name=query.target().name, value=query.source())

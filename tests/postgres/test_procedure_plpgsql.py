@@ -567,6 +567,43 @@ def test_procedure_open_cursor_bound_parameters_multiple_and_unrelated_variable(
     assert h.paths == [['literal["abc"]', "function[UPPER]", "column[target.name]"]]
 
 
+def test_procedure_fetch_multiple_targets(holder):
+    sql = """
+    CREATE TABLE source (a INTEGER, b INTEGER, c INTEGER);
+    CREATE TABLE target (a INTEGER, b INTEGER, c INTEGER);
+
+    CREATE OR REPLACE PROCEDURE hello(name TEXT)
+    LANGUAGE PLPGSQL
+    AS $$
+        DECLARE
+            foo INTEGER;
+            bar INTEGER;
+            baz INTEGER;
+            curs2 CURSOR FOR SELECT * FROM source;
+        BEGIN
+            OPEN curs2;
+            LOOP
+                FETCH curs2 INTO foo, bar, baz;
+                INSERT INTO target (a, b, c) SELECT foo, bar, baz;
+            END LOOP;
+        END;
+    $$;
+
+    CALL hello('hello');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    block_holder: QueryHolder = h.holders[3].downstream_holders[0]
+    loop_holder: QueryHolder = block_holder.downstream_holders[5]
+    insert_query: InsertQuery = loop_holder.downstream_holders[1].transformed
+
+    assert insert_query.statement.sql(dialect=DIALECT) == "INSERT INTO target (a, b, c) SELECT (SELECT source.a AS a, source.b AS b, source.c AS c FROM source AS source).a AS a, (SELECT source.a AS a, source.b AS b, source.c AS c FROM source AS source).b AS b, (SELECT source.a AS a, source.b AS b, source.c AS c FROM source AS source).c AS c"
+    assert h.paths == [
+        ["column[source.a]", "column[target.a]"],
+        ["column[source.b]", "column[target.b]"],
+        ["column[source.c]", "column[target.c]"],
+    ]
+
 """
 CREATE OR REPLACE FUNCTION get_simple_cursor(refcursor)
 RETURNS refcursor AS $$
@@ -589,7 +626,6 @@ COMMIT;
 """
 
 # TODO:
-#  BEGIN FETCH curs2 INTO foo, bar, baz; END;
 #  Test variable scoping (FOR loop has its vars popped)
 #  'INTO' ...
 #  Cursors with parameters
