@@ -16,7 +16,7 @@ from sqlleaf.models.query import (
     Q,
     UserDefinedFunctionQuery,
 )
-from sqlleaf.processors.transformer.expressions import normalize_values
+from sqlleaf.processors.transformer.expressions import normalize_values, simplify_format
 from sqlleaf.processors.transformer.expressions.row import transform_row_function_to_subquery
 
 logger = logging.getLogger("sqlleaf")
@@ -437,14 +437,22 @@ def resolve_dynamic_sql_command(
             )
             return None
     elif isinstance(command, exp.DPipe):
-        resolved_command = simplify(command, dialect="postgres")
-    else:
-        exception.raise_error(
-            exception.UnsupportedFeatureError,
-            f"Dynamic EXECUTE with a command string of type {type(command)} is not supported yet: "
-            f"{error_statement.sql(dialect=dialect)}",
-        )
-        return None
+        command_with_variables = command.copy()
+        for column in list(command_with_variables.find_all(exp.Column)):
+            if column.table:
+                continue
+            variable = object_mapping.get_variable(name=column.name, raise_on_missing=False)
+            if variable is not None:
+                column.replace(variable.copy())
+        formatted_command = simplify_format(command_with_variables, dialect=dialect)
+        resolved_command = simplify(formatted_command, dialect=dialect)
+        if not isinstance(resolved_command, exp.Literal):
+            exception.raise_error(
+                exception.UnsupportedFeatureError,
+                f"Dynamic EXECUTE with an unresolvable command string is not supported yet: "
+                f"{error_statement.sql(dialect=dialect)}",
+            )
+            return None
 
     resolved_stmt = sqlglot.parse_one(resolved_command.this, dialect=dialect)
     if using:

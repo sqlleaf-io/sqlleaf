@@ -263,6 +263,33 @@ def test_execute_dynamic_concat(holder):
     assert h.paths == [["column[target.name]", "column[target.name]"]]
 
 
+def test_execute_dynamic_quote_ident(holder):
+    sql = """
+    CREATE TABLE target (name VARCHAR);
+
+    CREATE PROCEDURE hello()
+    LANGUAGE PLPGSQL
+    AS $$
+        DECLARE
+            tabname varchar := 'target';
+        BEGIN
+            EXECUTE 'INSERT INTO ' || QUOTE_IDENT(tabname) || ' SELECT 1;';
+        END;
+    $$;
+
+    CALL hello();
+    """
+
+    h = holder(sql=sql, dialect=DIALECT)
+
+    call_downstream: QueryHolder = h.holders[2].downstream_holders[0]
+    execute_holder: QueryHolder = call_downstream.downstream_holders[1]
+    assert isinstance(execute_holder.original, ExecuteDynamicQuery)
+    select_query = execute_holder.downstream_holders[0].transformed
+    assert select_query.statement.sql(dialect=DIALECT) == "INSERT INTO target (name) SELECT 1 AS name"
+    assert h.paths == [["literal[1]", "column[target.name]"]]
+
+
 def test_procedure_for_in_execute(holder):
     sql = """
     CREATE TABLE source (name TEXT, age INTEGER);
@@ -628,6 +655,9 @@ COMMIT;
 # TODO:
 #  Test variable scoping (FOR loop has its vars popped)
 #  'INTO' ...
-#  Cursors with parameters
 #  FOREACH
 #  EXCEPTION WHEN .. THEN ..
+
+# EXECUTE 'CREATE TABLE test1 (id int);
+#              INSERT INTO test1 VALUES (1);
+#              CREATE TABLE test2 (id int);';
