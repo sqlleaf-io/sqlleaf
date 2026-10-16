@@ -154,8 +154,47 @@ def test__simplify_format_expressions():
     sql_cast_paren = "SELECT FORMAT('%s, %s', CAST('hello' AS TEXT), ('world'))"
     assert simplify_format(**_args(sql_cast_paren)).sql(dialect=DIALECT) == "SELECT 'hello, world'"
 
-    with pytest.raises(ValueError, match="cannot evaluate format\\(\\) argument"):
-        simplify_format(**_args("SELECT FORMAT('%s', col_name)"))
+
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        ("SELECT QUOTE_IDENT('my table')", "SELECT '\"my table\"'"),
+        ("SELECT QUOTE_IDENT('target')", "SELECT 'target'"),
+        ("SELECT quote_literal('it''s')", "SELECT '''it''''s'''"),
+        ("SELECT quote_nullable(NULL)", "SELECT 'NULL'"),
+        ("SELECT quote_ident(NULL)", "SELECT NULL"),
+        (
+            "SELECT 'SELECT count(*) FROM ' || QUOTE_IDENT('My Table')",
+            "SELECT 'SELECT count(*) FROM ' || '\"My Table\"'",
+        ),
+    ],
+)
+def test__simplify_format_standalone_quote_calls(sql, expected):
+    assert simplify_format(**_args(sql)).sql(dialect=DIALECT) == expected
+
+
+def test__simplify_format_standalone_quote_call_root():
+    sql = "QUOTE_IDENT('x')"
+    assert simplify_format(**_args(sql)).sql(dialect=DIALECT) == "'x'"
+
+
+def test__simplify_format_standalone_quote_call_unresolved():
+    sql = "SELECT quote_ident(col) FROM t"
+    unchanged = sqlglot.parse_one(sql, dialect=DIALECT).sql(dialect=DIALECT)
+    out = simplify_format(**_args(sql))
+    assert out.sql(dialect=DIALECT) == unchanged
+
+
+def test__simplify_format_standalone_quote_call_wrong_arity():
+    sql = "SELECT quote_ident('a', 'b')"
+    sqlglot.parse_one(sql, dialect=DIALECT).sql(dialect=DIALECT)
+    with pytest.raises(ValueError, match="requires exactly one argument"):
+        simplify_format(**_args(sql))
+
+    sql_no_args = "SELECT quote_ident()"
+    unchanged_no_args = sqlglot.parse_one(sql_no_args, dialect=DIALECT).sql(dialect=DIALECT)
+    with pytest.raises(ValueError, match="requires exactly one argument"):
+        simplify_format(**_args(unchanged_no_args))
 
 
 def test__pg_format_additional_edge_cases():

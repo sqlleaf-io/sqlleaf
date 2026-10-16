@@ -26,13 +26,42 @@ _RESERVED_KEYWORDS = frozenset(
 )
 
 
+_QUOTE_FUNC_NAMES = frozenset({"quote_ident", "quote_literal", "quote_nullable"})
+
+
+def _is_quote_call(node: exp.Expression) -> bool:
+    """Check whether a node is a quote_ident/quote_literal/quote_nullable Anonymous call."""
+    return isinstance(node, exp.Anonymous) and node.name.lower() in _QUOTE_FUNC_NAMES
+
+
+def _eval_quote_call(node: exp.Anonymous) -> exp.Expression:
+    """Evaluate a standalone quote_ident/quote_literal/quote_nullable call into a literal (or NULL) expression."""
+    if len(node.expressions) != 1:
+        raise ValueError(f"{node.name.lower()}() requires exactly one argument")
+
+    if node.expressions[0] == exp.Null():
+        if node.this != "quote_nullable":
+            return exp.Null()
+
+    value = _eval_arg(node)
+    if not value:
+        return node
+
+    return exp.Null() if value is None else exp.Literal.string(value)
+
+
 def simplify_format(sql: exp.Expr, dialect: str) -> str | exp.Expr:
-    """Simplify FORMAT(...) expressions in an SQL query string or expression AST.
+    """Simplify FORMAT(...) and standalone quote_ident/quote_literal/quote_nullable(...) calls in an SQL query
+    string or expression AST.
 
     Example:
         SELECT FORMAT('Hello %s!', 'World')
         ->
         SELECT 'Hello World!'
+
+        SELECT QUOTE_IDENT('my table')
+        ->
+        SELECT '"my table"'
     """
     if dialect not in ("postgres", "plpgsql"):
         return sql
@@ -40,12 +69,22 @@ def simplify_format(sql: exp.Expr, dialect: str) -> str | exp.Expr:
     if isinstance(sql, exp.Format):
         return exp.Literal.string(_eval_format(sql))
 
-    if not sql.find(exp.Format):
+    if _is_quote_call(sql):
+        return _eval_quote_call(sql)
+
+    has_quote_calls = any(_is_quote_call(node) for node in sql.find_all(exp.Anonymous))
+    if not sql.find(exp.Format) and not has_quote_calls:
         return sql
 
     node = sql.copy()
     for fmt in list(node.find_all(exp.Format))[::-1]:
         fmt.replace(exp.Literal.string(_eval_format(fmt)))
+
+    for call in list(node.find_all(exp.Anonymous))[::-1]:
+        if not _is_quote_call(call):
+            continue
+        call.replace(_eval_quote_call(call))
+
     return node
 
 
@@ -210,5 +249,3 @@ def _eval_arg(node: exp.Expression | None) -> object:
             if func_name == "quote_literal":
                 return quote_literal(arg)
             return quote_nullable(arg)
-    arg_sql = node.sql(dialect="postgres")
-    raise ValueError(f"cannot evaluate format() argument: {arg_sql}")
