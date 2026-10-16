@@ -265,7 +265,12 @@ class ObjectMapping(MappingSchema):
         """
         if kind not in self.kind_mapping:
             if raise_on_missing:
-                raise exception.MappingError(f"Could not find '{object.this}' of type '{kind}' in mapping.")
+                if kind == "prepare":
+                    knd = "PREPARE"
+                else:
+                    knd = "CREATE " + {"udf": "FUNCTION"}.get(kind, kind).upper()
+
+                raise exception.MappingError(f"Could not find '{object.this}' of type '{kind}' in mapping. Did you forget to define a '{knd}' statement?")
             return None
 
         parts = self.table_parts(object)[0: len(self.supported_table_args)]
