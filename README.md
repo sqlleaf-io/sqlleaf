@@ -5,7 +5,7 @@ sqlleaf is a tool to help you to understand how your data flows across your data
 It extends beyond traditional lineage tools by mapping relationships across all kinds of expressions, such as columns, functions, literals and variables.
 
 ## Example
-Given some SQL queries in a file that insert data from one table into another:
+Add some SQL queries to a file:
 ```sql
 -- File: example.sql
 CREATE TABLE users (name VARCHAR(50), birthday DATE);
@@ -15,7 +15,7 @@ INSERT INTO users (name, birthday)
 SELECT LOWER(name) AS name, CURRENT_TIMESTAMP AS birthday
 FROM logins;
 ```
-And some Python code:
+Add some Python code:
 ```python
 sql = open("example.sql").read()
 
@@ -24,7 +24,7 @@ lineage = sqlleaf.Lineage()
 lineage.generate(sql=sql, dialect="postgres")
 lineage.print_paths()
 ```
-We can generate its lineage as a set of paths:
+View the lineage printed to the console:
 ```
 column[logins.name] -> function[LOWER] -> column[users.name]
 function[CURRENT_TIMESTAMP] -> column[users.birthday]
@@ -41,14 +41,14 @@ sqlleaf allows you to build a wide range of new applications on top of SQL datab
 
 ## Features
 ### Types of queries
-sqlleaf traces lineage across a wide range of DML queries, such as INSERT, UPDATE, MERGE, CTAS, COPY, UNLOAD, CTEs, and many more.
+sqlleaf traces lineage across a wide range of DML queries, such as `INSERT`, `UPDATE`, `MERGE`, `CREATE TABLE AS`, `COPY`, `UNLOAD`, CTEs, and many more.
 
 It parses over 30 dialects, extending functionality from the underlying SQL transpiler `sqlglot`.
 
-Some basic queries:
-```postgresql
+Here are some basic queries as examples:
+```sql
 -- Basic CTAS
-CREATE TABLE dst AS SELECT * FROM source;
+CREATE TABLE dst AS SELECT * FROM src;
 
 -- Basic UPDATE
 UPDATE dst t SET first_name = 'john', age = s.age FROM src s;
@@ -61,7 +61,7 @@ WITH my_cte AS (SELECT 1 AS num) INSERT INTO dst (age) SELECT c.num FROM my_cte 
 You can trace lineage across variables and complex, dynamically constructed statements. This works by analyzing the procedure's inner statements, substituting any arguments and variables, and transforming the statements into the desired queries.
 
 For example, given a query to calculate the row count of an arbitrary table:
-```postgresql
+```sql
 -- Define a PL/pgSQL procedure in Postgres
 CREATE PROCEDURE get_maximum_id(schema_name TEXT, table_name TEXT)
 AS $$
@@ -74,7 +74,7 @@ $$ LANGUAGE plpgsql;
 CALL get_maximum_id('public', 'users');
 ```
 sqlleaf extracts and transforms this into the statement:
-```postgresql
+```sql
 INSERT INTO target (my_value) SELECT MAX(id) FROM public.users;
 ```
 and then generates its lineage:
@@ -84,25 +84,38 @@ column[public.users.id] -> function[MAX] -> column[target.my_value]
 
 ### User-defined functions, procedures and types
 Given a user-defined function or a procedure, sqlleaf will extract the statement's inner queries so that they can be referenced by the calling query:
-```postgresql
+```sql
 -- Create the function
 CREATE FUNCTION hello() RETURNS TEXT AS $$
     SELECT 'Hello';
 $$ LANGUAGE SQL;
 
 -- Insert its value into a new table
-CREATE TABLE target (my_name VARCHAR);
-INSERT INTO target (my_name) SELECT hello();
+CREATE TABLE dst (my_name VARCHAR);
+INSERT INTO dst (my_name) SELECT hello();
 ```
 This will perform inline transformations to produce a new query:
-```postgresql
-INSERT INTO target (my_name) SELECT (SELECT 'hello') AS name;
+```sql
+INSERT INTO dst (my_name) SELECT (SELECT 'hello') AS name;
 ```
 with lineage:
-`literal['Hello'] -> column[target.name]`
+`literal['Hello'] -> column[dst.name]`
 
 ### Pivot, Unpivot
 Complex transformations such as pivots, unpivots, laterals and table functions are supported.
+
+```sql
+-- UNPIVOT example
+INSERT INTO dst
+SELECT name, amount
+FROM src
+UNPIVOT (
+  amount FOR name IN (john_total AS 'john')
+);
+```
+produces lineage: \
+`literal["john"] -> unpivot[] -> column[target.name]` \
+`column[source.john_total] -> unpivot[] -> column[target.amount]`
 
 ## Customization
 You can bring your own logic for processing SQL expressions and their nodes. 
@@ -133,14 +146,14 @@ There are various functions for printing the lineage: `print_paths()`, `print_tr
 Below are examples of SQL queries and their corresponding lineages.
 
 #### 1. Simple INSERT
-```postgresql
+```sql
 INSERT INTO dst (name) VALUES (3);
 ```
 `literal[3] -> column[dst.name]`
 
 #### 2. JSONPath selectors
-```postgresql
- INSERT INTO dst SELECT jsonblob ->> 'fruits' -> 'apple' AS name FROM src;
+```sql
+INSERT INTO dst SELECT jsonblob ->> 'fruits' -> 'apple' AS name FROM src;
 ```
 `column[src.name] → jsonpath[.fruits.apple] → column[dst.name]`
 
@@ -152,13 +165,13 @@ CREATE TABLE dst AS SELECT col1 FROM IDENTIFIER($b);
 `column[SRC.COL1] → column[DST.COL1]`
 
 #### 4. COPY queries
-```postgresql
+```sql
 COPY dst TO STDOUT;
 ```
 `column[dst.col1] → stream[stdout]` \
 `column[dst.col2] → stream[stdout] `
 
-```postgresql
+```sql
 COPY dst TO PROGRAM 'gzip > /tmp/data.csv.gz';
 ```
 `column[dst.col1] → program[gzip]` \
@@ -171,14 +184,14 @@ UNLOAD ('SELECT name FROM src') TO 's3://dst-bucket/name-prefix' IAM_ROLE '...';
 `column[src.name] → column[name path=s3://dst-bucket/name-prefix]`
 
 #### 6. Sequences
-```postgresql
+```sql
 CREATE SEQUENCE my_serial START 101;
 INSERT INTO dst (age) SELECT nextval('my_serial') as age;
 ```
 `sequence[my_serial] → column[dst.age]`
 
 #### 7. An UPDATE with inner CTEs containing UPDATEs that return their old and new columns
-```postgresql
+```sql
 WITH first_cte AS (
     UPDATE fruit.raw
     SET name = 'pear'
