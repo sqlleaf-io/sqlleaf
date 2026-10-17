@@ -96,7 +96,7 @@ def test__select_unknown_target_table_fails(holder):
         """
         holder(sql=sql, dialect=DIALECT)
 
-    assert e.value.args[0] == "Could not find 'unknown_table' of type 'table' in mapping."
+    assert e.value.args[0] == "Could not find 'unknown_table' of type 'table' in mapping. Did you forget to define a 'CREATE TABLE' statement?"
 
 
 def test__select_unknown_source_table_fails(holder):
