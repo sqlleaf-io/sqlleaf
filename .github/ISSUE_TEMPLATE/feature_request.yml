@@ -1,0 +1,59 @@
+name: Feature Request
+description: Suggest an idea or feature
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        # Feature request
+        Thank you for suggesting an idea to improve `sqlleaf`!
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Motivation
+      description: Is your feature request related to a problem or limitation? A clear and concise description of what the problem is.
+      placeholder: I need to parse queries so that ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution / Feature
+      description: A clear and concise description of what you want to happen.
+      placeholder: Add support for...
+    validations:
+      required: true
+  - type: textarea
+    id: sql-example
+    attributes:
+      label: Example SQL / Syntax
+      description: If applicable, provide example SQL queries.
+      render: sql
+      placeholder: |
+        -- Example SQL query or dialect-specific syntax
+    validations:
+      required: false
+  - type: textarea
+    id: lineage-example
+    attributes:
+      label: Example Lineage
+      description: If applicable, provide example lineage output.
+      placeholder: |
+        literal[1] -> column[my.col] -> column[theirs.col] ...
+    validations:
+      required: false
+  - type: textarea
+    id: dialect
+    attributes:
+      label: SQL Dialect
+      description: The SQL dialect(s) that this applies to. Use 'All' for all.
+    validations:
+      required: false
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context, references, or documentation links here.
+    validations:
+      required: false
