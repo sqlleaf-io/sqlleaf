@@ -30,6 +30,12 @@ column[logins.name] -> function[LOWER] -> column[users.name]
 function[CURRENT_TIMESTAMP] -> column[users.birthday]
 ```
 
+## Installation
+Available on PyPI:
+```
+pip3 install sqlleaf
+```
+
 ## Applications
 sqlleaf allows you to build a wide range of new applications on top of SQL databases, such as:
 - data tracing and tagging systems, such as personally identifiable information tracking
