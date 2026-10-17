@@ -17,7 +17,7 @@ from sqlleaf.processors.transformer.expressions import simplify_row_in_values
 
 logger = logging.getLogger("sqlleaf")
 
-IMMEDIATE_TRANSFORM = (BlockQuery, ForInQuery, IfQuery, LoopQuery, OpenQuery, WhileQuery)
+IMMEDIATE_TRANSFORM = (BlockQuery, ExceptionQuery, ForInQuery, IfQuery, LoopQuery, OpenQuery, WhileQuery)
 
 """
 Parses text for SQL statements and collects them into Query models.
@@ -135,6 +135,17 @@ def _collect_sequential_children(
         for block_expr in query.inner_statements:
             process_statement(block_expr, dialect, object_mapping, statement_idx, parent_holder=holder)
             statement_idx += 1
+
+        if query.exception_statement:
+            process_statement(query.exception_statement, dialect, object_mapping, statement_idx, parent_holder=holder)
+            statement_idx += 1
+
+    elif isinstance(query, ExceptionQuery):
+        statement_idx = 0
+        for when in query.whens:
+            for stmt in when.args.get("then") or []:
+                process_statement(stmt, dialect, object_mapping, statement_idx, parent_holder=holder)
+                statement_idx += 1
 
     elif isinstance(query, ForInQuery):
         process_statement(query.statement.args["query"], dialect, object_mapping, 0, parent_holder=holder)
@@ -388,6 +399,7 @@ _UNNAMED_TYPE_MAP: dict[type, type] = {
     # PL/pgSQL
     pgexp.PGBlock: BlockQuery,
     pgexp.PGDeclareItem: AssignmentQuery,
+    pgexp.PGException: ExceptionQuery,
     pgexp.PGFetch: FetchQuery,
     pgexp.PGForIn: ForInQuery,
     pgexp.PGIf: IfQuery,
@@ -694,6 +706,7 @@ _QUERY_PROCESSORS: dict[str, t.Callable] = {
     "type": _process_type,
     "pgblock": _process_unnamed,
     "pgdeclareitem": _process_unnamed,
+    "pgexception": _process_unnamed,
     "pgfetch": _process_unnamed,
     "pgforin": _process_unnamed,
     "pgif": _process_unnamed,

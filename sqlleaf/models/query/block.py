@@ -33,3 +33,7 @@ class BlockQuery(Query):
     @property
     def inner_statements(self) -> list[exp.Expr]:
         return self.statement.expressions
+
+    @property
+    def exception_statement(self) -> pgexp.PGException | None:
+        return self.statement.args.get("exception")

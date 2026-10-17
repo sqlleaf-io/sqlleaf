@@ -1,7 +1,7 @@
 import os
 import sys
 
-from sqlleaf.models.query import BlockQuery, ExecuteDynamicQuery, FetchQuery, IfQuery, InsertQuery, LoopQuery, OpenQuery, PerformQuery, QueryHolder
+from sqlleaf.models.query import BlockQuery, ExceptionQuery, ExecuteDynamicQuery, FetchQuery, IfQuery, InsertQuery, LoopQuery, OpenQuery, PerformQuery, QueryHolder
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -758,11 +758,86 @@ FETCH ALL IN my_cursor;
 COMMIT;
 """
 
+
+def test_procedure_exception_multiple_when(holder):
+    sql = """
+    CREATE TABLE source_a (name TEXT);
+    CREATE TABLE source_b (name TEXT);
+    CREATE TABLE source_c (name TEXT);
+    CREATE TABLE target (name TEXT);
+
+    CREATE OR REPLACE PROCEDURE test_multi_exception()
+    LANGUAGE plpgsql
+    AS $$
+    BEGIN
+        SELECT 1;
+    EXCEPTION
+        WHEN unique_violation THEN
+            INSERT INTO target (name) SELECT source_a.name FROM source_a;
+        WHEN division_by_zero THEN
+            INSERT INTO target (name) SELECT source_b.name FROM source_b;
+        WHEN OTHERS THEN
+            INSERT INTO target (name) SELECT source_c.name FROM source_c;
+    END;
+    $$;
+
+    CALL test_multi_exception();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    block_holder: QueryHolder = h.holders[5].downstream_holders[0]
+    assert isinstance(block_holder.original, BlockQuery)
+    exc_holder: QueryHolder = block_holder.downstream_holders[1]
+    assert isinstance(exc_holder.original, ExceptionQuery)
+    assert len(exc_holder.downstream_holders) == 3
+
+    assert h.paths == [
+        ["column[source_a.name]", "column[target.name]"],
+        ["column[source_b.name]", "column[target.name]"],
+        ["column[source_c.name]", "column[target.name]"],
+    ]
+
+
+def test_procedure_exception_nested_in_loop(holder):
+    sql = """
+    CREATE TABLE source (name TEXT);
+    CREATE TABLE target_a (name TEXT);
+    CREATE TABLE target_b (name TEXT);
+
+    CREATE OR REPLACE PROCEDURE test_exception_nested()
+    LANGUAGE plpgsql
+    AS $$
+    DECLARE
+        curs CURSOR FOR SELECT * FROM source;
+        r RECORD;
+    BEGIN
+        OPEN curs;
+        LOOP
+            FETCH curs INTO r;
+            BEGIN
+                INSERT INTO target_a (name) SELECT r.name;
+            EXCEPTION
+                WHEN OTHERS THEN
+                    INSERT INTO target_b (name) SELECT 'fallback';
+            END;
+        END LOOP;
+    END;
+    $$;
+
+    CALL test_exception_nested();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[source.name]", "column[target_a.name]"],
+        ['literal["fallback"]', "column[target_b.name]"],
+    ]
+
+
 # TODO:
 #  Test variable scoping (FOR loop has its vars popped)
 #  'INTO' ...
 #  FOREACH
-#  EXCEPTION WHEN .. THEN ..
 
 # EXECUTE 'CREATE TABLE test1 (id int);
 #              INSERT INTO test1 VALUES (1);
