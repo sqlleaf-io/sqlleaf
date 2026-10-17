@@ -1,7 +1,7 @@
 import os
 import sys
 
-from sqlleaf.models.query import BlockQuery, ExecuteDynamicQuery, FetchQuery, InsertQuery, LoopQuery, OpenQuery, PerformQuery, QueryHolder
+from sqlleaf.models.query import BlockQuery, ExecuteDynamicQuery, FetchQuery, IfQuery, InsertQuery, LoopQuery, OpenQuery, PerformQuery, QueryHolder
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -629,6 +629,112 @@ def test_procedure_fetch_multiple_targets(holder):
         ["column[source.a]", "column[target.a]"],
         ["column[source.b]", "column[target.b]"],
         ["column[source.c]", "column[target.c]"],
+    ]
+
+
+def test_procedure_if_elsif_else(holder):
+    sql = """
+    CREATE TABLE source_a (name TEXT);
+    CREATE TABLE source_b (name TEXT);
+    CREATE TABLE source_c (name TEXT);
+    CREATE TABLE target (name TEXT);
+
+    CREATE OR REPLACE PROCEDURE hello(val INT)
+    LANGUAGE PLPGSQL
+    AS $$
+    BEGIN
+        IF val = 1 THEN
+            INSERT INTO target (name) SELECT source_a.name FROM source_a;
+        ELSIF val = 2 THEN
+            INSERT INTO target (name) SELECT source_b.name FROM source_b;
+        ELSE
+            INSERT INTO target (name) SELECT source_c.name FROM source_c;
+        END IF;
+    END;
+    $$;
+
+    CALL hello(1);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    call_holder: QueryHolder = h.holders[5].downstream_holders[0]
+    if_holder: QueryHolder = call_holder.downstream_holders[0]
+    assert isinstance(if_holder.original, IfQuery)
+    assert len(if_holder.downstream_holders) == 3
+
+    assert h.paths == [
+        ["column[source_a.name]", "column[target.name]"],
+        ["column[source_b.name]", "column[target.name]"],
+        ["column[source_c.name]", "column[target.name]"],
+    ]
+
+
+def test_procedure_if_condition_excluded_from_lineage(holder):
+    sql = """
+    CREATE TABLE source (name TEXT, condition_col TEXT);
+    CREATE TABLE target (name TEXT);
+
+    CREATE OR REPLACE PROCEDURE hello()
+    LANGUAGE PLPGSQL
+    AS $$
+    DECLARE
+        cond_var TEXT := 'check';
+    BEGIN
+        IF cond_var = 'check' THEN
+            INSERT INTO target (name) SELECT source.name FROM source;
+        END IF;
+    END;
+    $$;
+
+    CALL hello();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+    assert h.paths == [
+        ["column[source.name]", "column[target.name]"],
+    ]
+    assert "column[source.condition_col]" not in h.nodes
+    assert 'literal["check"]' not in h.nodes
+
+
+def test_procedure_if_nested_in_loop(holder):
+    sql = """
+    CREATE TABLE source (name TEXT);
+    CREATE TABLE target_a (name TEXT);
+    CREATE TABLE target_b (name TEXT);
+
+    CREATE OR REPLACE PROCEDURE hello()
+    LANGUAGE PLPGSQL
+    AS $$
+    DECLARE
+        curs CURSOR FOR SELECT * FROM source;
+        r RECORD;
+    BEGIN
+        OPEN curs;
+        LOOP
+            FETCH curs INTO r;
+            IF r.name IS NOT NULL THEN
+                INSERT INTO target_a (name) SELECT r.name;
+            ELSE
+                INSERT INTO target_b (name) SELECT 'unknown';
+            END IF;
+        END LOOP;
+    END;
+    $$;
+
+    CALL hello();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    call_holder: QueryHolder = h.holders[4].downstream_holders[0]
+    loop_holder: QueryHolder = call_holder.downstream_holders[3]
+    assert isinstance(loop_holder.original, LoopQuery)
+    if_holder: QueryHolder = loop_holder.downstream_holders[1]
+    assert isinstance(if_holder.original, IfQuery)
+    assert len(if_holder.downstream_holders) == 2
+
+    assert h.paths == [
+        ["column[source.name]", "column[target_a.name]"],
+        ['literal["unknown"]', "column[target_b.name]"],
     ]
 
 """

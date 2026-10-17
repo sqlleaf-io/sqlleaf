@@ -13,6 +13,7 @@ from sqlleaf.models.query.execute_dynamic import ExecuteDynamicQuery as ExecuteD
 from sqlleaf.models.query.fetch import FetchQuery as FetchQuery
 from sqlleaf.models.query.for_in import ForInQuery as ForInQuery
 from sqlleaf.models.query.holder import QueryHolder as QueryHolder
+from sqlleaf.models.query.if_ import IfQuery as IfQuery
 from sqlleaf.models.query.insert import InsertQuery as InsertQuery
 from sqlleaf.models.query.loop import LoopQuery as LoopQuery
 from sqlleaf.models.query.merge import MergeQuery as MergeQuery
@@ -54,6 +55,7 @@ __all__ = [
     "FetchQuery",
     "ForInQuery",
     "FunctionParam",
+    "IfQuery",
     "InsertQuery",
     "LoopQuery",
     "MergeQuery",

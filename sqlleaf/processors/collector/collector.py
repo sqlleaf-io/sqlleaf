@@ -17,7 +17,7 @@ from sqlleaf.processors.transformer.expressions import simplify_row_in_values
 
 logger = logging.getLogger("sqlleaf")
 
-IMMEDIATE_TRANSFORM = (BlockQuery, ForInQuery, LoopQuery, OpenQuery, WhileQuery)
+IMMEDIATE_TRANSFORM = (BlockQuery, ForInQuery, IfQuery, LoopQuery, OpenQuery, WhileQuery)
 
 """
 Parses text for SQL statements and collects them into Query models.
@@ -141,6 +141,16 @@ def _collect_sequential_children(
 
         for i, stmt in enumerate(query.inner_statements):
             process_statement(stmt, dialect, object_mapping, i + 1, parent_holder=holder)
+
+    elif isinstance(query, IfQuery):
+        statement_idx = 0
+        for branch in query.branches:
+            for stmt in branch.args.get("then") or []:
+                process_statement(stmt, dialect, object_mapping, statement_idx, parent_holder=holder)
+                statement_idx += 1
+        for stmt in query.default_statements:
+            process_statement(stmt, dialect, object_mapping, statement_idx, parent_holder=holder)
+            statement_idx += 1
 
     elif isinstance(query, (LoopQuery, WhileQuery)):
         for i, stmt in enumerate(query.inner_statements):
@@ -380,6 +390,7 @@ _UNNAMED_TYPE_MAP: dict[type, type] = {
     pgexp.PGDeclareItem: AssignmentQuery,
     pgexp.PGFetch: FetchQuery,
     pgexp.PGForIn: ForInQuery,
+    pgexp.PGIf: IfQuery,
     pgexp.PGOpen: OpenQuery,
     pgexp.PGPerform: PerformQuery,
     pgexp.PGExecute: ExecuteDynamicQuery,
@@ -685,6 +696,7 @@ _QUERY_PROCESSORS: dict[str, t.Callable] = {
     "pgdeclareitem": _process_unnamed,
     "pgfetch": _process_unnamed,
     "pgforin": _process_unnamed,
+    "pgif": _process_unnamed,
     "pgloop": _process_unnamed,
     "pgopen": _process_unnamed,
     "pgperform": _process_unnamed,

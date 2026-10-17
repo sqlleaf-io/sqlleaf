@@ -151,7 +151,7 @@ class BaseQueryTransformer:
             return expression.subquery(copy=False)
 
         # Skip replacement of variables *inside* inner block statements; these are done for each individual statement later.
-        if isinstance(statement, (pgexp.PGBlock, pgexp.PGForIn, pgexp.PGLoop, exp.WhileBlock)):
+        if isinstance(statement, (pgexp.PGBlock, pgexp.PGForIn, pgexp.PGIf, pgexp.PGLoop, exp.WhileBlock)):
             return
 
         # Skip replacement of variables inside cursor declarations; cursors are instantiated when OPEN is executed.
