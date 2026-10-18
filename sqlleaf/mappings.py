@@ -60,13 +60,24 @@ class ObjectMapping(MappingSchema):
         if self.variable_scopes:
             self.variable_scopes.pop()
 
+    def declare_variable(self, name: str, value: exp.Expr | None = None) -> None:
+        """Declare a variable in the current (innermost) scope."""
+        val = value if value is not None else exp.Null()
+        self.variable_scopes[-1][name] = val
+        logger.debug(f"Declared variable: {name} := {val.sql(dialect=self.dialect)}")
+
     def set_variable(self, name: str, value: exp.Expr) -> None:
-        """Assign or declare a variable in the current scope."""
-        self.variable_scopes[-1][name] = value
-        logger.debug(f"Set variable value: {name} := {value.sql()}")
+        """Assign a variable in the nearest scope where it was declared."""
+        for scope in reversed(self.variable_scopes):
+            if name in scope:
+                scope[name] = value
+                logger.debug(f"Set variable value: {name} := {value.sql(dialect=self.dialect)}")
+                return
+
+        raise exception.MappingError(f'"{name}" is not a known variable')
 
     def get_variable(self, name: str, raise_on_missing: bool = True) -> exp.Expr | None:
-        """Resolve a variable by searching from innermost to outermost scopes, then session vars."""
+        """Resolve a variable by searching from innermost to outermost scopes."""
         for scope in reversed(self.variable_scopes):
             if name in scope:
                 return scope[name]
@@ -87,7 +98,7 @@ class ObjectMapping(MappingSchema):
         resolved = []
         for expr in expressions:
             if isinstance(expr, exp.Column) and not expr.table:
-                variable = self.get_variable(expr.name)
+                variable = self.get_variable(expr.name, raise_on_missing=False)
                 if variable is not None:
                     resolved.append(variable.copy())
                     continue

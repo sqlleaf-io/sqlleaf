@@ -26,6 +26,10 @@ class AssignmentQuery(Query):
             target_info=None,
         )
 
+    @property
+    def is_declaration(self) -> bool:
+        return isinstance(self.statement, pgexp.PGDeclareItem)
+
     def get_key(self) -> exp.Expr:
         return self.statement.this.name
 

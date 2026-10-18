@@ -1,6 +1,10 @@
 import os
 import sys
 
+import pytest
+import sqlglot
+
+from sqlleaf import exception
 from sqlleaf.models.query import BlockQuery, ExceptionQuery, ExecuteDynamicQuery, FetchQuery, IfQuery, InsertQuery, LoopQuery, OpenQuery, PerformQuery, QueryHolder
 from tests.new_fixtures import holder as holder
 
@@ -131,7 +135,7 @@ def test_procedure_perform_simple_select(holder):
         h.holders[3].downstream_holders[0].downstream_holders[0].parent_holder.downstream_holders[0].transformed
     )
     assert isinstance(perform_query, PerformQuery)
-    assert perform_query.statement.sql(dialect=DIALECT) == "PERFORM (SELECT 5 AS _col_0) AS _col_0"
+    assert perform_query.statement.sql(dialect=DIALECT) == "PERFORM (SELECT 5 AS _col_0) AS my_adder"
     assert h.paths == []
 
 
@@ -450,6 +454,7 @@ def test_procedure_open_cursor_bound_parameters(holder):
     LANGUAGE PLPGSQL
     AS $$
         DECLARE
+            r_name RECORD;
             curs CURSOR (key VARCHAR) FOR SELECT UPPER(key) as name;
         BEGIN
             OPEN curs('abc');
@@ -465,13 +470,13 @@ def test_procedure_open_cursor_bound_parameters(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     block_holder: QueryHolder = h.holders[3].downstream_holders[0]
-    open_query: OpenQuery = block_holder.downstream_holders[1].transformed
+    open_query: OpenQuery = block_holder.downstream_holders[2].transformed
     assert (
         open_query.statement.sql(dialect=DIALECT)
         == "OPEN curs FOR SELECT UPPER('abc') AS name"
     )
 
-    loop_holder: QueryHolder = block_holder.downstream_holders[2]
+    loop_holder: QueryHolder = block_holder.downstream_holders[3]
     insert_query: InsertQuery = loop_holder.downstream_holders[1].transformed
     # TODO: this a bug - only one column should be returned in the subquery
     assert (
@@ -491,6 +496,7 @@ def test_procedure_open_cursor_bound_parameters_with_variable(holder):
     AS $$
         DECLARE
             key varchar;
+            r_name RECORD;
             curs CURSOR (key VARCHAR) FOR SELECT UPPER(key) as name;
         BEGIN
             key := 'abc';
@@ -507,13 +513,13 @@ def test_procedure_open_cursor_bound_parameters_with_variable(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     block_holder: QueryHolder = h.holders[3].downstream_holders[0]
-    open_query: OpenQuery = block_holder.downstream_holders[3].transformed
+    open_query: OpenQuery = block_holder.downstream_holders[4].transformed
     assert (
         open_query.statement.sql(dialect=DIALECT)
         == "OPEN curs FOR SELECT UPPER('abc') AS name"
     )
 
-    loop_holder: QueryHolder = block_holder.downstream_holders[4]
+    loop_holder: QueryHolder = block_holder.downstream_holders[5]
     insert_query: InsertQuery = loop_holder.downstream_holders[1].transformed
     # TODO: this a bug - only one column should be returned in the subquery
     assert (
@@ -533,6 +539,7 @@ def test_procedure_open_cursor_bound_parameters_precedence(holder):
     AS $$
         DECLARE
             key varchar;
+            r_name RECORD;
             curs CURSOR (key VARCHAR) FOR SELECT UPPER(key) as name;
         BEGIN
             key := 'from_var';
@@ -549,7 +556,7 @@ def test_procedure_open_cursor_bound_parameters_precedence(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     block_holder: QueryHolder = h.holders[3].downstream_holders[0]
-    open_query: OpenQuery = block_holder.downstream_holders[3].transformed
+    open_query: OpenQuery = block_holder.downstream_holders[4].transformed
     assert (
         open_query.statement.sql(dialect=DIALECT)
         == "OPEN curs FOR SELECT UPPER('explicit') AS name"
@@ -569,6 +576,7 @@ def test_procedure_open_cursor_bound_parameters_multiple_and_unrelated_variable(
             k1 varchar;
             k2 varchar;
             unrelated varchar;
+            r_name RECORD;
             curs CURSOR (k1 VARCHAR, k2 VARCHAR) FOR SELECT UPPER(k1) as name, LOWER(k2) as other_name;
         BEGIN
             k1 := 'abc';
@@ -586,7 +594,7 @@ def test_procedure_open_cursor_bound_parameters_multiple_and_unrelated_variable(
     h = holder(sql=sql, dialect=DIALECT)
 
     block_holder: QueryHolder = h.holders[3].downstream_holders[0]
-    open_query: OpenQuery = block_holder.downstream_holders[6].transformed
+    open_query: OpenQuery = block_holder.downstream_holders[7].transformed
     assert (
         open_query.statement.sql(dialect=DIALECT)
         == "OPEN curs FOR SELECT UPPER('abc') AS name, LOWER('def') AS other_name"
@@ -831,6 +839,504 @@ def test_procedure_exception_nested_in_loop(holder):
     assert h.paths == [
         ["column[source.name]", "column[target_a.name]"],
         ['literal["fallback"]', "column[target_b.name]"],
+    ]
+
+
+def test_procedure_variable_scope_multilevel_shadowing(holder):
+    sql = """
+    CREATE TABLE target (lvl TEXT, val TEXT);
+
+    CREATE OR REPLACE PROCEDURE test_multilevel_scoping()
+    LANGUAGE PLPGSQL
+    AS $$
+    DECLARE
+        a TEXT := 'L1_a';
+    BEGIN
+        DECLARE
+            a TEXT := 'L2_a';
+            b TEXT := 'L2_b';
+        BEGIN
+            DECLARE
+                a TEXT := 'L3_a';
+            BEGIN
+                INSERT INTO target (lvl, val) SELECT 'L3', a || '_' || b;
+            END;
+            INSERT INTO target (lvl, val) SELECT 'L2', a || '_' || b;
+        END;
+        INSERT INTO target (lvl, val) SELECT 'L1', a;
+    END;
+    $$;
+
+    CALL test_multilevel_scoping();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal["L3"]', "column[target.lvl]"],
+        ['literal["L3_a_L2_b"]', "column[target.val]"],
+        ['literal["L2"]', "column[target.lvl]"],
+        ['literal["L2_a_L2_b"]', "column[target.val]"],
+        ['literal["L1"]', "column[target.lvl]"],
+        ['literal["L1_a"]', "column[target.val]"],
+    ]
+
+
+def test_procedure_variable_scope_inner_var_out_of_scope_fails(holder):
+    with pytest.raises(sqlglot.errors.OptimizeError) as e:
+        sql = """
+        CREATE TABLE target (val TEXT);
+
+        CREATE OR REPLACE PROCEDURE test_inner_var_out_of_scope()
+        LANGUAGE PLPGSQL
+        AS $$
+        BEGIN
+            DECLARE
+                inner_var TEXT := 'inner';
+            BEGIN
+                INSERT INTO target (val) SELECT inner_var;
+            END;
+            INSERT INTO target (val) SELECT inner_var;
+        END;
+        $$;
+
+        CALL test_inner_var_out_of_scope();
+        """
+        h = holder(sql=sql, dialect=DIALECT)
+    assert "Column 'inner_var' could not be resolved" in str(e.value)
+
+
+def test_procedure_variable_scope_for_loop_isolation(holder):
+    sql = """
+    CREATE TABLE source (name TEXT);
+    CREATE TABLE target_1 (val TEXT);
+    CREATE TABLE target_2 (val TEXT);
+
+    CREATE OR REPLACE PROCEDURE test_for_loop_isolation()
+    LANGUAGE PLPGSQL
+    AS $$
+    DECLARE
+        src RECORD;
+        val TEXT := 'outer_val';
+    BEGIN
+        FOR src IN SELECT name FROM source LOOP
+            DECLARE
+                val TEXT := 'loop_val';
+            BEGIN
+                INSERT INTO target_1 (val) SELECT val;
+            END;
+        END LOOP;
+        INSERT INTO target_2 (val) SELECT val;
+    END;
+    $$;
+
+    CALL test_for_loop_isolation();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal["loop_val"]', "column[target_1.val]"],
+        ['literal["outer_val"]', "column[target_2.val]"],
+    ]
+
+
+def test_procedure_variable_scope_inner_mutation_of_outer_var(holder):
+    sql = """
+    CREATE TABLE target (val TEXT);
+
+    CREATE OR REPLACE PROCEDURE test_inner_mutation_of_outer_var()
+    LANGUAGE PLPGSQL
+    AS $$
+    DECLARE
+        x TEXT := 'outer_init';
+    BEGIN
+        BEGIN
+            x := 'inner_modified';
+        END;
+        INSERT INTO target (val) SELECT x;
+    END;
+    $$;
+
+    CALL test_inner_mutation_of_outer_var();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal["inner_modified"]', "column[target.val]"],
+    ]
+
+
+def test_procedure_variable_scope_loop_mutation_of_outer_var(holder):
+    sql = """
+    CREATE TABLE source (name TEXT);
+    CREATE TABLE target (val TEXT);
+
+    CREATE OR REPLACE PROCEDURE test_loop_mutation_of_outer_var()
+    LANGUAGE PLPGSQL
+    AS $$
+    DECLARE
+        src RECORD;
+        x TEXT := 'before_loop';
+    BEGIN
+        FOR src IN SELECT name FROM source LOOP
+            x := 'during_loop';
+        END LOOP;
+        INSERT INTO target (val) SELECT x;
+    END;
+    $$;
+
+    CALL test_loop_mutation_of_outer_var();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal["during_loop"]', "column[target.val]"],
+    ]
+
+
+def test_procedure_variable_scope_for_range_loop_implicit_iterator(holder):
+    sql = """
+    CREATE TABLE target_1 (val INT);
+    CREATE TABLE target_2 (val INT);
+
+    CREATE OR REPLACE PROCEDURE test_for_range_scoping()
+    LANGUAGE PLPGSQL
+    AS $$
+    DECLARE
+        i INT := 100;
+    BEGIN
+        FOR i IN 1..3 LOOP
+            INSERT INTO target_1 (val) SELECT i;
+        END LOOP;
+        INSERT INTO target_2 (val) SELECT i;
+    END;
+    $$;
+
+    CALL test_for_range_scoping();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal[1]', "column[target_1.val]"],
+        ['literal[2]', "column[target_1.val]"],
+        ['literal[3]', "column[target_1.val]"],
+        ['literal[100]', "column[target_2.val]"],
+    ]
+
+
+def test_procedure_variable_scope_nested_shadowing_and_mutation(holder):
+    sql = """
+    CREATE TABLE target_l2 (x TEXT, y TEXT);
+    CREATE TABLE target_l1 (x TEXT, y TEXT);
+
+    CREATE OR REPLACE PROCEDURE test_nested_shadowing_and_mutation()
+    LANGUAGE PLPGSQL
+    AS $$
+    DECLARE
+        x TEXT := 'l1_x_init';
+        y TEXT := 'l1_y_init';
+    BEGIN
+        DECLARE
+            x TEXT := 'l2_x_shadow';
+        BEGIN
+            x := 'l2_x_modified';
+            y := 'l1_y_modified';
+            INSERT INTO target_l2 (x, y) SELECT x, y;
+        END;
+        INSERT INTO target_l1 (x, y) SELECT x, y;
+    END;
+    $$;
+
+    CALL test_nested_shadowing_and_mutation();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal["l2_x_modified"]', "column[target_l2.x]"],
+        ['literal["l1_y_modified"]', "column[target_l1.y]"],
+        ['literal["l1_y_modified"]', "column[target_l2.y]"],
+        ['literal["l1_x_init"]', "column[target_l1.x]"],
+    ]
+
+
+def test_procedure_variable_scope_while_and_simple_loop_mutation(holder):
+    sql = """
+    CREATE TABLE target (val_while TEXT, val_loop TEXT);
+
+    CREATE OR REPLACE PROCEDURE test_loop_mutations()
+    LANGUAGE PLPGSQL
+    AS $$
+    DECLARE
+        w TEXT := 'before_while';
+        l TEXT := 'before_loop';
+    BEGIN
+        WHILE TRUE LOOP
+            w := 'in_while';
+            EXIT;
+        END LOOP;
+
+        LOOP
+            l := 'in_loop';
+            EXIT;
+        END LOOP;
+
+        INSERT INTO target (val_while, val_loop) SELECT w, l;
+    END;
+    $$;
+
+    CALL test_loop_mutations();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal["in_while"]', "column[target.val_while]"],
+        ['literal["in_loop"]', "column[target.val_loop]"],
+    ]
+
+
+def test_procedure_variable_scope_for_range_variable_bound(holder):
+    sql = """
+    CREATE TABLE target (val INT);
+
+    CREATE OR REPLACE PROCEDURE test_for_range_bound()
+    LANGUAGE PLPGSQL
+    AS $$
+    DECLARE
+        start_val INT := 5;
+        i INT := 999;
+    BEGIN
+        FOR i IN start_val..10 LOOP
+            INSERT INTO target (val) SELECT i;
+        END LOOP;
+    END;
+    $$;
+
+    CALL test_for_range_bound();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal[5]', "column[target.val]"],
+        ['literal[6]', "column[target.val]"],
+        ['literal[7]', "column[target.val]"],
+        ['literal[8]', "column[target.val]"],
+        ['literal[9]', "column[target.val]"],
+        ['literal[10]', "column[target.val]"],
+    ]
+
+
+def test_procedure_variable_assignment_undeclared_fails(holder):
+    sql = """
+    CREATE OR REPLACE PROCEDURE test_undeclared_assignment()
+    LANGUAGE PLPGSQL
+    AS $$
+    BEGIN
+        undeclared_var := 'val';
+    END;
+    $$;
+
+    CALL test_undeclared_assignment();
+    """
+    with pytest.raises(exception.MappingError) as exc_info:
+        holder(sql=sql, dialect=DIALECT)
+    assert '"undeclared_var" is not a known variable' in str(exc_info.value)
+
+
+def test_procedure_variable_assignment_nested_undeclared_fails(holder):
+    sql = """
+    CREATE OR REPLACE PROCEDURE test_nested_undeclared_assignment()
+    LANGUAGE PLPGSQL
+    AS $$
+    DECLARE
+        x TEXT := 'init';
+    BEGIN
+        BEGIN
+            y := 'val';
+        END;
+    END;
+    $$;
+
+    CALL test_nested_undeclared_assignment();
+    """
+    with pytest.raises(exception.MappingError) as exc_info:
+        holder(sql=sql, dialect=DIALECT)
+    assert '"y" is not a known variable' in str(exc_info.value)
+
+
+def test_procedure_for_range_reverse(holder):
+    sql = """
+    CREATE TABLE target (val INT);
+
+    CREATE OR REPLACE PROCEDURE test_for_range_rev()
+    LANGUAGE PLPGSQL
+    AS $$
+    BEGIN
+        FOR i IN REVERSE 3..1 LOOP
+            RAISE NOTICE '%', i;
+            INSERT INTO target (val) SELECT i;
+        END LOOP;
+    END;
+    $$;
+
+    CALL test_for_range_rev();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal[3]', "column[target.val]"],
+        ['literal[2]', "column[target.val]"],
+        ['literal[1]', "column[target.val]"],
+    ]
+
+
+def test_procedure_for_range_by_step(holder):
+    sql = """
+    CREATE TABLE target (val INT);
+
+    CREATE OR REPLACE PROCEDURE test_for_range_step()
+    LANGUAGE PLPGSQL
+    AS $$
+    BEGIN
+        FOR i IN 1..5 BY 2 LOOP
+            INSERT INTO target (val) SELECT i;
+        END LOOP;
+    END;
+    $$;
+
+    CALL test_for_range_step();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal[1]', "column[target.val]"],
+        ['literal[3]', "column[target.val]"],
+        ['literal[5]', "column[target.val]"],
+    ]
+
+
+def test_procedure_for_range_reverse_by_step(holder):
+    sql = """
+    CREATE TABLE target (val INT);
+
+    CREATE OR REPLACE PROCEDURE test_for_range_rev_step()
+    LANGUAGE PLPGSQL
+    AS $$
+    BEGIN
+        FOR i IN REVERSE 5..1 BY 2 LOOP
+            INSERT INTO target (val) SELECT i;
+        END LOOP;
+    END;
+    $$;
+
+    CALL test_for_range_rev_step();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal[5]', "column[target.val]"],
+        ['literal[3]', "column[target.val]"],
+        ['literal[1]', "column[target.val]"],
+    ]
+
+
+def test_procedure_for_range_negative_bounds(holder):
+    sql = """
+    CREATE TABLE target (val INT);
+
+    CREATE OR REPLACE PROCEDURE test_for_range_neg()
+    LANGUAGE PLPGSQL
+    AS $$
+    BEGIN
+        FOR i IN -3..-1 LOOP
+            INSERT INTO target (val) SELECT i;
+        END LOOP;
+    END;
+    $$;
+
+    CALL test_for_range_neg();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal[-3]', "column[target.val]"],
+        ['literal[-2]', "column[target.val]"],
+        ['literal[-1]', "column[target.val]"],
+    ]
+
+
+def test_procedure_for_range_empty(holder):
+    sql = """
+    CREATE TABLE target (val INT);
+
+    CREATE OR REPLACE PROCEDURE test_for_range_empty_proc()
+    LANGUAGE PLPGSQL
+    AS $$
+    BEGIN
+        FOR i IN 3..1 LOOP
+            INSERT INTO target (val) SELECT i;
+        END LOOP;
+    END;
+    $$;
+
+    CALL test_for_range_empty_proc();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == []
+
+
+def test_procedure_for_range_outer_var_mutation_across_iterations(holder):
+    sql = """
+    CREATE TABLE target (val INT, total INT);
+
+    CREATE OR REPLACE PROCEDURE test_range_mutation()
+    LANGUAGE PLPGSQL
+    AS $$
+    DECLARE
+        accum INT := 0;
+    BEGIN
+        FOR i IN 1..3 LOOP
+            accum := accum + 10;
+            INSERT INTO target (val, total) SELECT i, accum;
+        END LOOP;
+    END;
+    $$;
+
+    CALL test_range_mutation();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal[1]', "column[target.val]"],
+        ['literal[10]', "column[target.total]"],
+        ['literal[2]', "column[target.val]"],
+        ['literal[20]', "column[target.total]"],
+        ['literal[3]', "column[target.val]"],
+        ['literal[30]', "column[target.total]"],
+    ]
+
+
+def test_procedure_for_range_expression_bounds(holder):
+    sql = """
+    CREATE TABLE target (val INT);
+
+    CREATE OR REPLACE PROCEDURE test_for_range_expr_bounds()
+    LANGUAGE PLPGSQL
+    AS $$
+    BEGIN
+        FOR i IN (1 + 1)..(2 * 3) BY (1 + 1) LOOP
+            INSERT INTO target (val) SELECT i;
+        END LOOP;
+    END;
+    $$;
+
+    CALL test_for_range_expr_bounds();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal[2]', "column[target.val]"],
+        ['literal[4]', "column[target.val]"],
+        ['literal[6]', "column[target.val]"],
     ]
 
 

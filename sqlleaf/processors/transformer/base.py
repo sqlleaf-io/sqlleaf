@@ -150,7 +150,14 @@ class BaseQueryTransformer:
             return expression.subquery(copy=False)
 
         # Skip replacement of variables *inside* inner block statements; these are done for each individual statement later.
-        if isinstance(statement, (pgexp.PGBlock, pgexp.PGException, pgexp.PGForIn, pgexp.PGIf, pgexp.PGLoop, exp.WhileBlock)):
+        if isinstance(statement, (pgexp.PGBlock, pgexp.PGException, pgexp.PGIf, pgexp.PGLoop, exp.WhileBlock)):
+            return
+
+        if isinstance(statement, pgexp.PGForIn):
+            for key in ("start", "end", "step", "query"):
+                child = statement.args.get(key)
+                if isinstance(child, exp.Expr):
+                    self.replace_variables_in_expression(child)
             return
 
         # Skip replacement of variables inside cursor declarations; cursors are instantiated when OPEN is executed.
@@ -161,6 +168,13 @@ class BaseQueryTransformer:
         for column in list(statement.find_all(exp.Column)):
             if column.parent is None:
                 continue
+
+            # If the column is on the LHS of an assignment or declaration, skip it.
+            if isinstance(statement, (exp.PropertyEQ, pgexp.PGDeclareItem)):
+                if column is statement.this or (
+                    isinstance(statement.this, exp.Expr) and column in statement.this.find_all(exp.Column)
+                ):
+                    continue
 
             # If the column is after 'INTO', skip it.
             if isinstance(statement, pgexp.PGFetch):

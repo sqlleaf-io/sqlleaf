@@ -72,7 +72,7 @@ def process_statement(
     if isinstance(query, IMMEDIATE_TRANSFORM):
         # Immediately transform queries inside a dynamic SQL block so that subsequent statements can used their values
         transformer.transform_query(holder)
-        _collect_sequential_children(query, holder, dialect, object_mapping)
+        _collect_sequential_children(holder.transformed, holder, dialect, object_mapping)
     else:
         _resolve_call_sites(query, holder, dialect, object_mapping)
         _collect_structural_children(query, holder, dialect, object_mapping)
@@ -148,10 +148,24 @@ def _collect_sequential_children(
                 statement_idx += 1
 
     elif isinstance(query, ForInQuery):
-        process_statement(query.statement.args["query"], dialect, object_mapping, 0, parent_holder=holder)
+        if query.is_range:
+            target_name = query.target.name
+            statement_idx = 0
+            # Loop over the inner statements N times (where N = the loop count)
+            for loop_val in query.range_values():
+                val_expr = exp.Neg(this=exp.Literal.number(-loop_val)) if loop_val < 0 else exp.Literal.number(loop_val)
+                object_mapping.declare_variable(target_name, val_expr)
 
-        for i, stmt in enumerate(query.inner_statements):
-            process_statement(stmt, dialect, object_mapping, i + 1, parent_holder=holder)
+                for stmt in query.inner_statements:
+                    stmt_copy = util.copy_expression(stmt)
+                    process_statement(stmt_copy, dialect, object_mapping, statement_idx, parent_holder=holder)
+                    statement_idx += 1
+        else:
+            if query.query is not None:
+                process_statement(query.query, dialect, object_mapping, 0, parent_holder=holder)
+
+            for i, stmt in enumerate(query.inner_statements):
+                process_statement(stmt, dialect, object_mapping, i + 1, parent_holder=holder)
 
     elif isinstance(query, IfQuery):
         statement_idx = 0
@@ -715,6 +729,7 @@ _QUERY_PROCESSORS: dict[str, t.Callable] = {
     "pgperform": _process_unnamed,
     "pgexecute": _process_unnamed,
     "propertyeq": _process_unnamed,
+    "whileblock": _process_unnamed,
 }
 
 

@@ -48,7 +48,10 @@ def set_variables_in_scope(query: Q) -> None:
         # `my_var := 42`
         name = query.get_key()
         value = query.get_value()
-        query.object_mapping.set_variable(name=name, value=value)
+        if query.is_declaration:
+            query.object_mapping.declare_variable(name=name, value=value)
+        else:
+            query.object_mapping.set_variable(name=name, value=value)
 
     elif isinstance(query, SelectQuery):
         original_stmt = query.holder.original.statement

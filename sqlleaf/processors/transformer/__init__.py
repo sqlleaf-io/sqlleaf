@@ -6,6 +6,7 @@ from sqlleaf.processors.transformer.ctas import CTASTransformer
 from sqlleaf.processors.transformer.delete import DeleteTransformer
 from sqlleaf.processors.transformer.execute import ExecuteTransformer
 from sqlleaf.processors.transformer.execute_dynamic import ExecuteDynamicTransformer
+from sqlleaf.processors.transformer.for_in import ForInTransformer
 from sqlleaf.processors.transformer.insert import InsertTransformer
 from sqlleaf.processors.transformer.merge import MergeTransformer
 from sqlleaf.processors.transformer.multitable_insert import MultitableInsertTransformer
@@ -24,6 +25,7 @@ __all__ = [
     "DeleteTransformer",
     "ExecuteTransformer",
     "ExecuteDynamicTransformer",
+    "ForInTransformer",
     "InsertTransformer",
     "MergeTransformer",
     "MultitableInsertTransformer",
