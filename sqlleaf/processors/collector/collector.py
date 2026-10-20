@@ -50,18 +50,25 @@ def process_statement(
         if not kind:
             statement, kind = _determine_query_kind(statement, dialect)
 
-    if kind not in _QUERY_PROCESSORS:
-        return None
-
     stmt = normalize_identifiers(statement, dialect=dialect, store_original_column_identifiers=True)
     stmt = _unnest_values_inside_select(stmt, dialect=dialect)
 
     if kind != "set" and object_mapping.session_variables:
         stmt = substitute.substitute_session_variables(stmt, object_mapping.session_variables)
 
-    query: Q | None = _QUERY_PROCESSORS[kind](
-        statement=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
-    )
+    processor = _get_query_processor(kind)
+    if processor is _process_unnamed:
+        try:
+            query: Q | None = _process_unnamed(
+                statement=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+            )
+        except exception.UnsupportedFeatureError:
+            # No handler for this statement; collect_queries counts it as unknown
+            return None
+    else:
+        query = processor(
+            statement=stmt, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
     if query is None:
         return None
 
@@ -242,13 +249,11 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
         if not kind:
             stmt, kind = _determine_query_kind(stmt, dialect)
 
-        if kind not in _QUERY_PROCESSORS:
-            unknown[kind] = unknown[kind] + 1 if kind in unknown else 1
-            continue
-
         holder = process_statement(stmt, dialect, object_mapping, statement_index=index, kind=kind)
         if holder is not None:
             queries.append(holder)
+        elif _get_query_processor(kind) is _process_unnamed:
+            unknown[kind] = unknown[kind] + 1 if kind in unknown else 1
 
     return CollectQueryResult(queries=queries, unknown=unknown, unsupported=unsupported)
 
@@ -697,49 +702,28 @@ def _process_database(
     object_mapping.add_database_query(query)
     return query
 
-# TODO: if not in list, use '_process_unnamed'
+
 _QUERY_PROCESSORS: dict[str, t.Callable] = {
     "table": _process_tables,
     "ctas": _process_views_and_ctas,
     "view": _process_views_and_ctas,
     "sequence": _process_tables,
     "procedure": _process_stored_procedures,
-    "multitableinserts": _process_unnamed,
     "function": _process_functions,
     "database": _process_database,
     "trigger": _process_triggers,
-    "select": _process_unnamed,
-    "insert": _process_unnamed,
-    "update": _process_unnamed,
-    "merge": _process_unnamed,
-    "delete": _process_unnamed,
     "schema": _process_schema,
     "unload": _process_unload,
     "replace": _process_replace,
     "prepare": _process_prepare,
     "execute": _process_execute,
     "stage": _process_stage,
-    "call": _process_unnamed,
-    "do": _process_unnamed,
-    "copy": _process_unnamed,
-    "put": _process_unnamed,
-    "set": _process_unnamed,
-    "values": _process_unnamed,
     "type": _process_type,
-    "pgblock": _process_unnamed,
-    "pgcase": _process_unnamed,
-    "pgdeclareitem": _process_unnamed,
-    "pgexception": _process_unnamed,
-    "pgfetch": _process_unnamed,
-    "pgforin": _process_unnamed,
-    "pgif": _process_unnamed,
-    "pgloop": _process_unnamed,
-    "pgopen": _process_unnamed,
-    "pgperform": _process_unnamed,
-    "pgexecute": _process_unnamed,
-    "propertyeq": _process_unnamed,
-    "whileblock": _process_unnamed,
 }
+
+
+def _get_query_processor(kind: str) -> t.Callable:
+    return _QUERY_PROCESSORS.get(kind, _process_unnamed)
 
 
 def _split_combined_statements(parsed: list[exp.Expr]) -> list[exp.Expr]:
