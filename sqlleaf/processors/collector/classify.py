@@ -52,6 +52,8 @@ def _classify_command(stmt: exp.Command, dialect: str) -> tuple[str, bool]:
         return "replace", _is_replace_supported(stmt, dialect)
     if stmt.this.upper() == "CALL":
         return "call", True
+    if stmt.this.upper() == "DO" or stmt.name.upper() == "DO":
+        return "do", True
     return "", False
 
 

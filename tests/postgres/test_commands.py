@@ -9,17 +9,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 DIALECT = "postgres"
 
 
-# sqlglot doesn't support DO - Falling back to parsing as a 'Command'.
-def test__do_fails(holder):
-    sql = """
-    DO $$
-        SELECT 'hello';
-    $$ LANGUAGE SQL;
-    """
-    h = holder(sql=sql, dialect=DIALECT)
-    assert len(h.queries_original) == 0
-
-
 # sqlglot doesn't support CREATE RULE - Falling back to parsing as a 'Command'.
 def test__rule(holder):
     sql = """
@@ -30,3 +19,4 @@ def test__rule(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert len(h.queries_original) == 0
+    assert len(h.collected_queries.unsupported) == 1
