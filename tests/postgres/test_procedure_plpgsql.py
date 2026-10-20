@@ -5,7 +5,7 @@ import pytest
 import sqlglot
 
 from sqlleaf import exception
-from sqlleaf.models.query import BlockQuery, ExceptionQuery, ExecuteDynamicQuery, FetchQuery, IfQuery, InsertQuery, LoopQuery, OpenQuery, PerformQuery, QueryHolder
+from sqlleaf.models.query import BlockQuery, CaseQuery, ExceptionQuery, ExecuteDynamicQuery, FetchQuery, IfQuery, InsertQuery, LoopQuery, OpenQuery, PerformQuery, QueryHolder
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -744,6 +744,113 @@ def test_procedure_if_nested_in_loop(holder):
         ["column[source.name]", "column[target_a.name]"],
         ['literal["unknown"]', "column[target_b.name]"],
     ]
+
+
+# TODO: include only those statements that match the condition
+def test_procedure_case_when_searched_branches(holder):
+    sql = """
+    CREATE TABLE source_a (name TEXT);
+    CREATE TABLE source_b (name TEXT);
+    CREATE TABLE source_c (name TEXT);
+    CREATE TABLE target (name TEXT);
+
+    CREATE OR REPLACE PROCEDURE hello(val INT)
+    LANGUAGE PLPGSQL
+    AS $$
+    BEGIN
+        CASE
+            WHEN val = 1 THEN
+                INSERT INTO target (name) SELECT source_a.name FROM source_a;
+            WHEN val = 2 THEN
+                INSERT INTO target (name) SELECT source_b.name FROM source_b;
+            ELSE
+                INSERT INTO target (name) SELECT source_c.name FROM source_c;
+        END CASE;
+    END;
+    $$;
+
+    CALL hello(1);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    call_holder: QueryHolder = h.holders[5].downstream_holders[0]
+    case_holder: QueryHolder = call_holder.downstream_holders[0]
+    assert isinstance(case_holder.original, CaseQuery)
+    assert len(case_holder.downstream_holders) == 3
+
+    assert h.paths == [
+        ["column[source_a.name]", "column[target.name]"],
+        ["column[source_b.name]", "column[target.name]"],
+        ["column[source_c.name]", "column[target.name]"],
+    ]
+
+
+# TODO: include only those statements that match the condition
+def test_procedure_case_when_simple_without_else(holder):
+    sql = """
+    CREATE TABLE source_a (name TEXT);
+    CREATE TABLE source_b (name TEXT);
+    CREATE TABLE target (name TEXT);
+
+    CREATE OR REPLACE PROCEDURE hello(val INT)
+    LANGUAGE PLPGSQL
+    AS $$
+    BEGIN
+        CASE val
+            WHEN 1 THEN
+                INSERT INTO target (name) SELECT source_a.name FROM source_a;
+            WHEN 2, 3 THEN
+                INSERT INTO target (name) SELECT source_b.name FROM source_b;
+        END CASE;
+    END;
+    $$;
+
+    CALL hello(1);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    call_holder: QueryHolder = h.holders[4].downstream_holders[0]
+    case_holder: QueryHolder = call_holder.downstream_holders[0]
+    assert isinstance(case_holder.original, CaseQuery)
+    assert len(case_holder.downstream_holders) == 2
+
+    assert h.paths == [
+        ["column[source_a.name]", "column[target.name]"],
+        ["column[source_b.name]", "column[target.name]"],
+    ]
+
+
+# TODO: include only those statements that match the condition
+def test_procedure_case_branch_variable_resolution(holder):
+    sql = """
+    CREATE TABLE target (name TEXT);
+
+    CREATE OR REPLACE PROCEDURE hello(val INT)
+    LANGUAGE PLPGSQL
+    AS $$
+    DECLARE
+        my_name varchar;
+    BEGIN
+        CASE val
+            WHEN 1 THEN
+                my_name := 'one';
+                INSERT INTO target (name) SELECT my_name;
+            ELSE
+                my_name := 'other';
+                INSERT INTO target (name) SELECT my_name;
+        END CASE;
+    END;
+    $$;
+
+    CALL hello(1);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal["one"]', "column[target.name]"],
+        ['literal["other"]', "column[target.name]"],
+    ]
+
 
 """
 CREATE OR REPLACE FUNCTION get_simple_cursor(refcursor)
