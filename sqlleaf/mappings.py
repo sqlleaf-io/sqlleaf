@@ -5,13 +5,16 @@ import typing as t
 
 from sqlglot import MappingSchema, exp
 from sqlglot.dialects.dialect import DialectType
+from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
 
 from sqlleaf import exception, util
 from sqlleaf.models.query import (
+    CallQuery,
     CTASQuery,
     DatabaseQuery,
+    FunctionParam,
     PrepareQuery,
     ProcedureQuery,
     Q,
@@ -26,6 +29,7 @@ from sqlleaf.models.query import (
 )
 
 ColumnMapping = t.Union[dict, str, list]
+FunctionCallable = ProcedureQuery | UserDefinedFunctionQuery
 
 logger = logging.getLogger("sqlleaf")
 
@@ -136,7 +140,7 @@ class ObjectMapping(MappingSchema):
         self._add_query(query=query, dialect=query.dialect)
 
     def add_type_query(self, query: TypeQuery) -> None:
-        self._add_query( query=query, dialect=query.dialect)
+        self._add_query(query=query, dialect=query.dialect)
 
     def add_udf_query(self, query: UserDefinedFunctionQuery, column_mapping: ColumnMapping | None = None) -> None:
         self._add_query(query=query, column_mapping=column_mapping, dialect=query.dialect)
@@ -148,7 +152,7 @@ class ObjectMapping(MappingSchema):
         dialect: DialectType = None,
         normalize: bool | None = None,
         match_depth: bool = False,
-        kind: str = ""
+        kind: str = "",
     ) -> None:
         """
         Register or update a table. Updates are only performed if a new column mapping is provided.
@@ -179,6 +183,11 @@ class ObjectMapping(MappingSchema):
             # Store the UDF with other UDFs of the same name
             udfs_with_same_name = self.lookup_udf_query(table, raise_on_missing=False) or []
             query = [query] + udfs_with_same_name
+        elif kind == "procedure":
+            # Store the procedure with other overloads of the same name, replacing an identical signature
+            procedures_with_same_name = self.lookup_procedure_query(table, raise_on_missing=False) or []
+            other_overloads = [p for p in procedures_with_same_name if not _has_same_parameter_types(p, query)]
+            query = [query] + other_overloads
 
         # Store the object
         nested_set(self.kind_mapping[kind], tuple(reversed(parts)), query)
@@ -230,7 +239,8 @@ class ObjectMapping(MappingSchema):
     def lookup_prepare_query(self, table: exp.Table, raise_on_missing: bool = True) -> PrepareQuery | None:
         return self._lookup_query(kind="prepare", object=table, raise_on_missing=raise_on_missing)
 
-    def lookup_procedure_query(self, table: exp.Table, raise_on_missing: bool = True) -> ProcedureQuery | None:
+    def lookup_procedure_query(self, table: exp.Table, raise_on_missing: bool = True) -> list[ProcedureQuery] | None:
+        # A procedure can be overloaded with different parameters, thus we return a list
         return self._lookup_query(kind="procedure", object=table, raise_on_missing=raise_on_missing)
 
     def lookup_sequence_query(self, table: exp.Table, raise_on_missing: bool = True) -> SequenceQuery | None:
@@ -281,10 +291,12 @@ class ObjectMapping(MappingSchema):
                 else:
                     knd = "CREATE " + {"udf": "FUNCTION"}.get(kind, kind).upper()
 
-                raise exception.MappingError(f"Could not find '{object.this}' of type '{kind}' in mapping. Did you forget to define a '{knd}' statement?")
+                raise exception.MappingError(
+                    f"Could not find '{object.this}' of type '{kind}' in mapping. Did you forget to define a '{knd}' statement?"
+                )
             return None
 
-        parts = self.table_parts(object)[0: len(self.supported_table_args)]
+        parts = self.table_parts(object)[0 : len(self.supported_table_args)]
         resolved_parts = self._find_in_trie(parts, self.kind_mapping_trie[kind], raise_on_missing)
 
         if resolved_parts is None:
@@ -344,6 +356,23 @@ class ObjectMapping(MappingSchema):
 
         return resolve_overloaded_function(node, candidates)
 
+    def lookup_procedure_call(self, node: CallQuery) -> ProcedureQuery | None:
+        """
+        Looks up the procedure definition for a CALL statement.
+        Returns the matched procedure definition, or None if no procedure with that name exists.
+        """
+        procedure_table = exp.table_(table=node.procedure, db=node.schema)
+        candidates = self.lookup_procedure_query(table=procedure_table, raise_on_missing=False)
+        if not candidates:
+            return None
+
+        # Annotate copies so the call's own expressions are left untouched
+        args = [arg.copy() for arg in node.args]
+        for arg in args:
+            annotate_types(_get_call_arg_value(arg), dialect=self.dialect, schema=self)
+
+        return resolve_overloaded_procedure(args, candidates)
+
 
 def resolve_overloaded_function(
     node: exp.Anonymous, candidates: list[UserDefinedFunctionQuery]
@@ -358,13 +387,7 @@ def resolve_overloaded_function(
 
     # Function overloading: find the best match based on arguments
     args = node.expressions
-    matches = []
-    for candidate in candidates:
-        if match_function_arguments(args, candidate):
-            matches.append(candidate)
-
-    if not matches:
-        raise exception.MappingError(f"No matching function signatures found for args: {args}")
+    matches = match_overloads(args, candidates, lambda a, c: match_callable_arguments(a, c.parameters), "function")
 
     if len(matches) == 1:
         return matches[0]
@@ -394,25 +417,127 @@ def resolve_overloaded_function(
     return matches[0]
 
 
-def match_function_arguments(args: list[exp.Expr], candidate: UserDefinedFunctionQuery) -> bool:
+def _has_same_parameter_types(left: ProcedureQuery, right: ProcedureQuery) -> bool:
     """
-    Checks if the provided arguments match the function candidate's parameters.
-    Handles exact types, polymorphic types (anyelement, anyarray), and VARIADIC parameters.
+    Compare the parameter types of two procedures.
     """
-    params = candidate.parameters
-    arg_count = len(args)
-    param_count = len(params)
+    return [str(p.type) for p in left.parameters] == [str(p.type) for p in right.parameters]
 
-    has_variadic = any(p.is_variadic for p in params)
 
-    if not has_variadic:
-        if arg_count != param_count:
+def match_overloads(
+    args: list[exp.Expr],
+    candidates: list[FunctionCallable],
+    matcher: t.Callable[[list[exp.Expr], FunctionCallable], bool],
+    kind: str,
+) -> list[FunctionCallable]:
+    """
+    Returns the candidates whose signature matches the arguments.
+    Raises if no candidate matches.
+    """
+    matches = [candidate for candidate in candidates if matcher(args, candidate)]
+    if not matches:
+        raise exception.MappingError(f"No matching {kind} signatures found for args: {args}")
+
+    return matches
+
+
+def resolve_overloaded_procedure(args: list[exp.Expr], candidates: list[ProcedureQuery]) -> ProcedureQuery:
+    """
+    Resolves the procedure overload that the CALL arguments bind to.
+    Raises if no overload matches.
+
+    Example:
+        args = [annotate_types(exp.Literal.number(42))]  # type INT
+        candidates = [p_text_proc, p_int_proc]
+        # p_text_proc: ProcedureQuery for process_order(a TEXT)
+        # p_int_proc:  ProcedureQuery for process_order(a INT)
+        resolve_overloaded_procedure(args, candidates)
+        -> p_int_proc  # process_order(a INT), even though the TEXT candidate is listed first
+    """
+    matches = match_overloads(args, candidates, lambda a, c: match_callable_arguments(a, c.parameters), "procedure")
+    return matches[0]
+
+
+def _get_call_arg_value(arg: exp.Expr) -> exp.Expr:
+    """Returns the value of a CALL argument, unwrapping named notation (`name => value`)."""
+    if isinstance(arg, exp.Kwarg):
+        return arg.expression
+    if isinstance(arg, exp.PropertyEQ):
+        return arg.right
+    return arg
+
+
+def match_callable_arguments(args: list[exp.Expr], params: list[FunctionParam]) -> bool:
+    """
+    Checks if the call arguments bind to the parameters of a UDF or procedure.
+    Positional arguments bind in order, named arguments bind by name, and any unbound parameter must have a default.
+    A trailing variadic parameter absorbs the remaining positional arguments.
+    Bound input parameters are type-checked, while OUT parameters and NULL arguments match any type.
+    """
+    positional = [arg for arg in args if not isinstance(arg, (exp.Kwarg, exp.PropertyEQ))]
+    named = [arg for arg in args if isinstance(arg, (exp.Kwarg, exp.PropertyEQ))]
+
+    has_variadic = bool(params) and params[-1].is_variadic
+    fixed_count = len(params) - 1 if has_variadic else len(params)
+    absorbed = [_get_call_arg_value(arg) for arg in positional[fixed_count:]]
+    if absorbed and not has_variadic:
+        return False
+
+    bound = {i: _get_call_arg_value(arg) for i, arg in enumerate(positional[:fixed_count])}
+    taken = set(bound)
+    if absorbed:
+        taken.add(fixed_count)
+
+    for arg in named:
+        arg_key = arg.this if isinstance(arg, exp.Kwarg) else arg.left
+        index = next((i for i, p in enumerate(params) if p.name.lower() == arg_key.name.lower()), None)
+        if index is None or index in taken:
             return False
+        taken.add(index)
+        bound[index] = _get_call_arg_value(arg)
 
-        for i, arg in enumerate(args):
-            if not match_type(arg, params[i].type):
+    for i, param in enumerate(params):
+        if absorbed and i == fixed_count:
+            if not _match_variadic_arguments(absorbed, param.type):
                 return False
-        return True
+        elif i not in bound:
+            if param.default is None and not param.is_variadic:
+                return False
+        elif param.is_input and not isinstance(bound[i], exp.Null):
+            if not _match_argument(bound[i], param.type):
+                return False
+
+    return True
+
+
+def _match_argument(value: exp.Expr, target_type: exp.DataType) -> bool:
+    # Mirror match_type's VARCHAR -> TEXT normalization, which is only applied to the argument side
+    if target_type.is_type(exp.DataType.Type.VARCHAR):
+        target_type = exp.DataType.build("TEXT")
+    return match_type(value, target_type)
+
+
+def _match_variadic_arguments(values: list[exp.Expr], array_type: exp.DataType) -> bool:
+    """
+    Checks the arguments absorbed by a variadic parameter. A single array argument (`VARIADIC arr`) is matched
+    against the whole array type, otherwise each argument is matched against the array's element type.
+
+    Example:
+        # Each INT value matches the element type of INT[]
+        values = [annotate_types(exp.Literal.number(1)), annotate_types(exp.Literal.number(2))]
+        _match_variadic_arguments(values, exp.DataType.build("INT[]"))
+        -> True
+        # A string (VARCHAR) does not match INT
+        values_fail = [annotate_types(exp.Literal.string("a"))]
+        _match_variadic_arguments(values_fail, exp.DataType.build("INT[]"))
+        -> False
+    """
+    if len(values) == 1 and values[0].type and values[0].type.is_type(exp.DataType.Type.ARRAY):
+        return _match_argument(values[0], array_type)
+
+    element_type = array_type.expressions[0] if array_type.is_type(exp.DataType.Type.ARRAY) else array_type
+    return all(isinstance(value, exp.Null) or _match_argument(value, element_type) for value in values)
+
 
 def match_type(arg: exp.Expr, target_type: exp.DataType) -> bool:
     """Matches an argument expression to a target data type."""
@@ -444,4 +569,3 @@ def match_type(arg: exp.Expr, target_type: exp.DataType) -> bool:
             return True
 
     return exp.DataType.is_type(arg_type, target_type)
-
