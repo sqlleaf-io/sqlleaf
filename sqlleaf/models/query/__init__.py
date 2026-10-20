@@ -8,6 +8,7 @@ from sqlleaf.models.query.ctas import CTASQuery as CTASQuery
 from sqlleaf.models.query.database import DatabaseQuery as DatabaseQuery
 from sqlleaf.models.query.declare_item import AssignmentQuery as AssignmentQuery
 from sqlleaf.models.query.delete import DeleteQuery as DeleteQuery
+from sqlleaf.models.query.do import DoQuery as DoQuery
 from sqlleaf.models.query.exception_ import ExceptionQuery as ExceptionQuery
 from sqlleaf.models.query.execute import ExecuteQuery as ExecuteQuery
 from sqlleaf.models.query.execute_dynamic import ExecuteDynamicQuery as ExecuteDynamicQuery
@@ -51,6 +52,7 @@ __all__ = [
     "CTASQuery",
     "DatabaseQuery",
     "DeleteQuery",
+    "DoQuery",
     "ExceptionQuery",
     "ExecuteDynamicQuery",
     "ExecuteQuery",

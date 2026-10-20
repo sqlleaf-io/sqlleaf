@@ -96,6 +96,8 @@ def _resolve_call_sites(
     subst_statements: list[exp.Expr] = []
     if isinstance(query, CallQuery):
         subst_statements = substitute.substitute_call(query=query)
+    elif isinstance(query, DoQuery):
+        subst_statements = query.inner_statements
     elif isinstance(query, ExecuteQuery):
         subst_statements = substitute.substitute_execute(query=query)
     elif isinstance(query, ExecuteDynamicQuery):
@@ -448,6 +450,10 @@ def _process_unnamed(
         return CallQuery(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
+    if isinstance(statement, exp.Command) and (statement.this.upper() == "DO" or statement.name.upper() == "DO"):
+        return DoQuery(
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
     if isinstance(statement, exp.Command) and statement.this.upper() == "EXECUTE":
         return ExecuteQuery(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
@@ -713,6 +719,7 @@ _QUERY_PROCESSORS: dict[str, t.Callable] = {
     "execute": _process_execute,
     "stage": _process_stage,
     "call": _process_unnamed,
+    "do": _process_unnamed,
     "copy": _process_unnamed,
     "put": _process_unnamed,
     "set": _process_unnamed,
