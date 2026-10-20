@@ -1,6 +1,7 @@
 from sqlleaf.processors.transformer.assignment import AssignmentTransformer
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
 from sqlleaf.processors.transformer.call import CallTransformer
+from sqlleaf.processors.transformer.case import CaseTransformer
 from sqlleaf.processors.transformer.copy import CopyTransformer
 from sqlleaf.processors.transformer.ctas import CTASTransformer
 from sqlleaf.processors.transformer.delete import DeleteTransformer
@@ -20,6 +21,7 @@ __all__ = [
     "AssignmentTransformer",
     "BaseQueryTransformer",
     "CallTransformer",
+    "CaseTransformer",
     "CTASTransformer",
     "CopyTransformer",
     "DeleteTransformer",
