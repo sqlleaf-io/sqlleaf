@@ -332,11 +332,7 @@ def substitute_call(query: CallQuery) -> list[exp.Expr]:
         ->
         SELECT 3;
     """
-    procedure_table = exp.Table(
-        this=exp.to_identifier(query.procedure),
-        db=exp.to_identifier(query.schema) if query.schema else None,
-    )
-    matched_proc = query.object_mapping.lookup_procedure_query(procedure_table, raise_on_missing=False)
+    matched_proc = query.object_mapping.lookup_procedure_call(query)
     if not matched_proc:
         return []
 
