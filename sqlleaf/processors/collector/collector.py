@@ -3,7 +3,7 @@ import typing as t
 from dataclasses import dataclass, field
 
 import sqlglot
-from sqlglot import exp
+from sqlglot import Dialect, exp
 from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
@@ -230,7 +230,7 @@ def collect_queries(text: str, dialect: str, object_mapping: mappings.ObjectMapp
     unknown: dict[str, int] = {}
     unsupported: list[tuple[int, exp.Expr]] = []
 
-    parsed = _split_combined_statements(sqlglot.parse(text, dialect=dialect))
+    parsed = _split_combined_statements(_parse_statements(text, dialect=dialect))
     for index, stmt in enumerate(parsed):
         if not stmt:
             continue
@@ -457,9 +457,7 @@ def _process_unnamed(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
     if isinstance(statement, exp.Command) and (statement.this.upper() == "DO" or statement.name.upper() == "DO"):
-        return DoQuery(
-            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
-        )
+        return DoQuery(expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index)
     if isinstance(statement, exp.Command) and statement.this.upper() == "EXECUTE":
         return ExecuteQuery(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
@@ -726,6 +724,28 @@ def _get_query_processor(kind: str) -> t.Callable:
     return _QUERY_PROCESSORS.get(kind, _process_unnamed)
 
 
+# Override the function parameter parser so that we can parse IN, OUT, and INOUT parameter types
+class ParameterModeDialect(Dialect):
+    class Parser(sqlglot.Parser):
+        def _parse_function_parameter(self) -> exp.Expr | None:
+            mode = self._match_texts(("INOUT", "IN", "OUT")) and self._prev.text.upper()
+            parameter = super()._parse_function_parameter()
+            if mode and parameter:
+                parameter.append(
+                    "constraints",
+                    exp.InOutColumnConstraint(input_=mode in ("IN", "INOUT"), output=mode in ("OUT", "INOUT")),
+                )
+            return parameter
+
+
+def _parse_statements(text: str, dialect: str) -> list[exp.Expr]:
+    """
+    Parse a script with sqlglot. The generic dialect also accepts IN/OUT/INOUT parameter modes.
+    """
+    parse_dialect = ParameterModeDialect if dialect == "" else dialect
+    return sqlglot.parse(text, dialect=parse_dialect)
+
+
 def _split_combined_statements(parsed: list[exp.Expr]) -> list[exp.Expr]:
     """
     Workaround for sqlglot incorrectly bundling statements following a block-based CREATE.
@@ -747,7 +767,7 @@ def _split_combined_statements(parsed: list[exp.Expr]) -> list[exp.Expr]:
                 extra = block.expressions[end_index + 1 :]
                 block.set("expressions", block.expressions[: end_index + 1])
                 new_parsed.append(stmt)
-                new_parsed.extend(extra)
+                new_parsed.extend(_split_combined_statements(extra))
                 continue
 
         new_parsed.append(stmt)
