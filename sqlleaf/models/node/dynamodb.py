@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import logging
+import typing as t
 
-from sqlleaf.models.context import GeneratorContext, PositionContext
+from sqlleaf.models.context import GeneratorContext
 from sqlleaf.models.node import NodeAttributes
 
 logger = logging.getLogger("sqlleaf")
@@ -13,13 +14,19 @@ class DynamoDbNode(NodeAttributes):
 
     def __init__(
         self,
-        gen_ctx: GeneratorContext,
-        pos_ctx: PositionContext,
         column: str,
+        table_name: str = "",
+        path: str = "",
+        data_type: str = "",
     ):
-        super().__init__(gen_ctx, pos_ctx, name=column)
+        super().__init__(name=column, data_type=data_type)
+        self.table_name = table_name
+        self.path = path
+
+    def with_context(self, gen_ctx: GeneratorContext) -> t.Self:
         self.path = gen_ctx.expr.name
         self.table_name = self.path.removeprefix("dynamodb://")
+        return super().with_context(gen_ctx)
 
     def to_dict(self):
         d = super().to_dict()

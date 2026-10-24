@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from sqlleaf.models.context import GeneratorContext, PositionContext
+import typing as t
+
+from sqlleaf import util
+from sqlleaf.models.context import GeneratorContext
 from sqlleaf.models.node import NodeAttributes
 
 
@@ -8,14 +11,15 @@ class UserDefinedFunctionNode(NodeAttributes):
     KIND = "udf"
     WITH_POSITIONS = True
 
-    def __init__(
-        self,
-        schema: str,
-        gen_ctx: GeneratorContext,
-        pos_ctx: PositionContext,
-    ):
-        super().__init__(gen_ctx, pos_ctx, name=gen_ctx.expr.this)
+    def __init__(self, name: str = "", schema: str = "", data_type: str = ""):
+        super().__init__(name=name, data_type=data_type)
         self.schema = schema
+
+    def with_context(self, gen_ctx: GeneratorContext) -> t.Self:
+        schema, function = util.get_udf_name(gen_ctx.expr.this)
+        self.schema = schema
+        self.name = function
+        return super().with_context(gen_ctx)
 
     def get_name(self) -> str:
         return str(self.name).upper()

@@ -16,24 +16,38 @@ class NodeAttributes:
 
     def __init__(
         self,
-        gen_ctx: GeneratorContext,
-        pos_ctx: PositionContext,
-        name: str | None = "",
+        name: str = "",
+        data_type: str = "",
     ):
-        self.expr: exp.Expr = gen_ctx.expr
-        self._data_type: exp.DataType | None = gen_ctx.data_type
-        self.data_type: str = str(self._data_type) if self._data_type else ""
+        self.expr: exp.Expr | None = None
+        self._data_type: exp.DataType | None = None
+        self.data_type: str = data_type
 
         self.name: str = name
         self.kind: str = self.KIND
-        self.with_positions: bool = self.WITH_POSITIONS
-        self.ctx: PositionContext = pos_ctx
+        self.ctx: PositionContext | None = None
+
+    def with_context(self, gen_ctx: GeneratorContext) -> t.Self:
+        self.expr = gen_ctx.expr
+        self._data_type = gen_ctx.data_type
+        if not self.data_type:
+            self.data_type = str(gen_ctx.data_type)
+        return self
+
+    def with_positions(self, pos_ctx: PositionContext) -> t.Self:
+        self.ctx = pos_ctx
+        return self
+
+    @property
+    def _emits_positions(self) -> bool:
+        return self.WITH_POSITIONS and self.ctx is not None
 
     # Allows the class to be used a networkx node
     def __hash__(self) -> int:
         return hash(self.full_name)
 
     def get_data_type(self) -> exp.DataType:
+        """Context-only: requires the node to be bound via `with_context`."""
         assert self._data_type is not None
         return self._data_type
 
@@ -70,7 +84,7 @@ class NodeAttributes:
 
     @property
     def full_name(self) -> str:
-        return self._build_name(self.fields(), with_positions=self.with_positions)
+        return self._build_name(self.fields(), with_positions=self._emits_positions)
 
     @property
     def friendly_name(self) -> str:
@@ -94,14 +108,16 @@ class NodeAttributes:
         return name
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             "id": self.id,
             "kind": self.kind,
             "name": self.name,
             "data_type": self.data_type,
             **self.fields(),
-            "position": asdict(self.ctx) if self.with_positions else {},
         }
+        if self.ctx is not None:
+            result["position"] = asdict(self.ctx) if self.WITH_POSITIONS else {}
+        return result
 
 
 class EdgeAttributes:

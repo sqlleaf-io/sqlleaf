@@ -158,7 +158,7 @@ class BaseGenerator:
     def process_function(
         self, expr: exp.Func, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
-        parent = self.create_node(FunctionNode(gen_ctx, pos_ctx))
+        parent = self.create_node(FunctionNode().with_context(gen_ctx).with_positions(pos_ctx))
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
         grandparents = util.get_function_args(expr=expr)
@@ -181,7 +181,7 @@ class BaseGenerator:
         """
         values = [str(e) for e in expr.expressions]
         values = "{" + ",".join(values) + "}"
-        parent = self.create_node(LiteralNode(name=values, gen_ctx=gen_ctx, pos_ctx=pos_ctx))
+        parent = self.create_node(LiteralNode(name=values).with_context(gen_ctx).with_positions(pos_ctx))
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
@@ -191,7 +191,7 @@ class BaseGenerator:
         """
         SELECT ROW_NUMBER() OVER (ORDER BY name DESC) AS amount
         """
-        parent = self.create_node(WindowNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx))
+        parent = self.create_node(WindowNode().with_context(gen_ctx).with_positions(pos_ctx))
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register(exp.Literal)
@@ -202,7 +202,7 @@ class BaseGenerator:
         """
         select 'hello' as greeting
         """
-        parent = self.create_node(LiteralNode(name=expr.sql(), gen_ctx=gen_ctx, pos_ctx=pos_ctx))
+        parent = self.create_node(LiteralNode(name=expr.sql()).with_context(gen_ctx).with_positions(pos_ctx))
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
@@ -212,14 +212,14 @@ class BaseGenerator:
         """
         select count(*) as cnt
         """
-        parent = self.create_node(StarNode(gen_ctx, pos_ctx, name="*"))
+        parent = self.create_node(StarNode().with_context(gen_ctx).with_positions(pos_ctx))
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
     def process_null(
         self, expr: exp.Null, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
-        parent = self.create_node(NullNode(gen_ctx, pos_ctx))
+        parent = self.create_node(NullNode().with_context(gen_ctx).with_positions(pos_ctx))
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
@@ -229,7 +229,7 @@ class BaseGenerator:
         """
         SELECT -10
         """
-        parent = self.create_node(LiteralNode(name="-" + expr.name, gen_ctx=gen_ctx, pos_ctx=pos_ctx))
+        parent = self.create_node(LiteralNode(name="-" + expr.name).with_context(gen_ctx).with_positions(pos_ctx))
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
@@ -248,9 +248,9 @@ class BaseGenerator:
         # A function has to be registered to be a UDF
         udf_query = gen_ctx.query.object_mapping.lookup_udf_call(expr)
         if udf_query:
-            parent = self.create_node(UserDefinedFunctionNode(schema=schema, gen_ctx=gen_ctx, pos_ctx=pos_ctx))
+            parent = self.create_node(UserDefinedFunctionNode().with_context(gen_ctx).with_positions(pos_ctx))
         else:
-            parent = self.create_node(FunctionNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx))
+            parent = self.create_node(FunctionNode().with_context(gen_ctx).with_positions(pos_ctx))
 
         # TODO: pass the type to the above
 
@@ -340,7 +340,7 @@ class BaseGenerator:
                 gen_ctx = gen_ctx.replace(expr=expr.right if isinstance(expr, exp.Binary) else expr.this)
                 yield from self.process(gen_ctx.expr, gen_ctx, pos_ctx)
         else:
-            parent = self.create_node(FunctionNode(gen_ctx, pos_ctx))
+            parent = self.create_node(FunctionNode().with_context(gen_ctx).with_positions(pos_ctx))
             yield EdgeToCreate(parent, gen_ctx.child_node)
 
             grandparents = [expr.left, expr.right]
@@ -353,7 +353,7 @@ class BaseGenerator:
         """
         Var "QUARTER" in: "SELECT EXTRACT(QUARTER FROM <DATE>)"
         """
-        parent = self.create_node(VarNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx, name=gen_ctx.expr.name))
+        parent = self.create_node(VarNode(name=gen_ctx.expr.name).with_context(gen_ctx).with_positions(pos_ctx))
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register(exp.TableColumn)
@@ -371,10 +371,8 @@ class BaseGenerator:
                 schema="",
                 table=expr.name,
                 column=expr.name,
-                gen_ctx=gen_ctx,
-                pos_ctx=pos_ctx,
                 source=source_table,
-            )
+            ).with_context(gen_ctx).with_positions(pos_ctx)
             # Preserve the object as we need to access the object's properties below
             if maybe_parent := self.create_node(parent):
                 yield EdgeToCreate(maybe_parent, gen_ctx.child_node)
@@ -420,10 +418,8 @@ class BaseGenerator:
             schema=expr.db,
             table=expr.table,
             column=expr.name,
-            gen_ctx=gen_ctx,
-            pos_ctx=pos_ctx,
             source=source_table,
-        )
+        ).with_context(gen_ctx).with_positions(pos_ctx)
         # Preserve the object as we need to access the object's properties below
         if maybe_parent := self.create_node(parent):
             yield EdgeToCreate(maybe_parent, gen_ctx.child_node)
@@ -440,7 +436,7 @@ class BaseGenerator:
     def process_json(
         self, expr: exp.JSONExtract, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
-        parent = self.create_node(JsonPathNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx))
+        parent = self.create_node(JsonPathNode().with_context(gen_ctx).with_positions(pos_ctx))
 
         # Get the bottom expression to extract the JSON paths
         source = expr.this
@@ -456,7 +452,7 @@ class BaseGenerator:
     def process_interval(
         self, expr: exp.Interval, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
-        parent = self.create_node(IntervalNode(gen_ctx=gen_ctx, pos_ctx=pos_ctx))
+        parent = self.create_node(IntervalNode().with_context(gen_ctx).with_positions(pos_ctx))
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
@@ -513,21 +509,17 @@ class BaseGenerator:
                 new_node = FileColumnNode(
                     column=column_name,
                     file_format=file_format,
-                    file_path=expression.name,
-                    gen_ctx=gen_ctx,
-                    pos_ctx=pos_ctx,
-                )
+                    path=expression.name,
+                ).with_context(gen_ctx).with_positions(pos_ctx)
 
             case SqlObjectType.STAGE:
                 stage_expression = expression.this if isinstance(expression, exp.Table) else expression
                 stage_query = gen_ctx.query.object_mapping.get_table_or_stage(table=expression, raise_on_missing=False)
                 new_node = StageColumnNode(
                     column=column_name,
-                    stage=stage_expression,
-                    gen_ctx=gen_ctx,
-                    pos_ctx=pos_ctx,
+                    stage=stage_expression.name.removeprefix("@").replace('"', ""),
                     path=stage_query.path if stage_query else "",
-                )
+                ).with_context(gen_ctx).with_positions(pos_ctx)
 
             case SqlObjectType.TABLE:
                 new_node = ColumnNode(
@@ -535,29 +527,16 @@ class BaseGenerator:
                     schema=expression.db if isinstance(expression, exp.Table) else "",
                     table=expression.name,
                     column=column_name,
-                    gen_ctx=gen_ctx,
-                    pos_ctx=pos_ctx,
-                )
+                ).with_context(gen_ctx).with_positions(pos_ctx)
 
             case SqlObjectType.STREAM:
-                new_node = StreamNode(
-                    name=expression.name,
-                    gen_ctx=gen_ctx,
-                    pos_ctx=pos_ctx,
-                )
+                new_node = StreamNode(name=expression.name).with_context(gen_ctx).with_positions(pos_ctx)
 
             case SqlObjectType.PROGRAM:
-                new_node = ProgramNode(
-                    gen_ctx=gen_ctx,
-                    pos_ctx=pos_ctx,
-                )
+                new_node = ProgramNode().with_context(gen_ctx).with_positions(pos_ctx)
 
             case SqlObjectType.DYNAMODB:
-                new_node = DynamoDbNode(
-                    gen_ctx=gen_ctx,
-                    pos_ctx=pos_ctx,
-                    column=column_name,
-                )
+                new_node = DynamoDbNode(column=column_name).with_context(gen_ctx).with_positions(pos_ctx)
 
             case _:
                 raise exception.GeneratorError(f"Unhandled case for type: {object_type}")

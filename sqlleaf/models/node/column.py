@@ -20,31 +20,37 @@ class ColumnNode(NodeAttributes):
 
     def __init__(
         self,
-        catalog: str,
-        schema: str,
-        table: str,
         column: str,
-        gen_ctx: GeneratorContext,
-        pos_ctx: PositionContext,
+        table: str = "",
+        schema: str = "",
+        catalog: str = "",
+        kind: str = "",
+        subkind: str = "",
+        data_type: str = "",
         source: TableOrScopeType | exp.Select | exp.Subquery | exp.Lateral | None = None,
     ):
-        super().__init__(gen_ctx, pos_ctx, name=column)
+        super().__init__(name=column, data_type=data_type)
         self.catalog = catalog
         self.schema = schema
         self.table = table
         self.member = ""
 
-        self.parent_kind: str = ""
-        self.parent_subkind: str = ""
+        self.parent_kind: str = kind
+        self.parent_subkind: str = subkind
         self.source_scope: TableOrScopeType | None = None
+        self._source = source
 
-        self.set_table_properties(catalog, schema, table, gen_ctx, source=source)
-        if source is not None and not isinstance(source, (exp.Subquery, Scope)):
-            self._apply_rename(source, gen_ctx.query.dialect)
+    def with_context(self, gen_ctx: GeneratorContext) -> t.Self:
+        super().with_context(gen_ctx)
+
+        self.set_table_properties(self.catalog, self.schema, self.table, gen_ctx, source=self._source)
+        if self._source is not None and not isinstance(self._source, (exp.Subquery, Scope)):
+            self._apply_rename(self._source, gen_ctx.query.dialect)
 
         # TODO: new algorithm
         # if table_type == "cte":
         #     self.member = gen_ctx.node.recursive_cte_member_kind
+        return self
 
     def to_dict(self):
         d = super().to_dict()
@@ -266,7 +272,7 @@ class ColumnNode(NodeAttributes):
         if self.parent_kind == TableType.CTE and self.parent_subkind == TableSubtype.RECURSIVE:
             f["member"] = self.member
 
-        if self.parent_kind in [TableType.CTE, TableType.DERIVED_TABLE]:
+        if self.parent_kind in [TableType.CTE, TableType.DERIVED_TABLE] and self.ctx is not None:
             f["statement"] = str(self.ctx.statement_index)
 
         return f
@@ -278,14 +284,13 @@ class FileColumnNode(NodeAttributes):
     def __init__(
         self,
         column: str,
-        file_format: str,
-        file_path: str,
-        gen_ctx: GeneratorContext,
-        pos_ctx: PositionContext,
+        path: str,
+        file_format: str = "",
+        data_type: str = "",
     ):
-        super().__init__(gen_ctx, pos_ctx, name=column)
+        super().__init__(name=column, data_type=data_type)
         self.file_format = file_format
-        self.file_path = file_path
+        self.file_path = path
 
     def to_dict(self):
         d = super().to_dict()
@@ -313,13 +318,12 @@ class StageColumnNode(NodeAttributes):
     def __init__(
         self,
         column: str,
-        stage: exp.Var,
-        gen_ctx: GeneratorContext,
-        pos_ctx: PositionContext,
+        stage: str,
         path: str = "",
+        data_type: str = "",
     ):
-        super().__init__(gen_ctx, pos_ctx, name=column)
-        self.stage = stage.name.removeprefix("@").replace('"', "")
+        super().__init__(name=column, data_type=data_type)
+        self.stage = stage
         self.path = path
 
     def to_dict(self):

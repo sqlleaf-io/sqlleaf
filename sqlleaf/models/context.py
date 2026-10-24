@@ -60,6 +60,9 @@ class ScopePositions:
         self.positions = expr_ids_to_positions
 
 
+"""
+Holds all the information required to generate lineage for an expression.
+"""
 @dataclass(frozen=True)
 class GeneratorContext[Q, N]:
     graph: nx.MultiDiGraph
@@ -115,6 +118,9 @@ class GeneratorContext[Q, N]:
         return dataclasses.replace(self, **args)
 
 
+"""
+Holds all the positions that locate an expression.
+"""
 @dataclass(frozen=True)
 class PositionContext:
     # The position of this query inside a list of queries, e.g. SELECT 'a'; SELECT 'b' -> a=0, b=1

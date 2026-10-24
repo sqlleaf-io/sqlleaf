@@ -128,7 +128,7 @@ class PostgresGenerator(BaseGenerator):
 
         subkind = seq_query.property if seq_query else ""
         gen_ctx = gen_ctx.replace(new_data_type=exp.DataType.build("INT"))
-        parent = SequenceNode(name=seq_name_expr.name, gen_ctx=gen_ctx, pos_ctx=pos_ctx, subkind=subkind)
+        parent = SequenceNode(name=seq_name_expr.name, subkind=subkind).with_context(gen_ctx).with_positions(pos_ctx)
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register
@@ -144,9 +144,7 @@ class PostgresGenerator(BaseGenerator):
                 schema="",
                 table="",
                 column=expr.name,
-                gen_ctx=gen_ctx,
-                pos_ctx=pos_ctx,
-            )
+            ).with_context(gen_ctx).with_positions(pos_ctx)
             yield EdgeToCreate(parent, gen_ctx.child_node)
 
             # Process the inner table function of the table alias

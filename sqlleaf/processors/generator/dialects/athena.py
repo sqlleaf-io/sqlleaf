@@ -37,9 +37,7 @@ class AthenaGenerator(BaseGenerator):
         column_node = self.create_node(FileColumnNode(
             column=child_node.name,
             file_format=file_format,
-            file_path=location.name,
-            gen_ctx=gen_ctx,
-            pos_ctx=pos_ctx,
-        ))
+            path=location.name,
+        ).with_context(gen_ctx).with_positions(pos_ctx))
 
         yield EdgeToCreate(column_node, child_node)

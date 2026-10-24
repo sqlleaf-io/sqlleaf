@@ -5,7 +5,7 @@ import typing as t
 
 from sqlglot import exp
 
-from sqlleaf.models.context import GeneratorContext, PositionContext
+from sqlleaf.models.context import GeneratorContext
 from sqlleaf.models.node import NodeAttributes
 
 logger = logging.getLogger("sqlleaf")
@@ -14,16 +14,22 @@ logger = logging.getLogger("sqlleaf")
 class JsonPathNode(NodeAttributes):
     KIND = "jsonpath"
 
-    def __init__(self, gen_ctx: GeneratorContext, pos_ctx: PositionContext):
+    def __init__(self, selector: str = "", selector_depth: int = 0, data_type: str = ""):
+        super().__init__(name=selector, data_type=data_type)
+        self.selector = selector
+        self.selector_depth = selector_depth
+
+    def with_context(self, gen_ctx: GeneratorContext) -> t.Self:
         expr = t.cast(exp.JSONExtract, gen_ctx.expr)
 
-        self.selectors = self.json_selectors(expr)
-        self.selector = "".join([str(s) for s in self.selectors])
-        self.selector_depth = len(self.selectors)
+        selectors = self.json_selectors(expr)
+        self.name = self.selector = "".join([str(s) for s in selectors])
+        self.selector_depth = len(selectors)
 
-        super().__init__(gen_ctx, pos_ctx, name=self.selector)
+        return super().with_context(gen_ctx)
 
-    def json_selectors(self, expr: exp.JSONExtract):
+    @staticmethod
+    def json_selectors(expr: exp.JSONExtract):
         """
         Collect all the JSON path elements recursively.
         e.g.

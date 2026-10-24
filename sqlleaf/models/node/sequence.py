@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from sqlleaf.models.context import GeneratorContext, PositionContext
 from sqlleaf.models.node import NodeAttributes
 
 
 class SequenceNode(NodeAttributes):
     KIND = "sequence"
 
-    def __init__(self, name: str, gen_ctx: GeneratorContext, pos_ctx: PositionContext, subkind: str = ""):
-        super().__init__(gen_ctx, pos_ctx, name=name)
+    def __init__(self, name: str, subkind: str = "", data_type: str = ""):
+        super().__init__(name=name, data_type=data_type)
         self.subkind = subkind
 
     def fields(self) -> dict[str, str]:
