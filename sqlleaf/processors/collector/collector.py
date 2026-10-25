@@ -492,6 +492,7 @@ def _process_tables(
             query=query,
             column_mapping=query.get_column_names_with_types(include_system=True),
         )
+        query.refresh_source_and_target_info()
     elif statement.kind == "SEQUENCE":
         query = SequenceQuery(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
@@ -527,9 +528,9 @@ def _process_views_and_ctas(
             dialect=dialect,
             object_mapping=object_mapping,
             columns=col_defs,
+            system_columns=settings.system_columns(dialect),
             statement_index=statement_index,
         )
-        query.system_column_defs = settings.system_columns(dialect)
     else:
         raise exception.UnsupportedFeatureError(message=f"Unhandled situation for query: {statement.kind}")
 
@@ -537,6 +538,7 @@ def _process_views_and_ctas(
         query=query,
         column_mapping=query.get_column_names_with_types(include_system=True),
     )
+    query.refresh_source_and_target_info()
     return query
 
 

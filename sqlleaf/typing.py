@@ -1,5 +1,5 @@
 import typing as t
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum, auto
 
 from sqlglot import exp
@@ -66,12 +66,14 @@ class SqlObjectType(StrEnum):
 class SourceInfo:
     expression: SourceExprType
     type: SqlObjectType
+    expressions: list[exp.Expr] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class TargetInfo:
     expression: TargetExprType
     type: SqlObjectType
+    expressions: list[exp.Expr] = field(default_factory=list)
 
 
 # TODO: merge this with SqlObjectType?
