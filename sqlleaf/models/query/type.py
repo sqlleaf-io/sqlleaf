@@ -13,16 +13,16 @@ class TypeQuery(Query):
     KIND = "type"
 
     def __init__(
-        self, statement: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
+        self, expr: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int
     ):
         source = None
-        target = util.get_table(statement)
+        target = util.get_table(expr)
 
         target_type = self._determine_expression_type(target, dialect)
 
         super().__init__(
             dialect=dialect,
-            statement=statement,
+            statement=expr,
             statement_index=statement_index,
             object_mapping=object_mapping,
             source_info=source,

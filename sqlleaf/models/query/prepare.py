@@ -20,18 +20,22 @@ class PrepareQuery(Query):
     def __init__(self, expr: exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
         source, target = self.get_source_and_target_expressions(expr)
 
+        util.qualify_and_annotate(source, dialect, object_mapping)
+
         source_type = self._determine_expression_type(source, dialect)
         target_type = SqlObjectType.PREPARED_STATEMENT
 
+        # Re-parse the statement now that the source is qualified
+        stmt = sqlglot.parse_one(f"PREPARE {target.name} AS {source.sql(dialect=dialect)}", dialect=dialect)
+
         super().__init__(
             dialect=dialect,
-            statement=source,
+            statement=stmt,
             statement_index=statement_index,
             object_mapping=object_mapping,
             source_info=SourceInfo(expression=source, type=source_type),
             target_info=TargetInfo(expression=target, type=target_type),
         )
-        util.qualify_and_annotate(self.source_info.expression, self.dialect, self.object_mapping)
         self.parameter_count = self._count_parameters(source)
 
     def _count_parameters(self, source: exp.Expr) -> int:
@@ -58,4 +62,5 @@ class PrepareQuery(Query):
         statement_text = expression_name[match.end() :].strip()
 
         prepared_expr = sqlglot.parse_one(statement_text, dialect="postgres")
+        # TODO: coercing to a table is required to be adding to the mapping. This needs to be fixed
         return prepared_expr, exp.to_table(name)

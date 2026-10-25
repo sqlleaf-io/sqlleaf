@@ -82,6 +82,15 @@ def generate_lineage_for_query(query_holder: QueryHolder, graph: nx.MultiDiGraph
     if check_for_external_table(generator, gen_ctx, pos_ctx):
         return graph
 
+    if isinstance(query, CopyQuery):
+        # Check for a COPY without a SELECT source
+        source = query.source_info.expression
+        if isinstance(source, exp.Query):
+            gen_ctx = gen_ctx.replace(expr=source)
+        else:
+            generate_lineage_for_copy_without_select(generator, gen_ctx, pos_ctx)
+            return graph
+
     generate_lineage_for_columns(generator, gen_ctx, pos_ctx)
 
     logger.debug("---- Generator End ----")
@@ -96,7 +105,7 @@ def generate_lineage_for_columns(
     """
     Generate the lineage for a set of columns from a given table.
     """
-    scope = get_scope(statement=gen_ctx.expr)
+    scope = get_scope(statement=gen_ctx.query.source_info.expression.root())
     gen_ctx.scope_positions.calculate(scope)
 
     # Process the selected columns
@@ -123,6 +132,65 @@ def generate_lineage_for_columns(
         if selected_node:
             child_pos_ctx = child_node.ctx
             walk_query_and_build_graph(generator, child_node, scope, gen_ctx, child_pos_ctx)
+
+
+def generate_lineage_for_copy_without_select(
+    generator: BaseGenerator, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+) -> None:
+    """
+    Generate the lineage for a COPY whose source is not a SELECT, e.g. FROM STDIN or FROM STAGE.
+    Source and target columns are paired by name. Table target defaults are processed for every target column,
+    mirroring iter_child_nodes(), without calling it.
+    """
+    query = gen_ctx.query
+    source_columns = {c.name: c for c in query.get_sources()}
+    target_type = query.target_info.type
+
+    target_slot = query.statement.this
+    named_columns = {c.name for c in target_slot.expressions} if isinstance(target_slot, exp.Schema) else None
+
+    select_idx = 0
+    for target_column in query.get_targets():
+        column_name = target_column.name
+        is_selected = column_name in source_columns and (named_columns is None or column_name in named_columns)
+
+        target_node = generator.create_node_from_type(
+            object_type=target_type,
+            expression=query.target_info.expression,
+            column_name=column_name,
+            gen_ctx=gen_ctx.replace(expr=target_column),
+            pos_ctx=pos_ctx.replace(select_index=select_idx),
+        )
+
+        if target_type == SqlObjectType.TABLE:
+            constraint_expr = util.get_column_constraint_expression(target_column)
+            if constraint_expr and constraint_expr.this:
+                constraint_ctx = gen_ctx.replace(
+                    expr=constraint_expr.this,
+                    new_data_type=target_node.data_type,
+                    child_node=target_node,
+                )
+                walk_expressions_and_build_graph(generator=generator, gen_ctx=constraint_ctx, pos_ctx=pos_ctx)
+
+        if not is_selected:
+            continue
+
+        source_column = source_columns[column_name]
+        source_expr = (
+            query.source_info.expression if query.source_info.type == SqlObjectType.DYNAMODB else source_column
+        )
+        source_node = generator.create_node_from_type(
+            object_type=query.source_info.type,
+            expression=query.source_info.expression,
+            column_name=column_name,
+            gen_ctx=gen_ctx.replace(
+                expr=source_expr,
+                new_data_type=GeneratorContext.get_data_type_of_expr(source_column),
+            ),
+            pos_ctx=pos_ctx.replace(select_index=select_idx),
+        )
+        add_nodes_with_edge_to_graph(source_node, target_node, gen_ctx.graph, query)
+        select_idx += 1
 
 
 def walk_query_and_build_graph(

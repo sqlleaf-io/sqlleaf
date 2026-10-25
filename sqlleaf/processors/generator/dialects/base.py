@@ -31,7 +31,7 @@ from sqlleaf.models.node import (
     VarNode,
     WindowNode,
 )
-from sqlleaf.models.query import TableQuery
+from sqlleaf.models.query import Query, TableQuery
 from sqlleaf.typing import SourceExprType, SqlObjectType, TargetExprType
 
 logger = logging.getLogger("sqlleaf")
@@ -549,9 +549,6 @@ class BaseGenerator:
         """
         Iterate over every column of a table that was either selected in a query or has a default expression.
         """
-
-        # Both COPY and UNLOAD can have SELECTs as their sources, which have arbitrary
-        # columns that vary in length due to their sourcing from any table.
         query = gen_ctx.query
         target_type = query.target_info.type
         expr = query.target_info.expression
@@ -560,6 +557,13 @@ class BaseGenerator:
             raise exception.InvalidQueryError(f"Could not find any columns for expression: {expr}")
 
         select_idx = 0
+
+        sources = query.get_sources()
+        # TODO: should this be inside the SourceInfo.expressions instead, rather than be empty?
+        if isinstance(query.source_info.expression, exp.Union):
+            sources = query.source_info.expression.expression.selects
+
+        selected_column_names = [s.alias_or_name for s in sources]
 
         # Iterate over every column and yield it if it is referenced in the query.
         for col_def in target_columns:
@@ -578,7 +582,7 @@ class BaseGenerator:
             )
             process_defaults = target_type == SqlObjectType.TABLE
 
-            if col_def.name in util.get_selected_column_names(query.statement) or isinstance(query, TableQuery):
+            if col_def.name in selected_column_names or isinstance(query, TableQuery):
                 # Check if the column is selected.
                 # A 'CREATE TABLE' has no SELECT, so include all columns if this case.
                 selected_node = child_node

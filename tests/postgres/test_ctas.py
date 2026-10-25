@@ -72,7 +72,7 @@ def test__ctas_with_values_no_column_names(holder):
     assert len(h.nodes) == 6
     assert len(h.edges) == 4
     query: CTASQuery = h.holders[0].transformed
-    # assert query.source_info.type == SqlObjectType.VALUES # TODO: bug - should be recalculated as SELECT
+    assert query.source_info.type == SqlObjectType.UNION
     assert query.target_info.type == SqlObjectType.TABLE
     expected_query = "CREATE TABLE my_new_table AS SELECT 1 AS column1, 'Alice' AS column2 UNION ALL SELECT 2 AS column1, 'Bob' AS column2"
     assert query.statement.sql(dialect=DIALECT) == expected_query
@@ -99,7 +99,7 @@ def test__ctas_with_execute(holder):
 
     # Substituted
     query: CTASQuery = h.holders[1].downstream_holders[0].original
-    # assert query.source_info.type == SqlObjectType.SELECT # TODO: bug - should be recalculated as PREPARED_STATEMENT
+    assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.TABLE
     expected_query = "CREATE TABLE fruit.cooked AS SELECT raw.name AS name, raw.kind AS kind FROM fruit.raw AS raw"
     assert query.statement.sql(dialect=DIALECT) == expected_query

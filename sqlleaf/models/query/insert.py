@@ -18,9 +18,6 @@ class InsertQuery(Query):
         object_mapping: mappings.ObjectMapping,
         statement_index: int,
         table: exp.Table | None = None,
-        # Whether to skip column annotation of types.
-        # Used to preserve column types after conversion from COPY to INSERT.
-        skip_annotate: bool = False,
     ):
         if not table:
             table = util.get_table(expr)

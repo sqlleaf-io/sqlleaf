@@ -5,8 +5,8 @@ from sqlglot import exp
 from sqlleaf import util
 from sqlleaf.dialects.plpgsql import pgexp
 from sqlleaf.models.query import (
-    CopyQuery,
     AssignmentQuery,
+    CTASQuery,
     ExecuteDynamicQuery,
     FetchQuery,
     ForInQuery,
@@ -15,11 +15,10 @@ from sqlleaf.models.query import (
     Q,
     QueryHolder,
     SelectQuery,
-    UnloadQuery,
+    ViewQuery,
 )
 from sqlleaf.processors.transformer import BaseQueryTransformer
 from sqlleaf.typing import E
-
 
 logger = logging.getLogger("sqlleaf")
 
@@ -64,10 +63,7 @@ def set_variables_in_scope(query: Q) -> None:
             value = query.statement
             query.object_mapping.set_variable(name=name, value=value)
 
-        elif (
-            isinstance(original_parent, pgexp.PGOpen)
-            and original_parent.args.get("expression") == original_stmt
-        ):
+        elif isinstance(original_parent, pgexp.PGOpen) and original_parent.args.get("expression") == original_stmt:
             # `OPEN .. FOR SELECT ..`
             name = original_parent.this.name
             value = query.statement
@@ -117,7 +113,6 @@ def _transform_query_instance(query: Q) -> Q:
     # TODO: figure out a proper way to select the statement to transform
     statement_to_transform = initial_statement
 
-
     transformed_statement = _transform_statement(statement=statement_to_transform, query=query)
 
     if isinstance(initial_statement, pgexp.PGOpen):
@@ -143,24 +138,24 @@ def _build_transformed_query(
             dialect=original_query.dialect,
             object_mapping=original_query.object_mapping,
             statement_index=original_query.statement_index,
-            skip_annotate=True,
         )
-        # TODO: everything below this in this function this should not occur
-        #  - requires big refactor
-        # CopyQuery special case: preserve source_info/target_info so that
-        # _apply_optimizations can still read the STREAM/FILE/STAGE type.
-        if isinstance(original_query, (CopyQuery, UnloadQuery)):
-            new_query.source_info = original_query.source_info
-            new_query.target_info = original_query.target_info
     else:
-        # For statements not converted to INSERT, keep the same Query subclass
-        # but with the new statement.
-        new_query = original_query.__class__.__new__(original_query.__class__)
-        new_query.__dict__.update(original_query.__dict__)
-        new_query.statement = transformed_statement
+        # For statements not converted to INSERT, keep the same Query subclass but with the new statement.
+        kwargs = {
+            "expr": transformed_statement,
+            "dialect": original_query.dialect,
+            "object_mapping": original_query.object_mapping,
+            "statement_index": original_query.statement_index,
+        }
+        # TODO: look at the kwargs of the Query class and copy their attrs
+        cls = type(original_query)
+        if cls == CTASQuery:
+            kwargs |= {"columns": original_query.column_defs, "system_columns": original_query.system_column_defs}
+        elif cls == ViewQuery:
+            kwargs |= {"columns": original_query.column_defs}
 
-    # Propagate shared metadata
-    new_query.column_defs = original_query.column_defs
+        new_query = cls(**kwargs)
+
     return new_query
 
 
