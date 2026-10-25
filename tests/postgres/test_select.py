@@ -77,6 +77,9 @@ def test__select_values(holder):
     assert len(h.edges) == 6
 
 
+# Test union combos: EXECUTE, VALUES, INSERT RETURNING, etc - anything that returns rows
+
+
 def test__select_basic(holder):
     sql = """
     CREATE TABLE source(name VARCHAR);

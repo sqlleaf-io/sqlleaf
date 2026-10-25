@@ -29,7 +29,7 @@ class UnloadQuery(Query):
 
         super().__init__(
             dialect=dialect,
-            statement=source,
+            statement=expr,
             statement_index=statement_index,
             object_mapping=object_mapping,
             source_info=SourceInfo(expression=source, type=source_type),

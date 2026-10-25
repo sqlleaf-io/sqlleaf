@@ -7,6 +7,7 @@ from sqlglot import exp
 from sqlleaf import exception
 from sqlleaf.models.query import CopyQuery
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
+from sqlleaf.typing import SqlObjectType
 from sqlleaf.util import expression as util
 
 
@@ -14,20 +15,19 @@ class CopyTransformer(BaseQueryTransformer):
     """Transformer for COPY statements."""
     QUERY = CopyQuery
 
-    def transform(self, statement: exp.Insert) -> exp.Insert:
-        return self._convert_copy_to_insert()
+    def transform(self, statement: exp.Copy) -> exp.Copy:
+        return self._replace_table_source_with_select(statement)
 
     @BaseQueryTransformer._validate_syntax
-    def _convert_copy_to_insert(self) -> exp.Insert:
+    def _replace_table_source_with_select(self, statement: exp.Copy) -> exp.Copy:
         """
-        Convert the COPY statement into an INSERT statement.
+        Replace a table source inside the COPY statement with a SELECT over that table.
+        The COPY statement itself is kept.
 
-        COPY INTO <table> FROM @stage
-            -> INSERT INTO <table> SELECT * FROM @stage
-            => produces lineage: @stage -> N table columns
-        COPY INTO @stage FROM <table>
-            -> INSERT INTO @stage SELECT * FROM <table>
-            => produces lineage: N table columns -> @stage
+        COPY fruit.simple (age) TO STDOUT
+            -> COPY (SELECT age FROM fruit.simple) TO STDOUT
+        COPY fruit.simple FROM STDIN
+            -> unchanged as it is a target
         """
         query = self.query
         dialect = query.dialect
@@ -35,34 +35,38 @@ class CopyTransformer(BaseQueryTransformer):
         target_columns = query.get_targets()
         if not target_columns:
             raise exception.InvalidQueryError(f"Could not find any columns for expression: {query.target_info.expression}")
-        column_names = [col.name for col in target_columns]
 
-        # Transform to a SELECT
-        src = query.source_info.expression
-        if isinstance(src, exp.Select):
-            select = src
+        if query.source_info.type != SqlObjectType.TABLE:
+            return statement
+
+        if dialect in ["postgres", "redshift"] and not statement.args["kind"]:
+            # COPY X TO STDOUT/STDIN
+            source_slot = statement.this
         else:
-            # Add the column names from the target object
-            columns = [util.column_def_to_column(c.copy()) for c in target_columns]
-            for c in columns:
-                c.set("catalog", "")
-                c.set("schema", "")
-                c.set("table", "")
+            source_slot = statement.args["files"][0]
 
-            # Only use the named columns if provided
-            if isinstance(query.statement.this, exp.Schema):
-                # COPY (name, age) ...
-                named_columns = [s.name for s in query.statement.this.expressions]
-                columns = [col for col in columns if col.name in named_columns]
-                column_names = named_columns
+        # Only use the named columns if provided
+        named_columns = []
+        if isinstance(source_slot, exp.Schema):
+            # COPY (name, age) ...
+            named_columns = [s.name for s in source_slot.expressions]
 
-            select = exp.select(*columns, dialect=dialect).from_(src)
+        columns = []
+        source_cols = {c.name: c for c in query.get_sources()}
+        if named_columns:
+            # Maintain named column order
+            target_cols = [source_cols[name] for name in named_columns if name in source_cols]
+        else:
+            # Maintain source column order
+            target_cols = query.get_sources()
 
-        # Convert the Copy to an Insert
-        insert_expr = exp.insert(
-            expression=select,
-            into=query.target_info.expression,  # ty: ignore[invalid-argument-type]
-            columns=column_names,
-            dialect=dialect,
-        )
-        return insert_expr
+        for c in target_cols:
+            column = util.column_def_to_column(c.copy())
+            column.set("catalog", "")
+            column.set("schema", "")
+            column.set("table", "")
+            columns.append(column)
+
+        select = exp.select(*columns, dialect=dialect).from_(query.source_info.expression.copy())
+        source_slot.replace(select.subquery())
+        return statement

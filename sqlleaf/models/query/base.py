@@ -114,6 +114,9 @@ class Query:
         elif isinstance(expr, (exp.Insert, exp.Update, exp.Delete, exp.Merge)):
             _type = SqlObjectType.DML
 
+        elif isinstance(expr, exp.Union):
+            _type = SqlObjectType.UNION
+
         else:
             raise exception.InvalidQueryError(f"Unknown source/target object type in query: {type(expr)}")
 
@@ -129,7 +132,7 @@ class Query:
         self, source_info: SourceInfo | None, target_info: TargetInfo | None
     ) -> tuple[SourceInfo | None, TargetInfo | None]:
         """
-        Compute the source and target expressions once, at instantiation.
+        Compute the source and target expressions for a query.
         """
         source_exprs: list[exp.Expr] = []
         target_exprs: list[exp.Expr] = []
@@ -153,6 +156,7 @@ class Query:
             # A side without columns of its own takes them from the table on the other side
             if SqlObjectType.type_has_no_column_defs(source_info.type) and target_info.type == SqlObjectType.TABLE:
                 source_exprs = [col.copy() for col in target_exprs]
+
             if SqlObjectType.type_has_no_column_defs(target_info.type):
                 if source_info.type == SqlObjectType.TABLE:
                     target_exprs = [col.copy() for col in source_exprs]

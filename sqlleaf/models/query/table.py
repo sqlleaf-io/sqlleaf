@@ -64,13 +64,6 @@ class TableQuery(Query):
     def get_column_defs(self, include_system: bool = False) -> list[exp.ColumnDef]:
         return self.column_defs + self.system_column_defs if include_system else self.column_defs
 
-    def get_column_names_with_types(self, include_system: bool = False) -> dict[str, str]:
-        """
-        Used by sqlglot's MappingSchema
-        """
-        columns = {col.name: str(col.kind) for col in self.get_column_defs(include_system=include_system)}
-        return columns
-
     def set_column_defs(self) -> None:
         """
         Collect all the column definitions for this table.

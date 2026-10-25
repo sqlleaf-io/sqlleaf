@@ -37,8 +37,12 @@ def test_copy_to_stream(holder, stream):
     ]
     assert len(h.edges) == 2
     query: CopyQuery = h.holders[1].transformed
-    assert query.source_info.type == SqlObjectType.TABLE
+    assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.STREAM
+    assert (
+        h.holders[1].transformed.statement.sql(dialect=DIALECT)
+        == f"COPY (SELECT simple.name AS name, simple.age AS age FROM fruit.simple AS simple) TO {s}"
+    )
 
 
 @pytest.mark.parametrize("stream", streams)
@@ -63,6 +67,7 @@ def test_copy_from_stream(holder, stream):
     query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.STREAM
     assert query.target_info.type == SqlObjectType.TABLE
+    assert h.holders[1].transformed.statement.sql(dialect=DIALECT) == f"COPY fruit.simple FROM {s}"
 
 
 def test_copy_columns_to_stream(holder):
@@ -80,8 +85,29 @@ def test_copy_columns_to_stream(holder):
         "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]",
     ]
     query: CopyQuery = h.holders[1].transformed
-    assert query.source_info.type == SqlObjectType.TABLE
+    assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.STREAM
+    assert (
+        h.holders[1].transformed.statement.sql(dialect=DIALECT)
+        == "COPY (SELECT simple.age AS age FROM fruit.simple AS simple) TO stdout"
+    )
+
+
+def test_copy_columns_to_stream_preserves_column_order(holder):
+    sql = f"""
+    {simple_table}
+    COPY fruit.simple (age, name) TO STDOUT;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+    assert h.paths == [
+        ["column[fruit.simple.age]", "stream[stdout]"],
+        ["column[fruit.simple.name]", "stream[stdout]"],
+    ]
+    assert len(h.edges) == 2
+    assert (
+        h.holders[1].transformed.statement.sql(dialect=DIALECT)
+        == "COPY (SELECT simple.age AS age, simple.name AS name FROM fruit.simple AS simple) TO stdout"
+    )
 
 
 def test_copy_select_column_names_to_stream(holder):
@@ -103,6 +129,10 @@ def test_copy_select_column_names_to_stream(holder):
     query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.STREAM
+    assert (
+        h.holders[1].transformed.statement.sql(dialect=DIALECT)
+        == "COPY (SELECT simple.age AS age, simple.name AS name FROM fruit.simple AS simple) TO stdout"
+    )
 
 
 def test_copy_select_star_to_stream(holder):
@@ -123,6 +153,10 @@ def test_copy_select_star_to_stream(holder):
     query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.STREAM
+    assert (
+        h.holders[1].transformed.statement.sql(dialect=DIALECT)
+        == "COPY (SELECT simple.name AS name, simple.age AS age FROM fruit.simple AS simple) TO stdout"
+    )
 
 
 # TODO: COPY (VALUES ('apple', 10), ('banana', (select age from fruit.raw))) TO STDOUT;
@@ -177,6 +211,7 @@ def test_copy_into_table_from_file(holder):
     query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.FILE
     assert query.target_info.type == SqlObjectType.TABLE
+    assert h.holders[1].transformed.statement.sql(dialect=DIALECT) == "COPY fruit.simple FROM '/tmp/data.csv'"
 
 
 def test_copy_into_table_from_file_named_columns(holder):
@@ -199,6 +234,10 @@ def test_copy_into_table_from_file_named_columns(holder):
     query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.FILE
     assert query.target_info.type == SqlObjectType.TABLE
+    assert (
+        h.holders[1].transformed.statement.sql(dialect=DIALECT)
+        == "COPY fruit.simple (name, age) FROM '/tmp/data.csv'"
+    )
 
 
 def test_copy_into_file_from_table(holder):
@@ -219,8 +258,12 @@ def test_copy_into_file_from_table(holder):
     ]
     assert len(h.edges) == 2
     query: CopyQuery = h.holders[1].transformed
-    assert query.source_info.type == SqlObjectType.TABLE
+    assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.FILE
+    assert (
+        h.holders[1].transformed.statement.sql(dialect=DIALECT)
+        == "COPY (SELECT simple.name AS name, simple.age AS age FROM fruit.simple AS simple) TO '/tmp/data.csv'"
+    )
 
 
 def test_copy_into_file_from_table_named_columns(holder):
@@ -241,8 +284,12 @@ def test_copy_into_file_from_table_named_columns(holder):
     ]
     assert len(h.edges) == 2
     query: CopyQuery = h.holders[1].transformed
-    assert query.source_info.type == SqlObjectType.TABLE
+    assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.FILE
+    assert (
+        h.holders[1].transformed.statement.sql(dialect=DIALECT)
+        == "COPY (SELECT simple.name AS name, simple.age AS age FROM fruit.simple AS simple) TO '/tmp/data.csv'"
+    )
 
 
 def test_copy_select_column_names_to_file(holder):
@@ -265,6 +312,10 @@ def test_copy_select_column_names_to_file(holder):
     query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.FILE
+    assert (
+        h.holders[1].transformed.statement.sql(dialect=DIALECT)
+        == "COPY (SELECT simple.age AS age, simple.name AS name FROM fruit.simple AS simple) TO '/tmp/data.csv'"
+    )
 
 
 def test_copy_select_column_aliases_to_file(holder):
@@ -293,13 +344,9 @@ def test_copy_select_column_aliases_to_file(holder):
     assert query.target_info.type == SqlObjectType.FILE
 
     expected_query = (
-        "INSERT INTO '/tmp/data.csv' (a, age, b) "
-        "SELECT simple.age AS a, simple.age AS age, simple.name AS b "
-        "FROM fruit.simple AS simple "
-        "WHERE simple.age > 10"
+        "COPY (SELECT simple.age AS a, simple.age AS age, simple.name AS b FROM fruit.simple AS simple) TO '/tmp/data.csv'"
     )
-    copy_holder = h.lineage.collected_queries.queries[1]
-    assert copy_holder.transformed.statement.sql(dialect=DIALECT) == expected_query
+    assert h.holders[1].transformed.statement.sql(dialect=DIALECT) == expected_query
 
 
 def test_copy_select_join_to_stream(holder):
@@ -330,6 +377,10 @@ def test_copy_select_join_to_stream(holder):
     query: CopyQuery = h.holders[2].transformed
     assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.STREAM
+    assert (
+        h.holders[2].transformed.statement.sql(dialect=DIALECT)
+        == "COPY (SELECT UPPER(s.name) AS name, s.age AS age, e.color AS color FROM fruit.simple AS s JOIN fruit.extra AS e ON e.name = s.name) TO stdout"
+    )
 
 
 def test_copy_into_program_from_table(holder):
@@ -349,8 +400,12 @@ def test_copy_into_program_from_table(holder):
     ]
     assert len(h.edges) == 2
     query: CopyQuery = h.holders[1].transformed
-    assert query.source_info.type == SqlObjectType.TABLE
+    assert query.source_info.type == SqlObjectType.SELECT
     assert query.target_info.type == SqlObjectType.PROGRAM
+    assert (
+        h.holders[1].transformed.statement.sql(dialect=DIALECT)
+        == "COPY (SELECT simple.name AS name, simple.age AS age FROM fruit.simple AS simple) TO program WITH (gzip > /tmp/data.csv.gz)"
+    )
 
 
 def test_copy_table_program_from_program(holder):
@@ -372,6 +427,7 @@ def test_copy_table_program_from_program(holder):
     query: CopyQuery = h.holders[1].transformed
     assert query.source_info.type == SqlObjectType.PROGRAM
     assert query.target_info.type == SqlObjectType.TABLE
+    assert h.holders[1].transformed.statement.sql(dialect=DIALECT) == "COPY fruit.simple FROM program WITH (cat /tmp/data.csv)"
 
 
 def test_copy_with_format_csv(holder):
@@ -392,6 +448,30 @@ def test_copy_with_format_csv(holder):
     ]
     query: CopyQuery = h.holders[1].original
     assert query.parameters.file_format.lower() == "csv"
+    assert (
+        h.holders[1].transformed.statement.sql(dialect=DIALECT)
+        == "COPY fruit.simple FROM '/tmp/data.csv' WITH (FORMAT csv)"
+    )
+
+
+def test_copy_from_stdin_with_column_list_keeps_default_lineage(holder):
+    sql = """
+    CREATE TABLE fruit.simple (name VARCHAR DEFAULT 'a', age INT);
+    COPY fruit.simple (age) FROM STDIN;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+    assert h.paths == [
+        ['literal["a"]', "column[fruit.simple.name]"],
+        ["stream[stdin]", "column[fruit.simple.age]"],
+    ]
+    assert len(h.edges) == 2
+    assert "column[name=name type=VARCHAR properties=[kind=table table=simple schema=fruit]]" in h.nodes_full
+    assert "column[name=age type=INT properties=[kind=table table=simple schema=fruit]]" in h.nodes_full
+    assert any(n.startswith('literal[name="a"') for n in h.nodes_full)
+    query: CopyQuery = h.holders[1].transformed
+    assert query.source_info.type == SqlObjectType.STREAM
+    assert query.target_info.type == SqlObjectType.TABLE
+    assert h.holders[1].transformed.statement.sql(dialect=DIALECT) == "COPY fruit.simple (age) FROM stdin"
 
 
 # TODO: COPY FROM SELECT * FROM UDF()

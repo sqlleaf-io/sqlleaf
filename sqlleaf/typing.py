@@ -44,6 +44,7 @@ class SqlObjectType(StrEnum):
     SELECT = auto()
     SET = auto()  # Temporary
     TUPLE = auto()  # Temporary
+    UNION = auto()
     VALUES = auto()
 
     @classmethod

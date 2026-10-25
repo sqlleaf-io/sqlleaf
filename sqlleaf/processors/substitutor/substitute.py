@@ -388,8 +388,9 @@ def substitute_execute_with_plan(
 
     logger.debug(f"Substituting EXECUTE query for plan '{execute_name}'")
 
+    prepare_stmt = matched_prepare.source_info.expression
     positional_map = {str(i + 1): arg for i, arg in enumerate(execute_arguments)}
-    result_expr = substitute_parameters(matched_prepare.statement.copy(), None, {}, positional_map)
+    result_expr = substitute_parameters(prepare_stmt.copy(), None, {}, positional_map)
 
     return [result_expr]
 
