@@ -88,6 +88,8 @@ class CopyQuery(Query):
         if dialect == "snowflake":
             util.rename_if_stage(source, target)
 
+        util.qualify_and_annotate(source, dialect, object_mapping)
+
         source_type = self._determine_expression_type(source, dialect)
         target_type = self._determine_expression_type(target, dialect)
 
@@ -100,7 +102,6 @@ class CopyQuery(Query):
             target_info=TargetInfo(expression=target, type=target_type),
         )
         self.parameters = self.get_params()
-        util.qualify_and_annotate(self.source_info.expression, self.dialect, self.object_mapping)
 
     def get_params(
         self,

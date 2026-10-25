@@ -4,6 +4,7 @@ CopyTransformer — handles COPY statement transformations.
 
 from sqlglot import exp
 
+from sqlleaf import exception
 from sqlleaf.models.query import CopyQuery
 from sqlleaf.processors.transformer.base import BaseQueryTransformer
 from sqlleaf.util import expression as util
@@ -31,7 +32,9 @@ class CopyTransformer(BaseQueryTransformer):
         query = self.query
         dialect = query.dialect
 
-        target_columns = query.get_columns_from_target()
+        target_columns = query.get_targets()
+        if not target_columns:
+            raise exception.InvalidQueryError(f"Could not find any columns for expression: {query.target_info.expression}")
         column_names = [col.name for col in target_columns]
 
         # Transform to a SELECT

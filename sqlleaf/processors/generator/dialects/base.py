@@ -555,7 +555,9 @@ class BaseGenerator:
         query = gen_ctx.query
         target_type = query.target_info.type
         expr = query.target_info.expression
-        target_columns = query.get_columns_from_target()
+        target_columns = query.get_targets()
+        if not target_columns:
+            raise exception.InvalidQueryError(f"Could not find any columns for expression: {expr}")
 
         select_idx = 0
 

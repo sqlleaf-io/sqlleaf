@@ -22,6 +22,8 @@ class UnloadQuery(Query):
     def __init__(self, expr: exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
         source, target = self.get_source_and_target_expressions(expr)
 
+        util.qualify_and_annotate(source, dialect, object_mapping)
+
         source_type = self._determine_expression_type(source, dialect)
         target_type = self._determine_expression_type(target, dialect)
 
@@ -34,7 +36,6 @@ class UnloadQuery(Query):
             target_info=TargetInfo(expression=target, type=target_type),
         )
         self.parameters = UnloadQueryProperties(file_format="UNKNOWN")
-        util.qualify_and_annotate(self.source_info.expression, self.dialect, self.object_mapping)
 
     def get_source_and_target_expressions(self, statement: exp.Command) -> tuple[exp.Select, exp.Literal]:
         """

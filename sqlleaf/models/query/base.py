@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 import typing as t
 
@@ -46,8 +47,7 @@ class Query:
         self.statement: exp.Expr = statement
         self.statement_index = statement_index  # The position of this query within a list of queries
 
-        self.source_info = source_info
-        self.target_info = target_info
+        self.source_info, self.target_info = self._resolve_source_and_target_info(source_info, target_info)
 
         logger.debug(
             f"Created new query. Query => {self.__class__.__name__} | SourceType => {self.source_info and self.source_info.type.name} | TargetType => {self.target_info and self.target_info.type.name}"
@@ -119,69 +119,83 @@ class Query:
 
         return _type
 
+    def refresh_source_and_target_info(self) -> None:
+        """
+        Resolve the expressions again, once the tables they depend on have been registered in the object mapping.
+        """
+        self.source_info, self.target_info = self._resolve_source_and_target_info(self.source_info, self.target_info)
+
+    def _resolve_source_and_target_info(
+        self, source_info: SourceInfo | None, target_info: TargetInfo | None
+    ) -> tuple[SourceInfo | None, TargetInfo | None]:
+        """
+        Compute the source and target expressions once, at instantiation.
+        """
+        source_exprs: list[exp.Expr] = []
+        target_exprs: list[exp.Expr] = []
+
+        if source_info and source_info.type == SqlObjectType.SET and isinstance(source_info.expression, list):
+            # UPDATE .. SET a = 1: the right-hand side is the source, the left-hand column is the target
+            source_exprs = [eq.expression for eq in source_info.expression]
+            target_exprs = [eq.this for eq in source_info.expression]
+        elif source_info and source_info.type == SqlObjectType.SELECT and isinstance(source_info.expression, exp.Query):
+            source_exprs = list(source_info.expression.selects)
+        elif source_info and isinstance(source_info.expression, (exp.Values, exp.Tuple)):
+            source_exprs = list(source_info.expression.expressions)
+
+        # SET with a non-list expression (ON CONFLICT) and UPDATE's SET list are handled above
+        if source_info and target_info and source_info.type != SqlObjectType.SET:
+            if target_info.type == SqlObjectType.TABLE:
+                target_exprs = self._get_table_column_copies(target_info.expression)
+            if source_info.type == SqlObjectType.TABLE:
+                source_exprs = self._get_table_column_copies(source_info.expression)
+
+            # A side without columns of its own takes them from the table on the other side
+            if SqlObjectType.type_has_no_column_defs(source_info.type) and target_info.type == SqlObjectType.TABLE:
+                source_exprs = [col.copy() for col in target_exprs]
+            if SqlObjectType.type_has_no_column_defs(target_info.type):
+                if source_info.type == SqlObjectType.TABLE:
+                    target_exprs = [col.copy() for col in source_exprs]
+                elif source_info.type == SqlObjectType.SELECT:
+                    # COPY (SELECT ..) TO file: the file's columns are the projections
+                    target_exprs = [
+                        exp.ColumnDef(this=exp.to_identifier(col.alias_or_name), kind=col.unalias().type)
+                        for col in source_exprs
+                    ]
+
+        source_info = dataclasses.replace(source_info, expressions=source_exprs) if source_info else None
+        target_info = dataclasses.replace(target_info, expressions=target_exprs) if target_info else None
+        return source_info, target_info
+
+    def _get_table_column_copies(self, table: exp.Table | exp.Var | exp.Schema) -> list[exp.Expr]:
+        """
+        Return copies of a table's columns, so that the object mapping is never aliased.
+        """
+        if isinstance(table, exp.Schema):
+            # INSERT INTO <table>(<columns>)
+            table = table.this
+        table_query = self.object_mapping.get_table_or_stage(table, raise_on_missing=False)
+        if not table_query:
+            return []
+        return [col.copy() for col in table_query.get_column_defs()]
+
+    def get_sources(self) -> list[exp.Expr]:
+        """
+        Return the source expressions, fixed at instantiation.
+        """
+        return self.source_info.expressions if self.source_info else []
+
+    def get_targets(self) -> list[exp.Expr]:
+        """
+        Return the target expressions, fixed at instantiation.
+        """
+        return self.target_info.expressions if self.target_info else []
+
     def get_original_self(self) -> Query:
         return self.holder.original
 
     def get_transformed_self(self) -> Query | None:
         return self.holder.transformed
-
-    def get_columns_from_target(self) -> list[exp.ColumnDef]:
-        """
-        Given a query, figure out its target object, including its columns.
-
-        The structure is: INSERT INTO <target> .. <source>
-
-        This is straightforward if 'source' isn't a JOIN: we just use the source object's columns.
-        But if it is a JOIN, we use the selected columns rather than the source's columns.
-        """
-        if self.source_info is None:
-            # TODO: temp. This occurs when CALL() invokes an SP with only a SELECT
-            #  Remove this after CopyQuery refactor is complete
-            return []
-
-        source_expr = self.source_info.expression
-        target_expr = self.target_info.expression
-        target_type = self.target_info.type
-
-        if SqlObjectType.type_has_no_column_defs(target_type):
-            object_with_columns = source_expr
-        elif target_type == SqlObjectType.TABLE:
-            object_with_columns = target_expr
-        else:
-            raise exception.InvalidQueryError(f"Unhandled target object type: {target_type}")
-
-        column_defs = self._get_column_defs(object_with_columns)
-        if not column_defs:
-            raise exception.InvalidQueryError(f"Could not find any columns for expression: {object_with_columns}")
-
-        return column_defs
-
-    def _get_column_defs(
-        self,
-        expr: SourceExprType | TargetExprType,
-    ) -> list[exp.ColumnDef]:
-        """
-        Most of the time, the sources and target are tables.
-        However, with COPY/UNLOAD, they can be files or streams.
-
-        If the target is not a table and the source is a SELECT,
-        there may be a JOIN with many tables as the source.
-        """
-        if not isinstance(expr, exp.Table):
-            # Fall back to the source
-            source = self.source_info.expression
-            if isinstance(source, exp.Select):
-                # TODO: this can't handle functions
-                return [
-                    exp.ColumnDef(this=exp.to_identifier(col.alias_or_name), kind=col.unalias().type)
-                    for col in source.expressions
-                ]
-
-        table_query = self.object_mapping.get_table_or_stage(expr)
-        if not table_query:
-            return []
-
-        return table_query.get_column_defs()
 
     def get_target_as_table(self) -> exp.Table:
         """
