@@ -101,8 +101,11 @@ def _resolve_call_sites(
     Extract child statements and inline user-defined functions into downstream query holders.
     """
     subst_statements: list[exp.Expr] = []
+    call_scope_pushed = False
     if isinstance(query, CallQuery):
-        subst_statements = substitute.substitute_call(query=query)
+        subst_statements, bindings = substitute.substitute_call(query=query)
+        object_mapping.variables.push_scope(bindings)
+        call_scope_pushed = True
     elif isinstance(query, DoQuery):
         subst_statements = query.inner_statements
     elif isinstance(query, ExecuteQuery):
@@ -120,8 +123,12 @@ def _resolve_call_sites(
             process_statement(subst_stmt, dialect, object_mapping, stmt_index, parent_holder=holder)
 
     parent_index = query.get_statement_index()
+
     for i, stmt in enumerate(subst_statements):
         process_statement(stmt, dialect, object_mapping, f"{parent_index}:{i}", parent_holder=holder)
+
+    if call_scope_pushed:
+        object_mapping.variables.pop_scope(write_back=True)
 
 
 def _collect_sequential_children(
@@ -133,7 +140,7 @@ def _collect_sequential_children(
     to use their results (e.g. variables/state).
     """
     if isinstance(query, (BlockQuery, ForInQuery, LoopQuery, WhileQuery)):
-        object_mapping.variables.push_scope()
+        object_mapping.variables.push_block()
 
     if isinstance(query, BlockQuery):
         statement_idx = 0
@@ -191,7 +198,7 @@ def _collect_sequential_children(
             process_statement(stmt, dialect, object_mapping, i + 1, parent_holder=holder)
 
     if isinstance(query, (BlockQuery, ForInQuery, LoopQuery, WhileQuery)):
-        object_mapping.variables.pop_scope()
+        object_mapping.variables.pop_block()
 
 
 def _collect_structural_children(

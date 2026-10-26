@@ -194,10 +194,11 @@ class BaseQueryTransformer:
                         column.replace(replacement)
                         continue
 
-            variable = self.query.object_mapping.variables.get_variable(column.name, raise_on_missing=False)
-            if variable is not None:
-                logger.debug(f"Replacing column '{column.name}' with variable '{str(variable)}'")
-                column.replace(variable.copy())
+            if not table_name:
+                variable = self.query.object_mapping.variables.get_variable(column.name, raise_on_missing=False)
+                if variable is not None:
+                    logger.debug(f"Replacing column '{column.name}' with variable '{str(variable)}'")
+                    column.replace(variable.copy())
 
     def _expand_to_query(self, statement: E) -> None:
         """
