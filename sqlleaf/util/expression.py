@@ -6,7 +6,7 @@ from sqlglot.optimizer.qualify import qualify
 
 from sqlleaf.dialects.plpgsql import pgexp
 from sqlleaf import exception, mappings, util
-from sqlleaf.typing import E, SourceExprType, TargetExprType
+from sqlleaf.typing import E
 
 
 def unwrap_expression(expr: E) -> exp.Expr:
@@ -63,7 +63,7 @@ def calculate_function_name(expr: exp.Expr, dialect: str) -> str:
     return name[:first_bracket] + name[last_bracket + 1 :]
 
 
-def find_property(statement: exp.Create, child_object: TargetExprType, dialect: str) -> str:
+def find_property(statement: exp.Create, child_object: exp.Expr, dialect: str) -> str:
     """
     Get the table/view's property (e.g. TEMPORARY, EXTERNAL, RECURSIVE)
     """
@@ -166,7 +166,7 @@ def get_function_args(expr: exp.Func) -> list[exp.Expr]:
     return result
 
 
-def rename_if_stage(source: SourceExprType, target: TargetExprType) -> None:
+def rename_if_stage(source: exp.Expr, target: exp.Expr) -> None:
     """
     Normalize (uppercase) the name if we are a Snowflake stage.
     sqlglot only normalizes columns - see comments in `sqlglot.optimizer.normalize_identifiers()`
