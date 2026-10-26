@@ -11,7 +11,7 @@ from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
 
 from sqlleaf import exception, mappings, util
-from sqlleaf.typing import SourceExprType, SourceInfo, SqlObjectType, TargetExprType, TargetInfo
+from sqlleaf.typing import SourceInfo, SqlObjectType, TargetInfo
 
 logger = logging.getLogger("sqlleaf")
 

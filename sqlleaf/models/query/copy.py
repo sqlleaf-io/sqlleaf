@@ -8,7 +8,7 @@ from sqlglot import exp
 
 from sqlleaf import exception, mappings, util
 from sqlleaf.models.query.base import Query
-from sqlleaf.typing import SourceExprType, SourceInfo, TargetExprType, TargetInfo
+from sqlleaf.typing import SourceInfo, TargetInfo
 
 logger = logging.getLogger("sqlleaf")
 
@@ -114,7 +114,7 @@ class CopyQuery(Query):
 
     def get_source_and_target_expressions(
         self, expr: exp.Copy, dialect: str
-    ) -> tuple[SourceExprType, TargetExprType]:
+    ) -> tuple[exp.Expr, exp.Expr]:
         """
         Determine the source and target expressions of the query.
         """

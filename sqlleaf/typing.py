@@ -7,17 +7,6 @@ from sqlglot.optimizer import Scope
 
 E = t.TypeVar("E", bound=exp.Expr)
 
-"""
-Represents a source and a target object of an SQL query.
-
-For example,
-    INSERT INTO <target> SELECT * FROM <source>
-    COPY <target> FROM <source>
-"""
-
-TargetExprType = exp.Table | exp.Literal | exp.Identifier | exp.Schema
-SourceExprType = exp.Table | exp.Literal | exp.Identifier | exp.Select | exp.Schema | exp.Values
-
 TableOrScopeType = exp.Table | Scope
 
 
@@ -65,14 +54,14 @@ class SqlObjectType(StrEnum):
 
 @dataclass(frozen=True)
 class SourceInfo:
-    expression: SourceExprType
+    expression: exp.Expr
     type: SqlObjectType
     expressions: list[exp.Expr] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class TargetInfo:
-    expression: TargetExprType
+    expression: exp.Expr
     type: SqlObjectType
     expressions: list[exp.Expr] = field(default_factory=list)
 

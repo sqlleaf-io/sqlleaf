@@ -31,8 +31,8 @@ from sqlleaf.models.node import (
     VarNode,
     WindowNode,
 )
-from sqlleaf.models.query import Query, TableQuery
-from sqlleaf.typing import SourceExprType, SqlObjectType, TargetExprType
+from sqlleaf.models.query import TableQuery
+from sqlleaf.typing import SqlObjectType
 
 logger = logging.getLogger("sqlleaf")
 
@@ -495,7 +495,7 @@ class BaseGenerator:
     def create_node_from_type(
         self,
         object_type: SqlObjectType,
-        expression: TargetExprType | SourceExprType,
+        expression: exp.Expr | exp.Expr,
         column_name: str,
         gen_ctx: GeneratorContext,
         pos_ctx: PositionContext,
