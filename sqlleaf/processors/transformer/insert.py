@@ -15,8 +15,8 @@ class InsertTransformer(BaseQueryTransformer):
     def transform(self, statement: exp.Insert) -> exp.Insert:
         statement = self._add_information_from_merge(statement)
         statement = self._add_information_from_multitable_insert(statement)
-        statement = self._process_inner_ctes(statement)
-        statement = self._remove_on_conflict(statement)
+        self._process_inner_ctes(statement)
+        self._remove_on_conflict(statement)
 
         return statement
 
@@ -26,13 +26,12 @@ class InsertTransformer(BaseQueryTransformer):
         statement = annotate_types(statement, dialect=self.query.dialect, schema=self.query.object_mapping)
         return super().postprocess(statement)
 
-    def _remove_on_conflict(self, statement: exp.Insert) -> exp.Insert:
+    def _remove_on_conflict(self, statement: exp.Insert) -> None:
         """
         Remove the 'ON CONFLICT ...' clause from the INSERT statement.
         """
         if conflict := statement.args.get("conflict"):
             conflict.pop()
-        return statement
 
     @BaseQueryTransformer._validate_syntax
     def _add_information_from_merge(self, statement: exp.Insert) -> exp.Insert:

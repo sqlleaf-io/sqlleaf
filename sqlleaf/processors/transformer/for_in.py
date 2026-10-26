@@ -26,5 +26,5 @@ class ForInTransformer(base.BaseQueryTransformer):
                 child = statement.args.get(key)
                 if isinstance(child, exp.Expr):
                     statement.set(key, simplify(child))
-
         return statement
+

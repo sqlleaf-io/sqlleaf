@@ -55,7 +55,7 @@ class BaseQueryTransformer:
             return BaseQueryTransformer(query)
         return target_class(query)
 
-    def transform(self, statement: E) -> E:
+    def transform(self, statement: E) -> exp.Expr:
         """
         Default transformation function that subclasses override to add query-type-specific logic.
         """
@@ -67,19 +67,20 @@ class BaseQueryTransformer:
         """
 
         @functools.wraps(func)
-        def wrapper(self, *args, **kwargs) -> E:
+        def wrapper(self, *args, **kwargs) -> E | None:
             statement = args[0] if args else kwargs.get("statement", self.query.statement)
             query = self.query
+            in_statement = statement.sql(dialect=query.dialect)
 
             if LOG_TRANSFORMATIONS:
                 logger.debug(f"Function: {func.__name__}")
 
             result = func(self, *args, **kwargs)
 
-            in_statement = statement.sql(dialect=query.dialect)
-            out_statement = result.sql(dialect=query.dialect)
+            result_statement = statement if result is None else result
+            out_statement = result_statement.sql(dialect=query.dialect)
 
-            if result and (in_statement != out_statement):
+            if in_statement != out_statement:
                 logger.debug(f"Function: {func.__name__} transformed: {out_statement}")
 
             return result
@@ -122,12 +123,12 @@ class BaseQueryTransformer:
 
         validate_columns, exclusion_rules = self._get_validation_and_exclusion_rules(statement)
 
-        statement = self._add_aliases_to_udfs(statement)
-        statement = self._qualify_function_columns(statement)
-        statement = self._apply_qualify(statement, validate_columns)
-        statement = rewrite_functional_notation_columns(statement)
-        statement = self._add_aliases_to_pseudocolumns(statement)
-        statement = self._add_column_names_to_insert(statement)
+        self._add_aliases_to_udfs(statement)
+        self._qualify_function_columns(statement)
+        self._apply_qualify(statement, validate_columns)
+        rewrite_functional_notation_columns(statement)
+        self._add_aliases_to_pseudocolumns(statement)
+        self._add_column_names_to_insert(statement)
         statement = self._apply_optimizations(statement, exclusion_rules)
         # statement = self._add_missing_table_alias_columns(statement)
 
@@ -245,7 +246,7 @@ class BaseQueryTransformer:
                 statement.set("expression", exp.select("*").from_(table))
 
     @_validate_syntax
-    def _add_aliases_to_udfs(self, statement: E) -> E:
+    def _add_aliases_to_udfs(self, statement: E) -> None:
         """
         Iterate over the query looking for UDFs and add an alias to them with the same name
         as the UDF if it doesn't already exist. This prevents sqlglot from adding its own
@@ -278,10 +279,8 @@ class BaseQueryTransformer:
                 # Wrap the expression in an Alias
                 to_alias.replace(exp.alias_(to_alias.copy(), name))
 
-        return statement
-
     @_validate_syntax
-    def _add_aliases_to_pseudocolumns(self, statement: E) -> E:
+    def _add_aliases_to_pseudocolumns(self, statement: E) -> None:
         """
         Given a query:
             SELECT xmax FROM fruit.raw
@@ -299,15 +298,13 @@ class BaseQueryTransformer:
                 from_table_alias = pseudo.parent_select.args["from_"].alias_or_name
                 pseudo.set("table", exp.to_identifier(from_table_alias))
 
-        return statement
-
     @_validate_syntax
-    def _process_inner_ctes(self, statement: E) -> E:
+    def _process_inner_ctes(self, statement: E) -> None:
         """
         Transform any inner CTE statements.
         """
         if not isinstance(statement, (exp.Insert | exp.Merge | exp.Update | exp.Delete)):
-            return statement
+            return
 
         for cte_expr in getattr(statement, "ctes", []):
             if isinstance(cte_expr.this, exp.Update):
@@ -333,8 +330,6 @@ class BaseQueryTransformer:
 
             # Rename the columns and replace the INSERT with the SELECT
             self._rename_returning_columns(statement=cte_expr, child_table=cte_expr.find(exp.Table))
-
-        return statement
 
     #@_validate_syntax
     def _convert_insert_defaults_to_values(self, statement: exp.Insert) -> None:
@@ -413,7 +408,7 @@ class BaseQueryTransformer:
         return [r for r in RULES if getattr(r, "__name__", None) not in exclude_rules]
 
     @_validate_syntax
-    def _qualify_function_columns(self, statement: E) -> E:
+    def _qualify_function_columns(self, statement: E) -> None:
         """
         Look for table functions used in FROM whose names are known
         and ensure they have a TableAlias with the correct default column list.
@@ -428,7 +423,7 @@ class BaseQueryTransformer:
         """
         fn_columns_map: dict[str, list[str]] = get_system_functions(self.query.dialect)
         if not fn_columns_map:
-            return statement
+            return
 
         # Iterate over SELECT statements and inspect their FROM/JOIN clauses
         for select in statement.find_all(exp.Select):
@@ -467,8 +462,6 @@ class BaseQueryTransformer:
                     )
                 elif not alias.columns:
                     alias.set("columns", [exp.to_identifier(c) for c in cols])
-
-        return statement
 
     def _get_validation_and_exclusion_rules(self, statement: E) -> tuple[bool, list[str]]:
         """
@@ -511,12 +504,12 @@ class BaseQueryTransformer:
         statement = merge_derived_tables(statement)
 
         # Add surrounding parens to some expressions (optimize() removes them)
-        statement = add_parens_for_composite_field_access(statement)
+        add_parens_for_composite_field_access(statement)
 
         return statement
 
     @_validate_syntax
-    def _apply_qualify(self, statement: E, validate_columns: bool) -> E:
+    def _apply_qualify(self, statement: E, validate_columns: bool) -> None:
         """
         Run sqlglot's qualify() function against the statement for schema validation and naming/aliasing population.
         """
@@ -528,10 +521,9 @@ class BaseQueryTransformer:
             validate_qualify_columns=validate_columns,
             quote_identifiers=False,
         )
-        return statement
 
     @_validate_syntax
-    def _add_missing_table_alias_columns(self, statement: E) -> E:
+    def _add_missing_table_alias_columns(self, statement: E) -> None:
         """
         Populate any missing column lists on exp.TableAlias nodes by copying the
         output column names from the aliased expression (typically a Subquery).
@@ -600,10 +592,8 @@ class BaseQueryTransformer:
             new_cols = existing_cols + [exp.to_identifier(n) for n in missing]
             tbl_alias.set("columns", new_cols)
 
-        return statement
-
     @_validate_syntax
-    def _rename_returning_columns(self, statement: exp.CTE, child_table: exp.Table) -> exp.CTE:
+    def _rename_returning_columns(self, statement: exp.CTE, child_table: exp.Table) -> None:
         """
         Given an (INSERT .. RETURNING *) statement, expand the star to the table's column names
         and add the correct column aliases.
@@ -625,7 +615,7 @@ class BaseQueryTransformer:
         """
         returning_expr: exp.Returning = statement.this.args.get("returning", None)
         if not returning_expr:
-            return statement
+            return
 
         for col_expr in returning_expr.expressions:
             if not isinstance(col_expr, (exp.Alias, exp.Column, exp.Star)):
@@ -654,7 +644,6 @@ class BaseQueryTransformer:
             new_select = exp.select(*returning_expr.expressions).from_(child_table)
 
         statement.set("this", new_select)
-        return statement
 
     @staticmethod
     def _extract_merge_context(statement: exp.Insert | exp.Update) -> dict | None:
@@ -691,7 +680,7 @@ class BaseQueryTransformer:
         }
 
     @_validate_syntax
-    def _add_column_names_to_insert(self, statement: exp.Expr) -> exp.Insert:
+    def _add_column_names_to_insert(self, statement: exp.Expr) -> None:
         """
         Add aliases to SELECTs that are missing them by looking at the corresponding INSERT column.
         This prevents sqlglot from assigning its own generated names as aliases.
@@ -706,14 +695,14 @@ class BaseQueryTransformer:
         """
         query = self.query
         if not isinstance(statement, exp.Insert) or not statement.selects:
-            return statement
+            return
 
         # sqlglot throws a parse error on named columns for Snowflake: INSERT INTO @"my_eXt_sTaGe" (NAME, AGE) SELECT ...
         SKIP_COLUMN_RENAME_TYPES = SqlObjectType.type_has_no_column_defs(query.source_info.type, query.target_info.type)
         if SKIP_COLUMN_RENAME_TYPES:
             # The aliases and column names already exist from a previous transformation,
             # or the target is not a table (e.g. S3 file, stage, stream)
-            return statement
+            return
 
         child_table = query.get_target_as_table()
         table_query = query.object_mapping.get_table_or_stage(child_table)
@@ -766,8 +755,6 @@ class BaseQueryTransformer:
             for i, ins in enumerate(insert_columns):
                 # Overwrite the aliases because sqlglot may have added incorrect ones
                 select.selects[i] = select.selects[i].as_(ins)
-
-        return statement
 
     def _extract_insert_columns(
         self, statement: exp.Insert, target: exp.Table | exp.Schema, include_system: bool = False

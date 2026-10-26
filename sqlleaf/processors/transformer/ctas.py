@@ -17,10 +17,10 @@ class CTASTransformer(BaseQueryTransformer):
         # BaseQueryTransformer.normalize_all_values); statement.expression is already
         # clean of any exp.Values nodes.
         if statement.expression:
-            statement = self._convert_substituted_table_to_select(statement)
+            self._convert_substituted_table_to_select(statement)
         return statement
 
-    def _convert_substituted_table_to_select(self, statement: exp.Create) -> exp.Create:
+    def _convert_substituted_table_to_select(self, statement: exp.Create) -> None:
         """
         Convert "CREATE TABLE w AS TABLE x" to "CREATE TABLE w AS SELECT * FROM x".
 
@@ -38,4 +38,3 @@ class CTASTransformer(BaseQueryTransformer):
         if self.query.dialect == "postgres" and isinstance(expr, exp.Alias):
             if expr.this.name.upper() == "TABLE":
                 expr.replace(exp.select("*").from_(expr.alias))
-        return statement

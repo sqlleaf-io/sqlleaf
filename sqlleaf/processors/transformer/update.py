@@ -19,10 +19,10 @@ class UpdateTransformer(BaseQueryTransformer):
         if isinstance(statement, (exp.Insert, exp.Update)):
             statement = self._add_information_from_merge(statement)
         if isinstance(statement, exp.Update):
-            statement = self._convert_update_defaults_to_values(statement)
+            self._convert_update_defaults_to_values(statement)
             statement = self._convert_update_to_insert(statement)
         if isinstance(statement, (exp.Insert, exp.Merge, exp.Update, exp.Delete)):
-            statement = self._process_inner_ctes(statement)
+            self._process_inner_ctes(statement)
         return statement
 
     def _convert_on_conflict_to_update(self, statement: exp.OnConflict | exp.Update) -> exp.Update:
@@ -112,7 +112,7 @@ class UpdateTransformer(BaseQueryTransformer):
 
         return update_expr
 
-    def _convert_update_defaults_to_values(self, statement: exp.Update) -> exp.Update:
+    def _convert_update_defaults_to_values(self, statement: exp.Update) -> None:
         """
         Transform the query:
             UPDATE x SET a = DEFAULT
@@ -124,7 +124,7 @@ class UpdateTransformer(BaseQueryTransformer):
         child_table = query.get_target_as_table()
         table_query = query.object_mapping.lookup_table_query(table=child_table)
         if not table_query:
-            return statement
+            return
 
         table_columns = table_query.get_column_defs()
 
@@ -140,7 +140,6 @@ class UpdateTransformer(BaseQueryTransformer):
                         table_columns=table_columns,
                     )
 
-        return statement
 
     def _add_information_from_merge(self, statement: exp.Insert | exp.Update) -> exp.Insert | exp.Update:
         """

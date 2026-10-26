@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlglot import exp
 
 
-def rewrite_functional_notation_columns(statement: exp.Expr) -> exp.Expr:
+def rewrite_functional_notation_columns(statement: exp.Expr) -> None:
     """
     Rewrite Postgres functional-notation column references from exp.TableColumn to exp.Column.
 
@@ -19,4 +19,3 @@ def rewrite_functional_notation_columns(statement: exp.Expr) -> exp.Expr:
                 new_col = exp.Column(this=anon.this, table=arg.this)
                 anon.replace(new_col)
 
-    return statement
