@@ -48,7 +48,7 @@ class OpenQuery(Query):
             [key]
         """
         cursor_name = self.target()
-        cursor_expr = self.object_mapping.get_variable(name=cursor_name.name)
+        cursor_expr = self.object_mapping.variables.get_variable(name=cursor_name.name)
         if cursor_expr.parent:
             return cursor_expr.parent.args.get("cursor_args")
         return []

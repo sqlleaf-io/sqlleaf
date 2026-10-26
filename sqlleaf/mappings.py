@@ -34,55 +34,40 @@ FunctionCallable = ProcedureQuery | UserDefinedFunctionQuery
 logger = logging.getLogger("sqlleaf")
 
 
-class ObjectMapping(MappingSchema):
-    """
-    Contains all the objects that get created, such as tables, procedures, functions, and sequences.
-
-    We extends sqlglot.MappingSchema to provide additional functionality related to tracking these objects,
-    while still allowing optimizer inside sqlglot to work (as it needs a mapping of objects to perform functions
-    like qualification and simplification).
-    """
-
-    def __init__(self, dialect: str):
-        super().__init__(
-            dialect=dialect, normalize=False
-        )  # Set `normalize=False` to prevent an unnecessary second parse.
-        self.kind_mapping = {}
-        self.kind_mapping_trie = {}
-        # Session/global variables (e.g., SET var = ...)
-        self.session_variables: dict[str, exp.Expr] = {}
+class VariableScopes:
+    def __init__(self):
         # Block-scoped variables: one dict per active block, innermost scope at the end
-        self.variable_scopes: list[dict[str, exp.Expr]] = []
+        self.scopes: list[dict[str, exp.Expr]] = []
 
     # ---- Variable scope API ----
-    def push_variable_scope(self) -> None:
+    def push_scope(self) -> None:
         """Enter a new block scope."""
-        self.variable_scopes.append({})
+        self.scopes.append({})
 
-    def pop_variable_scope(self) -> None:
+    def pop_scope(self) -> None:
         """Leave the current block scope."""
-        if self.variable_scopes:
-            self.variable_scopes.pop()
+        if self.scopes:
+            self.scopes.pop()
 
     def declare_variable(self, name: str, value: exp.Expr | None = None) -> None:
         """Declare a variable in the current (innermost) scope."""
         val = value if value is not None else exp.Null()
-        self.variable_scopes[-1][name] = val
-        logger.debug(f"Declared variable: {name} := {val.sql(dialect=self.dialect)}")
+        self.scopes[-1][name] = val
+        logger.debug(f"Declared variable: {name} := {val}")
 
     def set_variable(self, name: str, value: exp.Expr) -> None:
         """Assign a variable in the nearest scope where it was declared."""
-        for scope in reversed(self.variable_scopes):
+        for scope in reversed(self.scopes):
             if name in scope:
                 scope[name] = value
-                logger.debug(f"Set variable value: {name} := {value.sql(dialect=self.dialect)}")
+                logger.debug(f"Set variable value: {name} := {value}")
                 return
 
         raise exception.MappingError(f'"{name}" is not a known variable')
 
     def get_variable(self, name: str, raise_on_missing: bool = True) -> exp.Expr | None:
         """Resolve a variable by searching from innermost to outermost scopes."""
-        for scope in reversed(self.variable_scopes):
+        for scope in reversed(self.scopes):
             if name in scope:
                 return scope[name]
         if raise_on_missing:
@@ -111,7 +96,28 @@ class ObjectMapping(MappingSchema):
 
     def get_scope(self) -> dict[str, exp.Expr]:
         """Return the current scope dict (innermost)."""
-        return self.variable_scopes[-1]
+        return self.scopes[-1]
+
+
+class ObjectMapping(MappingSchema):
+    """
+    Contains all the objects that get created, such as tables, procedures, functions, and sequences.
+
+    We extends sqlglot.MappingSchema to provide additional functionality related to tracking these objects,
+    while still allowing optimizer inside sqlglot to work (as it needs a mapping of objects to perform functions
+    like qualification and simplification).
+    """
+
+    def __init__(self, dialect: str):
+        super().__init__(
+            dialect=dialect, normalize=False
+        )  # Set `normalize=False` to prevent an unnecessary second parse.
+        self.kind_mapping = {}
+        self.kind_mapping_trie = {}
+        # Session/global variables (e.g., SET var = ...)
+        self.session_variables: dict[str, exp.Expr] = {}
+        # Block-scoped variables: one dict per active block, innermost scope at the end
+        self.variables = VariableScopes()
 
     def add_database_query(self, query: DatabaseQuery) -> None:
         self._add_query(query=query, dialect=query.dialect)
