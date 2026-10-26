@@ -48,9 +48,9 @@ def set_variables_in_scope(query: Q) -> None:
         name = query.get_key()
         value = query.get_value()
         if query.is_declaration:
-            query.object_mapping.declare_variable(name=name, value=value)
+            query.object_mapping.variables.declare_variable(name=name, value=value)
         else:
-            query.object_mapping.set_variable(name=name, value=value)
+            query.object_mapping.variables.set_variable(name=name, value=value)
 
     elif isinstance(query, SelectQuery):
         original_stmt = query.holder.original.statement
@@ -61,13 +61,13 @@ def set_variables_in_scope(query: Q) -> None:
             # `FOR .. IN SELECT ..`
             name = original_parent.this.name
             value = query.statement
-            query.object_mapping.set_variable(name=name, value=value)
+            query.object_mapping.variables.set_variable(name=name, value=value)
 
         elif isinstance(original_parent, pgexp.PGOpen) and original_parent.args.get("expression") == original_stmt:
             # `OPEN .. FOR SELECT ..`
             name = original_parent.this.name
             value = query.statement
-            query.object_mapping.set_variable(name=name, value=value)
+            query.object_mapping.variables.set_variable(name=name, value=value)
 
         elif parent_holder and isinstance(parent_holder.original, ExecuteDynamicQuery):
             # `FOR .. IN EXECUTE 'SELECT ..'`
@@ -76,18 +76,18 @@ def set_variables_in_scope(query: Q) -> None:
                 for_in_stmt = grandparent_holder.transformed.statement
                 name = for_in_stmt.this.name
                 value = query.statement
-                query.object_mapping.set_variable(name=name, value=value)
+                query.object_mapping.variables.set_variable(name=name, value=value)
 
     elif isinstance(query, FetchQuery):
         # FETCH <source> INTO <target>;
         # Look up the value for the key and write it to the new key.
         # TODO: should we just substitute the query as the variable?
         var_key: exp.Identifier = query.statement.this
-        var_val = query.object_mapping.get_variable(name=var_key.name)
+        var_val = query.object_mapping.variables.get_variable(name=var_key.name)
         targets = query.statement.args["expressions"]
 
         if len(targets) == 1:
-            query.object_mapping.set_variable(name=targets[0].name, value=var_val)
+            query.object_mapping.variables.set_variable(name=targets[0].name, value=var_val)
         else:
             source_columns = var_val.selects if isinstance(var_val, exp.Query) else []
             for i, target in enumerate(targets):
@@ -98,10 +98,10 @@ def set_variables_in_scope(query: Q) -> None:
                     )
                 else:
                     value = var_val
-                query.object_mapping.set_variable(name=target.name, value=value)
+                query.object_mapping.variables.set_variable(name=target.name, value=value)
 
     elif isinstance(query, OpenQuery):
-        query.object_mapping.set_variable(name=query.target().name, value=query.source())
+        query.object_mapping.variables.set_variable(name=query.target().name, value=query.source())
 
 
 def _transform_query_instance(query: Q) -> Q:

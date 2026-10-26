@@ -187,14 +187,14 @@ class BaseQueryTransformer:
             if table_name:
                 table_query = self.query.object_mapping.lookup_table_query(table=exp.to_table(table_name))
                 if not table_query:
-                    variable = self.query.object_mapping.get_variable(table_name, raise_on_missing=False)
+                    variable = self.query.object_mapping.variables.get_variable(table_name, raise_on_missing=False)
                     if variable is not None and isinstance(variable, exp.Query):
                         replacement = exp.Dot(this=_as_subquery(variable), expression=exp.to_identifier(column.name))
                         logger.debug(f"Replacing field access '{column.sql(self.query.dialect)}' with '{replacement.sql(self.query.dialect)}'")
                         column.replace(replacement)
                         continue
 
-            variable = self.query.object_mapping.get_variable(column.name, raise_on_missing=False)
+            variable = self.query.object_mapping.variables.get_variable(column.name, raise_on_missing=False)
             if variable is not None:
                 logger.debug(f"Replacing column '{column.name}' with variable '{str(variable)}'")
                 column.replace(variable.copy())

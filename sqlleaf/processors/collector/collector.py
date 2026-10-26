@@ -133,7 +133,7 @@ def _collect_sequential_children(
     to use their results (e.g. variables/state).
     """
     if isinstance(query, (BlockQuery, ForInQuery, LoopQuery, WhileQuery)):
-        object_mapping.push_variable_scope()
+        object_mapping.variables.push_scope()
 
     if isinstance(query, BlockQuery):
         statement_idx = 0
@@ -163,7 +163,7 @@ def _collect_sequential_children(
             # Loop over the inner statements N times (where N = the loop count)
             for loop_val in query.range_values():
                 val_expr = exp.Neg(this=exp.Literal.number(-loop_val)) if loop_val < 0 else exp.Literal.number(loop_val)
-                object_mapping.declare_variable(target_name, val_expr)
+                object_mapping.variables.declare_variable(target_name, val_expr)
 
                 for stmt in query.inner_statements:
                     stmt_copy = util.copy_expression(stmt)
@@ -191,7 +191,7 @@ def _collect_sequential_children(
             process_statement(stmt, dialect, object_mapping, i + 1, parent_holder=holder)
 
     if isinstance(query, (BlockQuery, ForInQuery, LoopQuery, WhileQuery)):
-        object_mapping.pop_variable_scope()
+        object_mapping.variables.pop_scope()
 
 
 def _collect_structural_children(

@@ -192,7 +192,7 @@ def substitute_cursor_parameters(
         Result: `SELECT UPPER('abc') AS name`
     """
     params = [FunctionParam(name=arg.this.name, type=arg.args.get("kind")) for arg in cursor_args]
-    params_from_variables = {param.name: object_mapping.get_variable(param.name, raise_on_missing=False) for param in params}
+    params_from_variables = {param.name: object_mapping.variables.get_variable(param.name, raise_on_missing=False) for param in params}
     param_map, positional_map = _build_param_maps(args=call_args or [], params=params, params_from_variables=params_from_variables)
     return substitute_parameters(cursor_query, None, param_map, positional_map)
 
@@ -425,7 +425,7 @@ def resolve_dynamic_sql_command(
     if isinstance(command, exp.Literal):
         resolved_command = command
     elif isinstance(command, exp.Column):
-        resolved_command = object_mapping.get_variable(name=command.name)
+        resolved_command = object_mapping.variables.get_variable(name=command.name)
         if not isinstance(resolved_command, exp.Literal):
             exception.raise_error(
                 exception.UnsupportedFeatureError,
@@ -438,7 +438,7 @@ def resolve_dynamic_sql_command(
         for column in list(command_with_variables.find_all(exp.Column)):
             if column.table:
                 continue
-            variable = object_mapping.get_variable(name=column.name, raise_on_missing=False)
+            variable = object_mapping.variables.get_variable(name=column.name, raise_on_missing=False)
             if variable is not None:
                 column.replace(variable.copy())
         formatted_command = simplify_format(command_with_variables, dialect=dialect)
@@ -453,7 +453,7 @@ def resolve_dynamic_sql_command(
 
     resolved_stmt = sqlglot.parse_one(resolved_command.this, dialect=dialect)
     if using:
-        resolved_using = object_mapping.get_variables_for(expressions=using)
+        resolved_using = object_mapping.variables.get_variables_for(expressions=using)
         if resolved_using:
             positional_map = {str(i + 1): value for i, value in enumerate(resolved_using)}
             resolved_stmt = substitute_parameters(resolved_stmt, None, {}, positional_map)

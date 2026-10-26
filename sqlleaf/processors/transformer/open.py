@@ -25,7 +25,7 @@ class OpenTransformer(BaseQueryTransformer):
 
         # Fetch the cursor's expression and attach it to this query
         if not cursor_expr:
-            cursor_expr = self.query.object_mapping.get_variable(name=cursor_name.name)
+            cursor_expr = self.query.object_mapping.variables.get_variable(name=cursor_name.name)
             cursor_expr = cursor_expr.copy()
             statement.set("expression", cursor_expr)
 
