@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import typing as t
+from dataclasses import dataclass, field
 
 from sqlglot import MappingSchema, exp
 from sqlglot.dialects.dialect import DialectType
@@ -34,42 +35,89 @@ FunctionCallable = ProcedureQuery | UserDefinedFunctionQuery
 logger = logging.getLogger("sqlleaf")
 
 
-class VariableScopes:
+@dataclass
+class ParamBinding:
+    """One parameter's binding for the lifetime of a single CALL."""
+
+    value: exp.Expr
+    arg_name: str | None = None
+
+
+@dataclass
+class VariableScope:
+    """One CALL boundary: its block stack and parameter bindings."""
+
+    blocks: list[dict[str, exp.Expr]] = field(default_factory=list)
+    bindings: dict[str, ParamBinding] = field(default_factory=dict)
+
+
+class Variables:
     def __init__(self):
-        # Block-scoped variables: one dict per active block, innermost scope at the end
-        self.scopes: list[dict[str, exp.Expr]] = []
+        # The base scope runs DO / top-level code and is never popped
+        self.scopes: list[VariableScope] = [VariableScope()]
 
-    # ---- Variable scope API ----
-    def push_scope(self) -> None:
-        """Enter a new block scope."""
-        self.scopes.append({})
+    @property
+    def _active_blocks(self) -> list[dict[str, exp.Expr]]:
+        return self.scopes[-1].blocks
 
-    def pop_scope(self) -> None:
-        """Leave the current block scope."""
-        if self.scopes:
-            self.scopes.pop()
+    @property
+    def _active_bindings(self) -> dict[str, ParamBinding]:
+        return self.scopes[-1].bindings
+
+    # ---- Block API ----
+    def push_block(self) -> None:
+        """Enter a new DECLARE/BEGIN block."""
+        self._active_blocks.append({})
+
+    def pop_block(self) -> None:
+        """Leave the current DECLARE/BEGIN block."""
+        if self._active_blocks:
+            self._active_blocks.pop()
+
+    # ---- Scope API ----
+    def push_scope(self, bindings: dict[str, ParamBinding]) -> None:
+        """Enter a CALL boundary."""
+        self.scopes.append(VariableScope(bindings=bindings))
+
+    def pop_scope(self, write_back: bool = True) -> None:
+        """Leave the current CALL boundary, optionally writing OUT/INOUT values back to the caller."""
+        if len(self.scopes) == 1:
+            raise exception.MappingError("Cannot pop the base variable scope")
+        scope = self.scopes.pop()
+        if write_back:
+            for binding in scope.bindings.values():
+                if binding.arg_name is not None:
+                    self.set_variable(binding.arg_name, binding.value)
 
     def declare_variable(self, name: str, value: exp.Expr | None = None) -> None:
-        """Declare a variable in the current (innermost) scope."""
+        """Declare a variable in the current (innermost) block."""
         val = value if value is not None else exp.Null()
-        self.scopes[-1][name] = val
+        self._active_blocks[-1][name] = val
         logger.debug(f"Declared variable: {name} := {val}")
 
     def set_variable(self, name: str, value: exp.Expr) -> None:
-        """Assign a variable in the nearest scope where it was declared."""
-        for scope in reversed(self.scopes):
-            if name in scope:
-                scope[name] = value
+        """Assign a variable in the nearest block where it was declared."""
+        for block in reversed(self._active_blocks):
+            if name in block:
+                block[name] = value
                 logger.debug(f"Set variable value: {name} := {value}")
                 return
+
+        binding = self._active_bindings.get(name)
+        if binding is not None:
+            binding.value = value
+            return
 
         raise exception.MappingError(f'"{name}" is not a known variable')
 
     def get_variable(self, name: str, raise_on_missing: bool = True) -> exp.Expr | None:
-        """Resolve a variable by searching from innermost to outermost scopes."""
-        for scope in reversed(self.scopes):
-            if name in scope:
-                return scope[name]
+        """Resolve a variable by searching from innermost block outward, then the call's bindings."""
+        for block in reversed(self._active_blocks):
+            if name in block:
+                return block[name]
+        binding = self._active_bindings.get(name)
+        if binding is not None:
+            return binding.value
         if raise_on_missing:
             raise exception.MappingError(f"Could not find value for variable: {name}")
         return None
@@ -95,8 +143,8 @@ class VariableScopes:
         return resolved
 
     def get_scope(self) -> dict[str, exp.Expr]:
-        """Return the current scope dict (innermost)."""
-        return self.scopes[-1]
+        """Return the current block dict (innermost)."""
+        return self._active_blocks[-1]
 
 
 class ObjectMapping(MappingSchema):
@@ -116,8 +164,7 @@ class ObjectMapping(MappingSchema):
         self.kind_mapping_trie = {}
         # Session/global variables (e.g., SET var = ...)
         self.session_variables: dict[str, exp.Expr] = {}
-        # Block-scoped variables: one dict per active block, innermost scope at the end
-        self.variables = VariableScopes()
+        self.variables = Variables()
 
     def add_database_query(self, query: DatabaseQuery) -> None:
         self._add_query(query=query, dialect=query.dialect)
@@ -362,7 +409,9 @@ class ObjectMapping(MappingSchema):
 
         return resolve_overloaded_function(node, candidates)
 
-    def lookup_procedure_call(self, node: CallQuery) -> ProcedureQuery | None:
+    def lookup_procedure_call(
+        self, node: CallQuery, args: list[exp.Expr] | None = None
+    ) -> ProcedureQuery | None:
         """
         Looks up the procedure definition for a CALL statement.
         Returns the matched procedure definition, or None if no procedure with that name exists.
@@ -373,11 +422,11 @@ class ObjectMapping(MappingSchema):
             return None
 
         # Annotate copies so the call's own expressions are left untouched
-        args = [arg.copy() for arg in node.args]
-        for arg in args:
+        call_args = [arg.copy() for arg in (args if args is not None else node.args)]
+        for arg in call_args:
             annotate_types(_get_call_arg_value(arg), dialect=self.dialect, schema=self)
 
-        return resolve_overloaded_procedure(args, candidates)
+        return resolve_overloaded_procedure(call_args, candidates)
 
 
 def resolve_overloaded_function(
@@ -510,6 +559,8 @@ def match_callable_arguments(args: list[exp.Expr], params: list[FunctionParam]) 
             if param.default is None and not param.is_variadic:
                 return False
         elif param.is_input and not isinstance(bound[i], exp.Null):
+            if param.is_output and isinstance(bound[i], exp.Column) and not bound[i].table:
+                continue
             if not _match_argument(bound[i], param.type):
                 return False
 

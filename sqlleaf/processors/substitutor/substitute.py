@@ -16,6 +16,7 @@ from sqlleaf.models.query import (
     Q,
     UserDefinedFunctionQuery,
 )
+from sqlleaf.processors.transformer.base import BaseQueryTransformer
 from sqlleaf.processors.transformer.expressions import normalize_values, simplify_format
 from sqlleaf.processors.transformer.expressions.row import transform_row_function_to_subquery
 
@@ -321,7 +322,19 @@ def _replace_dot_reference(
         node.set("this", exp.Paren(this=sub.copy()))
 
 
-def substitute_call(query: CallQuery) -> list[exp.Expr]:
+def _resolve_call_args(query: CallQuery) -> list[exp.Expr]:
+    """Resolve CALL argument expressions while the caller's variables are visible."""
+    query_transformer = BaseQueryTransformer(query)
+    resolved_args = []
+    for arg in query.args:
+        arg_copy = arg.copy()
+        wrapper = exp.select(arg_copy)
+        query_transformer.replace_variables_in_expression(wrapper)
+        resolved_args.append(wrapper.expressions[0])
+    return resolved_args
+
+
+def substitute_call(query: CallQuery) -> tuple[list[exp.Expr], dict[str, mappings.ParamBinding]]:
     """
     Substitutes a CALL statement's arguments into the statmenets inside its body and returns them.
     Circular references in procedure-to-procedure calls could cause infinite recursion.
@@ -332,35 +345,48 @@ def substitute_call(query: CallQuery) -> list[exp.Expr]:
         ->
         SELECT 3;
     """
-    matched_proc = query.object_mapping.lookup_procedure_call(query)
+    resolved_args = _resolve_call_args(query)
+    matched_proc = query.object_mapping.lookup_procedure_call(query, args=resolved_args)
     if not matched_proc:
-        return []
+        return [], {}
 
     logger.debug(f"Substituting CALL query '{query.name}' with procedure body")
 
     # Re-use find_arg logic. We don't have an Anonymous node,
     # just a list of args from the CallQuery.
-    param_map = {}
+    bindings = {}
     positional_map = {}
-    args = query.args
+    args = resolved_args
 
     for i, param in enumerate(matched_proc.parameters):
-        arg_expr = _find_arg(args, param, i) or param.default
+        arg_expr = _find_arg(args, param, i)
+        raw_arg_expr = _find_arg(query.args, param, i)
+
+        if param.is_output:
+            initial_value = exp.Null()
+            if param.is_input and arg_expr is not None:
+                initial_value = arg_expr.copy()
+            arg_name = raw_arg_expr.name if isinstance(raw_arg_expr, exp.Column) and not raw_arg_expr.table else None
+            bindings[param.name.lower()] = mappings.ParamBinding(value=initial_value, arg_name=arg_name)
+        else:
+            value = arg_expr or param.default or exp.Null()
+            bindings[param.name.lower()] = mappings.ParamBinding(value=value.copy())
 
         if arg_expr:
-            param_map[param.name.lower()] = arg_expr
             positional_map[str(i + 1)] = arg_expr
+        elif param.default:
+            positional_map[str(i + 1)] = param.default
 
     replacement_exprs = []
     for stmt in matched_proc.inner_statements:
         # Procedures can contain multiple statements
-        new_stmt = substitute_parameters(stmt.copy(), None, param_map, positional_map)
+        new_stmt = substitute_parameters(stmt.copy(), None, {}, positional_map)
         replacement_exprs.append(new_stmt)
 
     logger.debug(f"Substituted to {len(replacement_exprs)} statements:")
     for r in replacement_exprs:
         logger.debug(f"  {r.sql(dialect=query.dialect)}")
-    return replacement_exprs
+    return replacement_exprs, bindings
 
 
 def substitute_execute_with_plan(
