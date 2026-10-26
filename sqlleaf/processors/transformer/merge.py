@@ -13,4 +13,5 @@ class MergeTransformer(BaseQueryTransformer):
     QUERY = MergeQuery
 
     def transform(self, statement: exp.Merge) -> exp.Merge:
-        return self._process_inner_ctes(statement)
+        self._process_inner_ctes(statement)
+        return statement

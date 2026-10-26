@@ -16,10 +16,11 @@ class CopyTransformer(BaseQueryTransformer):
     QUERY = CopyQuery
 
     def transform(self, statement: exp.Copy) -> exp.Copy:
-        return self._replace_table_source_with_select(statement)
+        self._replace_table_source_with_select(statement)
+        return statement
 
     @BaseQueryTransformer._validate_syntax
-    def _replace_table_source_with_select(self, statement: exp.Copy) -> exp.Copy:
+    def _replace_table_source_with_select(self, statement: exp.Copy) -> None:
         """
         Replace a table source inside the COPY statement with a SELECT over that table.
         The COPY statement itself is kept.
@@ -37,7 +38,7 @@ class CopyTransformer(BaseQueryTransformer):
             raise exception.InvalidQueryError(f"Could not find any columns for expression: {query.target_info.expression}")
 
         if query.source_info.type != SqlObjectType.TABLE:
-            return statement
+            return
 
         if dialect in ["postgres", "redshift"] and not statement.args["kind"]:
             # COPY X TO STDOUT/STDIN
@@ -69,4 +70,3 @@ class CopyTransformer(BaseQueryTransformer):
 
         select = exp.select(*columns, dialect=dialect).from_(query.source_info.expression.copy())
         source_slot.replace(select.subquery())
-        return statement

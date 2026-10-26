@@ -49,7 +49,7 @@ class OpenTransformer(BaseQueryTransformer):
 
         return super().preprocess(cursor_expr)
 
-    def transform(self, statement: exp.Expr) -> pgexp.PGOpen:
+    def transform(self, statement: exp.Expr) -> exp.Expr:
         return statement
 
     def _substitute_cursor_parameters(self, statement: E, cursor_args: list[pgexp.PGCursorArg]) -> E:

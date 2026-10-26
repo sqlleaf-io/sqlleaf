@@ -13,4 +13,5 @@ class DeleteTransformer(BaseQueryTransformer):
     QUERY = DeleteQuery
 
     def transform(self, statement: exp.Delete) -> exp.Delete:
-        return self._process_inner_ctes(statement)
+        self._process_inner_ctes(statement)
+        return statement

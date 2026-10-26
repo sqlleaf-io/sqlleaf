@@ -12,5 +12,5 @@ class UnloadTransformer(BaseQueryTransformer):
     """Transformer for UNLOAD statements."""
     QUERY = UnloadQuery
 
-    def transform(self, statement: exp.Select) -> exp.Select:
+    def transform(self, statement: exp.Command) -> exp.Command:
         return statement

@@ -9,7 +9,7 @@ from sqlleaf.models.query import Q, UserDefinedFunctionQuery
 logger = logging.getLogger("sqlleaf")
 
 
-def add_parens_for_composite_field_access(statement: exp.Expr) -> exp.Expr:
+def add_parens_for_composite_field_access(statement: exp.Expr) -> None:
     """
     Ensure parentheses surround composite field dereference on expressions used with dot notation.
 
@@ -20,7 +20,6 @@ def add_parens_for_composite_field_access(statement: exp.Expr) -> exp.Expr:
         left = dot.this
         if isinstance(left, exp.Cast) and util.is_row_function(left.this):
             dot.set("this", exp.Paren(this=left.copy()))
-    return statement
 
 
 def simplify_row_in_values(values_expr: exp.Values, dialect: str) -> None:
