@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from sqlglot import exp
 
-from sqlleaf import mappings, util, exception, settings
+from sqlleaf import mappings, util, exception, dialects
 from sqlleaf.models.query.base import Query
 from sqlleaf.typing import SourceInfo, TargetInfo
 
@@ -92,7 +92,7 @@ class TableQuery(Query):
                 default.this.type = col_def.kind
 
         self.column_defs = all_columns
-        self.system_column_defs = settings.system_columns(self.dialect)
+        self.system_column_defs = dialects.system_columns(self.dialect)
 
     def _collect_inherited_columns(
         self, inherits_properties: list[exp.InheritsProperty]
