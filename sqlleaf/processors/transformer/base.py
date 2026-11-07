@@ -15,7 +15,7 @@ from sqlleaf.processors.transformer.expressions import (
     rewrite_values_statement,
     simplify_row,
 )
-from sqlleaf.settings import system_functions as get_system_functions
+from sqlleaf.dialects import system_functions as get_system_functions
 from sqlleaf.typing import E, SqlObjectType
 from sqlleaf.dialects.plpgsql import pgexp
 

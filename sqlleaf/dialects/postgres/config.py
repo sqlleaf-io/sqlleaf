@@ -1,9 +1,7 @@
-import typing as t
-
 from sqlglot import exp
 from sqlglot.dialects import postgres
 
-from sqlleaf.settings.base import BaseDialectSettings
+from sqlleaf.dialects.base import BaseDialectSettings
 
 
 class PostgresSettings(BaseDialectSettings):

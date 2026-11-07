@@ -157,12 +157,18 @@ class ObjectMapping(MappingSchema):
     like qualification and simplification).
     """
 
-    def __init__(self, dialect: str):
+    def __init__(
+        self,
+        dialect: str,
+        object_loader: t.Callable[[ObjectMapping, exp.Table], None] | None = None,
+    ):
         super().__init__(
             dialect=dialect, normalize=False
         )  # Set `normalize=False` to prevent an unnecessary second parse.
         self.kind_mapping = {}
         self.kind_mapping_trie = {}
+        # Load system objects lazily from disk
+        self.system_object_loader = object_loader
         # Session/global variables (e.g., SET var = ...)
         self.session_variables: dict[str, exp.Expr] = {}
         self.variables = Variables()
@@ -277,6 +283,14 @@ class ObjectMapping(MappingSchema):
             match_depth=match_depth,
         )
 
+    def _handle_missing_table(self, table: exp.Table) -> None:
+        if self.system_object_loader is not None:
+            self.system_object_loader(self, table)
+
+    def find(self, table: exp.Table, raise_on_missing: bool = True, ensure_data_types: bool = False) -> t.Any | None:
+        self._handle_missing_table(table)
+        return super().find(table, raise_on_missing=raise_on_missing, ensure_data_types=ensure_data_types)
+
     def find_columns_for_table(
         self,
         table: exp.Table,
@@ -340,6 +354,9 @@ class ObjectMapping(MappingSchema):
         Returns:
             The schema of the target object.
         """
+        if kind == "table":
+            self._handle_missing_table(object)
+
         if kind not in self.kind_mapping:
             if raise_on_missing:
                 if kind == "prepare":

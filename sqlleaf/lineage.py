@@ -37,8 +37,7 @@ class Lineage:
         """
         exception.set_error_action(action=on_error)
 
-        if not self.object_mapping:
-            self.object_mapping = mappings.ObjectMapping(dialect=dialect)
+        self.init_object_mapping(dialect)
 
         self.collected_queries = collector.collect_queries(
             text=sql, dialect=dialect, object_mapping=self.object_mapping
@@ -302,6 +301,11 @@ class Lineage:
         The inverse of `register_hooks()`: remove a hook (by name) from the list of user-defined hooks.
         """
         self.user_defined_hooks = [udh for udh in self.user_defined_hooks if udh not in hooks]
+
+    def init_object_mapping(self, dialect: str):
+        if not self.object_mapping:
+            self.object_mapping = mappings.ObjectMapping(dialect=dialect, object_loader=collector.SystemObjectLoader(dialect))
+
 
 def new_graph() -> nx.MultiDiGraph:
     """

@@ -1,8 +1,6 @@
-import typing as t
-
 from sqlglot import exp
 
-from sqlleaf.settings.base import BaseDialectSettings
+from sqlleaf.dialects.base import BaseDialectSettings
 
 
 class AthenaSettings(BaseDialectSettings):

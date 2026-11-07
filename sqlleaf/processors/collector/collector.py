@@ -7,13 +7,14 @@ from sqlglot import Dialect, exp
 from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
-from sqlleaf import exception, mappings, settings, typing, util
+from sqlleaf import exception, mappings, dialects, typing, util
 from sqlleaf.dialects.plpgsql import pgexp
 from sqlleaf.models.query import *
 from sqlleaf.processors.collector.classify import _classify_command, _determine_query_kind
 from sqlleaf.processors.substitutor import substitute
 from sqlleaf.processors.transformer import transformer
 from sqlleaf.processors.transformer.expressions import simplify_row_in_values
+from sqlleaf.dialects.loader import get_object_ddl
 
 logger = logging.getLogger("sqlleaf")
 
@@ -535,7 +536,7 @@ def _process_views_and_ctas(
             dialect=dialect,
             object_mapping=object_mapping,
             columns=col_defs,
-            system_columns=settings.system_columns(dialect),
+            system_columns=dialects.system_columns(dialect),
             statement_index=statement_index,
         )
     else:
@@ -781,3 +782,25 @@ def _split_combined_statements(parsed: list[exp.Expr]) -> list[exp.Expr]:
 
         new_parsed.append(stmt)
     return new_parsed
+
+
+class SystemObjectLoader:
+    """
+    Looks up and registers system objects from their DDL that sits on disk.
+    This is performed lazily per object to avoid parsing overhead at startup.
+    """
+
+    def __init__(self, dialect: str):
+        self.dialect = dialect
+        self.attempted: set[tuple[str, str]] = set()
+
+    def __call__(self, object_mapping: mappings.ObjectMapping, table: exp.Table) -> None:
+        if not table.db:
+            return
+        key = (table.db.lower(), table.name.lower())
+        if key in self.attempted:
+            return
+        self.attempted.add(key)
+
+        if ddl := get_object_ddl(self.dialect, table.db, table.name):
+            collect_queries(text=ddl, dialect=self.dialect, object_mapping=object_mapping)
