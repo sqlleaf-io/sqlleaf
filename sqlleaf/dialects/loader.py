@@ -3,26 +3,46 @@ from functools import cache
 from pathlib import Path
 
 TABLE_HEADER = re.compile(r"^CREATE TABLE (\w+)\.(\w+) \(", re.MULTILINE)
-STATEMENT_END = "\n);"
+VIEW_HEADER = re.compile(r"^CREATE VIEW (\w+)\.(\w+) AS", re.MULTILINE)
+SCHEMA_HEADER = re.compile(r"^CREATE SCHEMA (\w+);", re.MULTILINE)
+
+KINDS = {
+    "tables": (TABLE_HEADER, "\n);"),
+    "views": (VIEW_HEADER, ";\n"),
+    "schemas": (SCHEMA_HEADER, ";\n"),
+}
 
 
 @cache
-def _read(dialect: str) -> tuple[str, dict[tuple[str, str], tuple[int, int]]]:
-    path = Path(__file__).parent / dialect / "system_objects" / f"{dialect}.sql"
+def _read_system_objects(dialect: str, kind: str) -> tuple[str, dict[tuple[str, ...], tuple[int, int]]]:
+    """
+    Read the system objects from disk.
+    """
+    path = Path(__file__).parent / dialect / "system_objects" / f"{kind}.sql"
     if not path.exists():
         return "", {}
 
+    header, statement_end = KINDS[kind]
     text = path.read_text()
     index = {}
-    for match in TABLE_HEADER.finditer(text):
-        end = text.index(STATEMENT_END, match.start()) + len(STATEMENT_END)
-        index[(match.group(1).lower(), match.group(2).lower())] = (match.start(), end)
+    for match in header.finditer(text):
+        end = text.index(statement_end, match.start()) + len(statement_end)
+        index[tuple(group.lower() for group in match.groups())] = (match.start(), end)
     return text, index
 
 
-def get_object_ddl(dialect: str, schema: str, table: str) -> str | None:
-    text, index = _read(dialect)
-    span = index.get((schema.lower(), table.lower()))
+def _lookup(dialect: str, kind: str, key: tuple[str, ...]) -> str | None:
+    text, index = _read_system_objects(dialect, kind)
+    span = index.get(key)
     if span is None:
         return None
     return text[span[0] : span[1]]
+
+
+def get_object_ddl(dialect: str, schema: str, table: str) -> str | None:
+    key = (schema.lower(), table.lower())
+    return _lookup(dialect, "tables", key) or _lookup(dialect, "views", key)
+
+
+def get_schema_ddl(dialect: str, schema: str) -> str | None:
+    return _lookup(dialect, "schemas", (schema.lower(),))
