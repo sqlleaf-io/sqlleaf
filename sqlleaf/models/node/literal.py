@@ -3,11 +3,11 @@ from __future__ import annotations
 import typing as t
 
 from sqlleaf.models.context import GeneratorContext
-from sqlleaf.models.node import NodeAttributes
+from sqlleaf.models.node import NodeAttributes, NodeKind
 
 
 class LiteralNode(NodeAttributes):
-    KIND = "literal"
+    KIND = NodeKind.LITERAL
     WITH_POSITIONS = True
 
     def __init__(self, name: t.Any = "", data_type: str = ""):

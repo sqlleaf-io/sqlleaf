@@ -6,11 +6,11 @@ from sqlglot import exp
 
 from sqlleaf import util
 from sqlleaf.models.context import GeneratorContext
-from sqlleaf.models.node import NodeAttributes
+from sqlleaf.models.node import NodeAttributes, NodeKind
 
 
 class WindowNode(NodeAttributes):
-    KIND = "window"
+    KIND = NodeKind.WINDOW
 
     def with_context(self, gen_ctx: GeneratorContext) -> t.Self:
         expr = t.cast(exp.Window, gen_ctx.expr.this)

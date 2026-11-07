@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from sqlleaf.models.node import NodeAttributes
+from sqlleaf.models.node import NodeAttributes, NodeKind
 
 
 class SequenceNode(NodeAttributes):
-    KIND = "sequence"
+    KIND = NodeKind.SEQUENCE
 
     def __init__(self, name: str, subkind: str = "", data_type: str = ""):
         super().__init__(name=name, data_type=data_type)

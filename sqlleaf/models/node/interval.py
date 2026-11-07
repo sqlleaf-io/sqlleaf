@@ -5,11 +5,11 @@ import typing as t
 from sqlglot import exp
 
 from sqlleaf.models.context import GeneratorContext
-from sqlleaf.models.node import NodeAttributes
+from sqlleaf.models.node import NodeAttributes, NodeKind
 
 
 class IntervalNode(NodeAttributes):
-    KIND = "interval"
+    KIND = NodeKind.INTERVAL
     WITH_POSITIONS = True
 
     def with_context(self, gen_ctx: GeneratorContext) -> t.Self:

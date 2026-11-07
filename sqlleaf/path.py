@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import logging
 import typing as t
+from collections import defaultdict
 
 import networkx as nx
 
 from sqlleaf import exception, util
-from sqlleaf.models.node import EdgeAttributes, N
+from sqlleaf.models.node import EdgeAttributes, N, NodeAttributes
 
 logger = logging.getLogger("sqlleaf")
 
@@ -192,3 +193,22 @@ def _traverse_path_along_edges(
     for idx, data in edges.items():
         hop = data["attrs"]
         yield from find_edges_from_root(g, node_dst, path + [hop], seen.union([node_src]))
+
+
+class NodeIndex:
+    """
+    An index that maps Node classes to every occurrence of that Node in the graph.
+    Useful for searching over the graph using instances of Nodes, for example
+    to filter the graph for only Column nodes.
+
+    The index is updated as each Node is added to the graph.
+    """
+
+    def __init__(self):
+        self._index: dict[type, list[NodeAttributes]] = defaultdict(list)
+
+    def add(self, node: NodeAttributes) -> None:
+        self._index[type(node)].append(node)
+
+    def get(self, node_class: type) -> list[NodeAttributes]:
+        return self._index.get(node_class, [])

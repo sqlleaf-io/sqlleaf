@@ -5,11 +5,11 @@ import typing as t
 from sqlglot import exp
 
 from sqlleaf.models.context import GeneratorContext, PositionContext
-from sqlleaf.models.node import NodeAttributes
+from sqlleaf.models.node import NodeAttributes, NodeKind
 
 
 class ProgramNode(NodeAttributes):
-    KIND = "program"
+    KIND = NodeKind.PROGRAM
     WITH_POSITIONS = True
 
     def __init__(self, name: str = "", program_args: str = "", data_type: str = ""):

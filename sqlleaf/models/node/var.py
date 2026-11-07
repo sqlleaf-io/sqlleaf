@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from sqlleaf.models.node import NodeAttributes
+from sqlleaf.models.node import NodeAttributes, NodeKind
 
 
 class VarNode(NodeAttributes):
-    KIND = "var"
+    KIND = NodeKind.VAR
