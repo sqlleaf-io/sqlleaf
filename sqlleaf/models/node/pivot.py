@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlleaf.models.node import NodeAttributes
+from sqlleaf.models.node import NodeAttributes, NodeKind
 
 
 class _PivotNode(NodeAttributes):
@@ -27,8 +27,8 @@ class _PivotNode(NodeAttributes):
 
 
 class PivotNode(_PivotNode):
-    KIND = "pivot"
+    KIND = NodeKind.PIVOT
 
 
 class UnpivotNode(_PivotNode):
-    KIND = "unpivot"
+    KIND = NodeKind.UNPIVOT

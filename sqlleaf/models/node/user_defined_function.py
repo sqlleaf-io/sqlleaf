@@ -4,11 +4,11 @@ import typing as t
 
 from sqlleaf import util
 from sqlleaf.models.context import GeneratorContext
-from sqlleaf.models.node import NodeAttributes
+from sqlleaf.models.node import NodeAttributes, NodeKind
 
 
 class UserDefinedFunctionNode(NodeAttributes):
-    KIND = "udf"
+    KIND = NodeKind.UDF
     WITH_POSITIONS = True
 
     def __init__(self, name: str = "", schema: str = "", data_type: str = ""):

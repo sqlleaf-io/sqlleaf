@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from sqlleaf.models.node import NodeAttributes
+from sqlleaf.models.node import NodeAttributes, NodeKind
 
 
 class StarNode(NodeAttributes):
-    KIND = "star"
+    KIND = NodeKind.STAR
     WITH_POSITIONS = True
 
     def __init__(self):

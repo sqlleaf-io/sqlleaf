@@ -6,7 +6,7 @@ import networkx as nx
 
 from sqlleaf import exception, mappings, path, util
 from sqlleaf.models.hook import Hook
-from sqlleaf.models.node import EdgeAttributes, GraphAttributes, N
+from sqlleaf.models.node import EdgeAttributes, GraphAttributes, N, NodeAttributes
 from sqlleaf.models.query import (
     Q,
 )
@@ -80,6 +80,7 @@ class Lineage:
                         edge_data["attrs"].child = old_node_attrs
             else:
                 self.graph.add_node(n, **data)
+                self.object_mapping.node_index.add(data["attrs"])
 
         self.graph.add_edges_from(subgraph.edges(data=True))
 
@@ -97,6 +98,46 @@ class Lineage:
             nodes, key=lambda e: (getattr(e, "catalog", ""), getattr(e, "schema", ""), getattr(e, "table", ""), e.name)
         )
         return nodes
+
+    def find_nodes(self, *nodes: NodeAttributes) -> list[NodeAttributes]:
+        """
+        Find a set of nodes in the graph matching the given node instances.
+
+        This allows nodes to be found without knowing their positions.
+
+        This uses an index/map structure because the keys of the full node names contain
+        the positions of each node to identify them uniquely. For example, two literal
+        expressions for "abc" are assigned their own positions to distinguish them from each other.
+
+        Examples:
+            # Find all columns whose name is 'price'
+            find_node(ColumnNode(column="price"))
+
+            # Find two columns: one unqualified, another fully qualified
+            find_node(ColumnNode(column="age"), ColumnNode(schema="fruit", table="raw", column="name"))
+
+            # Find all functions
+            find_node(FunctionNode())
+        """
+        if self.object_mapping is None:
+            return []
+
+        found: list[NodeAttributes] = []
+        seen: set[str] = set()
+
+        for query in nodes:
+            candidates = self.object_mapping.node_index.get(type(query))
+            if query.name != "":
+                query_name = query.get_name()
+                candidates = [node for node in candidates if node.get_name() == query_name]
+
+            for node in candidates:
+                if node.full_name not in seen:
+                    seen.add(node.full_name)
+                    found.append(node)
+
+        return found
+
 
     def get_original_queries(self) -> list[Q]:
         """

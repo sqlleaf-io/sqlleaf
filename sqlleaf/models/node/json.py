@@ -6,13 +6,13 @@ import typing as t
 from sqlglot import exp
 
 from sqlleaf.models.context import GeneratorContext
-from sqlleaf.models.node import NodeAttributes
+from sqlleaf.models.node import NodeAttributes, NodeKind
 
 logger = logging.getLogger("sqlleaf")
 
 
 class JsonPathNode(NodeAttributes):
-    KIND = "jsonpath"
+    KIND = NodeKind.JSONPATH
 
     def __init__(self, selector: str = "", selector_depth: int = 0, data_type: str = ""):
         super().__init__(name=selector, data_type=data_type)

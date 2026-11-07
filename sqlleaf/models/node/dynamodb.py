@@ -4,13 +4,13 @@ import logging
 import typing as t
 
 from sqlleaf.models.context import GeneratorContext
-from sqlleaf.models.node import NodeAttributes
+from sqlleaf.models.node import NodeAttributes, NodeKind
 
 logger = logging.getLogger("sqlleaf")
 
 
 class DynamoDbNode(NodeAttributes):
-    KIND = "column"
+    KIND = NodeKind.COLUMN
 
     def __init__(
         self,

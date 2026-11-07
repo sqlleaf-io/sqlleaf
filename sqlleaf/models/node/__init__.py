@@ -1,8 +1,31 @@
 import typing as t
 
+from enum import StrEnum, auto
+
+class NodeKind(StrEnum):
+    COLUMN = auto()
+    DYNAMODB = auto()
+    FUNCTION = auto()
+    INTERVAL = auto()
+    JSONPATH = auto()
+    LITERAL = auto()
+    NULL = auto()
+    PIVOT = auto()
+    UNPIVOT = auto()
+    PROGRAM = auto()
+    SEQUENCE = auto()
+    STAR = auto()
+    STREAM = auto()
+    UDF = auto()
+    VAR = auto()
+    VARIABLE = auto()
+    WINDOW = auto()
+
+# Base classes
 from sqlleaf.models.node.base import EdgeAttributes as EdgeAttributes
 from sqlleaf.models.node.base import GraphAttributes as GraphAttributes
 from sqlleaf.models.node.base import NodeAttributes as NodeAttributes
+# Node classes
 from sqlleaf.models.node.column import ColumnNode as ColumnNode
 from sqlleaf.models.node.column import FileColumnNode as FileColumnNode
 from sqlleaf.models.node.column import StageColumnNode as StageColumnNode

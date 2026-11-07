@@ -9,14 +9,14 @@ from sqlglot.optimizer.scope import ScopeType
 
 from sqlleaf import exception
 from sqlleaf.models.context import GeneratorContext, PositionContext
-from sqlleaf.models.node import NodeAttributes
+from sqlleaf.models.node import NodeAttributes, NodeKind
 from sqlleaf.typing import TableOrScopeType, TableSubtype, TableType
 
 logger = logging.getLogger("sqlleaf")
 
 
 class ColumnNode(NodeAttributes):
-    KIND = "column"
+    KIND = NodeKind.COLUMN
 
     def __init__(
         self,
@@ -279,7 +279,7 @@ class ColumnNode(NodeAttributes):
 
 
 class FileColumnNode(NodeAttributes):
-    KIND = "column"
+    KIND = NodeKind.COLUMN
 
     def __init__(
         self,
@@ -313,7 +313,7 @@ class FileColumnNode(NodeAttributes):
 
 
 class StageColumnNode(NodeAttributes):
-    KIND = "column"
+    KIND = NodeKind.COLUMN
 
     def __init__(
         self,

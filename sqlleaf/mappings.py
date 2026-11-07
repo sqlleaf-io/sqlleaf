@@ -11,6 +11,7 @@ from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
 
 from sqlleaf import exception, util
+from sqlleaf.path import NodeIndex
 from sqlleaf.models.query import (
     CallQuery,
     CTASQuery,
@@ -165,6 +166,8 @@ class ObjectMapping(MappingSchema):
         # Session/global variables (e.g., SET var = ...)
         self.session_variables: dict[str, exp.Expr] = {}
         self.variables = Variables()
+        # Nodes that have been added to the graph, indexed by class
+        self.node_index = NodeIndex()
 
     def add_database_query(self, query: DatabaseQuery) -> None:
         self._add_query(query=query, dialect=query.dialect)
