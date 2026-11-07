@@ -14,7 +14,7 @@ from sqlleaf.processors.collector.classify import _classify_command, _determine_
 from sqlleaf.processors.substitutor import substitute
 from sqlleaf.processors.transformer import transformer
 from sqlleaf.processors.transformer.expressions import simplify_row_in_values
-from sqlleaf.dialects.loader import get_object_ddl
+from sqlleaf.dialects.loader import get_object_ddl, get_schema_ddl
 
 logger = logging.getLogger("sqlleaf")
 
@@ -792,15 +792,32 @@ class SystemObjectLoader:
 
     def __init__(self, dialect: str):
         self.dialect = dialect
-        self.attempted: set[tuple[str, str]] = set()
+        # Track visited objects to prevent recursion
+        self.attempted_tables: set[tuple[str, str]] = set()
+        self.attempted_schemas: set[str] = set()
 
-    def __call__(self, object_mapping: mappings.ObjectMapping, table: exp.Table) -> None:
+    def __call__(self, object_mapping: mappings.ObjectMapping, object: exp.Table, kind: str = "table") -> None:
+        if kind == "schema":
+            self._load_schema(object_mapping, object.name)
+        else:
+            self._load_table(object_mapping, object)
+
+    def _load_table(self, object_mapping: mappings.ObjectMapping, table: exp.Table) -> None:
         if not table.db:
             return
+
         key = (table.db.lower(), table.name.lower())
-        if key in self.attempted:
+        if key in self.attempted_tables:
             return
-        self.attempted.add(key)
+        self.attempted_tables.add(key)
 
         if ddl := get_object_ddl(self.dialect, table.db, table.name):
+            collect_queries(text=ddl, dialect=self.dialect, object_mapping=object_mapping)
+
+    def _load_schema(self, object_mapping: mappings.ObjectMapping, schema: str) -> None:
+        if schema.lower() in self.attempted_schemas:
+            return
+        self.attempted_schemas.add(schema.lower())
+
+        if ddl := get_schema_ddl(self.dialect, schema):
             collect_queries(text=ddl, dialect=self.dialect, object_mapping=object_mapping)

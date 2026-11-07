@@ -160,7 +160,7 @@ class ObjectMapping(MappingSchema):
     def __init__(
         self,
         dialect: str,
-        object_loader: t.Callable[[ObjectMapping, exp.Table], None] | None = None,
+        object_loader: t.Callable[[ObjectMapping, exp.Table, str], None] | None = None,
     ):
         super().__init__(
             dialect=dialect, normalize=False
@@ -283,12 +283,12 @@ class ObjectMapping(MappingSchema):
             match_depth=match_depth,
         )
 
-    def _handle_missing_table(self, table: exp.Table) -> None:
+    def handle_missing_object(self, object: exp.Table, kind: str = "table") -> None:
         if self.system_object_loader is not None:
-            self.system_object_loader(self, table)
+            self.system_object_loader(self, object, kind)
 
     def find(self, table: exp.Table, raise_on_missing: bool = True, ensure_data_types: bool = False) -> t.Any | None:
-        self._handle_missing_table(table)
+        self.handle_missing_object(table)
         return super().find(table, raise_on_missing=raise_on_missing, ensure_data_types=ensure_data_types)
 
     def find_columns_for_table(
@@ -312,6 +312,9 @@ class ObjectMapping(MappingSchema):
     def lookup_procedure_query(self, table: exp.Table, raise_on_missing: bool = True) -> list[ProcedureQuery] | None:
         # A procedure can be overloaded with different parameters, thus we return a list
         return self._lookup_query(kind="procedure", object=table, raise_on_missing=raise_on_missing)
+
+    def lookup_schema(self, schema: exp.Table, raise_on_missing: bool = True) -> SchemaQuery | None:
+        return self._lookup_query(kind="schema", object=schema, raise_on_missing=raise_on_missing)
 
     def lookup_sequence_query(self, table: exp.Table, raise_on_missing: bool = True) -> SequenceQuery | None:
         return self._lookup_query(kind="sequence", object=table, raise_on_missing=raise_on_missing)
@@ -354,8 +357,8 @@ class ObjectMapping(MappingSchema):
         Returns:
             The schema of the target object.
         """
-        if kind == "table":
-            self._handle_missing_table(object)
+        if kind in ("table", "schema"):
+            self.handle_missing_object(object, kind=kind)
 
         if kind not in self.kind_mapping:
             if raise_on_missing:
