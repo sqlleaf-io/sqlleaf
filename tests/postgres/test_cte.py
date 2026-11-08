@@ -97,7 +97,7 @@ def test__select_complex_array_min(holder):
     sql = """
     CREATE TABLE target(age INT);
 
-    INSERT INTO target (age)
+    INSERT INTO public.target (age)
     WITH data_source AS (
         SELECT CAST(ARRAY[10, -1, 5, 4.4] AS DECIMAL[]) AS my_array
     )
@@ -234,13 +234,13 @@ def test__cte_merge_inside_select(holder):
 
 def test__cte_merge_inside_insert(holder):
     sql = """
-    CREATE TABLE fruit (name VARCHAR, kind VARCHAR);
-    CREATE TABLE drink (name2 VARCHAR, kind2 VARCHAR);
-    CREATE TABLE fruit_drink (action VARCHAR, name VARCHAR, kind VARCHAR, name2 VARCHAR, kind2 VARCHAR);
+    CREATE TABLE public.fruit (name VARCHAR, kind VARCHAR);
+    CREATE TABLE public.drink (name2 VARCHAR, kind2 VARCHAR);
+    CREATE TABLE public.fruit_drink (action VARCHAR, name VARCHAR, kind VARCHAR, name2 VARCHAR, kind2 VARCHAR);
 
     WITH cte AS (
-        MERGE INTO fruit AS t
-        USING drink AS s
+        MERGE INTO public.fruit AS t
+        USING public.drink AS s
         ON t.name = s.name2
         WHEN MATCHED THEN
             UPDATE SET name = s.name2
@@ -248,24 +248,24 @@ def test__cte_merge_inside_insert(holder):
             INSERT (kind) VALUES (s.kind2)
         RETURNING merge_action() as action, *
     )
-    INSERT INTO fruit_drink
+    INSERT INTO public.fruit_drink
     SELECT *
     FROM cte;
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=False)
 
     assert h.paths == [
-        ["function[MERGE_ACTION]", "column[cte.action]", "column[fruit_drink.action]"],
-        ["column[drink.name2]", "column[fruit.name]", "column[cte.name]", "column[fruit_drink.name]"],
-        ["column[drink.name2]", "column[cte.name2]", "column[fruit_drink.name2]"],
-        ["column[drink.kind2]", "column[fruit.kind]", "column[cte.kind]", "column[fruit_drink.kind]"],
-        ["column[drink.kind2]", "column[cte.kind2]", "column[fruit_drink.kind2]"],
+        ["function[MERGE_ACTION]", "column[cte.action]", "column[public.fruit_drink.action]"],
+        ["column[public.drink.name2]", "column[public.fruit.name]", "column[cte.name]", "column[public.fruit_drink.name]"],
+        ["column[public.drink.name2]", "column[cte.name2]", "column[public.fruit_drink.name2]"],
+        ["column[public.drink.kind2]", "column[public.fruit.kind]", "column[cte.kind]", "column[public.fruit_drink.kind]"],
+        ["column[public.drink.kind2]", "column[cte.kind2]", "column[public.fruit_drink.kind2]"],
     ]
     assert (
         h.holders[3].transformed.statement.sql(dialect=DIALECT) == "WITH cte AS ("
         "SELECT MERGE_ACTION() AS action, t.name AS name, t.kind AS kind, s.name2 AS name2, "
-        "s.kind2 AS kind2 FROM fruit AS t JOIN drink AS s ON s.name2 = t.name) "
-        "INSERT INTO fruit_drink (action, name, kind, name2, kind2) "
+        "s.kind2 AS kind2 FROM public.fruit AS t JOIN public.drink AS s ON s.name2 = t.name) "
+        "INSERT INTO public.fruit_drink (action, name, kind, name2, kind2) "
         "SELECT cte.action AS action, cte.name AS name, cte.kind AS kind, cte.name2 AS name2, cte.kind2 AS kind2 "
         "FROM cte AS cte"
     )

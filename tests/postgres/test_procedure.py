@@ -19,7 +19,7 @@ def test_call_procedure_multi(holder):
     LANGUAGE SQL
     AS $$
         VALUES (5);
-        INSERT INTO target (name) VALUES ('world');
+        INSERT INTO public.target (name) VALUES ('world');
     $$;
     CALL hello();
     """
@@ -42,13 +42,13 @@ def test_call_procedure_multi(holder):
     assert isinstance(downstream_holders[1].original, InsertQuery)
     assert (
         downstream_holders[1].transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO target (name) SELECT 'world' AS name"
+        == "INSERT INTO public.target (name) SELECT 'world' AS name"
     )
 
-    assert h.paths == [['literal["world"]', "column[target.name]"]]
+    assert h.paths == [['literal["world"]', "column[public.target.name]"]]
     assert h.nodes_full == [
         'literal[name="world" type=VARCHAR position=[query_depth=0 query_width=0 statement=2:1 select=0 func_depth=0 func_arg=0]]',
-        "column[name=name type=TEXT properties=[kind=table table=target]]",
+        "column[name=name type=TEXT properties=[kind=table table=target schema=public]]",
     ]
     assert len(h.edges) == 1
 
@@ -59,7 +59,7 @@ def test_hello_procedure(holder):
     CREATE PROCEDURE hello()
     LANGUAGE SQL
     AS $$
-        INSERT INTO target (name) VALUES ('world');
+        INSERT INTO public.target (name) VALUES ('world');
     $$;
     """
     h = holder(sql=sql, dialect=DIALECT)
@@ -82,7 +82,7 @@ def test_call_procedure(holder):
     CREATE PROCEDURE hello()
     LANGUAGE SQL
     AS $$
-        INSERT INTO target (name) VALUES ('world');
+        INSERT INTO public.target (name) VALUES ('world');
     $$;
     CALL hello();
     """
@@ -104,13 +104,13 @@ def test_call_procedure(holder):
     assert isinstance(downstream_holders[0].original, InsertQuery)
     assert (
         downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO target (name) SELECT 'world' AS name"
+        == "INSERT INTO public.target (name) SELECT 'world' AS name"
     )
 
-    assert h.paths == [['literal["world"]', "column[target.name]"]]
+    assert h.paths == [['literal["world"]', "column[public.target.name]"]]
     assert h.nodes_full == [
         'literal[name="world" type=VARCHAR position=[query_depth=0 query_width=0 statement=2:0 select=0 func_depth=0 func_arg=0]]',
-        "column[name=name type=TEXT properties=[kind=table table=target]]",
+        "column[name=name type=TEXT properties=[kind=table table=target schema=public]]",
     ]
     assert len(h.edges) == 1
 
@@ -121,7 +121,7 @@ def test_call_schema_procedure(holder):
     CREATE PROCEDURE my_schema.hello()
     LANGUAGE SQL
     AS $$
-        INSERT INTO target (name) VALUES ('world');
+        INSERT INTO public.target (name) VALUES ('world');
     $$;
     CALL my_schema.hello();
     """
@@ -147,13 +147,13 @@ def test_call_schema_procedure(holder):
     assert isinstance(downstream_holders[0].original, InsertQuery)
     assert (
         downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO target (name) SELECT 'world' AS name"
+        == "INSERT INTO public.target (name) SELECT 'world' AS name"
     )
 
-    assert h.paths == [['literal["world"]', "column[target.name]"]]
+    assert h.paths == [['literal["world"]', "column[public.target.name]"]]
     assert h.nodes_full == [
         'literal[name="world" type=VARCHAR position=[query_depth=0 query_width=0 statement=2:0 select=0 func_depth=0 func_arg=0]]',
-        "column[name=name type=TEXT properties=[kind=table table=target]]",
+        "column[name=name type=TEXT properties=[kind=table table=target schema=public]]",
     ]
     assert len(h.edges) == 1
 
@@ -164,7 +164,7 @@ def test_call_procedure_with_params(holder):
     CREATE PROCEDURE hello(greeting TEXT)
     LANGUAGE SQL
     AS $$
-        INSERT INTO target (name) VALUES (greeting);
+        INSERT INTO public.target (name) VALUES (greeting);
     $$;
     CALL hello('world');
     """
@@ -187,7 +187,7 @@ def test_call_procedure_with_params(holder):
     assert isinstance(downstream_holder.original, InsertQuery)
     assert (
         downstream_holder.transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO target (name) SELECT 'world' AS name"
+        == "INSERT INTO public.target (name) SELECT 'world' AS name"
     )
 
 
@@ -197,7 +197,7 @@ def test_call_procedure_positional_param(holder):
     CREATE PROCEDURE hello(TEXT)
     LANGUAGE SQL
     AS $$
-        INSERT INTO target (name) VALUES ($1);
+        INSERT INTO public.target (name) VALUES ($1);
     $$;
     CALL hello('world');
     """
@@ -220,7 +220,7 @@ def test_call_procedure_positional_param(holder):
     assert isinstance(downstream_holder.original, InsertQuery)
     assert (
         downstream_holder.transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO target (name) SELECT 'world' AS name"
+        == "INSERT INTO public.target (name) SELECT 'world' AS name"
     )
 
 
@@ -230,7 +230,7 @@ def test_call_procedure_default_value(holder):
     CREATE PROCEDURE hello(greeting TEXT DEFAULT 'world')
     LANGUAGE SQL
     AS $$
-        INSERT INTO target (name) VALUES (greeting);
+        INSERT INTO public.target (name) VALUES (greeting);
     $$;
     CALL hello();
     """
@@ -254,7 +254,7 @@ def test_call_procedure_default_value(holder):
     assert isinstance(downstream_holder.original, InsertQuery)
     assert (
         downstream_holder.transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO target (name) SELECT 'world' AS name"
+        == "INSERT INTO public.target (name) SELECT 'world' AS name"
     )
 
 
@@ -264,7 +264,7 @@ def test_procedure_begin_atomic(holder):
     CREATE PROCEDURE hello()
     LANGUAGE SQL
     BEGIN ATOMIC
-        INSERT INTO target (name) VALUES ('world');
+        INSERT INTO public.target (name) VALUES ('world');
     END;
     CALL hello();
     """
@@ -280,7 +280,7 @@ def test_procedure_begin_end(holder):
     CREATE PROCEDURE hello()
     LANGUAGE SQL
     BEGIN
-        INSERT INTO target (name) VALUES ('world');
+        INSERT INTO public.target (name) VALUES ('world');
     END;
     CALL hello();
     """
@@ -299,7 +299,7 @@ def test_procedure_begin_end(holder):
     assert isinstance(call_query, CallQuery)
     assert call_query.procedure == "hello"
 
-    assert h.paths == [['literal["world"]', "column[target.name]"]]
+    assert h.paths == [['literal["world"]', "column[public.target.name]"]]
 
 
 # OUT params
@@ -312,7 +312,7 @@ def test_call_procedure_positional_notation(holder):
     CREATE PROCEDURE my_proc(x INT, y INT)
     LANGUAGE SQL
     AS $$
-        INSERT INTO target (a, b) VALUES (x, y);
+        INSERT INTO public.target (a, b) VALUES (x, y);
     $$;
     CALL my_proc(10, 20);
     """
@@ -323,9 +323,9 @@ def test_call_procedure_positional_notation(holder):
     assert isinstance(downstream_holder.original, InsertQuery)
     assert (
         downstream_holder.transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO target (a, b) SELECT 10 AS a, 20 AS b"
+        == "INSERT INTO public.target (a, b) SELECT 10 AS a, 20 AS b"
     )
-    assert h.paths == [["literal[10]", "column[target.a]"], ["literal[20]", "column[target.b]"]]
+    assert h.paths == [["literal[10]", "column[public.target.a]"], ["literal[20]", "column[public.target.b]"]]
 
 
 def test_call_procedure_mixed_notation(holder):
@@ -334,7 +334,7 @@ def test_call_procedure_mixed_notation(holder):
     CREATE PROCEDURE my_proc(x INT, y INT)
     LANGUAGE SQL
     AS $$
-        INSERT INTO target (a, b) VALUES (x, y);
+        INSERT INTO public.target (a, b) VALUES (x, y);
     $$;
     CALL my_proc(10, y => 20);
     """
@@ -345,7 +345,7 @@ def test_call_procedure_mixed_notation(holder):
     assert isinstance(downstream_holder.original, InsertQuery)
     assert (
         downstream_holder.transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO target (a, b) SELECT 10 AS a, 20 AS b"
+        == "INSERT INTO public.target (a, b) SELECT 10 AS a, 20 AS b"
     )
 
 

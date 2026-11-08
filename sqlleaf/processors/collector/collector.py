@@ -470,6 +470,10 @@ def _process_unnamed(
         return ExecuteQuery(
             expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
         )
+    if isinstance(statement, exp.Command) and statement.this.upper() == "SET":
+        return SetQuery(
+            expr=statement, dialect=dialect, object_mapping=object_mapping, statement_index=statement_index
+        )
     if isinstance(statement, exp.Create):
         if statement.kind == "TABLE":
             if isinstance(statement.expression, (exp.Select, exp.Values)) or statement.find(exp.ExecuteAsProperty):

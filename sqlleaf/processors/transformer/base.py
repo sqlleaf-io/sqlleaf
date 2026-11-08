@@ -16,6 +16,7 @@ from sqlleaf.processors.transformer.expressions import (
     simplify_row,
 )
 from sqlleaf.dialects import system_functions as get_system_functions
+from sqlleaf.dialects.base import BaseDialectSettings
 from sqlleaf.typing import E, SqlObjectType
 from sqlleaf.dialects.plpgsql import pgexp
 
@@ -516,6 +517,7 @@ class BaseQueryTransformer:
         """
         qualify.qualify(
             statement,
+            db=self.query.object_mapping.current_user_catalog,
             schema=self.query.object_mapping,
             dialect=self.query.dialect,
             isolate_tables=False,
@@ -705,7 +707,8 @@ class BaseQueryTransformer:
             # or the target is not a table (e.g. S3 file, stage, stream)
             return
 
-        child_table = query.get_target_as_table()
+        # Use the INSERT's own target, as it has been qualified by qualify(); target_info holds the original table
+        child_table = statement.this.this if isinstance(statement.this, exp.Schema) else statement.this
         table_query = query.object_mapping.get_table_or_stage(child_table)
         if not table_query:
             raise exception.SqlLeafException(message=f"Unknown target table: {str(exp.table_name(child_table))}")

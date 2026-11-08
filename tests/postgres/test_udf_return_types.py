@@ -21,7 +21,7 @@ def test__udf_void_return(holder):
     CREATE FUNCTION hello() RETURNS void AS 'SELECT 1;' LANGUAGE SQL;
 
     CREATE TABLE target(age INT);
-    INSERT INTO target (age) SELECT hello();
+    INSERT INTO public.target (age) SELECT hello();
     """
     h = holder(sql=sql, dialect=DIALECT)
 
@@ -33,12 +33,12 @@ def test__udf_void_return(holder):
     assert query.return_type == exp.DataType.build("NULL")
     assert query.language == "sql"
 
-    assert h.paths == [["null[NULL]", "column[target.age]"]]
+    assert h.paths == [["null[NULL]", "column[public.target.age]"]]
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
 
     insert_query = h.holders[2]
-    insert_after = ["INSERT INTO target (age) SELECT (SELECT NULL AS _col_0) AS age"]
+    insert_after = ["INSERT INTO public.target (age) SELECT (SELECT NULL AS _col_0) AS age"]
 
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after) == insert_after
@@ -55,7 +55,7 @@ def test__udf_inout_parameter(holder):
     $$ LANGUAGE SQL;
 
     CREATE TABLE target(msg VARCHAR, bye VARCHAR);
-    INSERT INTO target (msg, bye) SELECT * FROM hello();
+    INSERT INTO public.target (msg, bye) SELECT * FROM hello();
     """
     h = holder(sql=sql, dialect=DIALECT)
 
@@ -74,7 +74,7 @@ def test__udf_inout_parameter(holder):
     # Check substitution for the first INSERT
     insert_query_1 = h.holders[2]
     insert_after_1 = [
-        "INSERT INTO target (msg, bye) SELECT hello.username AS msg, hello.column2 AS bye FROM (SELECT 'Hi User' AS username, 'Goodbye User' AS column2) AS hello"
+        "INSERT INTO public.target (msg, bye) SELECT hello.username AS msg, hello.column2 AS bye FROM (SELECT 'Hi User' AS username, 'Goodbye User' AS column2) AS hello"
     ]
     actual_after_1 = [insert_query_1.transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -91,7 +91,7 @@ def test__udf_in_out_inout_parameters(holder):
     $$ LANGUAGE SQL;
 
     CREATE TABLE target(name1 VARCHAR, name2 VARCHAR);
-    INSERT INTO target(name1, name2) SELECT * FROM hello(username => 'Hello', middle_name => 'There');
+    INSERT INTO public.target(name1, name2) SELECT * FROM hello(username => 'Hello', middle_name => 'There');
     """
 
     h = holder(sql=sql, dialect=DIALECT)
@@ -111,7 +111,7 @@ def test__udf_in_out_inout_parameters(holder):
     # Check substitution for the first INSERT
     insert_query_1 = h.holders[2]
     insert_after_1 = [
-        "INSERT INTO target (name1, name2) SELECT hello.middle_name AS name1, hello.last_name AS name2 FROM (SELECT UPPER('There') AS middle_name, LOWER('Hello') AS last_name) AS hello"
+        "INSERT INTO public.target (name1, name2) SELECT hello.middle_name AS name1, hello.last_name AS name2 FROM (SELECT UPPER('There') AS middle_name, LOWER('Hello') AS last_name) AS hello"
     ]
     actual_after_1 = [insert_query_1.transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -123,7 +123,7 @@ def test__udf_table_no_params(holder):
         SELECT 'prop', 'val';
     $$ LANGUAGE SQL;
     CREATE TABLE target(name1 VARCHAR, name2 VARCHAR, age INT);
-    INSERT INTO target (name1, name2) SELECT * FROM hello();
+    INSERT INTO public.target (name1, name2) SELECT * FROM hello();
     """
 
     h = holder(sql=sql, dialect=DIALECT)
@@ -142,7 +142,7 @@ def test__udf_table_no_params(holder):
 
     insert_query_1 = h.holders[2]
     insert_after_1 = [
-        "INSERT INTO target (name1, name2) SELECT hello.property AS name1, hello.value AS name2 FROM (SELECT 'prop' AS property, 'val' AS value) AS hello"
+        "INSERT INTO public.target (name1, name2) SELECT hello.property AS name1, hello.value AS name2 FROM (SELECT 'prop' AS property, 'val' AS value) AS hello"
     ]
     actual_after_1 = [insert_query_1.transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -155,7 +155,7 @@ def test__udf_table_and_values(holder):
     $$ LANGUAGE SQL;
 
     CREATE TABLE target(name1 VARCHAR, name2 VARCHAR, age INT);
-    INSERT INTO target (name1, name2, age) SELECT *, 1 FROM hello('John');
+    INSERT INTO public.target (name1, name2, age) SELECT *, 1 FROM hello('John');
     """
 
     h = holder(sql=sql, dialect=DIALECT)
@@ -173,7 +173,7 @@ def test__udf_table_and_values(holder):
 
     insert_query_1 = h.holders[2]
     insert_after_1 = [
-        "INSERT INTO target (name1, name2, age) SELECT hello.property AS name1, hello.value AS name2, 1 AS age FROM (SELECT 'greeting' AS property, 'Hello John' AS value) AS hello"
+        "INSERT INTO public.target (name1, name2, age) SELECT hello.property AS name1, hello.value AS name2, 1 AS age FROM (SELECT 'greeting' AS property, 'Hello John' AS value) AS hello"
     ]
     actual_after_1 = [insert_query_1.transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -187,7 +187,7 @@ def test__udf_composite_type(holder):
     $$ LANGUAGE SQL;
 
     CREATE TABLE target(name VARCHAR, age INT);
-    INSERT INTO target (name, age) SELECT * FROM hello('John');
+    INSERT INTO public.target (name, age) SELECT * FROM hello('John');
     """
     h = holder(sql=sql, dialect=DIALECT)
 
@@ -205,12 +205,12 @@ def test__udf_composite_type(holder):
     assert query.language == "sql"
 
     assert sorted(h.paths) == [
-        ['literal["John"]', "column[hello.name1]", "column[target.name]"],
-        ["literal[50]", "column[hello.age1]", "column[target.age]"],
+        ['literal["John"]', "column[hello.name1]", "column[public.target.name]"],
+        ["literal[50]", "column[hello.age1]", "column[public.target.age]"],
     ]
 
     insert_after_1 = [
-        "INSERT INTO target (name, age) SELECT hello.name1 AS name, hello.age1 AS age FROM (SELECT 'John' AS name1, 50 AS age1) AS hello"
+        "INSERT INTO public.target (name, age) SELECT hello.name1 AS name, hello.age1 AS age FROM (SELECT 'John' AS name1, 50 AS age1) AS hello"
     ]
     actual_after_1 = [h.holders[3].transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -224,7 +224,7 @@ def test__udf_type_return(holder):
     $$ LANGUAGE SQL;
 
     CREATE TABLE target(name VARCHAR, age INT);
-    INSERT INTO target (name, age) SELECT * FROM hello('John');
+    INSERT INTO public.target (name, age) SELECT * FROM hello('John');
     """
     h = holder(sql=sql, dialect=DIALECT)
 
@@ -242,13 +242,13 @@ def test__udf_type_return(holder):
     assert query.language == "sql"
 
     assert sorted(h.paths) == [
-        ['literal["Bob"]', "column[hello.name1]", "column[target.name]"],
-        ["literal[75]", "column[hello.age1]", "column[target.age]"],
+        ['literal["Bob"]', "column[hello.name1]", "column[public.target.name]"],
+        ["literal[75]", "column[hello.age1]", "column[public.target.age]"],
     ]
 
     insert_query_1 = h.holders[3]
     insert_after_1 = [
-        "INSERT INTO target (name, age) SELECT hello.name1 AS name, hello.age1 AS age FROM (SELECT 'Bob' AS name1, 75 AS age1) AS hello"
+        "INSERT INTO public.target (name, age) SELECT hello.name1 AS name, hello.age1 AS age FROM (SELECT 'Bob' AS name1, 75 AS age1) AS hello"
     ]
     actual_after_1 = [insert_query_1.transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -263,7 +263,7 @@ def test__udf_table_return(holder):
     $$ LANGUAGE SQL;
 
     CREATE TABLE target(name VARCHAR, age INT);
-    INSERT INTO target (name, age) SELECT * FROM hello();
+    INSERT INTO public.target (name, age) SELECT * FROM hello();
     """
     h = holder(sql=sql, dialect=DIALECT)
 
@@ -281,12 +281,12 @@ def test__udf_table_return(holder):
     assert query.language == "sql"
 
     assert sorted(h.paths) == [
-        ['literal["Mary"]', "column[hello.name]", "column[target.name]"],
-        ["literal[25]", "column[hello.age]", "column[target.age]"],
+        ['literal["Mary"]', "column[hello.name]", "column[public.target.name]"],
+        ["literal[25]", "column[hello.age]", "column[public.target.age]"],
     ]
 
     insert_after_1 = [
-        "INSERT INTO target (name, age) SELECT hello.name AS name, hello.age AS age FROM (SELECT 'Mary' AS name, 25 AS age) AS hello"
+        "INSERT INTO public.target (name, age) SELECT hello.name AS name, hello.age AS age FROM (SELECT 'Mary' AS name, 25 AS age) AS hello"
     ]
     actual_after_1 = [h.holders[3].transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1
@@ -301,7 +301,7 @@ def test__udf_schema_table_return(holder):
     $$ LANGUAGE SQL;
 
     CREATE TABLE target(name VARCHAR, age INT);
-    INSERT INTO target (name, age) SELECT * FROM hello();
+    INSERT INTO public.target (name, age) SELECT * FROM hello();
     """
     h = holder(sql=sql, dialect=DIALECT)
 
@@ -319,7 +319,7 @@ def test__udf_schema_table_return(holder):
     assert query.language == "sql"
 
     insert_after_1 = [
-        "INSERT INTO target (name, age) SELECT hello.name AS name, hello.age AS age FROM (SELECT 'Mary' AS name, 25 AS age) AS hello"
+        "INSERT INTO public.target (name, age) SELECT hello.name AS name, hello.age AS age FROM (SELECT 'Mary' AS name, 25 AS age) AS hello"
     ]
     actual_after_1 = [h.holders[3].transformed.statement]
     assert to_sql(actual_after_1) == insert_after_1

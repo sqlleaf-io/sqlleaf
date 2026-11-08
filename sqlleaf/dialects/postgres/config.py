@@ -49,4 +49,9 @@ class PostgresSettings(BaseDialectSettings):
 
 # sqlglot is missing pseudocolumns for Postgres
 postgres.Postgres.PSEUDOCOLUMNS = {c.upper() for c in PostgresSettings.PSEUDOCOLUMNS.keys()}
+
+# Prevents pseudocolumns from being included in 'SELECT *' expansions
 postgres.Postgres.EXCLUDES_PSEUDOCOLUMNS_FROM_STAR = True
+
+# Prevents sqlglot's optimizer from assigning [n+1] to arrays of [n]
+postgres.Postgres.INDEX_OFFSET = 0

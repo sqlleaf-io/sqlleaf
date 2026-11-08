@@ -48,6 +48,8 @@ def _classify_command(stmt: exp.Command, dialect: str) -> tuple[str, bool]:
         return "prepare", _is_prepare_supported(stmt)
     if dialect == "postgres" and stmt.name == "EXECUTE":
         return "execute", _is_execute_supported(stmt)
+    if dialect == "postgres" and stmt.this.upper() == "SET" and str(stmt.expression).strip().lower().startswith("search_path"):
+        return "set", True
     if dialect == "mysql" and stmt.name == "REPLACE":
         return "replace", _is_replace_supported(stmt, dialect)
     if stmt.this.upper() == "CALL":

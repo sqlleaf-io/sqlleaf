@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from sqlglot import exp
 
 from sqlleaf import mappings
@@ -17,10 +19,13 @@ class SetQuery(Query):
 
     This class extracts these variables and stores them in the ObjectMapping
     so they can be substituted into subsequent queries in the same session.
+
+    Postgres 'SET search_path' is also handled here. It changes the current user catalog
+    instead of storing a session variable.
     """
     KIND = "set"
 
-    def __init__(self, expr: exp.Set, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
+    def __init__(self, expr: exp.Set | exp.Command, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
         super().__init__(
             dialect=dialect,
             statement=expr,
@@ -65,17 +70,41 @@ class SetQuery(Query):
         # Use sqlglot's transform to produce a new tree with replacements.
         return rhs.transform(_replace, copy=True)
 
+    def _set_search_path(self, schemas: list[str]) -> None:
+        """
+        Point the current user catalog at the first schema of the search path.
+        The session user's schema ('$user') is unknown, so it is skipped.
+        """
+        candidates = [schema for schema in schemas if schema != "$user"]
+        if candidates:
+            self.object_mapping.current_user_catalog = candidates[0]
+
+    def _collect_command(self):
+        """
+        Handles 'SET search_path = a, b' which sqlglot parses as a raw Command.
+        """
+        match = re.match(r"\s*search_path\s*(?:=|\bTO\b)\s*(.+)", str(self.statement.expression), re.IGNORECASE)
+        if match:
+            schemas = [schema.strip().strip('"\'').lower() for schema in match.group(1).split(",")]
+            self._set_search_path(schemas)
+
     def _collect(self):
         """
-        Extracts session variables from the SET statement.
+        Extracts session variables from the SET statement and store them inside the object mapping.
         """
+        if self.dialect == "postgres" and isinstance(self.statement, exp.Command):
+            self._collect_command()
+            return
+
         for expression in self.statement.expressions:
             eq_expr = expression.this if isinstance(expression, exp.SetItem) else expression
             if not isinstance(eq_expr, exp.EQ):
                 continue
 
             left, right = eq_expr.left, eq_expr.right
-            if isinstance(left, exp.Tuple):
+            if isinstance(left, exp.Column) and left.name.lower() == "search_path":
+                self._set_search_path([right.name])
+            elif isinstance(left, exp.Tuple):
                 # SET (a, b) = (10, 20)  or  SET (a, b) = (SELECT ...)
                 names = [col.name for col in left.expressions]
                 if isinstance(right, exp.Tuple):

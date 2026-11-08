@@ -48,9 +48,9 @@ def test__select_parens(holder, case):
 
     assert h.nodes_full == [
         "literal[name=1 type=INT position=[query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]",
-        "column[name=age type=INT properties=[kind=table table=person]]",
+        "column[name=age type=INT properties=[kind=table table=person schema=public]]",
     ]
-    assert h.paths == [["literal[1]", "column[person.age]"]]
+    assert h.paths == [["literal[1]", "column[public.person.age]"]]
     assert len(h.edges) == 1
 
 
@@ -87,7 +87,7 @@ def test__select_basic(holder):
     SELECT * FROM source;
     """
     h = holder(sql=sql, dialect=DIALECT)
-    assert h.holders[1].transformed.statement.sql(dialect=DIALECT) == "SELECT source.name AS name FROM source AS source"
+    assert h.holders[1].transformed.statement.sql(dialect=DIALECT) == "SELECT source.name AS name FROM public.source AS source"
     assert h.paths == []
     assert h.nodes_full == []
 
@@ -585,7 +585,7 @@ def test__select_table_as_table(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[t1.name1]", "column[t2.name1]"], ["column[t1.name2]", "column[t2.name2]"]]
+    assert h.paths == [["column[public.t1.name1]", "column[public.t2.name1]"], ["column[public.t1.name2]", "column[public.t2.name2]"]]
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
     assert len(h.queries_original) == 3
@@ -617,8 +617,8 @@ def test__select_order_by_in_string_add(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[t1.name1]", "function[GROUP_CONCAT]", "column[t2.name1]"],
-        ['literal[","]', "function[GROUP_CONCAT]", "column[t2.name1]"],
+        ["column[public.t1.name1]", "function[GROUP_CONCAT]", "column[public.t2.name1]"],
+        ['literal[","]', "function[GROUP_CONCAT]", "column[public.t2.name1]"],
     ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 3
@@ -635,11 +635,11 @@ def test__select_table_alias(holder):
 
     assert (
         h.holders[1].transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO t1 (name1, name2) SELECT t.a AS name1, t.b AS name2 FROM (SELECT 'A' AS a, 'B' AS b) AS t"
+        == "INSERT INTO public.t1 (name1, name2) SELECT t.a AS name1, t.b AS name2 FROM (SELECT 'A' AS a, 'B' AS b) AS t"
     )
     assert h.paths == [
-        ['literal["A"]', "column[t.a]", "column[t1.name1]"],
-        ['literal["B"]', "column[t.b]", "column[t1.name2]"],
+        ['literal["A"]', "column[t.a]", "column[public.t1.name1]"],
+        ['literal["B"]', "column[t.b]", "column[public.t1.name2]"],
     ]
     assert len(h.nodes) == 6
     assert len(h.edges) == 4
@@ -656,11 +656,11 @@ def test__select_table_alias_one_column(holder):
 
     assert (
         h.holders[1].transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO t1 (name1, name2) SELECT t.x AS name1, t.b AS name2 FROM (SELECT 'A' AS x, 'B' AS b) AS t"
+        == "INSERT INTO public.t1 (name1, name2) SELECT t.x AS name1, t.b AS name2 FROM (SELECT 'A' AS x, 'B' AS b) AS t"
     )
     assert h.paths == [
-        ['literal["A"]', "column[t.x]", "column[t1.name1]"],
-        ['literal["B"]', "column[t.b]", "column[t1.name2]"],
+        ['literal["A"]', "column[t.x]", "column[public.t1.name1]"],
+        ['literal["B"]', "column[t.b]", "column[public.t1.name2]"],
     ]
     assert len(h.nodes) == 6
     assert len(h.edges) == 4

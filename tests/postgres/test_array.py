@@ -19,11 +19,12 @@ def test__array_subscript_column(holder):
     FROM source;
     """
     h = holder(sql=sql, dialect=DIALECT)
+    assert h.queries_transformed[2].statement.sql(dialect=DIALECT) == "INSERT INTO public.target (first) SELECT source.my_arr[source.num] AS first FROM public.source AS source"
 
-    assert h.paths == [["column[source.my_arr]", "column[target.first]"]]
+    assert h.paths == [["column[public.source.my_arr]", "column[public.target.first]"]]
     assert h.nodes_full == [
-        "column[name=my_arr type=ARRAY<INT> properties=[kind=table table=source]]",
-        "column[name=first type=INT properties=[kind=table table=target]]",
+        "column[name=my_arr type=ARRAY<INT> properties=[kind=table table=source schema=public]]",
+        "column[name=first type=INT properties=[kind=table table=target schema=public]]",
     ]
 
 
@@ -38,10 +39,10 @@ def test__array_subscript_subquery(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[source.my_arr]", "column[target.first]"]]
+    assert h.paths == [["column[public.source.my_arr]", "column[public.target.first]"]]
     assert h.nodes_full == [
-        "column[name=my_arr type=ARRAY<INT> properties=[kind=table table=source]]",
-        "column[name=first type=INT properties=[kind=table table=target]]",
+        "column[name=my_arr type=ARRAY<INT> properties=[kind=table table=source schema=public]]",
+        "column[name=first type=INT properties=[kind=table table=target schema=public]]",
     ]
 
 
@@ -56,10 +57,10 @@ def test__array_subscript_integer(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[source.my_arr]", "column[target.first]"]]
+    assert h.paths == [["column[public.source.my_arr]", "column[public.target.first]"]]
     assert h.nodes_full == [
-        "column[name=my_arr type=ARRAY<INT> properties=[kind=table table=source]]",
-        "column[name=first type=INT properties=[kind=table table=target]]",
+        "column[name=my_arr type=ARRAY<INT> properties=[kind=table table=source schema=public]]",
+        "column[name=first type=INT properties=[kind=table table=target schema=public]]",
     ]
 
 
@@ -75,10 +76,10 @@ def test__array_subscript_function_result(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[source.a]", "function[ARRAY_FUNCTION]", "column[target.first]"],
+        ["column[public.source.a]", "function[ARRAY_FUNCTION]", "column[public.target.first]"],
     ]
     assert h.nodes_full == [
         "function[name=ARRAY_FUNCTION type=UNKNOWN position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]",
-        "column[name=a type=INT properties=[kind=table table=source]]",
-        "column[name=first type=INT properties=[kind=table table=target]]",
+        "column[name=a type=INT properties=[kind=table table=source schema=public]]",
+        "column[name=first type=INT properties=[kind=table table=target schema=public]]",
     ]

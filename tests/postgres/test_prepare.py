@@ -19,7 +19,7 @@ def test__prepare(holder):
     sql = """
     CREATE TABLE source(name VARCHAR, amount INT);
 
-    PREPARE my_plan AS SELECT * FROM source;
+    PREPARE my_plan AS SELECT * FROM public.source;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
@@ -43,7 +43,7 @@ def test__prepare(holder):
 
 
 def test__prepare_invalid_syntax_fails(holder):
-    sql = "PREPARE my_plan SELECT * FROM source;"
+    sql = "PREPARE my_plan SELECT * FROM public.source;"
     h = holder(sql=sql, dialect=DIALECT)
     assert len(h.collected_queries.unsupported) == 1
     assert h.collected_queries.unsupported[0][1].name == "PREPARE"
@@ -54,7 +54,7 @@ def test__execute(holder):
     CREATE TABLE source(name VARCHAR, amount INT);
     CREATE TABLE target(name VARCHAR, amount INT);
 
-    PREPARE my_plan AS INSERT INTO target SELECT * FROM source;
+    PREPARE my_plan AS INSERT INTO public.target SELECT * FROM public.source;
     EXECUTE my_plan;
     """
     h = holder(sql=sql, dialect=DIALECT)
@@ -69,14 +69,14 @@ def test__execute(holder):
     insert_query: InsertQuery = execute_query.holder.downstream_holders[0].transformed
     assert (
         insert_query.statement.sql(dialect=DIALECT)
-        == "INSERT INTO target (name, amount) SELECT source.name AS name, source.amount AS amount FROM source AS source"
+        == "INSERT INTO public.target (name, amount) SELECT source.name AS name, source.amount AS amount FROM public.source AS source"
     )
     assert insert_query.source_info.type == SqlObjectType.SELECT
     assert insert_query.target_info.type == SqlObjectType.TABLE
 
     assert h.paths == [
-        ["column[source.name]", "column[target.name]"],
-        ["column[source.amount]", "column[target.amount]"],
+        ["column[public.source.name]", "column[public.target.name]"],
+        ["column[public.source.amount]", "column[public.target.amount]"],
     ]
     assert len(h.edges) == 2
 
@@ -84,27 +84,27 @@ def test__execute(holder):
 # TODO: ensure the below (see test_ctas.py for similar "CTAS .. EXECUTE" tests)
 """
 # OK
-PREPARE my_plan AS INSERT INTO target SELECT 'Hello';
+PREPARE my_plan AS INSERT INTO public.target SELECT 'Hello';
 EXECUTE my_plan;
 
 # ERROR: wrong number of parameters for prepared statement (expected: 1, actual: 0)
-PREPARE my_plan AS INSERT INTO target SELECT $1;
+PREPARE my_plan AS INSERT INTO public.target SELECT $1;
 EXECUTE my_plan;
 
 # OK
-PREPARE my_plan AS INSERT INTO target SELECT $1;
+PREPARE my_plan AS INSERT INTO public.target SELECT $1;
 EXECUTE my_plan(5);
 
 # ERROR: wrong number of parameters for prepared statement (expected: 1, actual: 2)
-PREPARE my_plan AS INSERT INTO target SELECT $1;
+PREPARE my_plan AS INSERT INTO public.target SELECT $1;
 EXECUTE my_plan(5, 6);
 
 # ERROR: wrong number of parameters for prepared statement (expected: 2, actual: 1)
-PREPARE my_plan AS INSERT INTO target SELECT $1, $2;
+PREPARE my_plan AS INSERT INTO public.target SELECT $1, $2;
 EXECUTE my_plan(5);
 
 # OK (if no parameters are defined using dollar symbol, any excess parameters are ignored)
-PREPARE my_plan AS INSERT INTO target SELECT 'Hello';
+PREPARE my_plan AS INSERT INTO public.target SELECT 'Hello';
 EXECUTE my_plan(5);
 """
 
@@ -112,7 +112,7 @@ EXECUTE my_plan(5);
 def test__execute_missing_parameter_fails(holder):
     sql = """
     CREATE TABLE target(name VARCHAR, amount INT);
-    PREPARE my_plan AS INSERT INTO target(name) SELECT $1;
+    PREPARE my_plan AS INSERT INTO public.target(name) SELECT $1;
     EXECUTE my_plan;
     """
     with pytest.raises(
