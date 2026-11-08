@@ -197,6 +197,7 @@ INSERT INTO dst (age) SELECT nextval('my_serial') as age;
 `sequence[my_serial] → column[dst.age]`
 
 #### 7. An UPDATE with inner CTEs containing UPDATEs that return their old and new columns
+sqlleaf will expand the `RETURNING *` into the correct columns and connect them together:
 ```sql
 WITH first_cte AS (
     UPDATE fruit.raw
@@ -214,9 +215,32 @@ FROM first_cte;
 ```
 `column[fruit.raw.age] -> column[first_cte.age] -> column[fruit.processed.age]` \
 `literal["pear"] -> column[fruit.raw.name]` \
-`literal["tomato"] -> column[fruit.raw.name`
+`literal["tomato"] -> column[fruit.raw.name]`
+
+## Graphs, edges and nodes
+Every node that is generated and added to the graph is de-duplicated *except for* columns. This is done by including the position alongside the node's information when calculating its identity.
+In other words, if we have a query:
+```sql
+SELECT UPPER('a'), UPPER('b')
+```
+We separate the two function calls `UPPER()` into separate nodes on the graph. This is to keep the graph organised and simple:
+1) it prevents nodes from having too many edges
+2) it ensures that paths along the graph are kept separate
+3) it enables applications such as impact analysis
+
+Columns are handled differently from other nodes and are *not* unique per query. This is because they are the most significant source of information and we need to know how information flows across them. Every time a query refers to a column, it is the same column in the graph.
+
+### Node identities
+A node can be represented using two forms:
+- its friendly name: `function[ADD]`
+- its full name: `function[name=ADD type=INT position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]"`
+
+Each of the numbers inside the `position` structure define a coordinate that makes it unique within a single query and across many queries. More information can be found inside the [context class](sqlleaf/models/context.py)
+
+### Node types
+There are currently about 20 node types. These include `ColumnNode`, `LiteralNode`, and `FunctionNode`. For the full list, see [Node types](sqlleaf/models/node/__init__.py)
 
 ## Limitations
-- Many of the dialects are incomplete. Postgres and PL/pgSQL have been mapped out extensively, but most of the dialects do not have their own specific features parsed into graphs yet. Dialects that do have features are Athena, Redshift, MySQL and Snowflake; the others have not been implemented at all yet.
+- Many of the dialects are incomplete. Postgres and PL/pgSQL have been mapped out extensively (see the test cases in [tests/postgres](tests/postgres/__init__.py), but most of the dialects do not have their own specific features parsed into graphs yet. Dialects that do have features are Athena, Redshift, MySQL and Snowflake; the others have not been implemented at all yet.
 
 - sqlleaf does not support data deletion. Statements like `DELETE`, `TRUNCATE` or `DROP TABLE` currently have no effect. They will in the future.
