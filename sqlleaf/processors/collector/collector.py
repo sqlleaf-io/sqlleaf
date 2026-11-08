@@ -815,7 +815,7 @@ class SystemObjectLoader:
             return
         self.attempted_tables.add(key)
 
-        if ddl := get_object_ddl(self.dialect, table.db, table.name):
+        if ddl := get_object_ddl(table.db, table.name, self.dialect):
             collect_queries(text=ddl, dialect=self.dialect, object_mapping=object_mapping)
 
     def _load_schema(self, object_mapping: mappings.ObjectMapping, schema: str) -> None:
@@ -823,5 +823,5 @@ class SystemObjectLoader:
             return
         self.attempted_schemas.add(schema.lower())
 
-        if ddl := get_schema_ddl(self.dialect, schema):
+        if ddl := get_schema_ddl(schema, self.dialect):
             collect_queries(text=ddl, dialect=self.dialect, object_mapping=object_mapping)

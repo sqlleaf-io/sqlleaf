@@ -610,6 +610,13 @@ def query_has_lineage(query: Q) -> bool:
     elif isinstance(query, TableQuery) and query.property != "external":
         # CREATE EXTERNAL TABLE
         has_lineage = False
+    elif (
+        isinstance(query, ViewQuery)
+        and query.dialect == "postgres"
+        and query.target_info.expression.db == "pg_catalog"
+    ):
+        # CREATE VIEW in a system schema. The view is not user lineage.
+        has_lineage = False
 
     if not has_lineage:
         logger.debug(f"Query type '{query.__class__.__name__}' does NOT have lineage. Skipping.")

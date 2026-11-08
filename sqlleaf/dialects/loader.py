@@ -42,10 +42,10 @@ def _lookup(dialect: str, kind: str, key: tuple[str, ...]) -> str | None:
     return text[span[0] : span[1]]
 
 
-def get_object_ddl(dialect: str, schema: str, table: str) -> str | None:
+def get_object_ddl(schema: str, table: str, dialect: str) -> str | None:
     key = (schema.lower(), table.lower())
     return _lookup(dialect, "tables", key) or _lookup(dialect, "views", key)
 
 
-def get_schema_ddl(dialect: str, schema: str) -> str | None:
+def get_schema_ddl(schema: str, dialect: str) -> str | None:
     return _lookup(dialect, "schemas", (schema.lower(),))
