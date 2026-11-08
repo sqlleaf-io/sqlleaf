@@ -217,6 +217,20 @@ FROM first_cte;
 `literal["pear"] -> column[fruit.raw.name]` \
 `literal["tomato"] -> column[fruit.raw.name]`
 
+#### 8. PREPARE and EXECUTE
+Set the search path in Postgres and run some queries:
+```sql
+SET search_path = "$user", public;
+
+CREATE TABLE source(name VARCHAR, amount INT);
+CREATE TABLE target(name VARCHAR, amount INT);
+
+PREPARE my_plan AS INSERT INTO public.target SELECT * FROM public.source;
+EXECUTE my_plan;
+```
+`column[public.source.name] -> column[public.target.name]` \
+`column[public.source.amount] -> column[public.target.amount]`
+
 ## Graphs, edges and nodes
 Every node that is generated and added to the graph is de-duplicated *except for* columns. This is done by including the position alongside the node's information when calculating its identity.
 In other words, if we have a query:
