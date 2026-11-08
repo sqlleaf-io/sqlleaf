@@ -31,7 +31,7 @@ class PostgresSettings(BaseDialectSettings):
         Map function names to their returned column names.
         """
         return {
-            "aclexplode": ["grantor, grantee, privilege_type, is_grantable"],
+            "aclexplode": ["grantor", "grantee", "privilege_type", "is_grantable"],
             "json_array_elements": ["value"],
             "json_array_elements_text": ["value"],
             "json_each": ["key", "value"],
@@ -40,7 +40,7 @@ class PostgresSettings(BaseDialectSettings):
             "jsonb_array_elements_text": ["value"],
             "jsonb_each": ["key", "value"],
             "jsonb_each_text": ["key", "value"],
-            "ts_debug": ["alias, description, token, dictionaries, dictionary, lexemes"],
+            "ts_debug": ["alias", "description", "token", "dictionaries", "dictionary", "lexemes"],
             "ts_parse": ["tokid", "token"],
             "ts_stat": ["word", "ndoc", "nentry"],
             "ts_token_type": ["tokid", "alias", "description"],
