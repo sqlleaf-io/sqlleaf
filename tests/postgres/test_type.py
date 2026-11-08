@@ -22,18 +22,18 @@ def test_type_composite(holder, case: str):
         age INT
     );
     CREATE TABLE target (name {case}fruit);
-    INSERT INTO target (name) SELECT ROW('apple', 5);
+    INSERT INTO public.target (name) SELECT ROW('apple', 5);
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-        ['literal["apple"]', "function[ROW]", "column[target.name]"],
-        ["literal[5]", "function[ROW]", "column[target.name]"],
+        ['literal["apple"]', "function[ROW]", "column[public.target.name]"],
+        ["literal[5]", "function[ROW]", "column[public.target.name]"],
     ]
     assert h.nodes_full == [
         'literal[name="apple" type=VARCHAR position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=1 func_arg=0]]',
         "literal[name=5 type=INT position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=1 func_arg=1]]",
         "function[name=ROW type=UNKNOWN position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]",
-        f"column[name=name type={case}fruit properties=[kind=table table=target]]",
+        f"column[name=name type={case}fruit properties=[kind=table table=target schema=public]]",
     ]
     assert len(h.nodes) == 4
     assert len(h.edges) == 3
@@ -50,12 +50,12 @@ def test_type_composite_nested(holder):
         status status
     );
     CREATE TABLE target (some fruit);
-    INSERT INTO target (some) SELECT ROW('apple', ROW('new'))::fruit;
+    INSERT INTO public.target (some) SELECT ROW('apple', ROW('new'))::fruit;
     """
     h = holder(sql=sql, dialect=DIALECT)
     assert h.paths == [
-        ['literal["apple"]', "function[ROW]", "function[CAST]", "column[target.some]"],
-        ['literal["new"]', "function[ROW]", "function[ROW]", "function[CAST]", "column[target.some]"],
+        ['literal["apple"]', "function[ROW]", "function[CAST]", "column[public.target.some]"],
+        ['literal["new"]', "function[ROW]", "function[ROW]", "function[CAST]", "column[public.target.some]"],
     ]
     assert h.nodes_full == [
         'literal[name="apple" type=VARCHAR position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=2 func_arg=0]]',
@@ -63,7 +63,7 @@ def test_type_composite_nested(holder):
         "function[name=CAST type=fruit position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=0 func_arg=0]]",
         "function[name=ROW type=UNKNOWN position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=1 func_arg=0]]",
         "function[name=ROW type=UNKNOWN position=[query_depth=0 query_width=0 statement=3 select=0 func_depth=2 func_arg=1]]",
-        "column[name=some type=fruit properties=[kind=table table=target]]",
+        "column[name=some type=fruit properties=[kind=table table=target schema=public]]",
     ]
     assert len(h.edges) == 5
     assert [TypeQuery, TypeQuery] == h.query_types[:2]
@@ -73,13 +73,13 @@ def test_type_enum(holder):
     sql = """
     CREATE TYPE fruit_enum AS ENUM ('apple', 'banana', 'cherry');
     CREATE TABLE target (name fruit_enum);
-    INSERT INTO target (name) SELECT 'apple';
+    INSERT INTO public.target (name) SELECT 'apple';
     """
     h = holder(sql=sql, dialect=DIALECT)
-    assert h.paths == [['literal["apple"]', "column[target.name]"]]
+    assert h.paths == [['literal["apple"]', "column[public.target.name]"]]
     assert h.nodes_full == [
         'literal[name="apple" type=VARCHAR position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]',
-        "column[name=name type=fruit_enum properties=[kind=table table=target]]",
+        "column[name=name type=fruit_enum properties=[kind=table table=target schema=public]]",
     ]
     assert len(h.edges) == 1
     assert [TypeQuery] == h.query_types[:1]
@@ -127,11 +127,11 @@ def test_type_usage_in_table_and_insert(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [['literal["apple"]', "function[CAST]", "column[recipe.food]"]]
+    assert h.paths == [['literal["apple"]', "function[CAST]", "column[public.recipe.food]"]]
     assert h.nodes_full == [
         'literal[name="apple" type=VARCHAR position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=1 func_arg=0]]',
         "function[name=CAST type=fruit position=[query_depth=0 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]",
-        "column[name=food type=fruit properties=[kind=table table=recipe]]",
+        "column[name=food type=fruit properties=[kind=table table=recipe schema=public]]",
     ]
     assert len(h.edges) == 2
     assert TypeQuery == h.query_types[0]

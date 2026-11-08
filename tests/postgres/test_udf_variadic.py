@@ -21,7 +21,7 @@ def test__udf_variadic_parameter(holder):
     $$ LANGUAGE SQL;
 
     CREATE TABLE target(name1 VARCHAR);
-    INSERT INTO target (name1) SELECT hello('Hi', 'Alice', 'Bob', 'Charlie');
+    INSERT INTO public.target (name1) SELECT hello('Hi', 'Alice', 'Bob', 'Charlie');
     """
 
     h = holder(sql=sql, dialect=DIALECT)
@@ -43,7 +43,7 @@ def test__udf_variadic_parameter(holder):
 
     insert_query = h.holders[2]
     insert_after = [
-        "INSERT INTO target (name1) "
+        "INSERT INTO public.target (name1) "
         "SELECT (SELECT 'Hi ' || STRING_AGG(unpacked_name, ' and ') AS _col_0 "
         "FROM UNNEST(ARRAY['Alice', 'Bob', 'Charlie']) AS unpacked_name) AS name1"
     ]
@@ -51,15 +51,15 @@ def test__udf_variadic_parameter(holder):
     assert to_sql(actual_after, dialect=DIALECT) == insert_after
 
     assert sorted(h.paths) == [
-        ['literal[" and "]', "function[GROUP_CONCAT]", "function[DPIPE]", "column[target.name1]"],
-        ['literal["Hi "]', "function[DPIPE]", "column[target.name1]"],
+        ['literal[" and "]', "function[GROUP_CONCAT]", "function[DPIPE]", "column[public.target.name1]"],
+        ['literal["Hi "]', "function[DPIPE]", "column[public.target.name1]"],
         [
             "literal[{'Alice','Bob','Charlie'}]",
             "function[UNNEST]",
             "column[unpacked_name.unpacked_name]",
             "function[GROUP_CONCAT]",
             "function[DPIPE]",
-            "column[target.name1]",
+            "column[public.target.name1]",
         ],
     ]
 
@@ -78,7 +78,7 @@ def test__udf_mleast_variadic_parameter_cte(holder):
     {common_objects}
 
     -- Variadic array from CTE
-    INSERT INTO target (age)
+    INSERT INTO public.target (age)
     WITH data_source AS (
         SELECT ARRAY[10, -1, 5, 4.4]::numeric[] AS my_array
     )
@@ -88,7 +88,7 @@ def test__udf_mleast_variadic_parameter_cte(holder):
 
     insert_query = h.holders[2]
     insert_after = [
-        "INSERT INTO target (age) WITH data_source AS (SELECT CAST(ARRAY[10, -1, 5, 4.4] AS DECIMAL[]) AS my_array) SELECT (SELECT MIN(data_source.my_array[g.i]) AS _col_0 FROM GENERATE_SUBSCRIPTS(my_array, 1) AS g(i)) AS age FROM data_source AS data_source"
+        "INSERT INTO public.target (age) WITH data_source AS (SELECT CAST(ARRAY[10, -1, 5, 4.4] AS DECIMAL[]) AS my_array) SELECT (SELECT MIN(data_source.my_array[g.i]) AS _col_0 FROM GENERATE_SUBSCRIPTS(my_array, 1) AS g(i)) AS age FROM data_source AS data_source"
     ]
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after, dialect=DIALECT) == insert_after
@@ -99,7 +99,7 @@ def test__udf_mleast_variadic_parameter_cte(holder):
             "function[CAST]",
             "column[data_source.my_array]",
             "function[MIN]",
-            "column[target.age]",
+            "column[public.target.age]",
         ]
     ]
     assert h.nodes_full == [
@@ -107,7 +107,7 @@ def test__udf_mleast_variadic_parameter_cte(holder):
         "function[name=MIN type=DECIMAL position=[query_depth=1 query_width=0 statement=2 select=0 func_depth=0 func_arg=0]]",
         "literal[name={10,-1,5,4.4} type=ARRAY<DOUBLE> position=[query_depth=1 query_width=1 statement=2 select=0 func_depth=1 func_arg=0]]",
         "column[name=my_array type=ARRAY<DECIMAL> properties=[kind=cte table=data_source statement=2]]",
-        "column[name=age type=INT properties=[kind=table table=target]]",
+        "column[name=age type=INT properties=[kind=table table=target schema=public]]",
     ]
 
 
@@ -116,18 +116,18 @@ def test__udf_mleast_variadic_parameter_empty(holder):
     {common_objects}
 
     -- Empty array
-    INSERT INTO target (age) SELECT mleast(VARIADIC ARRAY[]::numeric[]);
+    INSERT INTO public.target (age) SELECT mleast(VARIADIC ARRAY[]::numeric[]);
     """
     h = holder(sql=sql, dialect=DIALECT)
 
     insert_query = h.holders[2]
     insert_after = [
-        "INSERT INTO target (age) SELECT (SELECT MIN((CAST(ARRAY[] AS DECIMAL[]))[g.i]) AS _col_0 FROM GENERATE_SUBSCRIPTS(CAST(ARRAY[] AS DECIMAL[]), 1) AS g(i)) AS age"
+        "INSERT INTO public.target (age) SELECT (SELECT MIN((CAST(ARRAY[] AS DECIMAL[]))[g.i]) AS _col_0 FROM GENERATE_SUBSCRIPTS(CAST(ARRAY[] AS DECIMAL[]), 1) AS g(i)) AS age"
     ]
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after, dialect=DIALECT) == insert_after
 
-    assert h.paths == [["literal[{}]", "function[CAST]", "function[MIN]", "column[target.age]"]]
+    assert h.paths == [["literal[{}]", "function[CAST]", "function[MIN]", "column[public.target.age]"]]
 
 
 def test__udf_mleast_variadic_parameter_array(holder):
@@ -135,19 +135,19 @@ def test__udf_mleast_variadic_parameter_array(holder):
     {common_objects}
 
     -- Variadic array
-    INSERT INTO target (age) SELECT mleast(VARIADIC ARRAY[10, -1, 5, 4.4]);
+    INSERT INTO public.target (age) SELECT mleast(VARIADIC ARRAY[10, -1, 5, 4.4]);
 
     """
     h = holder(sql=sql, dialect=DIALECT)
 
     insert_query = h.holders[2]
     insert_after = [
-        "INSERT INTO target (age) SELECT (SELECT MIN((ARRAY[10, -1, 5, 4.4])[g.i]) AS _col_0 FROM GENERATE_SUBSCRIPTS(ARRAY[10, -1, 5, 4.4], 1) AS g(i)) AS age"
+        "INSERT INTO public.target (age) SELECT (SELECT MIN((ARRAY[10, -1, 5, 4.4])[g.i]) AS _col_0 FROM GENERATE_SUBSCRIPTS(ARRAY[10, -1, 5, 4.4], 1) AS g(i)) AS age"
     ]
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after, dialect=DIALECT) == insert_after
 
-    assert h.paths == [["literal[{10,-1,5,4.4}]", "function[MIN]", "column[target.age]"]]
+    assert h.paths == [["literal[{10,-1,5,4.4}]", "function[MIN]", "column[public.target.age]"]]
 
 
 def test__udf_mleast_variadic_parameter_args(holder):
@@ -155,7 +155,7 @@ def test__udf_mleast_variadic_parameter_args(holder):
     {common_objects}
 
     -- Variadic args
-    INSERT INTO target (age) SELECT mleast(10, -1, 5, 4.4);
+    INSERT INTO public.target (age) SELECT mleast(10, -1, 5, 4.4);
     """
     h = holder(sql=sql, dialect=DIALECT)
 
@@ -174,9 +174,9 @@ def test__udf_mleast_variadic_parameter_args(holder):
 
     insert_query = h.holders[2]
     insert_after = [
-        "INSERT INTO target (age) SELECT (SELECT MIN((ARRAY[10, -1, 5, 4.4])[g.i]) AS _col_0 FROM GENERATE_SUBSCRIPTS(ARRAY[10, -1, 5, 4.4], 1) AS g(i)) AS age"
+        "INSERT INTO public.target (age) SELECT (SELECT MIN((ARRAY[10, -1, 5, 4.4])[g.i]) AS _col_0 FROM GENERATE_SUBSCRIPTS(ARRAY[10, -1, 5, 4.4], 1) AS g(i)) AS age"
     ]
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after, dialect=DIALECT) == insert_after
 
-    assert h.paths == [["literal[{10,-1,5,4.4}]", "function[MIN]", "column[target.age]"]]
+    assert h.paths == [["literal[{10,-1,5,4.4}]", "function[MIN]", "column[public.target.age]"]]

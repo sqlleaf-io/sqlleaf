@@ -23,7 +23,7 @@ def test__udf_simple(holder):
     $$ LANGUAGE SQL;
 
     CREATE TABLE target(name VARCHAR);
-    INSERT INTO target (name) SELECT hello();
+    INSERT INTO public.target (name) SELECT hello();
     """
     h = holder(sql=sql, dialect=DIALECT)
 
@@ -36,11 +36,11 @@ def test__udf_simple(holder):
     assert query.language == "sql"
 
     insert_query = h.holders[2]
-    insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS hello) AS name"]
+    insert_after = ["INSERT INTO public.target (name) SELECT (SELECT 'Hello' AS hello) AS name"]
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after) == insert_after
 
-    assert h.paths == [['literal["Hello"]', "column[target.name]"]]
+    assert h.paths == [['literal["Hello"]', "column[public.target.name]"]]
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
 
@@ -52,7 +52,7 @@ def test__udf_schema(holder):
     $$ LANGUAGE SQL;
 
     CREATE TABLE target(name VARCHAR);
-    INSERT INTO target (name) SELECT greetings.hello();
+    INSERT INTO public.target (name) SELECT greetings.hello();
     """
     h = holder(sql=sql, dialect=DIALECT)
 
@@ -65,11 +65,11 @@ def test__udf_schema(holder):
     assert query.language == "sql"
 
     insert_query = h.holders[2]
-    insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS hello) AS name"]
+    insert_after = ["INSERT INTO public.target (name) SELECT (SELECT 'Hello' AS hello) AS name"]
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after) == insert_after
 
-    assert h.paths == [['literal["Hello"]', "column[target.name]"]]
+    assert h.paths == [['literal["Hello"]', "column[public.target.name]"]]
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
 
@@ -79,7 +79,7 @@ def test__udf_schema(holder):
 #     with pytest.raises(SqlLeafException) as e:
 #         sql = """
 #         CREATE TABLE target(name VARCHAR);
-#         INSERT INTO target (name) SELECT hello();
+#         INSERT INTO public.target (name) SELECT hello();
 #         """
 #         holder(sql=sql, dialect=DIALECT)
 #
@@ -92,8 +92,8 @@ def test__udf_schema_distinction(holder):
     CREATE FUNCTION greetings.hello() RETURNS TEXT LANGUAGE SQL RETURN 'yes_schema';
 
     CREATE TABLE target(age INT);
-    INSERT INTO target (age) SELECT hello();
-    INSERT INTO target (age) SELECT greetings.hello();
+    INSERT INTO public.target (age) SELECT hello();
+    INSERT INTO public.target (age) SELECT greetings.hello();
     """
     h = holder(sql=sql, dialect=DIALECT)
 
@@ -108,15 +108,15 @@ def test__udf_schema_distinction(holder):
     assert udf2.schema_name == "greetings"
 
     assert to_sql([h.holders[3].transformed.statement]) == [
-        "INSERT INTO target (age) SELECT (SELECT 'no_schema' AS no_schema) AS age"
+        "INSERT INTO public.target (age) SELECT (SELECT 'no_schema' AS no_schema) AS age"
     ]
     assert to_sql([h.holders[4].transformed.statement]) == [
-        "INSERT INTO target (age) SELECT (SELECT 'yes_schema' AS yes_schema) AS age"
+        "INSERT INTO public.target (age) SELECT (SELECT 'yes_schema' AS yes_schema) AS age"
     ]
 
     assert h.paths == [
-        ['literal["no_schema"]', "column[target.age]"],
-        ['literal["yes_schema"]', "column[target.age]"],
+        ['literal["no_schema"]', "column[public.target.age]"],
+        ['literal["yes_schema"]', "column[public.target.age]"],
     ]
 
 
@@ -127,7 +127,7 @@ def test__udf_select(holder):
     $$ LANGUAGE SQL;
 
     CREATE TABLE target(name VARCHAR);
-    INSERT INTO target (name) SELECT hello();
+    INSERT INTO public.target (name) SELECT hello();
     """
     h = holder(sql=sql, dialect=DIALECT)
 
@@ -140,11 +140,11 @@ def test__udf_select(holder):
     assert query.language == "sql"
 
     insert_query = h.holders[2]
-    insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS hello) AS name"]
+    insert_after = ["INSERT INTO public.target (name) SELECT (SELECT 'Hello' AS hello) AS name"]
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after) == insert_after
 
-    assert h.paths == [['literal["Hello"]', "column[target.name]"]]
+    assert h.paths == [['literal["Hello"]', "column[public.target.name]"]]
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
 
@@ -156,7 +156,7 @@ def test__udf_values(holder):
     $$ LANGUAGE SQL;
 
     CREATE TABLE target(name VARCHAR);
-    INSERT INTO target (name) VALUES (hello());
+    INSERT INTO public.target (name) VALUES (hello());
     """
     h = holder(sql=sql, dialect=DIALECT)
 
@@ -169,10 +169,10 @@ def test__udf_values(holder):
     assert query.language == "sql"
 
     insert_query = h.holders[2]
-    insert_after = ["INSERT INTO target (name) SELECT (SELECT 'Hello' AS hello) AS name"]
+    insert_after = ["INSERT INTO public.target (name) SELECT (SELECT 'Hello' AS hello) AS name"]
     actual_after = [insert_query.transformed.statement]
     assert to_sql(actual_after) == insert_after
 
-    assert h.paths == [['literal["Hello"]', "column[target.name]"]]
+    assert h.paths == [['literal["Hello"]', "column[public.target.name]"]]
     assert len(h.nodes) == 2
     assert len(h.edges) == 1

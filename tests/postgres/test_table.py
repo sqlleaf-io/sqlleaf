@@ -198,14 +198,14 @@ def test__table_inherits_with_merge(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[a.type]", "column[b.type]"],
-        ["column[a.type]", "column[b.type]"],
-        ["column[a.type]", "column[fruit.x.type]"],
-        ["column[a.type]", "column[fruit.y.type]"],
-        ["column[a.kind]", "column[b.kind]"],
-        ["column[a.kind]", "column[b.kind]"],
-        ["column[b.color]", "column[c.color]"],
-        ["column[b.color]", "column[c.color]"],
+        ["column[public.a.type]", "column[public.b.type]"],
+        ["column[public.a.type]", "column[public.b.type]"],
+        ["column[public.a.type]", "column[fruit.x.type]"],
+        ["column[public.a.type]", "column[fruit.y.type]"],
+        ["column[public.a.kind]", "column[public.b.kind]"],
+        ["column[public.a.kind]", "column[public.b.kind]"],
+        ["column[public.b.color]", "column[public.c.color]"],
+        ["column[public.b.color]", "column[public.c.color]"],
     ]
     assert len(h.nodes) == 8
     assert len(h.edges) == 8

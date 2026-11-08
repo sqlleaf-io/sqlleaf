@@ -11,7 +11,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 DIALECT = "postgres"
 
-create_letter_table = "CREATE TABLE letter (a VARCHAR, b VARCHAR, c VARCHAR, d VARCHAR);"
+create_letter_table = "CREATE TABLE cyc.letter (a VARCHAR, b VARCHAR, c VARCHAR, d VARCHAR);"
 
 
 # test: A -> A
@@ -19,12 +19,12 @@ def test__cycle_selfloop_update(holder):
     sql = f"""
     {create_letter_table}
 
-    UPDATE letter p
+    UPDATE cyc.letter p
     SET a = a;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[letter.a]", "column[letter.a]"]]
+    assert h.paths == [["column[cyc.letter.a]", "column[cyc.letter.a]"]]
     assert len(h.nodes) == 1
     assert len(h.edges) == 1
 
@@ -34,12 +34,12 @@ def test__cycle_selfloop(holder):
     sql = f"""
     {create_letter_table}
 
-    INSERT INTO letter (a)
-    SELECT a FROM letter;
+    INSERT INTO cyc.letter (a)
+    SELECT a FROM cyc.letter;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[letter.a]", "column[letter.a]"]]
+    assert h.paths == [["column[cyc.letter.a]", "column[cyc.letter.a]"]]
     assert len(h.nodes) == 1
     assert len(h.edges) == 1
 
@@ -49,12 +49,12 @@ def test__cycle_selfloop_via_one_function(holder):
     sql = f"""
     {create_letter_table}
 
-    INSERT INTO letter (a)
-    SELECT UPPER(a) FROM letter;
+    INSERT INTO cyc.letter (a)
+    SELECT UPPER(a) FROM cyc.letter;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[letter.a]", "function[UPPER]", "column[letter.a]"]]
+    assert h.paths == [["column[cyc.letter.a]", "function[UPPER]", "column[cyc.letter.a]"]]
     assert len(h.nodes) == 2
     assert len(h.edges) == 2
 
@@ -63,12 +63,12 @@ def test__cycle_selfloop_via_three_functions(holder):
     sql = f"""
     {create_letter_table}
 
-    INSERT INTO letter (a)
-    SELECT MD5(LOWER(UPPER(a))) FROM letter;
+    INSERT INTO cyc.letter (a)
+    SELECT MD5(LOWER(UPPER(a))) FROM cyc.letter;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[letter.a]", "function[UPPER]", "function[LOWER]", "function[MD5]", "column[letter.a]"]]
+    assert h.paths == [["column[cyc.letter.a]", "function[UPPER]", "function[LOWER]", "function[MD5]", "column[cyc.letter.a]"]]
     assert len(h.nodes) == 4
     assert len(h.edges) == 4
 
@@ -78,17 +78,17 @@ def test__cycle_two_selfloops_via_different_functions(holder):
     sql = f"""
     {create_letter_table}
 
-    INSERT INTO letter (a)
-    SELECT UPPER(a) FROM letter;
+    INSERT INTO cyc.letter (a)
+    SELECT UPPER(a) FROM cyc.letter;
 
-    INSERT INTO letter (a)
-    SELECT LOWER(a) FROM letter;
+    INSERT INTO cyc.letter (a)
+    SELECT LOWER(a) FROM cyc.letter;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[letter.a]", "function[LOWER]", "column[letter.a]"],
-        ["column[letter.a]", "function[UPPER]", "column[letter.a]"],
+        ["column[cyc.letter.a]", "function[LOWER]", "column[cyc.letter.a]"],
+        ["column[cyc.letter.a]", "function[UPPER]", "column[cyc.letter.a]"],
     ]
     assert len(h.nodes) == 3
     assert len(h.edges) == 4
@@ -100,15 +100,15 @@ def test__cycle_one_loop_two_columns(holder):
         sql = f"""
         {create_letter_table}
 
-        INSERT INTO letter (b)
-        SELECT a FROM letter;
+        INSERT INTO cyc.letter (b)
+        SELECT a FROM cyc.letter;
 
-        INSERT INTO letter (a)
-        SELECT b FROM letter;
+        INSERT INTO cyc.letter (a)
+        SELECT b FROM cyc.letter;
         """
         h = holder(sql=sql, dialect=DIALECT)
 
-        assert h.paths == [["column[letter.a]", "column[letter.b]", "column[letter.a]"]]
+        assert h.paths == [["column[cyc.letter.a]", "column[cyc.letter.b]", "column[cyc.letter.a]"]]
         assert len(h.nodes) == 2
         assert len(h.edges) == 2
 
@@ -121,18 +121,18 @@ def test__cycle_one_loop_three_columns(holder):
         sql = f"""
         {create_letter_table}
 
-        INSERT INTO letter (b)
-        SELECT a from LETTER;
+        INSERT INTO cyc.letter (b)
+        SELECT a from cyc.letter;
 
-        INSERT INTO letter (c)
-        SELECT b from LETTER;
+        INSERT INTO cyc.letter (c)
+        SELECT b from cyc.letter;
 
-        INSERT INTO letter (a)
-        SELECT c from LETTER;
+        INSERT INTO cyc.letter (a)
+        SELECT c from cyc.letter;
         """
         h = holder(sql=sql, dialect=DIALECT)
 
-        assert h.paths == [["column[letter.a]", "column[letter.b]", "column[letter.c]", "column[letter.a]"]]
+        assert h.paths == [["column[cyc.letter.a]", "column[cyc.letter.b]", "column[cyc.letter.c]", "column[cyc.letter.a]"]]
         assert len(h.nodes) == 3
         assert len(h.edges) == 3
 
@@ -146,23 +146,23 @@ def test__cycle_two_loops(holder):
         sql = f"""
         {create_letter_table}
 
-        INSERT INTO letter (b)
-        SELECT a from LETTER;
+        INSERT INTO cyc.letter (b)
+        SELECT a from cyc.letter;
 
-        INSERT INTO letter (a)
-        SELECT b from LETTER;
+        INSERT INTO cyc.letter (a)
+        SELECT b from cyc.letter;
 
-        INSERT INTO letter (c)
-        SELECT a from LETTER;
+        INSERT INTO cyc.letter (c)
+        SELECT a from cyc.letter;
 
-        INSERT INTO letter (a)
-        SELECT c from LETTER;
+        INSERT INTO cyc.letter (a)
+        SELECT c from cyc.letter;
         """
         h = holder(sql=sql, dialect=DIALECT)
 
         assert h.paths == [
-            ["column[letter.a]", "column[letter.b]", "column[letter.a]"],
-            ["column[letter.a]", "column[letter.c]", "column[letter.a]"],
+            ["column[cyc.letter.a]", "column[cyc.letter.b]", "column[cyc.letter.a]"],
+            ["column[cyc.letter.a]", "column[cyc.letter.c]", "column[cyc.letter.a]"],
         ]
         assert len(h.nodes) == 3
         assert len(h.edges) == 4
@@ -177,23 +177,23 @@ def test__cycle_two_loops_modified(holder):
         sql = f"""
         {create_letter_table}
 
-        INSERT INTO letter (b)
-        SELECT a from LETTER;
+        INSERT INTO cyc.letter (b)
+        SELECT a from cyc.letter;
 
-        INSERT INTO letter (a)
-        SELECT b from LETTER;
+        INSERT INTO cyc.letter (a)
+        SELECT b from cyc.letter;
 
-        INSERT INTO letter (c)
-        SELECT b from LETTER;
+        INSERT INTO cyc.letter (c)
+        SELECT b from cyc.letter;
 
-        INSERT INTO letter (b)
-        SELECT c from LETTER;
+        INSERT INTO cyc.letter (b)
+        SELECT c from cyc.letter;
         """
         h = holder(sql=sql, dialect=DIALECT)
 
         assert h.paths == [
-            ["column[letter.a]", "column[letter.b]", "column[letter.a]"],
-            ["column[letter.b]", "column[letter.c]", "column[letter.b]"],
+            ["column[cyc.letter.a]", "column[cyc.letter.b]", "column[cyc.letter.a]"],
+            ["column[cyc.letter.b]", "column[cyc.letter.c]", "column[cyc.letter.b]"],
         ]
         assert len(h.nodes) == 3
         assert len(h.edges) == 4
@@ -208,23 +208,23 @@ def test__cycle_two_loops_disjoint(holder):
         sql = f"""
         {create_letter_table}
 
-        INSERT INTO letter (b)
-        SELECT a from LETTER;
+        INSERT INTO cyc.letter (b)
+        SELECT a from cyc.letter;
 
-        INSERT INTO letter (a)
-        SELECT b from LETTER;
+        INSERT INTO cyc.letter (a)
+        SELECT b from cyc.letter;
 
-        INSERT INTO letter (d)
-        SELECT c from LETTER;
+        INSERT INTO cyc.letter (d)
+        SELECT c from cyc.letter;
 
-        INSERT INTO letter (c)
-        SELECT d from LETTER;
+        INSERT INTO cyc.letter (c)
+        SELECT d from cyc.letter;
         """
         h = holder(sql=sql, dialect=DIALECT)
 
         assert h.paths == [
-            ["column[letter.a]", "column[letter.b]", "column[letter.a]"],
-            ["column[letter.c]", "column[letter.d]", "column[letter.c]"],
+            ["column[cyc.letter.a]", "column[cyc.letter.b]", "column[cyc.letter.a]"],
+            ["column[cyc.letter.c]", "column[cyc.letter.d]", "column[cyc.letter.c]"],
         ]
         assert len(h.nodes) == 4
         assert len(h.edges) == 4
@@ -238,21 +238,21 @@ def test__cycle_one_selfloop_at_start(holder):
     sql = f"""
     {create_letter_table}
 
-    INSERT INTO letter (b)
-    SELECT a from LETTER;
+    INSERT INTO cyc.letter (b)
+    SELECT a from cyc.letter;
 
-    INSERT INTO letter (c)
-    SELECT b from LETTER;
+    INSERT INTO cyc.letter (c)
+    SELECT b from cyc.letter;
 
     -- Selfloops
-    INSERT INTO letter (a)
-    SELECT a from LETTER;
+    INSERT INTO cyc.letter (a)
+    SELECT a from cyc.letter;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[letter.a]", "column[letter.b]", "column[letter.c]"],
-        ["column[letter.a]", "column[letter.a]"],
+        ["column[cyc.letter.a]", "column[cyc.letter.b]", "column[cyc.letter.c]"],
+        ["column[cyc.letter.a]", "column[cyc.letter.a]"],
     ]
     assert len(h.nodes) == 3
     assert len(h.edges) == 3
@@ -264,21 +264,21 @@ def test__cycle_one_selfloop_at_start_reversed(holder):
     sql = f"""
     {create_letter_table}
 
-    INSERT INTO letter (b)
-    SELECT c from LETTER;
+    INSERT INTO cyc.letter (b)
+    SELECT c from cyc.letter;
 
-    INSERT INTO letter (a)
-    SELECT b from LETTER;
+    INSERT INTO cyc.letter (a)
+    SELECT b from cyc.letter;
 
     -- Selfloops
-    INSERT INTO letter (c)
-    SELECT c from LETTER;
+    INSERT INTO cyc.letter (c)
+    SELECT c from cyc.letter;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[letter.c]", "column[letter.b]", "column[letter.a]"],
-        ["column[letter.c]", "column[letter.c]"],
+        ["column[cyc.letter.c]", "column[cyc.letter.b]", "column[cyc.letter.a]"],
+        ["column[cyc.letter.c]", "column[cyc.letter.c]"],
     ]
     assert len(h.nodes) == 3
     assert len(h.edges) == 3
@@ -290,21 +290,21 @@ def test__cycle_one_selfloop_at_middle(holder):
     sql = f"""
     {create_letter_table}
 
-    INSERT INTO letter (b)
-    SELECT a from LETTER;
+    INSERT INTO cyc.letter (b)
+    SELECT a from cyc.letter;
 
-    INSERT INTO letter (c)
-    SELECT b from LETTER;
+    INSERT INTO cyc.letter (c)
+    SELECT b from cyc.letter;
 
     -- Selfloops
-    INSERT INTO letter (b)
-    SELECT b from LETTER;
+    INSERT INTO cyc.letter (b)
+    SELECT b from cyc.letter;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[letter.a]", "column[letter.b]", "column[letter.c]"],
-        ["column[letter.b]", "column[letter.b]"],
+        ["column[cyc.letter.a]", "column[cyc.letter.b]", "column[cyc.letter.c]"],
+        ["column[cyc.letter.b]", "column[cyc.letter.b]"],
     ]
     assert len(h.nodes) == 3
     assert len(h.edges) == 3
@@ -316,21 +316,21 @@ def test__cycle_one_selfloop_at_end(holder):
     sql = f"""
     {create_letter_table}
 
-    INSERT INTO letter (b)
-    SELECT a from LETTER;
+    INSERT INTO cyc.letter (b)
+    SELECT a from cyc.letter;
 
-    INSERT INTO letter (c)
-    SELECT b from LETTER;
+    INSERT INTO cyc.letter (c)
+    SELECT b from cyc.letter;
 
     -- Selfloops
-    INSERT INTO letter (c)
-    SELECT c from LETTER;
+    INSERT INTO cyc.letter (c)
+    SELECT c from cyc.letter;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[letter.a]", "column[letter.b]", "column[letter.c]"],
-        ["column[letter.c]", "column[letter.c]"],
+        ["column[cyc.letter.a]", "column[cyc.letter.b]", "column[cyc.letter.c]"],
+        ["column[cyc.letter.c]", "column[cyc.letter.c]"],
     ]
     assert len(h.nodes) == 3
     assert len(h.edges) == 3
@@ -341,29 +341,29 @@ def test__cycle_selfloop_at_each_node(holder):
     sql = f"""
     {create_letter_table}
 
-    INSERT INTO letter (b)
-    SELECT a from LETTER;
+    INSERT INTO cyc.letter (b)
+    SELECT a from cyc.letter;
 
-    INSERT INTO letter (c)
-    SELECT b from LETTER;
+    INSERT INTO cyc.letter (c)
+    SELECT b from cyc.letter;
 
     -- Selfloops
-    INSERT INTO letter (a)
-    SELECT a from LETTER;
+    INSERT INTO cyc.letter (a)
+    SELECT a from cyc.letter;
 
-    INSERT INTO letter (b)
-    SELECT b from LETTER;
+    INSERT INTO cyc.letter (b)
+    SELECT b from cyc.letter;
 
-    INSERT INTO letter (c)
-    SELECT c from LETTER;
+    INSERT INTO cyc.letter (c)
+    SELECT c from cyc.letter;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[letter.a]", "column[letter.b]", "column[letter.c]"],
-        ["column[letter.a]", "column[letter.a]"],
-        ["column[letter.b]", "column[letter.b]"],
-        ["column[letter.c]", "column[letter.c]"],
+        ["column[cyc.letter.a]", "column[cyc.letter.b]", "column[cyc.letter.c]"],
+        ["column[cyc.letter.a]", "column[cyc.letter.a]"],
+        ["column[cyc.letter.b]", "column[cyc.letter.b]"],
+        ["column[cyc.letter.c]", "column[cyc.letter.c]"],
     ]
     assert len(h.nodes) == 3
     assert len(h.edges) == 5
