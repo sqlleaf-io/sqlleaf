@@ -195,11 +195,11 @@ CREATE TABLE pg_catalog.pg_constraint (
     conperiod boolean,
     conkey smallint[],
     confkey smallint[],
-    conpfeqop array<oid>,
-    conppeqop array<oid>,
-    conffeqop array<oid>,
+    conpfeqop oid[],
+    conppeqop oid[],
+    conffeqop oid[],
     confdelsetcols smallint[],
-    conexclop array<oid>,
+    conexclop oid[],
     conbin pg_node_tree COLLATE pg_catalog."C"
 );
 
@@ -290,7 +290,7 @@ CREATE TABLE pg_catalog.pg_extension (
     extnamespace oid,
     extrelocatable boolean,
     extversion text COLLATE pg_catalog."C",
-    extconfig array<oid>,
+    extconfig oid[],
     extcondition text[] COLLATE pg_catalog."C"
 );
 
@@ -452,7 +452,7 @@ CREATE TABLE pg_catalog.pg_policy (
     polrelid oid,
     polcmd "char",
     polpermissive boolean,
-    polroles array<oid>,
+    polroles oid[],
     polqual pg_node_tree COLLATE pg_catalog."C",
     polwithcheck pg_node_tree COLLATE pg_catalog."C"
 );
@@ -478,11 +478,11 @@ CREATE TABLE pg_catalog.pg_proc (
     pronargdefaults smallint,
     prorettype oid,
     proargtypes oidvector,
-    proallargtypes array<oid>,
+    proallargtypes oid[],
     proargmodes "char"[],
     proargnames text[] COLLATE pg_catalog."C",
     proargdefaults pg_node_tree COLLATE pg_catalog."C",
-    protrftypes array<oid>,
+    protrftypes oid[],
     prosrc text COLLATE pg_catalog."C",
     probin text COLLATE pg_catalog."C",
     prosqlbody pg_node_tree COLLATE pg_catalog."C",
