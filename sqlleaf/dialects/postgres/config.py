@@ -6,6 +6,8 @@ from sqlleaf.dialects.base import BaseDialectSettings
 
 class PostgresSettings(BaseDialectSettings):
     DIALECT = "postgres"
+    DEFAULT_USER_CATALOG = "public"
+    DEFAULT_SYSTEM_CATALOG = "pg_catalog"
     PSEUDOCOLUMNS = {
         "cmax": "OID",
         "cmin": "OID",

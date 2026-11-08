@@ -5,6 +5,8 @@ class BaseDialectSettings:
     # A registry to store subclasses
     _dialects = {}
     DIALECT = ""
+    DEFAULT_USER_CATALOG = ""
+    DEFAULT_SYSTEM_CATALOG = ""
 
     def __init_subclass__(cls, **kwargs):
         """Automatically registers subclasses when they are defined."""

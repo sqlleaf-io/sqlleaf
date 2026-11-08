@@ -11,6 +11,7 @@ from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
 
 from sqlleaf import exception, util
+from sqlleaf.dialects.base import BaseDialectSettings
 from sqlleaf.path import NodeIndex
 from sqlleaf.models.query import (
     CallQuery,
@@ -167,6 +168,10 @@ class ObjectMapping(MappingSchema):
         )  # Set `normalize=False` to prevent an unnecessary second parse.
         self.kind_mapping = {}
         self.kind_mapping_trie = {}
+        settings = BaseDialectSettings.from_dialect(dialect)
+        # The catalog that unqualified user objects are created in, and the one holding system objects
+        self.current_user_catalog: str = settings.DEFAULT_USER_CATALOG
+        self.current_system_catalog: str = settings.DEFAULT_SYSTEM_CATALOG
         # Load system objects lazily from disk
         self.system_object_loader = object_loader
         # Session/global variables (e.g., SET var = ...)
