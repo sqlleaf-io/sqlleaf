@@ -13,3 +13,6 @@ from sqlleaf.processors.transformer.expressions.functional_notation import (
 from sqlleaf.processors.transformer.expressions.format import (
     simplify_format as simplify_format,
 )
+from sqlleaf.processors.transformer.expressions.operator import (
+    simplify_operators as simplify_operators,
+)

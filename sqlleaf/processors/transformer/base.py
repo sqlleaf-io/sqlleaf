@@ -13,10 +13,10 @@ from sqlleaf.processors.transformer.expressions import (
     normalize_values,
     rewrite_functional_notation_columns,
     rewrite_values_statement,
+    simplify_operators,
     simplify_row,
 )
 from sqlleaf.dialects import system_functions as get_system_functions
-from sqlleaf.dialects.base import BaseDialectSettings
 from sqlleaf.typing import E, SqlObjectType
 from sqlleaf.dialects.plpgsql import pgexp
 
@@ -107,6 +107,7 @@ class BaseQueryTransformer:
             where_expr.pop()
 
         simplify_row(statement, self.query)
+        simplify_operators(statement, dialect=self.query.dialect, catalog=self.query.object_mapping.current_system_catalog)
 
         if isinstance(statement, exp.Insert):
             self._convert_insert_defaults_to_values(statement)
