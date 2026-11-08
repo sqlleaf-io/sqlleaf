@@ -24,6 +24,9 @@ def _read_system_objects(dialect: str, kind: str) -> tuple[str, dict[tuple[str, 
 
     header, statement_end = KINDS[kind]
     text = path.read_text()
+    if kind in ("tables", "views"):
+        # sqlglot fails when parsing 'oid[]'
+        text = text.replace("oid[]", "array<oid>")
     index = {}
     for match in header.finditer(text):
         end = text.index(statement_end, match.start()) + len(statement_end)

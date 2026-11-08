@@ -161,7 +161,7 @@ CREATE VIEW pg_catalog.pg_policies AS
             ELSE 'RESTRICTIVE'::text
         END AS permissive,
         CASE
-            WHEN (pol.polroles = '{0}'::array<oid>) THEN (string_to_array('public'::text, ''::text))::name[]
+            WHEN (pol.polroles = '{0}'::oid[]) THEN (string_to_array('public'::text, ''::text))::name[]
             ELSE ARRAY( SELECT pg_authid.rolname
                FROM pg_authid
               WHERE (pg_authid.oid = ANY (pol.polroles))
@@ -2296,7 +2296,7 @@ CREATE VIEW information_schema.element_types AS
            FROM ( SELECT p.pronamespace,
                     p.proname,
                     p.oid,
-                    information_schema._pg_expandarray(COALESCE(p.proallargtypes, p.proargtypes::array<oid>)) AS x
+                    information_schema._pg_expandarray(COALESCE(p.proallargtypes, p.proargtypes::oid[])) AS x
                    FROM pg_proc p) ss
         UNION ALL
          SELECT p.pronamespace,
@@ -2459,7 +2459,7 @@ CREATE VIEW information_schema.parameters AS
             p.proowner,
             p.proargnames,
             p.proargmodes,
-            information_schema._pg_expandarray(COALESCE(p.proallargtypes, p.proargtypes::array<oid>)) AS x
+            information_schema._pg_expandarray(COALESCE(p.proallargtypes, p.proargtypes::oid[])) AS x
            FROM pg_namespace n,
             pg_proc p
           WHERE n.oid = p.pronamespace AND (pg_has_role(p.proowner, 'USAGE'::text) OR has_function_privilege(p.oid, 'EXECUTE'::text))) ss
