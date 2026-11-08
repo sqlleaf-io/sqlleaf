@@ -44,6 +44,19 @@ def test__table_empty(holder):
     assert isinstance(h.queries_original[0], TableQuery)
 
 
+def test__table_no_schema_adds_default_schema(holder):
+    sql = """
+    CREATE TABLE new ();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == []
+    assert h.nodes_full == []
+    assert len(h.nodes) == 0
+    assert len(h.edges) == 0
+    assert h.queries_transformed[0].statement.sql() == "CREATE TABLE public.new"
+
+
 def test__table_like_table(holder):
     sql = """
     CREATE TABLE fruit.a (

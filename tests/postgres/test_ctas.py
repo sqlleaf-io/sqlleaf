@@ -31,6 +31,16 @@ def test__ctas_with_no_data(holder):
     assert len(h.edges) == 2
 
 
+def test__view_no_schema_adds_default_schema(holder):
+    sql = """
+    CREATE TABLE new AS SELECT 1 AS name;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [["literal[1]", "column[public.new.name]"]]
+    assert h.queries_transformed[0].statement.sql() == "CREATE TABLE public.new AS SELECT 1 AS name"
+
+
 values_exprs = [
     "VALUES (1, 'Alice'), (2, 'Bob');",
     "SELECT * FROM (VALUES (1, 'Alice'), (2, 'Bob'));",
@@ -41,16 +51,16 @@ values_exprs = [
 @pytest.mark.parametrize("expr", values_exprs)
 def test__ctas_with_values(holder, expr):
     sql = f"""
-    CREATE TABLE some_table(id, name) AS
+    CREATE TABLE fruit.raw(id, name) AS
     {expr}
     """
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["literal[1]", "column[some_table.id]"],
-        ["literal[2]", "column[some_table.id]"],
-        ['literal["Alice"]', "column[some_table.name]"],
-        ['literal["Bob"]', "column[some_table.name]"],
+        ["literal[1]", "column[fruit.raw.id]"],
+        ["literal[2]", "column[fruit.raw.id]"],
+        ['literal["Alice"]', "column[fruit.raw.name]"],
+        ['literal["Bob"]', "column[fruit.raw.name]"],
     ]
     assert len(h.nodes) == 6
     assert len(h.edges) == 4
@@ -58,23 +68,23 @@ def test__ctas_with_values(holder, expr):
 
 def test__ctas_with_values_no_column_names(holder):
     sql = """
-    CREATE TABLE my_new_table AS
+    CREATE TABLE fruit.raw AS
     VALUES (1, 'Alice'), (2, 'Bob');
     """
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["literal[1]", "column[my_new_table.column1]"],
-        ["literal[2]", "column[my_new_table.column1]"],
-        ['literal["Alice"]', "column[my_new_table.column2]"],
-        ['literal["Bob"]', "column[my_new_table.column2]"],
+        ["literal[1]", "column[fruit.raw.column1]"],
+        ["literal[2]", "column[fruit.raw.column1]"],
+        ['literal["Alice"]', "column[fruit.raw.column2]"],
+        ['literal["Bob"]', "column[fruit.raw.column2]"],
     ]
     assert len(h.nodes) == 6
     assert len(h.edges) == 4
     query: CTASQuery = h.holders[0].transformed
     assert query.source_info.type == SqlObjectType.UNION
     assert query.target_info.type == SqlObjectType.TABLE
-    expected_query = "CREATE TABLE my_new_table AS SELECT 1 AS column1, 'Alice' AS column2 UNION ALL SELECT 2 AS column1, 'Bob' AS column2"
+    expected_query = "CREATE TABLE fruit.raw AS SELECT 1 AS column1, 'Alice' AS column2 UNION ALL SELECT 2 AS column1, 'Bob' AS column2"
     assert query.statement.sql(dialect=DIALECT) == expected_query
 
 
