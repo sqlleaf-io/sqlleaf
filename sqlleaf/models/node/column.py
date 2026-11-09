@@ -8,7 +8,7 @@ from sqlglot.optimizer import Scope
 from sqlglot.optimizer.scope import ScopeType
 
 from sqlleaf import exception
-from sqlleaf.models.context import GeneratorContext, PositionContext
+from sqlleaf.models.context import GeneratorContext
 from sqlleaf.models.node import NodeAttributes, NodeKind
 from sqlleaf.typing import TableOrScopeType, TableSubtype, TableType
 
@@ -37,6 +37,7 @@ class ColumnNode(NodeAttributes):
 
         self.parent_kind: str = kind
         self.parent_subkind: str = subkind
+        self.metadata_field: str | None = None
         self.source_scope: TableOrScopeType | None = None
         self._source = source
 
@@ -59,6 +60,8 @@ class ColumnNode(NodeAttributes):
             "schema": self.schema,
             "table": self.table,
         })
+        if self.metadata_field:
+            d["metadata"] = self.metadata_field
         return d
 
     def _apply_rename(self, source: exp.Table | exp.Select | exp.Lateral, dialect: str) -> None:
@@ -238,6 +241,9 @@ class ColumnNode(NodeAttributes):
         if query and query.property:
             self.parent_subkind = TableSubtype(query.property)
 
+        if query and query.kind == "table":
+            self.metadata_field = query.metadata_field
+
     @property
     def friendly_name(self) -> str:
         tokens = [self.catalog, self.schema, self.table, self.name]
@@ -263,11 +269,15 @@ class ColumnNode(NodeAttributes):
         if self.parent_subkind:
             f["subkind"] = self.parent_subkind
 
+        table = self.table.removesuffix(self.metadata_field) if self.metadata_field else self.table
         f |= {
-            "table": self.table,
+            "table": table,
             "schema": self.schema,
             "type": self.data_type,
         }
+
+        if self.metadata_field:
+            f["metadata"] = self.metadata_field
 
         if self.parent_kind == TableType.CTE and self.parent_subkind == TableSubtype.RECURSIVE:
             f["member"] = self.member

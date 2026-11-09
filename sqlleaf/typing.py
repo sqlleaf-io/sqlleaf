@@ -83,3 +83,8 @@ class TableSubtype(StrEnum):
     TEMPORARY = auto()
     EXTERNAL = auto()
     MATERIALIZED = auto()
+
+
+class TableFormat(StrEnum):
+    REGULAR = auto()
+    ICEBERG = auto()
