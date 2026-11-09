@@ -800,13 +800,16 @@ class SystemObjectLoader:
         self.attempted_tables: set[tuple[str, str]] = set()
         self.attempted_schemas: set[str] = set()
 
-    def __call__(self, object_mapping: mappings.ObjectMapping, object: exp.Table, kind: str = "table") -> None:
+    def __call__(self, object_mapping: mappings.ObjectMapping, obj: exp.Table, kind: str = "table") -> None:
         if kind == "schema":
-            self._load_schema(object_mapping, object.name)
+            self._load_schema(object_mapping, obj.name)
         else:
-            self._load_table(object_mapping, object)
+            self._load_table(object_mapping, obj)
 
     def _load_table(self, object_mapping: mappings.ObjectMapping, table: exp.Table) -> None:
+        """
+        Load a system table/view or a metadata table.
+        """
         if not table.db:
             return
 
@@ -817,8 +820,39 @@ class SystemObjectLoader:
 
         if ddl := get_object_ddl(table.db, table.name, self.dialect):
             collect_queries(text=ddl, dialect=self.dialect, object_mapping=object_mapping)
+        else:
+            self._load_metadata_table(object_mapping, table)
+
+    def _load_metadata_table(self, object_mapping: mappings.ObjectMapping, table: exp.Table) -> None:
+        """
+        Creates and registers a metadata table (e.g. 'my_table$files'), only if its base table is an Iceberg table.
+        """
+        settings = dialects.BaseDialectSettings.from_dialect(self.dialect)
+        field = settings.get_metadata_field(table.name)
+        if field is None:
+            return
+
+        base_table = exp.table_(table=table.name[: -len(field)], db=table.db, catalog=table.catalog)
+        base_query = object_mapping.lookup_table_query(base_table, raise_on_missing=False)
+        if not base_query or base_query.table_format != typing.TableFormat.ICEBERG:
+            return
+
+        schema = exp.Schema(this=table.copy(), expressions=settings.get_metadata_field_column_defs(field))
+        create = exp.Create(this=schema, kind="TABLE")
+        query = TableQuery(
+            expr=create, dialect=self.dialect, object_mapping=object_mapping, statement_index=0, metadata_field=field
+        )
+        query.set_column_defs()
+        object_mapping.add_table_query(
+            query=query,
+            column_mapping=query.get_column_names_with_types(include_system=True),
+        )
+        query.refresh_source_and_target_info()
 
     def _load_schema(self, object_mapping: mappings.ObjectMapping, schema: str) -> None:
+        """
+        Load a system schema.
+        """
         if schema.lower() in self.attempted_schemas:
             return
         self.attempted_schemas.add(schema.lower())

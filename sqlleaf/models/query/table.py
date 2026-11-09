@@ -7,26 +7,39 @@ from sqlglot import exp
 
 from sqlleaf import mappings, util, exception, dialects
 from sqlleaf.models.query.base import Query
-from sqlleaf.typing import SourceInfo, TargetInfo
+from sqlleaf.typing import SourceInfo, TableFormat, TargetInfo
 
 
 @dataclass(frozen=True)
 class TableQueryProperties:
     location: exp.LocationProperty | None
+    table_format: TableFormat
 
     @classmethod
     def from_expression(cls, expr: exp.Create, dialect: str):
         location = None
+        table_format = TableFormat.REGULAR
         if properties := expr.args.get("properties"):
             location = properties.find(exp.LocationProperty)
-        return cls(location=location)
+            for prop in properties.find_all(exp.Property):
+                if prop.name.lower() == "table_type" and prop.text("value").upper() == "ICEBERG":
+                    table_format = TableFormat.ICEBERG
+        return cls(location=location, table_format=table_format)
 
 
 class TableQuery(Query):
     KIND = "table"
 
-    def __init__(self, expr: exp.Create, dialect: str, object_mapping: mappings.ObjectMapping, statement_index: int):
+    def __init__(
+        self,
+        expr: exp.Create,
+        dialect: str,
+        object_mapping: mappings.ObjectMapping,
+        statement_index: int,
+        metadata_field: str | None = None,
+    ):
         self.properties = TableQueryProperties.from_expression(expr, dialect)
+        self.metadata_field = metadata_field
 
         if self.properties.location:
             location_literal = self.properties.location.this
@@ -61,6 +74,10 @@ class TableQuery(Query):
     @property
     def location(self) -> exp.LocationProperty | None:
         return self.properties.location
+
+    @property
+    def table_format(self) -> TableFormat:
+        return self.properties.table_format
 
     def is_external(self) -> bool:
         return
