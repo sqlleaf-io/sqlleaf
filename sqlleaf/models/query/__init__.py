@@ -26,6 +26,7 @@ from sqlleaf.models.query.prepare import PrepareQuery as PrepareQuery
 from sqlleaf.models.query.procedure import ProcedureQuery as ProcedureQuery
 from sqlleaf.models.query.put import PutQuery as PutQuery
 from sqlleaf.models.query.replace import ReplaceQuery as ReplaceQuery
+from sqlleaf.models.query.reset import ResetQuery as ResetQuery
 from sqlleaf.models.query.schema import SchemaQuery as SchemaQuery
 from sqlleaf.models.query.select import SelectQuery as SelectQuery
 from sqlleaf.models.query.perform import PerformQuery as PerformQuery
@@ -75,6 +76,7 @@ __all__ = [
     "Query",
     "QueryHolder",
     "ReplaceQuery",
+    "ResetQuery",
     "SchemaQuery",
     "SelectQuery",
     "SequenceQuery",

@@ -1,6 +1,8 @@
 import os
 import sys
 
+import pytest
+
 from sqlleaf.models.query import SetQuery
 from tests.new_fixtures import holder as holder
 
@@ -77,6 +79,16 @@ def test__set_session_search_path_changes_catalog(holder):
     assert h.lineage.object_mapping.current_user_catalog == "app"
 
 
+@pytest.mark.skip(reason="todo - transform into SET")
+def test__set_config_search_path_changes_catalog(holder):
+    sql = """
+    SELECT set_config('search_path', 'app, public', false);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.lineage.object_mapping.current_user_catalog == "app"
+
+
 def test__set_search_path_to_default_restores_default_catalog(holder):
     sql = """
     SET search_path TO app;
@@ -85,3 +97,20 @@ def test__set_search_path_to_default_restores_default_catalog(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.lineage.object_mapping.current_user_catalog == "public"
+
+
+def test__set_reset_search_path_restores_default_catalog(holder):
+    sql = """
+    SET search_path TO app;
+    RESET search_path;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.lineage.object_mapping.current_user_catalog == "public"
+
+def test__reset_search_path_unsupported_by_sqlglot():
+    sql = """
+    RESET search_path;
+    """
+    result = sqlglot.parse_one(sql, dialect=DIALECT)
+    assert isinstance(result, sqlglot.exp.Command)
