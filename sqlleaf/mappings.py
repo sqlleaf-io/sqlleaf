@@ -338,7 +338,7 @@ class ObjectMapping(MappingSchema):
         # A procedure can be overloaded with different parameters, thus we return a list
         return self._lookup_query(kind="procedure", object=table, raise_on_missing=raise_on_missing)
 
-    def lookup_schema(self, schema: exp.Table, raise_on_missing: bool = True) -> SchemaQuery | None:
+    def lookup_schema_query(self, schema: exp.Table, raise_on_missing: bool = True) -> SchemaQuery | None:
         return self._lookup_query(kind="schema", object=schema, raise_on_missing=raise_on_missing)
 
     def lookup_sequence_query(self, table: exp.Table, raise_on_missing: bool = True) -> SequenceQuery | None:

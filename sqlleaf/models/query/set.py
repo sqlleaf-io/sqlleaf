@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import re
-
-from sqlglot import exp
+import sqlglot
+from sqlglot import exp, TokenType
 
 from sqlleaf import mappings
+from sqlleaf.dialects.base import BaseDialectSettings
 from sqlleaf.models.query.base import Query
 
 
@@ -35,7 +35,7 @@ class SetQuery(Query):
             target_info=None,
             skip_type_annotation=True,
         )
-        self._collect()
+        self._collect_variables()
 
     def _resolve_session_variable(self, rhs: exp.Expr) -> exp.Expr:
         """
@@ -79,21 +79,39 @@ class SetQuery(Query):
         if candidates:
             self.object_mapping.current_user_catalog = candidates[0]
 
-    def _collect_command(self):
+    def _reset_search_path(self) -> None:
         """
-        Handles 'SET search_path = a, b' which sqlglot parses as a raw Command.
+        Restore the current user catalog to the dialect default, as 'SET search_path TO DEFAULT' does.
         """
-        match = re.match(r"\s*search_path\s*(?:=|\bTO\b)\s*(.+)", str(self.statement.expression), re.IGNORECASE)
-        if match:
-            schemas = [schema.strip().strip('"\'').lower() for schema in match.group(1).split(",")]
-            self._set_search_path(schemas)
+        self.object_mapping.current_user_catalog = BaseDialectSettings.from_dialect(self.dialect).DEFAULT_USER_CATALOG
 
-    def _collect(self):
+    def _collect_set_command(self):
+        """
+        Handles 'SET [SESSION] search_path = a, b' which sqlglot parses as a raw Command.
+        """
+        tokens = sqlglot.tokenize(self.statement.sql(dialect=self.dialect), dialect=self.dialect)[1:]
+        if tokens and tokens[0].token_type == TokenType.SESSION:
+            tokens = tokens[1:]
+        if len(tokens) < 3 or tokens[0].text.lower() != "search_path":
+            return
+
+        operator, values = tokens[1], tokens[2:]
+        if operator.token_type != TokenType.EQ and operator.text.upper() != "TO":
+            return
+
+        if len(values) == 1 and values[0].token_type == TokenType.DEFAULT:
+            self._reset_search_path()
+            return
+
+        schemas = [token.text.lower() for token in values if token.token_type != TokenType.COMMA]
+        self._set_search_path(schemas)
+
+    def _collect_variables(self):
         """
         Extracts session variables from the SET statement and store them inside the object mapping.
         """
         if self.dialect == "postgres" and isinstance(self.statement, exp.Command):
-            self._collect_command()
+            self._collect_set_command()
             return
 
         for expression in self.statement.expressions:
@@ -103,7 +121,10 @@ class SetQuery(Query):
 
             left, right = eq_expr.left, eq_expr.right
             if isinstance(left, exp.Column) and left.name.lower() == "search_path":
-                self._set_search_path([right.name])
+                if isinstance(right, exp.Var) and right.name.upper() == "DEFAULT":
+                    self._reset_search_path()
+                else:
+                    self._set_search_path([right.name])
             elif isinstance(left, exp.Tuple):
                 # SET (a, b) = (10, 20)  or  SET (a, b) = (SELECT ...)
                 names = [col.name for col in left.expressions]

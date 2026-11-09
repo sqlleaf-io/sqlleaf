@@ -262,3 +262,6 @@ def test__system_objects_postgres(holder):
     assert (
         h.holders[2].transformed.statement.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
     )
+
+
+# TODO: remove 'pg_catalog' prefix for system functions so that the optimizer can work?
