@@ -50,6 +50,8 @@ def _classify_command(stmt: exp.Command, dialect: str) -> tuple[str, bool]:
         return "execute", _is_execute_supported(stmt)
     if dialect == "postgres" and stmt.this.upper() == "SET" and _is_search_path_command(stmt):
         return "set", True
+    if dialect == "postgres" and stmt.this.upper() == "RESET" and _is_reset_search_path_command(stmt):
+        return "reset", True
     if dialect == "mysql" and stmt.name == "REPLACE":
         return "replace", _is_replace_supported(stmt, dialect)
     if stmt.this.upper() == "CALL":
@@ -66,6 +68,14 @@ def _is_search_path_command(stmt: exp.Command) -> bool:
     tokens = sqlglot.tokenize(stmt.sql(dialect="postgres"), dialect="postgres")[1:]
     if tokens and tokens[0].token_type == TokenType.SESSION:
         tokens = tokens[1:]
+    return bool(tokens) and tokens[0].text.lower() == "search_path"
+
+
+def _is_reset_search_path_command(stmt: exp.Command) -> bool:
+    """
+    Check if a Postgres RESET statement targets search_path.
+    """
+    tokens = sqlglot.tokenize(stmt.sql(dialect="postgres"), dialect="postgres")[1:]
     return bool(tokens) and tokens[0].text.lower() == "search_path"
 
 
