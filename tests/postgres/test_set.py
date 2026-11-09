@@ -65,3 +65,23 @@ def test__set_search_path_unsupported_by_sqlglot():
     """
     result = sqlglot.parse_one(sql, dialect=DIALECT)
     assert isinstance(result, sqlglot.exp.Command)
+
+
+def test__set_session_search_path_changes_catalog(holder):
+    sql = """
+    SET SESSION search_path = app, public;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert [SetQuery] == h.query_types
+    assert h.lineage.object_mapping.current_user_catalog == "app"
+
+
+def test__set_search_path_to_default_restores_default_catalog(holder):
+    sql = """
+    SET search_path TO app;
+    SET search_path TO DEFAULT;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.lineage.object_mapping.current_user_catalog == "public"

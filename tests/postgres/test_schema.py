@@ -17,11 +17,11 @@ def test__create_table_schema_lookup():
     collect_queries(text="CREATE TABLE fruit.raw (name TEXT);", dialect=DIALECT, object_mapping=om)
 
     assert om.lookup_table_query(exp.to_table("fruit.raw")) is not None
-    assert om.lookup_schema(exp.to_table("fruit"), raise_on_missing=False) is None
+    assert om.lookup_schema_query(exp.to_table("fruit"), raise_on_missing=False) is None
 
     collect_queries(text="CREATE SCHEMA fruit;", dialect=DIALECT, object_mapping=om)
 
-    assert om.lookup_schema(exp.to_table("fruit")).kind == "schema"
+    assert om.lookup_schema_query(exp.to_table("fruit")).kind == "schema"
 
 
 def test__schema(holder):
