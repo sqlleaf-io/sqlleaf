@@ -226,7 +226,7 @@ def walk_query_and_build_graph(
             logger.debug(f"Produced nodes: {[n.full_name for n in nodes]}")
 
             for n in nodes:
-                if isinstance(n, ColumnNode) and isinstance(n.source_scope, Scope):
+                if isinstance(n, ColumnNode) and isinstance(n.source_scope, Scope) and not n.is_ordinality_column():
                     # There are additional expressions to traverse (e.g. inside a CTE)
                     walk_query_and_build_graph(generator, n, n.source_scope, gen_ctx, pos_ctx)
 

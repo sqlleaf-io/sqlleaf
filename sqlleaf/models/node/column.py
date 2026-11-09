@@ -64,6 +64,28 @@ class ColumnNode(NodeAttributes):
             d["metadata"] = self.metadata_field
         return d
 
+    def is_ordinality_column(self) -> bool:
+        """
+        The column appended by 'WITH ORDINALITY' is the last alias column, or 'ordinality' if unaliased.
+        """
+        source = self.source_scope
+        if isinstance(source, Scope):
+            source = source.expression
+
+        if isinstance(source, exp.Lateral):
+            source = source.this
+
+        if isinstance(source, exp.Unnest):
+            offset = source.args.get("offset")
+            return isinstance(offset, exp.Identifier) and self.name == offset.name
+
+        if not isinstance(source, exp.Table) or not source.args.get("ordinality"):
+            return False
+
+        alias = source.args.get("alias")
+        ordinal_name = alias.columns[-1].name if alias and alias.columns else "ordinality"
+        return self.name == ordinal_name
+
     def _apply_rename(self, source: exp.Table | exp.Select | exp.Lateral, dialect: str) -> None:
         """
         Change the column's source table to be its fully qualified name, not its alias,

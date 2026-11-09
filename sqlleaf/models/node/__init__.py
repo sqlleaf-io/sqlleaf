@@ -4,6 +4,7 @@ from enum import StrEnum, auto
 
 class NodeKind(StrEnum):
     COLUMN = auto()
+    COUNTER = auto()
     DYNAMODB = auto()
     FUNCTION = auto()
     INTERVAL = auto()
@@ -29,6 +30,7 @@ from sqlleaf.models.node.base import NodeAttributes as NodeAttributes
 from sqlleaf.models.node.column import ColumnNode as ColumnNode
 from sqlleaf.models.node.column import FileColumnNode as FileColumnNode
 from sqlleaf.models.node.column import StageColumnNode as StageColumnNode
+from sqlleaf.models.node.counter import CounterNode as CounterNode
 from sqlleaf.models.node.dynamodb import DynamoDbNode as DynamoDbNode
 from sqlleaf.models.node.function import FunctionNode as FunctionNode
 from sqlleaf.models.node.interval import IntervalNode as IntervalNode

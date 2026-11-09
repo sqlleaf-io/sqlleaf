@@ -14,6 +14,7 @@ from sqlleaf.models.context import GeneratorContext, PositionContext
 from sqlleaf.models.hook import Hook
 from sqlleaf.models.node import (
     ColumnNode,
+    CounterNode,
     DynamoDbNode,
     FileColumnNode,
     FunctionNode,
@@ -424,11 +425,21 @@ class BaseGenerator:
         if maybe_parent := self.create_node(parent):
             yield EdgeToCreate(maybe_parent, gen_ctx.child_node)
 
-        if isinstance(parent.source_scope, exp.Table):
+            if parent.is_ordinality_column():
+                # The WITH ORDINALITY column has no source other than a counter
+                counter = self.create_node(CounterNode().with_context(gen_ctx).with_positions(pos_ctx))
+                yield EdgeToCreate(counter, maybe_parent)
+                return
+
+        source = parent.source_scope
+        if isinstance(source, Scope) and isinstance(source.expression, exp.Unnest):
+            # Traverse into the UNNEST function, e.g. UNNEST(ARRAY['a']) WITH ORDINALITY AS src(name, age)
+            source = source.expression
+
+        if isinstance(source, (exp.Table, exp.Unnest)):
             # Traverse into the table (esp. needed by "ROWS FROM")
-            ex = parent.source_scope
-            gen_ctx = gen_ctx.replace(expr=ex, child_node=parent)
-            yield from self.process(ex, gen_ctx, pos_ctx)
+            gen_ctx = gen_ctx.replace(expr=source, child_node=parent)
+            yield from self.process(source, gen_ctx, pos_ctx)
 
     @process.register(exp.JSONExtractScalar)
     @process.register(exp.JSONExtract)
