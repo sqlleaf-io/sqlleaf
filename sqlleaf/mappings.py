@@ -201,6 +201,26 @@ class ObjectMapping(MappingSchema):
     def add_table_query(
         self, query: TableQuery | ViewQuery | CTASQuery, column_mapping: ColumnMapping | None = None
     ) -> None:
+        if isinstance(query, TableQuery):
+            table = query.get_target_as_table()
+            if self._lookup_query(kind="table", object=table, raise_on_missing=False) is not None:
+                # A repeated 'CREATE TABLE' keeps the original definition; 'IF NOT EXISTS' prevents an error
+                if not query.statement.args.get("exists"):
+                    exception.raise_error(
+                        exception.MappingError,
+                        f"Table '{table.sql()}' already exists.",
+                    )
+                return
+        elif isinstance(query, ViewQuery) and not query.statement.args.get("replace"):
+            table = query.get_target_as_table()
+            if self._lookup_query(kind="table", object=table, raise_on_missing=False) is not None:
+                # A repeated 'CREATE VIEW' keeps the original definition; 'CREATE OR REPLACE VIEW' overwrites it
+                exception.raise_error(
+                    exception.MappingError,
+                    f"View '{table.sql()}' already exists.",
+                )
+                return
+
         self._add_query(query=query, column_mapping=column_mapping, dialect=query.dialect, kind="table")
 
     def add_trigger_query(self, query: TriggerQuery) -> None:

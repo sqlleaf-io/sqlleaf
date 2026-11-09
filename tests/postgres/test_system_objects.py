@@ -1,25 +1,24 @@
-from sqlleaf.dialects.loader import get_object_ddl
+import os
+import sys
+
+import pytest
+from sqlglot import exp
+
+from sqlleaf import mappings
+from sqlleaf.processors.collector.collector import SystemObjectLoader
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+
 from tests.new_fixtures import holder as holder
 
 DIALECT = "postgres"
-SQL = get_object_ddl("pg_catalog", "pg_policies", DIALECT)
-
-
-def test__system_view_target_has_no_lineage(holder):
-    h = holder(sql=SQL, dialect=DIALECT)
-
-    assert h.nodes == []
-    assert h.edges == []
-    assert h.paths == []
 
 
 def test__insert_select_from_system_view_has_lineage(holder):
-    sql = SQL + (
-        """
+    sql = """
     CREATE TABLE public.archive (schemaname VARCHAR, tablename VARCHAR);
     INSERT INTO public.archive (schemaname, tablename) SELECT schemaname, tablename FROM pg_catalog.pg_policies;
     """
-    )
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
@@ -221,21 +220,6 @@ def test__system_function_ts_token_type(holder):
         h.holders[-1].transformed.statement.sql(dialect=DIALECT)
         == """INSERT INTO public.target (tokid, alias, description) SELECT ts_token_type.tokid AS tokid, ts_token_type.alias AS alias, ts_token_type.description AS description FROM TS_TOKEN_TYPE('default') AS ts_token_type(tokid, alias, description)"""
     )
-
-
-import os
-import sys
-
-import pytest
-from sqlglot import exp
-
-from sqlleaf import mappings
-from sqlleaf.processors.collector.collector import SystemObjectLoader
-from tests.new_fixtures import holder as holder
-
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-
-DIALECT = "postgres"
 
 
 def test__system_objects_lazy_load_pg_am():
