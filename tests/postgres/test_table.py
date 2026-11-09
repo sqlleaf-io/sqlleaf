@@ -3,8 +3,9 @@ import sys
 
 import pytest
 import sqlglot
+from sqlglot import exp
 
-from sqlleaf.exception import SqlLeafException
+from sqlleaf import exception
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -12,6 +13,40 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 from sqlleaf.models.query import TableQuery, TypeQuery
 
 DIALECT = "postgres"
+
+
+def test__table_create_twice_fails(holder):
+    with pytest.raises(exception.MappingError) as exc_info:
+        sql = """
+        CREATE TABLE target (name TEXT);
+        CREATE TABLE target (name TEXT, kind TEXT);
+        """
+        holder(sql=sql, dialect=DIALECT)
+    assert str(exc_info.value) == "Table 'public.target' already exists."
+
+
+def test__table_create_if_not_exists_twice_succeeds(holder):
+    sql = """
+    CREATE TABLE target (name TEXT);
+    CREATE TABLE IF NOT EXISTS target (name TEXT);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert len(h.holders) == 2  # Two holders but one tracked inside the mapping
+    assert all(isinstance(q, TableQuery) for q in h.queries_original)
+    ddl = h.lineage.object_mapping.lookup_table_query(exp.table_("target")).statement.sql(dialect=DIALECT)
+    assert ddl == "CREATE TABLE public.target (name TEXT)"
+
+
+def test__table_create_same_name_different_schema_succeeds(holder):
+    sql = """
+    CREATE TABLE sales.target (name TEXT);
+    CREATE TABLE archive.target (name TEXT);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert len(h.holders) == 2
+    assert all(isinstance(q, TableQuery) for q in h.queries_original)
 
 
 def test__table_types(holder):
@@ -212,7 +247,7 @@ def test__table_inherits_with_merge(holder):
 
 
 def test__table_fails_missing_column_type(holder):
-    with pytest.raises(SqlLeafException) as e:
+    with pytest.raises(exception.SqlLeafException) as e:
         sql = """
         CREATE TABLE fail (a INT, b);
         """
