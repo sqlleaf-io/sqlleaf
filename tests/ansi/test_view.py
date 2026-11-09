@@ -3,6 +3,7 @@ import sys
 
 import pytest
 
+from sqlleaf import exception
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -74,3 +75,68 @@ def test__view_named_columns(holder):
     assert h.paths == [["column[fruit.raw.name]", "column[v.col1]"], ["column[fruit.raw.kind]", "column[v.col2]"]]
     assert len(h.nodes) == 4
     assert len(h.edges) == 2
+
+
+def test__view_updatable_insert_targets_base_table(holder):
+    sql = """
+    CREATE TABLE base (a int, b int);
+    CREATE VIEW v AS SELECT a, b FROM base;
+    INSERT INTO v (a, b) SELECT 1, 2;
+    """
+    h = holder(sql=sql, dialect="")
+
+    assert h.queries_transformed[-1].statement.sql(dialect="") == "INSERT INTO base (a, b) SELECT 1 AS a, 2 AS b"
+    assert h.paths == [
+        ["literal[1]", "column[base.a]", "column[v.a]"],
+        ["literal[2]", "column[base.b]", "column[v.b]"],
+    ]
+
+
+def test__view_updatable_update_targets_base_table(holder):
+    sql = """
+    CREATE TABLE base (a int, b int);
+    CREATE VIEW v AS SELECT a, b FROM base;
+    UPDATE v SET a = 5;
+    """
+    h = holder(sql=sql, dialect="")
+
+    assert h.queries_transformed[-1].statement.sql(dialect="") == "INSERT INTO base (a) SELECT 5 AS a FROM base AS base"
+    assert h.paths == [
+        ["column[base.b]", "column[v.b]"],
+        ["literal[5]", "column[base.a]", "column[v.a]"],
+    ]
+
+
+def test__view_updatable_delete_targets_base_table(holder):
+    sql = """
+    CREATE TABLE base (a int, b int);
+    CREATE VIEW v AS SELECT a, b FROM base;
+    DELETE FROM v;
+    """
+    h = holder(sql=sql, dialect="")
+
+    assert h.queries_transformed[-1].statement.sql(dialect="") == "DELETE FROM base"
+    assert h.paths == [
+        ["column[base.a]", "column[v.a]"],
+        ["column[base.b]", "column[v.b]"],
+    ]
+
+
+def test__view_updatable_insert_into_read_only_column_fails(holder):
+    with pytest.raises(exception.InvalidQueryError, match="Column 'total' of view 'v' is not updatable"):
+        sql = """
+        CREATE TABLE base (a int, b int);
+        CREATE VIEW v AS SELECT a, a + b AS total FROM base;
+        INSERT INTO v (total) SELECT 1;
+        """
+        holder(sql=sql, dialect="")
+
+
+def test__view_with_aggregate_is_not_updatable(holder):
+    with pytest.raises(exception.InvalidQueryError, match="View 'v' is not automatically updatable"):
+        sql = """
+        CREATE TABLE base (a int, b int);
+        CREATE VIEW v AS SELECT a, SUM(b) AS total FROM base GROUP BY a;
+        INSERT INTO v (a, total) SELECT 1, 2;
+        """
+        holder(sql=sql, dialect="")

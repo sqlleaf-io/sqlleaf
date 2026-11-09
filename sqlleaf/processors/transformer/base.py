@@ -7,7 +7,7 @@ from sqlglot.optimizer import RULES, optimize, qualify
 from sqlglot.optimizer.merge_subqueries import merge_derived_tables
 
 from sqlleaf import exception, util
-from sqlleaf.models.query import Q
+from sqlleaf.models.query import Q, ViewQuery
 from sqlleaf.processors.transformer.expressions import (
     add_parens_for_composite_field_access,
     normalize_values,
@@ -97,6 +97,7 @@ class BaseQueryTransformer:
         self.replace_variables_in_expression(statement)
         self._expand_to_query(statement)
         self._convert_table_to_select(statement)
+        self._redirect_updatable_view_target(statement)
 
         # Remove any FILTER clauses (not used for lineage)
         for filter_expr in statement.find_all(exp.Filter):
@@ -901,3 +902,75 @@ class BaseQueryTransformer:
 
         statement.replace(insert_expr)
         return insert_expr
+
+    def _redirect_updatable_view_target(self, statement: exp.Expr) -> None:
+        """
+        Rewrite an INSERT, UPDATE or DELETE on an automatically updatable view so that it targets the view's base table.
+        """
+        if not isinstance(statement, (exp.Insert, exp.Update, exp.Delete)):
+            return
+
+        target = statement.this
+        view_table = target.this if isinstance(target, exp.Schema) else target
+        if not isinstance(view_table, exp.Table):
+            return
+
+        view = self.query.object_mapping.lookup_table_query(table=view_table, raise_on_missing=False)
+        if not isinstance(view, ViewQuery):
+            return
+        if not view.is_automatically_updatable_view():
+            exception.raise_error(
+                exception.InvalidQueryError,
+                f"View '{view_table.sql()}' is not automatically updatable",
+            )
+
+        column_names = view.get_updatable_column_names()
+        base_table = view.get_updatable_base_table()
+
+        # Rewrite the view columns to the base columns
+        if isinstance(statement, exp.Insert):
+            view_columns = (
+                [col.name for col in target.expressions] if isinstance(target, exp.Schema) else list(column_names)
+            )
+            base_columns = [
+                exp.to_identifier(self._get_base_column_name(column_names, name, view_table)) for name in view_columns
+            ]
+            statement.set("this", exp.Schema(this=base_table, expressions=base_columns))
+            statement.set("conflict", None)
+        elif isinstance(statement, exp.Update):
+            for eq in statement.expressions:
+                if isinstance(eq.left, exp.Column):
+                    self._get_base_column_name(column_names, eq.left.name, view_table)
+
+            self._rename_view_columns(statement, column_names, view_table, base_table)
+            statement.set("this", base_table)
+        else:
+            statement.set("this", base_table)
+
+    @staticmethod
+    def _get_base_column_name(column_names: dict[str, str | None], name: str, view_table: exp.Table) -> str:
+        """
+        Return the base table column that a view column maps to, raising an error if the view column is read-only.
+        """
+        base_name = column_names.get(name)
+        if base_name is None:
+            exception.raise_error(
+                exception.InvalidQueryError,
+                f"Column '{name}' of view '{view_table.sql()}' is not updatable",
+            )
+        return base_name
+
+    @staticmethod
+    def _rename_view_columns(
+        expression: exp.Expr, column_names: dict[str, str | None], view_table: exp.Table, base_table: exp.Table
+    ) -> None:
+        """
+        Rename the view's column references inside an expression to the matching base table columns.
+        """
+        for column in expression.find_all(exp.Column):
+            base_name = column_names.get(column.name)
+            if base_name is None:
+                continue
+            column.set("this", exp.to_identifier(base_name))
+            if column.table == view_table.name:
+                column.set("table", exp.to_identifier(base_table.name))
