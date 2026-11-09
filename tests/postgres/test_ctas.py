@@ -31,7 +31,7 @@ def test__ctas_with_no_data(holder):
     assert len(h.edges) == 2
 
 
-def test__view_no_schema_adds_default_schema(holder):
+def test__ctas_no_schema_adds_default_schema(holder):
     sql = """
     CREATE TABLE new AS SELECT 1 AS name;
     """
