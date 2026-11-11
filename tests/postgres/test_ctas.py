@@ -2,7 +2,6 @@ import os
 import sys
 
 import pytest
-import sqlglot
 
 from sqlleaf.exception import SqlLeafException
 from sqlleaf.models.query import CTASQuery
@@ -175,26 +174,28 @@ def test__ctas_execute_ignoring_extra_params(holder):
 
 
 def test__ctas_execute_with_schema_table_fails(holder):
-    with pytest.raises(sqlglot.errors.ParseError) as e:
-        sql = """
-        PREPARE plan AS TABLE fruit.raw;
-        CREATE TABLE fruit.cooked AS EXECUTE plan;
-        """
-        h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+    sql = """
+    CREATE TABLE source (name VARCHAR, age INT);
+    PREPARE plan AS TABLE source;
+    CREATE TABLE target AS EXECUTE plan;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+    assert h.paths == [
+        ["column[public.source.name]", "column[public.target.name]"],
+        ["column[public.source.age]", "column[public.target.age]"],
+    ]
 
-    assert e.value.args[0].startswith("Invalid expression / Unexpected token. Line 1, Col: 12")
 
-
-# def test__ctas_execute_with_table(holder):
-#     sql = """
-#     CREATE TABLE raw (name VARCHAR, kind VARCHAR);
-#     PREPARE plan AS TABLE raw;
-#     CREATE TABLE fruit.cooked AS EXECUTE plan;
-#     """
-#     h = holder(sql=sql, dialect=DIALECT, with_tables=False)
-#     assert h.paths == [
-#         ["column[fruit.raw.name]", "column[fruit.cooked.name]"],
-#         ["column[fruit.raw.kind]", "column[fruit.cooked.kind]"],
-#     ]
-#     assert len(h.nodes) == 4
-#     assert len(h.edges) == 2
+def test__ctas_execute_with_table(holder):
+    sql = """
+    CREATE TABLE raw (name VARCHAR, kind VARCHAR);
+    PREPARE plan AS TABLE raw;
+    CREATE TABLE cooked AS EXECUTE plan;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=False)
+    assert h.paths == [
+        ["column[public.raw.name]", "column[public.cooked.name]"],
+        ["column[public.raw.kind]", "column[public.cooked.kind]"],
+    ]
+    assert len(h.nodes) == 4
+    assert len(h.edges) == 2

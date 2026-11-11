@@ -21,7 +21,7 @@ def test__ordinality_counter_source(holder):
         "counter[position[query_depth=0 query_width=0 statement=1 select=1 func_depth=0 func_arg=0]]",
         "function[name=UNNEST type=VARCHAR position=[query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]",
         "literal[name={'a'} type=ARRAY<VARCHAR> position=[query_depth=0 query_width=0 statement=1 select=0 func_depth=1 func_arg=0]]",
-        "column[name=age type=VARCHAR properties=[kind=udtf table=src]]",
+        "column[name=age type=BIGINT properties=[kind=udtf table=src]]",
         "column[name=name type=VARCHAR properties=[kind=udtf table=src]]",
         "column[name=age type=INT properties=[kind=table table=target schema=public]]",
         "column[name=name type=TEXT properties=[kind=table table=target schema=public]]",

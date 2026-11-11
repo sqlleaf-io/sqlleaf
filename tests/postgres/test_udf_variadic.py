@@ -1,6 +1,8 @@
 import os
 import sys
 
+import pytest
+import sqlglot
 from sqlglot import exp
 
 from sqlleaf.models.query import UserDefinedFunctionQuery
@@ -16,7 +18,7 @@ def test__udf_variadic_parameter(holder):
     sql = """
     CREATE FUNCTION hello(greeting TEXT, VARIADIC names TEXT[])
     RETURNS TEXT AS $$
-        SELECT greeting || ' ' || string_agg(unpacked_name, ' and ')
+        SELECT greeting || ' ' || string_agg(unpacked_name.unpacked_name, ' and ')
         FROM unnest(names) AS unpacked_name;
     $$ LANGUAGE SQL;
 
@@ -44,7 +46,7 @@ def test__udf_variadic_parameter(holder):
     insert_query = h.holders[2]
     insert_after = [
         "INSERT INTO public.target (name1) "
-        "SELECT (SELECT 'Hi ' || STRING_AGG(unpacked_name, ' and ') AS _col_0 "
+        "SELECT (SELECT 'Hi ' || STRING_AGG(unpacked_name.unpacked_name, ' and ') AS _col_0 "
         "FROM UNNEST(ARRAY['Alice', 'Bob', 'Charlie']) AS unpacked_name) AS name1"
     ]
     actual_after = [insert_query.transformed.statement]
@@ -61,7 +63,24 @@ def test__udf_variadic_parameter(holder):
             "function[DPIPE]",
             "column[public.target.name1]",
         ],
+        [
+            "literal[{'Alice','Bob','Charlie'}]",
+            "function[UNNEST]",
+            "column[unpacked_name.unpacked_name]",
+            "function[GROUP_CONCAT]",
+            "function[DPIPE]",
+            "column[public.target.name1]",
+        ],
     ]
+
+
+def test__udf_variadic_parameter_unaliased_stringagg_fails(holder):
+    with pytest.raises(sqlglot.errors.OptimizeError) as e:
+        sql = """
+        INSERT INTO target SELECT 'Hi' || ' ' || STRING_AGG(unpacked_name, ' and ') FROM UNNEST(ARRAY['Alice', 'Bob', 'Charlie']) AS unpacked_name;
+        """
+        holder(sql=sql, dialect=DIALECT)
+    assert e.value.args[0].startswith("Column 'unpacked_name' could not be resolved.")
 
 
 common_objects = """

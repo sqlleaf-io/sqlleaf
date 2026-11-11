@@ -342,13 +342,21 @@ def test__update_only_inherited(holder):
     assert len(h.edges) == 1
 
 
-def test__table_except_table_fails(holder):
-    with pytest.raises(sqlglot.errors.ParseError) as e:
-        sql = """
-        INSERT INTO t1 TABLE t1 EXCEPT TABLE t2;
-        """
-        holder(sql=sql, dialect=DIALECT)
-    assert e.value.args[0].startswith("Invalid expression / Unexpected token. Line 2, Col: 38.")
+def test__table_except_table(holder):
+    sql = """
+    CREATE TABLE t1(name1 VARCHAR);
+    CREATE TABLE t2(name1 VARCHAR);
+
+    INSERT INTO t1 TABLE t1 EXCEPT TABLE t2;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[public.t2.name1]", "column[public.t1.name1]"],
+        ["column[public.t1.name1]", "column[public.t1.name1]"],
+    ]
+    assert len(h.nodes) == 2
+    assert len(h.edges) == 2
 
 
 def test__select_inet_fails(holder):

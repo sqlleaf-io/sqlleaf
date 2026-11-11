@@ -135,9 +135,27 @@ def test__row_jsonb(holder):
     )
     assert h.paths == [
         ['literal["data"]', "function[JSONB_BUILD_OBJECT]", "column[public.dest4.val]"],
-        ["column[public.t1.a]", "function[ROW]", "function[CAST]", "function[JSONB_BUILD_OBJECT]", "column[public.dest4.val]"],
-        ["column[public.t1.b]", "function[ROW]", "function[CAST]", "function[JSONB_BUILD_OBJECT]", "column[public.dest4.val]"],
-        ["column[public.t1.c]", "function[ROW]", "function[CAST]", "function[JSONB_BUILD_OBJECT]", "column[public.dest4.val]"],
+        [
+            "column[public.t1.a]",
+            "function[ROW]",
+            "function[CAST]",
+            "function[JSONB_BUILD_OBJECT]",
+            "column[public.dest4.val]",
+        ],
+        [
+            "column[public.t1.b]",
+            "function[ROW]",
+            "function[CAST]",
+            "function[JSONB_BUILD_OBJECT]",
+            "column[public.dest4.val]",
+        ],
+        [
+            "column[public.t1.c]",
+            "function[ROW]",
+            "function[CAST]",
+            "function[JSONB_BUILD_OBJECT]",
+            "column[public.dest4.val]",
+        ],
     ]
 
 
@@ -154,9 +172,30 @@ def test__row_nested_row(holder):
         "INSERT INTO public.dest5 (val) SELECT CAST(ROW(CAST(ROW(t1.a, t1.b, t1.c) AS my_type), CHR(39)) AS outer_type) AS val FROM public.t1 AS t1"
     )
     assert h.paths == [
-        ["column[public.t1.a]", "function[ROW]", "function[CAST]", "function[ROW]", "function[CAST]", "column[public.dest5.val]"],
-        ["column[public.t1.b]", "function[ROW]", "function[CAST]", "function[ROW]", "function[CAST]", "column[public.dest5.val]"],
-        ["column[public.t1.c]", "function[ROW]", "function[CAST]", "function[ROW]", "function[CAST]", "column[public.dest5.val]"],
+        [
+            "column[public.t1.a]",
+            "function[ROW]",
+            "function[CAST]",
+            "function[ROW]",
+            "function[CAST]",
+            "column[public.dest5.val]",
+        ],
+        [
+            "column[public.t1.b]",
+            "function[ROW]",
+            "function[CAST]",
+            "function[ROW]",
+            "function[CAST]",
+            "column[public.dest5.val]",
+        ],
+        [
+            "column[public.t1.c]",
+            "function[ROW]",
+            "function[CAST]",
+            "function[ROW]",
+            "function[CAST]",
+            "column[public.dest5.val]",
+        ],
         ["literal[39]", "function[CHR]", "function[ROW]", "function[CAST]", "column[public.dest5.val]"],
     ]
 
@@ -171,19 +210,12 @@ def test__row_scalar_subquery(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.holders[4].transformed.statement.sql(dialect=DIALECT) == (
-        "INSERT INTO public.dest2 (val) SELECT CAST(ROW(_u_0._col_0, t1.b, t1.c) AS my_type) AS val FROM public.t1 AS t1 CROSS JOIN (SELECT MAX(t1.a) AS _col_0 FROM public.t1 AS t1) AS _u_0"
+        "INSERT INTO public.dest2 (val) SELECT CAST(ROW((SELECT MAX(t1.a) AS _col_0 FROM public.t1 AS t1), t1.b, t1.c) AS my_type) AS val FROM public.t1 AS t1"
     )
     assert h.paths == [
+        ["column[public.t1.a]", "function[MAX]", "function[ROW]", "function[CAST]", "column[public.dest2.val]"],
         ["column[public.t1.b]", "function[ROW]", "function[CAST]", "column[public.dest2.val]"],
         ["column[public.t1.c]", "function[ROW]", "function[CAST]", "column[public.dest2.val]"],
-        [
-            "column[public.t1.a]",
-            "function[MAX]",
-            "column[_u_0._col_0]",
-            "function[ROW]",
-            "function[CAST]",
-            "column[public.dest2.val]",
-        ],
     ]
 
 

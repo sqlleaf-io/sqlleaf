@@ -4,7 +4,7 @@ import sys
 import pytest
 
 from sqlleaf.exception import SqlLeafException
-from sqlleaf.models.query import InsertQuery, TableQuery
+from sqlleaf.models.query import CTASQuery, InsertQuery, TableQuery, ViewQuery
 from tests.new_fixtures import holder as holder
 from tests.new_fixtures import to_sql
 
@@ -577,30 +577,45 @@ def test__select_table_as_table(holder):
     CREATE TABLE t2(name1 VARCHAR, name2 VARCHAR, name3 VARCHAR);
 
     INSERT INTO t2 TABLE t1;
-    CREATE VIEW t3 AS TABLE t2;     -- Not supported
-    CREATE TABLE t4 AS TABLE t2;    -- Not supported
+    CREATE VIEW t3 AS TABLE t2;
+    CREATE TABLE t4 AS TABLE t2;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[public.t1.name1]", "column[public.t2.name1]"], ["column[public.t1.name2]", "column[public.t2.name2]"]]
-    assert len(h.nodes) == 4
-    assert len(h.edges) == 2
-    assert len(h.queries_original) == 3
-    assert [TableQuery, TableQuery, InsertQuery] == h.query_types
-    assert len(h.collected_queries.unsupported) == 2
+    assert h.paths == [
+        ["column[public.t1.name1]", "column[public.t2.name1]", "column[public.t4.name1]"],
+        ["column[public.t1.name1]", "column[public.t2.name1]", "column[public.t3.name1]"],
+        ["column[public.t1.name2]", "column[public.t2.name2]", "column[public.t4.name2]"],
+        ["column[public.t1.name2]", "column[public.t2.name2]", "column[public.t3.name2]"],
+        ["column[public.t2.name3]", "column[public.t4.name3]"],
+        ["column[public.t2.name3]", "column[public.t3.name3]"],
+    ]
+    assert len(h.nodes) == 11
+    assert len(h.edges) == 8
+    assert len(h.queries_original) == 5
+    assert [TableQuery, TableQuery, InsertQuery, ViewQuery, CTASQuery] == h.query_types
+    assert len(h.collected_queries.unsupported) == 0
 
 
-def test__select_table_union_table_fails(holder):
-    with pytest.raises(sqlglot.errors.ParseError) as e:
-        sql = """
-        CREATE TABLE t1(name1 VARCHAR, name2 VARCHAR);
-        CREATE TABLE t2(name1 VARCHAR, name2 VARCHAR);
-        CREATE TABLE t3(name1 VARCHAR, name2 VARCHAR);
+def test__select_table_union_table(holder):
+    sql = """
+    CREATE TABLE t1(name1 VARCHAR, name2 VARCHAR);
+    CREATE TABLE t2(name1 VARCHAR, name2 VARCHAR);
+    CREATE TABLE t3(name1 VARCHAR, name2 VARCHAR);
 
-        INSERT INTO t1 TABLE t2 UNION TABLE t3;
-        """
-        holder(sql=sql, dialect=DIALECT)
-    assert e.value.args[0].startswith("Invalid expression / Unexpected token. Line 6, Col: 37.")
+    INSERT INTO t1 TABLE t2 UNION TABLE t3;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[public.t2.name1]", "column[public.t1.name1]"],
+        ["column[public.t3.name1]", "column[public.t1.name1]"],
+        ["column[public.t2.name2]", "column[public.t1.name2]"],
+        ["column[public.t3.name2]", "column[public.t1.name2]"],
+    ]
+    assert len(h.nodes) == 6
+    assert len(h.edges) == 4
+    assert [TableQuery, TableQuery, TableQuery, InsertQuery] == h.query_types
 
 
 def test__select_order_by_in_string_add(holder):

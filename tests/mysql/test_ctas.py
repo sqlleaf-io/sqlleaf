@@ -43,10 +43,18 @@ def test_ctas_appended_column(holder):
 
 def test_ctas_table_unsupported(holder):
     sql = """
-    CREATE TABLE t1 TABLE t2;
+    CREATE TABLE t1 (name VARCHAR, age INT);
+    CREATE TABLE t2 TABLE t1;
     """
     h = holder(sql=sql, dialect=DIALECT)
-    assert len(h.collected_queries.unsupported) == 1
+    assert (
+        h.queries_transformed[1].statement.sql(dialect=DIALECT)
+        == "CREATE TABLE t2 AS SELECT t1.name AS name, t1.age AS age FROM t1 AS t1"
+    )
+    assert h.paths == [
+        ["column[t1.name]", "column[t2.name]"],
+        ["column[t1.age]", "column[t2.age]"],
+    ]
 
 
 def test_ctas_with_columns(holder):
