@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import typing as t
-
 from sqlglot import exp
 
 from sqlleaf import mappings, util
 from sqlleaf.models.query.base import Query
 from sqlleaf.models.query.table import TableQuery
 from sqlleaf.typing import SourceInfo, TargetInfo
+from sqlleaf.util import validate_athena_table_options
 
 
 class CTASQuery(Query):
@@ -22,6 +21,8 @@ class CTASQuery(Query):
         system_columns: list[exp.ColumnDef],
         statement_index: int,
     ):
+        validate_athena_table_options(expr, dialect, is_ctas=True)
+
         source = expr.expression
         if source is None:
             if exec_prop := expr.find(exp.ExecuteAsProperty):

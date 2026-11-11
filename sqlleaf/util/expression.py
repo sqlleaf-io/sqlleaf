@@ -1,10 +1,11 @@
+from __future__ import annotations
+
 import typing as t
 
 from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.qualify import qualify
 
-from sqlleaf.dialects.plpgsql import pgexp
 from sqlleaf import exception, mappings, util
 from sqlleaf.typing import E
 
@@ -301,3 +302,36 @@ def count_block_depth(expr: exp.Expr) -> int:
             block_depth += 1
         parent = parent.parent
     return block_depth
+
+
+def validate_athena_table_options(expr: exp.Create, dialect: str, is_ctas: bool) -> None:
+    """
+    Reject Athena table options that are not allowed, based on the AWS docs for CREATE TABLE and CTAS.
+    """
+    if dialect != "athena":
+        return
+
+    properties = expr.args.get("properties")
+    expressions = properties.expressions if properties else []
+    options = {p.name.lower(): p for p in expressions if isinstance(p, exp.Property)}
+
+    table_type = options.get("table_type")
+    is_iceberg = table_type is not None and table_type.text("value").upper() == "ICEBERG"
+    if not is_iceberg:
+        return
+
+    is_external = any(isinstance(p, exp.ExternalProperty) for p in expressions)
+    if is_external:
+        raise exception.InvalidQueryError(message="'EXTERNAL' is not supported for ICEBERG tables")
+
+    if is_ctas:
+        if "external_location" in options:
+            raise exception.InvalidQueryError(
+                message="'external_location' is not supported for ICEBERG tables"
+            )
+        if is_external_flag := options.get("is_external"):
+            if is_external_flag.args["value"].this:
+                raise exception.InvalidQueryError(message="'is_external' must be false for ICEBERG tables")
+
+        if not any(isinstance(p, exp.LocationProperty) for p in expressions):
+            raise exception.InvalidQueryError(message="'location' is required for ICEBERG CTAS tables")

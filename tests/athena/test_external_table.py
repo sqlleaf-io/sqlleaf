@@ -29,3 +29,64 @@ def test__external_table(holder):
     ]
     assert len(h.edges) == 2
     assert h.query_types == [TableQuery]
+
+
+def test__external_table_with_location_and_format_valid(holder):
+    sql = """
+    CREATE EXTERNAL TABLE my_table (age INT, name STRING)
+    STORED AS PARQUET
+    LOCATION 's3://bucket/path/'
+    TBLPROPERTIES ('classification' = 'parquet');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert len(h.collected_queries.unsupported) == 0
+    assert h.query_types == [TableQuery]
+
+
+def test__external_table_iceberg_fails(holder):
+    sql = """
+    CREATE EXTERNAL TABLE iceberg_table (id bigint, data string)
+    LOCATION 's3://bucket/path/'
+    TBLPROPERTIES ('table_type' = 'ICEBERG');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == []
+    assert h.query_types == []
+    assert len(h.collected_queries.unsupported) == 1
+
+
+def test__iceberg_table_with_location_valid(holder):
+    sql = """
+    CREATE TABLE iceberg_table (id bigint, data string)
+    LOCATION 's3://bucket/path/'
+    TBLPROPERTIES ('table_type' = 'ICEBERG');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert len(h.collected_queries.unsupported) == 0
+    assert h.query_types == [TableQuery]
+
+
+def test__iceberg_table_without_location_valid(holder):
+    sql = """
+    CREATE TABLE iceberg_table (id bigint, data string)
+    TBLPROPERTIES ('table_type' = 'ICEBERG');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert len(h.collected_queries.unsupported) == 0
+    assert h.query_types == [TableQuery]
+
+
+def test__iceberg_table_without_external_keyword_valid(holder):
+    sql = """
+    CREATE TABLE iceberg_table (id bigint, data string)
+    LOCATION 's3://bucket/path/'
+    TBLPROPERTIES ('table_type' = 'ICEBERG', 'format' = 'parquet');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert len(h.collected_queries.unsupported) == 0
+    assert h.query_types == [TableQuery]

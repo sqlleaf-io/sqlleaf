@@ -1,4 +1,5 @@
 from sqlglot import exp
+from sqlglot.dialects import athena
 
 from sqlleaf.dialects.base import BaseDialectSettings
 
@@ -82,3 +83,10 @@ class AthenaSettings(BaseDialectSettings):
             exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(kind, self.DIALECT))
             for name, kind in self.PSEUDOCOLUMNS.items()
         ]
+
+
+# sqlglot is missing pseudocolumns for Athena
+athena.Athena.PSEUDOCOLUMNS = {c.upper() for c in AthenaSettings.PSEUDOCOLUMNS.keys()}
+
+# Prevents pseudocolumns from being included in 'SELECT *' expansions
+athena.Athena.EXCLUDES_PSEUDOCOLUMNS_FROM_STAR = True

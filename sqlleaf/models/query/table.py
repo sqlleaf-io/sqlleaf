@@ -8,6 +8,7 @@ from sqlglot import exp
 from sqlleaf import mappings, util, exception, dialects
 from sqlleaf.models.query.base import Query
 from sqlleaf.typing import SourceInfo, TableFormat, TargetInfo
+from sqlleaf.util import validate_athena_table_options
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,8 @@ class TableQuery(Query):
         statement_index: int,
         metadata_field: str | None = None,
     ):
+        validate_athena_table_options(expr, dialect, is_ctas=False)
+
         self.properties = TableQueryProperties.from_expression(expr, dialect)
         self.metadata_field = metadata_field
 

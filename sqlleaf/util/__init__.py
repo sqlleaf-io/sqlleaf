@@ -16,6 +16,7 @@ from sqlleaf.util.expression import (
     rename_if_stage as rename_if_stage,
     str_to_column_def as str_to_column_def,
     unwrap_expression as unwrap_expression,
+    validate_athena_table_options as validate_athena_table_options
 )
 from sqlleaf.util.graph import (
     find_edges_downward as find_edges_downward,
