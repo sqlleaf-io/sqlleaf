@@ -425,6 +425,7 @@ _UNNAMED_TYPE_MAP: dict[type, type] = {
     exp.Values: ValuesQuery,
     exp.Put: PutQuery,
     exp.Set: SetQuery,
+    exp.Use: UseQuery,
     # PL/pgSQL
     pgexp.PGBlock: BlockQuery,
     pgexp.PGCase: CaseQuery,

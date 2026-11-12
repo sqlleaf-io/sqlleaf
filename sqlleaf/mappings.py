@@ -172,6 +172,7 @@ class ObjectMapping(MappingSchema):
         # The catalog that unqualified user objects are created in, and the one holding system objects
         self.current_user_catalog: str = settings.DEFAULT_USER_CATALOG
         self.current_system_catalog: str = settings.DEFAULT_SYSTEM_CATALOG
+        self.current_database: str | None = None  # For MySQL
         # Load system objects lazily from disk
         self.system_object_loader = object_loader
         # Session/global variables (e.g., SET var = ...)

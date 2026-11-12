@@ -517,9 +517,18 @@ class BaseQueryTransformer:
         """
         Run sqlglot's qualify() function against the statement for schema validation and naming/aliasing population.
         """
+        dialect = self.query.dialect
+
+        if dialect == "mysql":
+            db = self.query.object_mapping.current_database
+        elif dialect == "postgres":
+            db = self.query.object_mapping.current_user_catalog
+        else:
+            db = ""
+
         qualify.qualify(
             statement,
-            db=self.query.object_mapping.current_user_catalog,
+            db=db,
             schema=self.query.object_mapping,
             dialect=self.query.dialect,
             isolate_tables=False,
