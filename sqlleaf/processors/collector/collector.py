@@ -552,7 +552,7 @@ def _process_views_and_ctas(
             statement_index=statement_index,
         )
     else:
-        raise exception.UnsupportedFeatureError(message=f"Unhandled situation for query: {statement.kind}")
+        raise exception.UnsupportedFeatureError(message=f"Unhandled statement kind: {statement.kind}")
 
     object_mapping.add_table_query(
         query=query,
@@ -615,6 +615,11 @@ def _determine_column_defs(
             ]
         else:
             col_defs = []
+    elif dialect == "mysql" and util.is_ctas_query(statement):
+        # MySQL CREATE TABLE x (a, b) SELECT ...: target columns first, then the SELECT columns appended to them
+        target_defs = list(statement.this.expressions)
+        appended = statement.selects[len(target_defs) :]
+        col_defs = target_defs + [exp.ColumnDef(this=exp.to_identifier(s.alias), kind=s.type) for s in appended]
     else:
         col_defs = [exp.ColumnDef(this=exp.to_identifier(s.alias), kind=s.type) for s in statement.selects]
 
