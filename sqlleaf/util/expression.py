@@ -204,6 +204,40 @@ def is_row_function(expr: exp.Expr) -> bool:
     return isinstance(expr, exp.Anonymous) and expr.this.upper() == "ROW"
 
 
+def is_ctas_query(stmt: exp.Expr) -> bool:
+    """
+    Returns True if the statement is a `CREATE TABLE x (a, b) SELECT ...` (i.e. a CTAS with a column list).
+    """
+    return (
+        isinstance(stmt, exp.Create)
+        and stmt.kind == "TABLE"
+        and isinstance(stmt.this, exp.Schema)
+        and isinstance(stmt.expression, exp.Select)
+    )
+
+
+def _align_ctas_columns(stmt: exp.Create, dialect: str) -> None:
+    """
+    For `CREATE TABLE x (a, b) SELECT ...`, the target columns come first in the SELECT, using the
+    matching source column if one exists or NULL otherwise. Source columns not in the target are appended.
+
+    Example:
+        `CREATE TABLE bar (m INT, n INT) SELECT n, 2 AS k FROM foo`
+        ->
+        the SELECT is rewritten to `SELECT NULL AS m, n AS n, 2 AS k FROM foo`.
+    """
+    if dialect == "mysql":
+        selects = list(stmt.selects)
+        aligned = []
+        for col in stmt.this.expressions:
+            idx = next((i for i, s in enumerate(selects) if s.alias_or_name == col.name), None)
+            if idx is None:
+                aligned.append(exp.null().as_(col.this))
+            else:
+                aligned.append(selects.pop(idx).as_(col.this))
+        stmt.expression.set("expressions", aligned + selects)
+
+
 def qualify_and_annotate(
     expr: exp.Expr, dialect: str, object_mapping: mappings.ObjectMapping, remove_added_aliases: bool = False
 ) -> None:
@@ -221,7 +255,10 @@ def qualify_and_annotate(
 
     # Rename the aliases automatically added by sqlglot
     if remove_added_aliases:
-        if not isinstance(stmt.expression, exp.Values):
+        if dialect == "mysql" and is_ctas_query(stmt):
+            _align_ctas_columns(stmt, dialect)
+
+        elif not isinstance(stmt.expression, exp.Values):
             named_columns = stmt.args["this"].expressions
             for i, ins in enumerate(named_columns):
                 # Overwrite the aliases because sqlglot may have added incorrect ones
