@@ -10,13 +10,22 @@ from sqlleaf import exception
 logger = logging.getLogger("sqlleaf")
 
 
+def is_ctas_expression(expression: exp.Expr | None) -> bool:
+    """
+    Check if the expression of a 'CREATE TABLE' is a query, either 'AS SELECT ...' or 'AS (SELECT ...)'.
+    """
+    if isinstance(expression, exp.Subquery):
+        expression = expression.unnest()
+    return isinstance(expression, (exp.Select, exp.Values))
+
+
 def _determine_query_kind(statement: exp.Expr, dialect: str) -> tuple[exp.Expr, str]:
     """
     Determine a query's "kind" from the expression, which maps to how it will be processed.
     """
     if statement.key == "create" and isinstance(statement, exp.Create):
         if statement.kind == "TABLE":
-            if isinstance(statement.expression, (exp.Select, exp.Values)) or statement.find(exp.ExecuteAsProperty):
+            if is_ctas_expression(statement.expression) or statement.find(exp.ExecuteAsProperty):
                 kind = "ctas"
             else:
                 kind = "table"

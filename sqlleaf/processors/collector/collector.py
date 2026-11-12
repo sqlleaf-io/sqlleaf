@@ -10,7 +10,7 @@ from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlleaf import exception, mappings, dialects, typing, util
 from sqlleaf.dialects.plpgsql import pgexp
 from sqlleaf.models.query import *
-from sqlleaf.processors.collector.classify import _classify_command, _determine_query_kind
+from sqlleaf.processors.collector.classify import _classify_command, _determine_query_kind, is_ctas_expression
 from sqlleaf.processors.substitutor import substitute
 from sqlleaf.processors.transformer import transformer
 from sqlleaf.processors.transformer.expressions import simplify_row_in_values
@@ -480,7 +480,7 @@ def _process_unnamed(
         )
     if isinstance(statement, exp.Create):
         if statement.kind == "TABLE":
-            if isinstance(statement.expression, (exp.Select, exp.Values)) or statement.find(exp.ExecuteAsProperty):
+            if is_ctas_expression(statement.expression) or statement.find(exp.ExecuteAsProperty):
                 return _process_views_and_ctas(statement, dialect, object_mapping, statement_index)
             else:
                 return _process_tables(statement, dialect, object_mapping, statement_index)
@@ -525,6 +525,10 @@ def _process_views_and_ctas(
     Convert a series of `CREATE VIEW/TABLE AS ...` SQL DDL statements into sqlglot's MappingSchema
     to extract the table and column details.
     """
+    if statement.kind == "TABLE" and isinstance(statement.expression, exp.Subquery):
+        # CREATE TABLE ... AS (SELECT ...) -> CREATE TABLE ... AS SELECT ...
+        statement.set("expression", statement.expression.unnest())
+
     util.qualify_and_annotate(statement, dialect, object_mapping, remove_added_aliases=True)
     col_defs = _determine_column_defs(statement, dialect, object_mapping)
 
