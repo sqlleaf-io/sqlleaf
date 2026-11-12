@@ -39,3 +39,30 @@ def test__table_inline_index_enum_set_select(holder):
         holder(sql=sql, dialect=DIALECT)
 
     assert e.value.args[0].startswith("Expecting ). Line 3, Col: 87.")
+
+
+def test__table_into_dumpfile_fails(holder):
+    with pytest.raises(sqlglot.errors.ParseError) as e:
+        sql = """
+        TABLE t1 INTO DUMPFILE 'file.txt';
+        """
+        holder(sql=sql, dialect=DIALECT)
+    assert e.value.args[0].startswith("Invalid expression / Unexpected token.")
+
+
+def test__table_into_outfile_fails(holder):
+    with pytest.raises(sqlglot.errors.ParseError) as e:
+        sql = """
+        TABLE t1 INTO OUTFILE 'file.txt';
+        """
+        holder(sql=sql, dialect=DIALECT)
+    assert e.value.args[0].startswith("Invalid expression / Unexpected token.")
+
+
+def test__table_into_var_fails(holder):
+    with pytest.raises(sqlglot.errors.ParseError) as e:
+        sql = """
+        TABLE t1 INTO @var1, @var2;
+        """
+        holder(sql=sql, dialect=DIALECT)
+    assert e.value.args[0].startswith("Invalid expression / Unexpected token.")

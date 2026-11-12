@@ -521,7 +521,7 @@ class BaseQueryTransformer:
 
         if dialect == "mysql":
             db = self.query.object_mapping.current_database
-        elif dialect == "postgres":
+        elif dialect in ["athena", "postgres"]:
             db = self.query.object_mapping.current_user_catalog
         else:
             db = ""
