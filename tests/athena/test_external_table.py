@@ -1,6 +1,9 @@
 import os
 import sys
 
+import pytest
+
+from sqlleaf import exception
 from sqlleaf.models.query import TableQuery
 from tests.new_fixtures import holder as holder
 
@@ -45,16 +48,13 @@ def test__external_table_with_location_and_format_valid(holder):
 
 
 def test__external_table_iceberg_fails(holder):
-    sql = """
-    CREATE EXTERNAL TABLE iceberg_table (id bigint, data string)
-    LOCATION 's3://bucket/path/'
-    TBLPROPERTIES ('table_type' = 'ICEBERG');
-    """
-    h = holder(sql=sql, dialect=DIALECT)
-
-    assert h.paths == []
-    assert h.query_types == []
-    assert len(h.collected_queries.unsupported) == 1
+    with pytest.raises(exception.InvalidQueryError, match="'EXTERNAL' is not supported for ICEBERG tables"):
+        sql = """
+        CREATE EXTERNAL TABLE iceberg_table (id bigint, data string)
+        LOCATION 's3://bucket/path/'
+        TBLPROPERTIES ('table_type' = 'ICEBERG');
+        """
+        holder(sql=sql, dialect=DIALECT)
 
 
 def test__iceberg_table_with_location_valid(holder):

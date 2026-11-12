@@ -44,6 +44,10 @@ def calculate_function_name(expr: exp.Expr, dialect: str) -> str:
     Remove everything from the first '(' to the last ')' from a string.
     We use this method because exp.Func.sql_name() includes the function's context in its name.
     """
+    if isinstance(expr, exp.Unnest):
+        # Some dialects (e.g. Redshift) cannot generate an UNNEST without arguments
+        return expr.sql_name()
+
     try:
         # Get the name without its parameters
         name = expr.__class__().sql(dialect=dialect)

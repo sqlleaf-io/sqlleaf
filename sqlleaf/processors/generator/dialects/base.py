@@ -363,7 +363,7 @@ class BaseGenerator:
     ) -> t.Iterator[EdgeToCreate]:
         scope = gen_ctx.scope
 
-        if scope.scope_type == ScopeType.SUBQUERY and isinstance(expr, exp.TableColumn):
+        if scope.scope_type in (ScopeType.ROOT, ScopeType.SUBQUERY) and isinstance(expr, exp.TableColumn):
             # A UDTF such as 'string_agg(my_table)'
             source_table = dict(scope.references).get(expr.name)  # Should be UNNEST()
 
