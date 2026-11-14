@@ -12,7 +12,6 @@ from sqlglot.trie import new_trie
 
 from sqlleaf import exception, util
 from sqlleaf.dialects.base import DialectConfig
-from sqlleaf.path import NodeIndex
 from sqlleaf.models.query import (
     CallQuery,
     CTASQuery,
@@ -30,6 +29,7 @@ from sqlleaf.models.query import (
     UserDefinedFunctionQuery,
     ViewQuery,
 )
+from sqlleaf.path import NodeIndex
 
 ColumnMapping = t.Union[dict, str, list]
 FunctionCallable = ProcedureQuery | UserDefinedFunctionQuery
@@ -37,25 +37,47 @@ FunctionCallable = ProcedureQuery | UserDefinedFunctionQuery
 logger = logging.getLogger("sqlleaf")
 
 
+ParamMode = t.Literal["IN", "OUT", "INOUT"]
+
+
 @dataclass
 class ParamBinding:
     """One parameter's binding for the lifetime of a single CALL."""
 
     value: exp.Expr
+    mode: ParamMode
     arg_name: str | None = None
+
+    @property
+    def is_input(self) -> bool:
+        return self.mode in ("IN", "INOUT")
+
+    @property
+    def is_output(self) -> bool:
+        return self.mode in ("OUT", "INOUT")
 
 
 @dataclass
 class VariableScope:
-    """One CALL boundary: its block stack and parameter bindings."""
+    """Holds variables related to one CALL statement.
 
-    blocks: list[dict[str, exp.Expr]] = field(default_factory=list)
+    The two are separated because they have different lifetimes:
+    - blocks are created and destroyed along with a BEGIN block
+    - bindings are kept across all blocks at its level and below
+    """
+
+    # A stack of DECLARE/BEGIN blocks. Holds variable names mapped to their current values.
+    blocks: list[dict[str, exp.Expr]] = field(default_factory=lambda: [{}])
+    # Parameters passed to a CALL(). Holds parameter names mapped to their bound values. Used for OUT/INOUT write-back
     bindings: dict[str, ParamBinding] = field(default_factory=dict)
 
 
 class Variables:
+    """
+    Tracks the state of every variable currently available to SQL statements.
+    """
     def __init__(self):
-        # The base scope runs DO / top-level code and is never popped
+        # An initial scope exists for the top-level statements
         self.scopes: list[VariableScope] = [VariableScope()]
 
     @property
@@ -66,7 +88,6 @@ class Variables:
     def _active_bindings(self) -> dict[str, ParamBinding]:
         return self.scopes[-1].bindings
 
-    # ---- Block API ----
     def push_block(self) -> None:
         """Enter a new DECLARE/BEGIN block."""
         self._active_blocks.append({})
@@ -76,7 +97,6 @@ class Variables:
         if self._active_blocks:
             self._active_blocks.pop()
 
-    # ---- Scope API ----
     def push_scope(self, bindings: dict[str, ParamBinding]) -> None:
         """Enter a CALL boundary."""
         self.scopes.append(VariableScope(bindings=bindings))
@@ -88,7 +108,7 @@ class Variables:
         scope = self.scopes.pop()
         if write_back:
             for binding in scope.bindings.values():
-                if binding.arg_name is not None:
+                if binding.is_output and binding.arg_name is not None:
                     self.set_variable(binding.arg_name, binding.value)
 
     def declare_variable(self, name: str, value: exp.Expr | None = None) -> None:
@@ -97,8 +117,10 @@ class Variables:
         self._active_blocks[-1][name] = val
         logger.debug(f"Declared variable: {name} := {val}")
 
-    def set_variable(self, name: str, value: exp.Expr) -> None:
-        """Assign a variable in the nearest block where it was declared."""
+    def set_variable(self, name: str, value: exp.Expr, declare: bool = False) -> None:
+        """
+        Assign a variable in the nearest block where it was declared.
+        """
         for block in reversed(self._active_blocks):
             if name in block:
                 block[name] = value
@@ -108,6 +130,10 @@ class Variables:
         binding = self._active_bindings.get(name)
         if binding is not None:
             binding.value = value
+            return
+
+        if declare:
+            self.declare_variable(name, value)
             return
 
         raise exception.MappingError(f'"{name}" is not a known variable')
@@ -123,6 +149,10 @@ class Variables:
         if raise_on_missing:
             raise exception.MappingError(f"Could not find value for variable: {name}")
         return None
+
+    def get_variables(self) -> dict[str, exp.Expr]:
+        """Get all variables currently visible."""
+        return self.get_scope()
 
     def get_variables_for(self, expressions: list[exp.Expr]) -> list[exp.Expr]:
         """
@@ -175,8 +205,6 @@ class ObjectMapping(MappingSchema):
         self.current_database: str | None = None  # For MySQL
         # Load system objects lazily from disk
         self.system_object_loader = object_loader
-        # Session/global variables (e.g., SET var = ...)
-        self.session_variables: dict[str, exp.Expr] = {}
         self.variables = Variables()
         # Nodes that have been added to the graph, indexed by class
         self.node_index = NodeIndex()
@@ -395,7 +423,7 @@ class ObjectMapping(MappingSchema):
 
                 raise exception.raise_error(
                     exception.MappingError,
-                    f"Could not find {kind} '{object.this}'. Did you forget to define a '{knd}' statement?"
+                    f"Could not find {kind} '{object.this}'. Did you forget to define a '{knd}' statement?",
                 )
             return None
 
@@ -459,9 +487,7 @@ class ObjectMapping(MappingSchema):
 
         return resolve_overloaded_function(node, candidates)
 
-    def lookup_procedure_call(
-        self, node: CallQuery, args: list[exp.Expr] | None = None
-    ) -> ProcedureQuery | None:
+    def lookup_procedure_call(self, node: CallQuery, args: list[exp.Expr] | None = None) -> ProcedureQuery | None:
         """
         Looks up the procedure definition for a CALL statement.
         Returns the matched procedure definition, or None if no procedure with that name exists.

@@ -55,8 +55,8 @@ def process_statement(
     stmt = normalize_identifiers(statement, dialect=dialect, store_original_column_identifiers=True)
     stmt = _unnest_values_inside_select(stmt, dialect=dialect)
 
-    if kind != "set" and object_mapping.session_variables:
-        stmt = substitute.substitute_session_variables(stmt, object_mapping.session_variables)
+    if kind != "set" and object_mapping.variables.get_variables():
+        stmt = substitute.substitute_session_variables(stmt, object_mapping.variables.get_variables())
 
     processor = _get_query_processor(kind)
     if processor is _process_unnamed:

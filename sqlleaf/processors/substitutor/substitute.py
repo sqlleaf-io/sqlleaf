@@ -28,8 +28,8 @@ def _replace_session_parameter(
     session_variables: dict[str, exp.Expr],
 ) -> exp.Expr:
     if isinstance(node, exp.Parameter) and isinstance(node.this, exp.Var):
-        var_name = node.this.name.upper()
-        value = session_variables.get(var_name)
+        var_name = node.this.name.lower()
+        value = next((v for k, v in session_variables.items() if k.lower() == var_name), None)
         if value is not None:
             logger.debug(f"Substituting session variable: ${var_name}")
             return value.copy()
@@ -330,7 +330,8 @@ def _resolve_call_args(query: CallQuery) -> list[exp.Expr]:
         arg_copy = arg.copy()
         wrapper = exp.select(arg_copy)
         query_transformer.replace_variables_in_expression(wrapper)
-        resolved_args.append(wrapper.expressions[0])
+        resolved = substitute_session_variables(wrapper.expressions[0], query.object_mapping.variables.get_variables())
+        resolved_args.append(resolved)
     return resolved_args
 
 
@@ -367,10 +368,11 @@ def substitute_call(query: CallQuery) -> tuple[list[exp.Expr], dict[str, mapping
             if param.is_input and arg_expr is not None:
                 initial_value = arg_expr.copy()
             arg_name = raw_arg_expr.name if isinstance(raw_arg_expr, exp.Column) and not raw_arg_expr.table else None
-            bindings[param.name.lower()] = mappings.ParamBinding(value=initial_value, arg_name=arg_name)
+            mode = "INOUT" if param.is_input else "OUT"
+            bindings[param.name.lower()] = mappings.ParamBinding(value=initial_value, mode=mode, arg_name=arg_name)
         else:
             value = arg_expr or param.default or exp.Null()
-            bindings[param.name.lower()] = mappings.ParamBinding(value=value.copy())
+            bindings[param.name.lower()] = mappings.ParamBinding(value=value.copy(), mode="IN")
 
         if arg_expr:
             positional_map[str(i + 1)] = arg_expr

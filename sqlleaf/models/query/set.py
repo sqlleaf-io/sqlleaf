@@ -60,7 +60,7 @@ class SetQuery(Query):
                     return node
 
                 name = node.this.name
-                existing = self.object_mapping.session_variables.get(name)
+                existing = self.object_mapping.variables.get_variable(name, raise_on_missing=False)
                 if existing is not None:
                     return existing.copy()
                 # Undefined session variables in MySQL are NULL
@@ -130,7 +130,7 @@ class SetQuery(Query):
                 names = [col.name for col in left.expressions]
                 if isinstance(right, exp.Tuple):
                     for name, value in zip(names, right.expressions):
-                        self.object_mapping.session_variables[name] = self._resolve_session_variable(value)
+                        self.object_mapping.variables.set_variable(name, self._resolve_session_variable(value), declare=True)
                 else:
                     # A subquery. Clone it for each variable, and assign it to each
                     # Example: SET (a, b) = (SELECT col1, col2 FROM t)
@@ -146,11 +146,11 @@ class SetQuery(Query):
                                 cloned.this.set("expressions", [select_cols[i].copy()])
 
                             # Map the variable name to its corresponding single-column subquery
-                            self.object_mapping.session_variables[name] = self._resolve_session_variable(cloned)
+                            self.object_mapping.variables.set_variable(name, self._resolve_session_variable(cloned), declare=True)
                     else:
                         for name in names:
-                            self.object_mapping.session_variables[name] = self._resolve_session_variable(right)
+                            self.object_mapping.variables.set_variable(name, self._resolve_session_variable(right), declare=True)
             else:
                 # SET a = <expr>
                 name = left.name
-                self.object_mapping.session_variables[name] = self._resolve_session_variable(right)
+                self.object_mapping.variables.set_variable(name, self._resolve_session_variable(right), declare=True)

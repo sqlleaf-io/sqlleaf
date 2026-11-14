@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import typing as t
 from dataclasses import dataclass
 
 from sqlglot import exp
@@ -14,7 +13,7 @@ from sqlleaf.typing import TargetInfo
 
 @dataclass(frozen=True)
 class ProcedureQueryProperties:
-    schema_name: str | None
+    schema_name: str
     procedure_name: str
     signature: str
     language: str | None
@@ -26,7 +25,7 @@ class ProcedureQueryProperties:
     @classmethod
     def from_expression(cls, expr: exp.Create, object_mapping: mappings.ObjectMapping) -> ProcedureQueryProperties:
         table = util.get_table(expr)
-        schema_name = table.db
+        schema_name = table.db or ""
         procedure_name = table.name
 
         # Full signature as string (e.g., etl.my_proc(v_session_id VARCHAR))
@@ -90,7 +89,7 @@ class ProcedureQuery(Query):
         self.column_defs = self.properties.column_defs
 
     @property
-    def schema(self) -> str | None:
+    def schema(self) -> str:
         return self.properties.schema_name
 
     @property
@@ -102,7 +101,7 @@ class ProcedureQuery(Query):
         return self.properties.signature
 
     @property
-    def parameters(self):
+    def parameters(self) -> list[FunctionParam]:
         return self.properties.parameters
 
     @property
@@ -113,7 +112,7 @@ class ProcedureQuery(Query):
     def inner_statements(self) -> list[exp.Expr]:
         return self.properties.inner_statements
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "name": self.name,
