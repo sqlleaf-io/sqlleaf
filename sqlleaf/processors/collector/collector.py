@@ -3,11 +3,12 @@ import typing as t
 from dataclasses import dataclass, field
 
 import sqlglot
-from sqlglot import Dialect, exp
+from sqlglot import exp
 from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
-from sqlleaf import exception, mappings, dialects, typing, util
+from sqlleaf import exception, mappings, typing, util
+from sqlleaf.dialects.base import DialectConfig
 from sqlleaf.dialects.plpgsql import pgexp
 from sqlleaf.models.query import *
 from sqlleaf.processors.collector.classify import _classify_command, _determine_query_kind, is_ctas_expression
@@ -549,7 +550,7 @@ def _process_views_and_ctas(
             dialect=dialect,
             object_mapping=object_mapping,
             columns=col_defs,
-            system_columns=dialects.system_columns(dialect),
+            system_columns=DialectConfig(dialect).SYSTEM_COLUMNS,
             statement_index=statement_index,
         )
     else:
@@ -752,25 +753,11 @@ def _get_query_processor(kind: str) -> t.Callable:
     return _QUERY_PROCESSORS.get(kind, _process_unnamed)
 
 
-# Override the function parameter parser so that we can parse IN, OUT, and INOUT parameter types
-class ParameterModeDialect(Dialect):
-    class Parser(sqlglot.Parser):
-        def _parse_function_parameter(self) -> exp.Expr | None:
-            mode = self._match_texts(("INOUT", "IN", "OUT")) and self._prev.text.upper()
-            parameter = super()._parse_function_parameter()
-            if mode and parameter:
-                parameter.append(
-                    "constraints",
-                    exp.InOutColumnConstraint(input_=mode in ("IN", "INOUT"), output=mode in ("OUT", "INOUT")),
-                )
-            return parameter
-
-
 def _parse_statements(text: str, dialect: str) -> list[exp.Expr]:
     """
     Parse a script with sqlglot. The generic dialect also accepts IN/OUT/INOUT parameter modes.
     """
-    parse_dialect = ParameterModeDialect if dialect == "" else dialect
+    parse_dialect = DialectConfig.ParameterModeDialect if dialect == "" else dialect
     return sqlglot.parse(text, dialect=parse_dialect)
 
 
@@ -841,8 +828,8 @@ class SystemObjectLoader:
         """
         Creates and registers a metadata table (e.g. 'my_table$files'), only if its base table is an Iceberg table.
         """
-        settings = dialects.BaseDialectSettings.from_dialect(self.dialect)
-        field = settings.get_metadata_field(table.name)
+        config = DialectConfig(self.dialect)
+        field = config.get_metadata_field(table.name)
         if field is None:
             return
 
@@ -851,7 +838,7 @@ class SystemObjectLoader:
         if not base_query or base_query.table_format != typing.TableFormat.ICEBERG:
             return
 
-        schema = exp.Schema(this=table.copy(), expressions=settings.get_metadata_field_column_defs(field))
+        schema = exp.Schema(this=table.copy(), expressions=config.get_metadata_field_column_defs(field))
         create = exp.Create(this=schema, kind="TABLE")
         query = TableQuery(
             expr=create, dialect=self.dialect, object_mapping=object_mapping, statement_index=0, metadata_field=field

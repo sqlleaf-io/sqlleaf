@@ -1,12 +1,32 @@
-from sqlglot import exp
+import typing as t
+
+import sqlglot
+from sqlglot import Dialect, exp
 
 
-class BaseDialectSettings:
+# Wrap a function parameter parser so that it also accepts IN, OUT, and INOUT parameter modes
+def with_parameter_modes(parse_function_parameter: t.Callable) -> t.Callable:
+    def _parse_function_parameter(self) -> exp.Expr | None:
+        mode = self._match_texts(("INOUT", "IN", "OUT")) and self._prev.text.upper()
+        parameter = parse_function_parameter(self)
+        if mode and parameter:
+            parameter.append(
+                "constraints",
+                exp.InOutColumnConstraint(input_=mode in ("IN", "INOUT"), output=mode in ("OUT", "INOUT")),
+            )
+        return parameter
+
+    return _parse_function_parameter
+
+
+class DialectConfig:
     # A registry to store subclasses
     _dialects = {}
     DIALECT = ""
     DEFAULT_USER_CATALOG = ""
     DEFAULT_SYSTEM_CATALOG = ""
+    # The language of procedures that do not declare one explicitly
+    DEFAULT_PROCEDURE_LANGUAGE: str | None = None
     # Metadata fields, keyed by their suffix (e.g. '$files' in 'my_table$files'), mapped to their column names and types
     METADATA_FIELDS: dict[str, dict[str, str]] = {}
 
@@ -14,25 +34,21 @@ class BaseDialectSettings:
         """Automatically registers subclasses when they are defined."""
         super().__init_subclass__(**kwargs)
         if cls.DIALECT:
-            BaseDialectSettings._dialects[cls.DIALECT] = cls
+            DialectConfig._dialects[cls.DIALECT] = cls
 
-    @classmethod
-    def from_dialect(cls, dialect: str) -> BaseDialectSettings:
-        """Instantiates a class from the registry by name."""
-        target_class = cls._dialects.get(dialect)
-        if not target_class:
-            return BaseDialectSettings()
-        return target_class()
+    def __new__(cls, dialect: str) -> DialectConfig:
+        """Returns the config registered for the dialect name, or the base config if none is registered."""
+        return super().__new__(DialectConfig._dialects.get(dialect, DialectConfig))
 
     @property
-    def system_columns(self) -> list[exp.ColumnDef]:
+    def SYSTEM_COLUMNS(self) -> list[exp.ColumnDef]:
         """
         Represents system columns.
         """
         return []
 
     @property
-    def system_functions(self) -> dict[str, list[str]]:
+    def SYSTEM_FUNCTIONS(self) -> dict[str, list[str]]:
         """
         Represents system functions.
         """
@@ -55,3 +71,11 @@ class BaseDialectSettings:
             exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(kind, self.DIALECT))
             for name, kind in self.METADATA_FIELDS[suffix].items()
         ]
+
+    class ParameterModeDialect(Dialect):
+        """
+        The generic dialect, which also accepts IN, OUT, and INOUT parameter modes in procedure parameters.
+        """
+
+        class Parser(sqlglot.Parser):
+            _parse_function_parameter = with_parameter_modes(sqlglot.Parser._parse_function_parameter)

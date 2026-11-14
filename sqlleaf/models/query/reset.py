@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlglot import exp
 
 from sqlleaf import mappings
-from sqlleaf.dialects.base import BaseDialectSettings
+from sqlleaf.dialects.base import DialectConfig
 from sqlleaf.models.query.base import Query
 
 
@@ -27,4 +27,4 @@ class ResetQuery(Query):
         self.reset_catalog()
 
     def reset_catalog(self) -> None:
-        self.object_mapping.current_user_catalog = BaseDialectSettings.from_dialect(self.dialect).DEFAULT_USER_CATALOG
+        self.object_mapping.current_user_catalog = DialectConfig(self.dialect).DEFAULT_USER_CATALOG

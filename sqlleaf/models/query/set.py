@@ -4,7 +4,7 @@ import sqlglot
 from sqlglot import exp, TokenType
 
 from sqlleaf import mappings
-from sqlleaf.dialects.base import BaseDialectSettings
+from sqlleaf.dialects.base import DialectConfig
 from sqlleaf.models.query.base import Query
 
 
@@ -83,7 +83,7 @@ class SetQuery(Query):
         """
         Restore the current user catalog to the dialect default, as 'SET search_path TO DEFAULT' does.
         """
-        self.object_mapping.current_user_catalog = BaseDialectSettings.from_dialect(self.dialect).DEFAULT_USER_CATALOG
+        self.object_mapping.current_user_catalog = DialectConfig(self.dialect).DEFAULT_USER_CATALOG
 
     def _collect_set_command(self):
         """

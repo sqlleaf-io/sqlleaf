@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from sqlglot import exp
 
 from sqlleaf import mappings, util
+from sqlleaf.dialects.base import DialectConfig
 from sqlleaf.models.query.base import Query
 from sqlleaf.models.query.user_defined_function import _extract_function_info, FunctionParam
 from sqlleaf.typing import TargetInfo
@@ -31,14 +32,15 @@ class ProcedureQueryProperties:
         # Full signature as string (e.g., etl.my_proc(v_session_id VARCHAR))
         signature = str(expr.this)
 
-        language = util.get_language_property(expr)
+        dialect = object_mapping.dialect
+        language = util.get_language_property(expr) or DialectConfig(dialect).DEFAULT_PROCEDURE_LANGUAGE
         _, _, parameters = _extract_function_info(expr)
 
         args = [{"name": p.name, "type": str(p.type)} for p in parameters]
         column_defs: list[exp.ColumnDef] = expr.this.expressions
 
         body_expr = expr.expression
-        inner_statements: list[exp.Expr] = []
+        inner_statements = []
         if body_expr:
             inner_statements = util.iter_inner_statements(body_expr, object_mapping.dialect, wrap=True, language=language)
             inner_statements = [

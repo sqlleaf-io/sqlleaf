@@ -1,10 +1,10 @@
 from sqlglot import exp
 from sqlglot.dialects import postgres
 
-from sqlleaf.dialects.base import BaseDialectSettings
+from sqlleaf.dialects.base import DialectConfig
 
 
-class PostgresSettings(BaseDialectSettings):
+class PostgresConfig(DialectConfig):
     DIALECT = "postgres"
     DEFAULT_USER_CATALOG = "public"
     DEFAULT_SYSTEM_CATALOG = "pg_catalog"
@@ -19,14 +19,14 @@ class PostgresSettings(BaseDialectSettings):
     }
 
     @property
-    def system_columns(self) -> list[exp.ColumnDef]:
+    def SYSTEM_COLUMNS(self) -> list[exp.ColumnDef]:
         return [
             exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(kind, self.DIALECT))
             for name, kind in self.PSEUDOCOLUMNS.items()
         ]
 
     @property
-    def system_functions(self) -> dict[str, list[str]]:
+    def SYSTEM_FUNCTIONS(self) -> dict[str, list[str]]:
         """
         Map function names to their returned column names.
         """
@@ -48,7 +48,7 @@ class PostgresSettings(BaseDialectSettings):
 
 
 # sqlglot is missing pseudocolumns for Postgres
-postgres.Postgres.PSEUDOCOLUMNS = {c.upper() for c in PostgresSettings.PSEUDOCOLUMNS.keys()}
+postgres.Postgres.PSEUDOCOLUMNS = {c.upper() for c in PostgresConfig.PSEUDOCOLUMNS.keys()}
 
 # Prevents pseudocolumns from being included in 'SELECT *' expansions
 postgres.Postgres.EXCLUDES_PSEUDOCOLUMNS_FROM_STAR = True
