@@ -84,9 +84,11 @@ def find_property(statement: exp.Create, child_object: exp.Expr, dialect: str) -
 
 def get_language_property(expression: exp.Create) -> str | None:
     """Extracts the language from a CREATE FUNCTION expression."""
-    for prop in expression.args.get("properties", {}).expressions:
-        if isinstance(prop, exp.LanguageProperty):
-            return prop.this.sql().lower()
+    props = expression.args.get("properties", {})
+    if props:
+        for prop in props.expressions:
+            if isinstance(prop, exp.LanguageProperty):
+                return prop.this.sql().lower()
     return None
 
 

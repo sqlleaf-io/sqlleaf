@@ -5,7 +5,8 @@ from dataclasses import dataclass
 
 from sqlglot import exp
 
-from sqlleaf import mappings, util, exception, dialects
+from sqlleaf import mappings, util, exception
+from sqlleaf.dialects.base import DialectConfig
 from sqlleaf.models.query.base import Query
 from sqlleaf.typing import SourceInfo, TableFormat, TargetInfo
 from sqlleaf.util import validate_athena_table_options
@@ -116,7 +117,7 @@ class TableQuery(Query):
                 default.this.type = col_def.kind
 
         self.column_defs = all_columns
-        self.system_column_defs = dialects.system_columns(self.dialect)
+        self.system_column_defs = DialectConfig(self.dialect).SYSTEM_COLUMNS
 
     def _collect_inherited_columns(
         self, inherits_properties: list[exp.InheritsProperty]

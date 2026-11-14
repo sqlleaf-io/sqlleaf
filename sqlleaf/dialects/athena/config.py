@@ -1,10 +1,10 @@
 from sqlglot import exp
 from sqlglot.dialects import athena
 
-from sqlleaf.dialects.base import BaseDialectSettings
+from sqlleaf.dialects.base import DialectConfig
 
 
-class AthenaSettings(BaseDialectSettings):
+class AthenaConfig(DialectConfig):
     DIALECT = "athena"
     DEFAULT_USER_CATALOG = "awsdatacatalog"
     DEFAULT_SYSTEM_CATALOG = ""
@@ -78,7 +78,7 @@ class AthenaSettings(BaseDialectSettings):
     }
 
     @property
-    def system_columns(self) -> list[exp.ColumnDef]:
+    def SYSTEM_COLUMNS(self) -> list[exp.ColumnDef]:
         return [
             exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(kind, self.DIALECT))
             for name, kind in self.PSEUDOCOLUMNS.items()
@@ -86,7 +86,7 @@ class AthenaSettings(BaseDialectSettings):
 
 
 # sqlglot is missing pseudocolumns for Athena
-athena.Athena.PSEUDOCOLUMNS = {c.upper() for c in AthenaSettings.PSEUDOCOLUMNS.keys()}
+athena.Athena.PSEUDOCOLUMNS = {c.upper() for c in AthenaConfig.PSEUDOCOLUMNS.keys()}
 
 # Prevents pseudocolumns from being included in 'SELECT *' expansions
 athena.Athena.EXCLUDES_PSEUDOCOLUMNS_FROM_STAR = True

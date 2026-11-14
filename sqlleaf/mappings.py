@@ -11,7 +11,7 @@ from sqlglot.schema import nested_set
 from sqlglot.trie import new_trie
 
 from sqlleaf import exception, util
-from sqlleaf.dialects.base import BaseDialectSettings
+from sqlleaf.dialects.base import DialectConfig
 from sqlleaf.path import NodeIndex
 from sqlleaf.models.query import (
     CallQuery,
@@ -168,10 +168,10 @@ class ObjectMapping(MappingSchema):
         )  # Set `normalize=False` to prevent an unnecessary second parse.
         self.kind_mapping = {}
         self.kind_mapping_trie = {}
-        settings = BaseDialectSettings.from_dialect(dialect)
+        config = DialectConfig(dialect)
         # The catalog that unqualified user objects are created in, and the one holding system objects
-        self.current_user_catalog: str = settings.DEFAULT_USER_CATALOG
-        self.current_system_catalog: str = settings.DEFAULT_SYSTEM_CATALOG
+        self.current_user_catalog: str = config.DEFAULT_USER_CATALOG
+        self.current_system_catalog: str = config.DEFAULT_SYSTEM_CATALOG
         self.current_database: str | None = None  # For MySQL
         # Load system objects lazily from disk
         self.system_object_loader = object_loader

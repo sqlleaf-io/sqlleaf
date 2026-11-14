@@ -16,7 +16,7 @@ from sqlleaf.processors.transformer.expressions import (
     simplify_operators,
     simplify_row,
 )
-from sqlleaf.dialects import system_functions as get_system_functions
+from sqlleaf.dialects.base import DialectConfig
 from sqlleaf.typing import E, SqlObjectType
 from sqlleaf.dialects.plpgsql import pgexp
 
@@ -425,7 +425,7 @@ class BaseQueryTransformer:
         ->
             SELECT * FROM JSON_EACH_TEXT() AS JSON_EACH_TEXT(key, value)
         """
-        fn_columns_map: dict[str, list[str]] = get_system_functions(self.query.dialect)
+        fn_columns_map: dict[str, list[str]] = DialectConfig(self.query.dialect).SYSTEM_FUNCTIONS
         if not fn_columns_map:
             return
 
