@@ -32,11 +32,16 @@ def _determine_query_kind(statement: exp.Expr, dialect: str) -> tuple[exp.Expr, 
         else:
             kind = (statement.kind or "").lower()
     elif statement.key == "select" and "into" in statement.args:
+        if dialect == "mysql":
+            # MySQL keeps 'SELECT ... INTO @var' as a SELECT, since its generator supports SELECT INTO
+            kind = "select"
         # sqlglot rewrites 'SELECT INTO' to 'CREATE TABLE AS' during parse()
         # but it's not shown until we produce it with sql(), so we re-parse it
-        if dialect in ["redshift", "postgres", "mysql"]:
-            statement = sqlglot.parse_one(statement.sql(dialect=""), dialect=dialect)
-            kind = "ctas"
+        elif dialect in ["redshift", "postgres"]:
+            # TODO: remove this after setting SUPPORTS_SELECT_INTO=True in DialectConfig
+            if dialect == "redshift":
+                statement = sqlglot.parse_one(statement.sql(dialect=""), dialect=dialect)
+            kind = "select"
         else:
             message = f"Expression 'SELECT INTO' has not been implemented yet for dialect: {dialect}"
             raise exception.UnsupportedFeatureError(message=message)

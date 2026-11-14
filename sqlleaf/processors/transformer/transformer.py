@@ -57,7 +57,14 @@ def set_variables_in_scope(query: Q) -> None:
         original_parent = original_stmt.parent
         parent_holder = query.holder.parent_holder
 
-        if isinstance(original_parent, pgexp.PGForIn) and original_parent.args["query"] == original_stmt:
+        into = original_stmt.args.get("into")
+        if into and isinstance(into.this, exp.Table) and isinstance(into.this.this, exp.Parameter):
+            # `SELECT expr INTO @var`
+            name = into.this.this.this.name
+            value = query.statement.expressions[0].unalias()
+            query.object_mapping.variables.set_variable(name=name, value=value, declare=True)
+
+        elif isinstance(original_parent, pgexp.PGForIn) and original_parent.args["query"] == original_stmt:
             # `FOR .. IN SELECT ..`
             name = original_parent.this.name
             value = query.statement
