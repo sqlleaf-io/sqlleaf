@@ -4,7 +4,7 @@ import logging
 import typing as t
 from collections import defaultdict
 
-import networkx as nx
+from networkx import MultiDiGraph, descendants_at_distance
 
 from sqlleaf import exception, util
 from sqlleaf.models.node import EdgeAttributes, N, NodeAttributes
@@ -46,7 +46,7 @@ class LineagePath:
         }
 
 
-def find_all_paths(graph: nx.MultiDiGraph) -> t.Generator[LineagePath]:
+def find_all_paths(graph: MultiDiGraph) -> t.Generator[LineagePath]:
     """
     Find all the unique paths in the graph.
 
@@ -106,7 +106,7 @@ def find_all_paths(graph: nx.MultiDiGraph) -> t.Generator[LineagePath]:
 
 
 def find_edges_along_cycle_path(
-    g: nx.MultiDiGraph, cycle: list[str], path: list[EdgeAttributes] | None = None
+    g: MultiDiGraph, cycle: list[str], path: list[EdgeAttributes] | None = None
 ) -> t.Generator[list[EdgeAttributes]]:
     """
     Given a cycle, find all the edges along it and return these as the new path.
@@ -128,7 +128,7 @@ def find_edges_along_cycle_path(
 
 
 def find_edges_from_root(
-    g: nx.MultiDiGraph, node: str, path: list[EdgeAttributes] | None = None, seen: set[str] | None = None
+    g: MultiDiGraph, node: str, path: list[EdgeAttributes] | None = None, seen: set[str] | None = None
 ) -> t.Generator[list[EdgeAttributes]]:
     """
     Find all the complete paths in a graph by traversing the descendants of a node until we find
@@ -169,7 +169,7 @@ def find_edges_from_root(
                 yield [hop]
 
         # Get direct descendants
-        desc = nx.descendants_at_distance(g, node, 1)
+        desc = descendants_at_distance(g, node, 1)
         if not desc:
             yield path
         else:
@@ -179,7 +179,7 @@ def find_edges_from_root(
 
 
 def _traverse_path_along_edges(
-    g: nx.MultiDiGraph, node_src: str, node_dst: str, path: list | None = None, seen: set | None = None
+    g: MultiDiGraph, node_src: str, node_dst: str, path: list | None = None, seen: set | None = None
 ) -> t.Generator[list[EdgeAttributes]]:
     """
     Get the list of edges between two node, and find the paths for each of them.

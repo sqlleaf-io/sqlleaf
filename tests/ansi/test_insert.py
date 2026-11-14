@@ -32,11 +32,11 @@ def test__insert_select_without_aliases(holder):
     assert [InsertQuery] == h.query_types
 
 
-def test__insert_select_star_with_continue_on_error(holder):
+def test__insert_select_star_with_warn_on_error(holder):
     sql = """
     INSERT INTO fruit.raw SELECT * FROM t2;
     """
-    h = holder(sql=sql, dialect=DIALECT, with_tables=True, on_error="continue")
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True, on_error="warn")
 
     assert h.paths == [
         ["star[*]", "column[fruit.raw.name]"],

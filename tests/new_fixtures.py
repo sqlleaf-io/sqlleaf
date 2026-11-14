@@ -16,6 +16,8 @@ from sqlglot import exp
 
 import sqlleaf
 
+sqlleaf.exception.set_print_full_exception(True)
+
 logging.basicConfig(level=logging.NOTSET)
 logger = logging.getLogger("sqlleaf")
 logger.setLevel(logging.DEBUG)
@@ -92,7 +94,7 @@ class LineageHolderDummy:
 
 @pytest.fixture(scope="function")
 def holder():
-    def _create_holder(sql: str, dialect: str, with_tables: bool = False, hooks: dict | None = None, on_error: str = "stop") -> LineageHolderDummy:
+    def _create_holder(sql: str, dialect: str, with_tables: bool = False, hooks: dict | None = None, on_error: str = "error") -> LineageHolderDummy:
         h = LineageHolderDummy()
         if hooks:
             h.lineage.register_hooks(hooks)
