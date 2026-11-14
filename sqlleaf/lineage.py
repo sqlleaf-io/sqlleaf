@@ -2,7 +2,7 @@ import json
 import logging
 import typing as t
 
-import networkx as nx
+from networkx import MultiDiGraph, descendants
 
 from sqlleaf import exception, mappings, path, util
 from sqlleaf.models.hook import Hook
@@ -25,13 +25,13 @@ class Lineage:
 
     def __init__(self):
         self.graph = new_graph()  # The graph that contains all lineage
-        self.subgraphs: list[nx.MultiDiGraph] = []  # The subgraphs that make up the main graph
+        self.subgraphs: list[MultiDiGraph] = []  # The subgraphs that make up the main graph
         self.paths: dict[str, list[LineagePath]] = {}  # The paths throughout the graph
         self.collected_queries: collector.CollectQueryResult | None = None
         self.user_defined_hooks: list[Hook] = []
         self.object_mapping: mappings.ObjectMapping | None = None
 
-    def generate(self, sql: str, dialect: str, on_error: str = "stop") -> None:
+    def generate(self, sql: str, dialect: str, on_error: str = "error") -> None:
         """
         Generate lineage for one or more SQL statements.
         """
@@ -58,7 +58,7 @@ class Lineage:
             self.merge_graph(graph)
             self.graph.graph["attrs"].add_query_to_graph(parent_holder)
 
-    def merge_graph(self, subgraph: nx.MultiDiGraph) -> None:
+    def merge_graph(self, subgraph: MultiDiGraph) -> None:
         """
         Merge the subgraph into the main graph, and also track the individual subgraphs.
         """
@@ -224,7 +224,7 @@ class Lineage:
                 # Swap the parent and child
                 parent_name = edge_attrs.child.full_name
                 child_name = edge_attrs.parent.full_name
-                num_descendents_of_child = len(nx.descendants(g, child_name))
+                num_descendents_of_child = len(descendants(g, child_name))
 
                 parent_node = g.nodes[parent_name]["attrs"]
                 child_node = g.nodes[child_name]["attrs"]
@@ -307,8 +307,8 @@ class Lineage:
             self.object_mapping = mappings.ObjectMapping(dialect=dialect, object_loader=collector.SystemObjectLoader(dialect))
 
 
-def new_graph() -> nx.MultiDiGraph:
+def new_graph() -> MultiDiGraph:
     """
     A graph has attributes along with its node and edges.
     """
-    return nx.MultiDiGraph(attrs=GraphAttributes())
+    return MultiDiGraph(attrs=GraphAttributes())

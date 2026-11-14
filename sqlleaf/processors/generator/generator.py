@@ -4,7 +4,9 @@ import logging
 import typing as t
 from dataclasses import dataclass
 
-import networkx as nx
+#fmport networkx as nx
+from networkx import MultiDiGraph
+
 from sqlglot import exp
 from sqlglot.optimizer import Scope, build_scope
 
@@ -42,7 +44,7 @@ from sqlleaf.util.expression import get_column_index, get_expression_for_column
 logger = logging.getLogger("sqlleaf")
 
 
-def generate_lineage_for_query(query_holder: QueryHolder, graph: nx.MultiDiGraph, hooks: list[Hook]) -> nx.MultiDiGraph:
+def generate_lineage_for_query(query_holder: QueryHolder, graph: MultiDiGraph, hooks: list[Hook]) -> MultiDiGraph:
     """
     Calculate the lineage for an SQL query.
 
@@ -417,7 +419,7 @@ def find_inherited_columns(
 def add_nodes_with_edge_to_graph(
     parent_node: N | None,
     child_node: N | None,
-    graph: nx.MultiDiGraph,
+    graph: MultiDiGraph,
     query: Q,
 ):
     """
@@ -443,7 +445,7 @@ def add_nodes_with_edge_to_graph(
         logger.debug(f"Added edge between {p_full_name} [{id(p_attrs)}] -> {c_full_name} [{id(c_attrs)}]")
 
 
-def add_node_if_not_exists(node_attrs: N | None, graph: nx.MultiDiGraph) -> tuple[N | None, bool]:
+def add_node_if_not_exists(node_attrs: N | None, graph: MultiDiGraph) -> tuple[N | None, bool]:
     """
     Add a node to the graph if it doesn't already exist.
 

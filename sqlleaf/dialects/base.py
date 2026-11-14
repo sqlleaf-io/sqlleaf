@@ -1,7 +1,10 @@
+import importlib
 import typing as t
 
 import sqlglot
 from sqlglot import Dialect, exp
+
+from sqlleaf.dialects import DIALECT_MODULES
 
 
 # Wrap a function parameter parser so that it also accepts IN, OUT, and INOUT parameter modes
@@ -38,6 +41,8 @@ class DialectConfig:
 
     def __new__(cls, dialect: str) -> DialectConfig:
         """Returns the config registered for the dialect name, or the base config if none is registered."""
+        if dialect in DIALECT_MODULES:
+            importlib.import_module(DIALECT_MODULES[dialect])
         return super().__new__(DialectConfig._dialects.get(dialect, DialectConfig))
 
     @property

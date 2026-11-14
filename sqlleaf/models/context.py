@@ -5,7 +5,7 @@ import logging
 import typing as t
 from dataclasses import InitVar, dataclass
 
-import networkx as nx
+from networkx import MultiDiGraph
 from sqlglot import exp
 from sqlglot.optimizer import Scope, traverse_scope
 
@@ -65,7 +65,7 @@ Holds all the information required to generate lineage for an expression.
 """
 @dataclass(frozen=True)
 class GeneratorContext[Q, N]:
-    graph: nx.MultiDiGraph
+    graph: MultiDiGraph
     query: Q
     expr: exp.Expr
     scope: TableOrScopeType

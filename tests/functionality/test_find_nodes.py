@@ -91,7 +91,7 @@ def test__find_nodes_reflects_second_generate(holder):
     h = holder(sql=FULL_SQL, dialect=DIALECT)
     assert len(h.lineage.find_nodes(FunctionNode(name="SUM"))) == 2
 
-    h.generate(sql="INSERT INTO fruit.other (id) SELECT MAX(id) FROM fruit.other;", dialect=DIALECT, on_error="stop")
+    h.generate(sql="INSERT INTO fruit.other (id) SELECT MAX(id) FROM fruit.other;", dialect=DIALECT, on_error="error")
 
     assert len(h.lineage.find_nodes(FunctionNode(name="SUM"))) == 2
     assert len(h.lineage.find_nodes(FunctionNode(name="MAX"))) == 1

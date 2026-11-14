@@ -393,8 +393,9 @@ class ObjectMapping(MappingSchema):
                 else:
                     knd = "CREATE " + {"udf": "FUNCTION"}.get(kind, kind).upper()
 
-                raise exception.MappingError(
-                    f"Could not find '{object.this}' of type '{kind}' in mapping. Did you forget to define a '{knd}' statement?"
+                raise exception.raise_error(
+                    exception.MappingError,
+                    f"Could not find {kind} '{object.this}'. Did you forget to define a '{knd}' statement?"
                 )
             return None
 

@@ -1,6 +1,7 @@
-from sqlleaf.dialects.plpgsql.p_dialect import PlPgSQL
-
-from sqlleaf.dialects.athena.config import AthenaConfig as AthenaConfig
-from sqlleaf.dialects.base import DialectConfig as DialectConfig
-from sqlleaf.dialects.mysql.config import MySQLConfig as MySQLConfig
-from sqlleaf.dialects.postgres.config import PostgresConfig as PostgresConfig
+# Maps each dialect name to the module that registers its config or parser. Lazily imported for performance.
+DIALECT_MODULES = {
+    "athena": "sqlleaf.dialects.athena.config",
+    "mysql": "sqlleaf.dialects.mysql.config",
+    "plpgsql": "sqlleaf.dialects.plpgsql.p_dialect",
+    "postgres": "sqlleaf.dialects.postgres.config",
+}

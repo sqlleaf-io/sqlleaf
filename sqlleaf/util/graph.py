@@ -1,7 +1,6 @@
 import logging
-import typing as t
 
-import networkx as nx
+from networkx import MultiDiGraph, descendants_at_distance
 
 from sqlleaf import util
 
@@ -11,7 +10,7 @@ logger = logging.getLogger("sqlleaf")
 # TODO: add a function called 'find_unique_paths' to prevent traversal of duplicate edges
 
 
-def find_edges_downward(g: nx.MultiDiGraph, node: str, seen: set[str] | None = None, depth: int = 0):
+def find_edges_downward(g: MultiDiGraph, node: str, seen: set[str] | None = None, depth: int = 0):
     """
     Traverse the graph, returning any unseen edges.
 
@@ -22,7 +21,7 @@ def find_edges_downward(g: nx.MultiDiGraph, node: str, seen: set[str] | None = N
         seen = {node}
 
     # Get direct descendants
-    desc = nx.descendants_at_distance(g, node, 1)
+    desc = descendants_at_distance(g, node, 1)
 
     for n in desc:
         if n not in seen:
@@ -35,7 +34,7 @@ def find_edges_downward(g: nx.MultiDiGraph, node: str, seen: set[str] | None = N
                 yield from find_edges_downward(g, n, seen.union([n]), depth + 1)
 
 
-def find_paths(g: nx.MultiDiGraph, start=0, path: list[int] | None = None, seen: set[int] | None = None):
+def find_paths(g: MultiDiGraph, start=0, path: list[int] | None = None, seen: set[int] | None = None):
     """
     Find all the complete paths in a graph by traversing the descendants of a node until we find
     a node without any descendants.
@@ -46,7 +45,7 @@ def find_paths(g: nx.MultiDiGraph, start=0, path: list[int] | None = None, seen:
         seen = {start}
 
     # Get direct descendants
-    desc = nx.descendants_at_distance(g, start, 1)
+    desc = descendants_at_distance(g, start, 1)
     if not desc:
         yield path
     else:
@@ -57,7 +56,7 @@ def find_paths(g: nx.MultiDiGraph, start=0, path: list[int] | None = None, seen:
                 yield from find_paths(g, n, path + [n], seen.union([n]))
 
 
-def get_root_nodes(graph: nx.MultiDiGraph) -> list[str]:
+def get_root_nodes(graph: MultiDiGraph) -> list[str]:
     """
     Get the root node of a graph. A root node has no parents.
     """
@@ -73,7 +72,8 @@ def get_root_nodes(graph: nx.MultiDiGraph) -> list[str]:
 
     # Remove all the selfloop edges so that we can find the root node,
     # and then add them back. (This is due to in/out_degree() inclduing them as edges)
-    view = nx.subgraph_view(graph, filter_edge=remove_selfloop_edges)
+    from networkx import subgraph_view
+    view = subgraph_view(graph, filter_edge=remove_selfloop_edges)
     roots = [
         n
         for n in view.nodes
@@ -89,13 +89,14 @@ def get_root_nodes(graph: nx.MultiDiGraph) -> list[str]:
     return roots
 
 
-def get_cycles(graph: nx.MultiDiGraph):
+def get_cycles(graph: MultiDiGraph):
     """
     Find all cycles in a graph.
     """
     errors = 0
 
-    for cycle in nx.simple_cycles(graph):
+    from networkx import simple_cycles
+    for cycle in simple_cycles(graph):
         columns = [col for col in cycle if col.startswith("column")]
 
         if len(util.unique(columns)) == 1:
