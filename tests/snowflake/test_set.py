@@ -17,7 +17,7 @@ def test___set_simple(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert h.lineage.object_mapping.session_variables["A"].to_py() == 10
+    assert h.lineage.object_mapping.variables.get_variable("A").to_py() == 10
 
 
 def test___set_multiple_variables(holder):
@@ -27,8 +27,8 @@ def test___set_multiple_variables(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert h.lineage.object_mapping.session_variables["A"].to_py() == 10
-    assert h.lineage.object_mapping.session_variables["B"].to_py() == 20
+    assert h.lineage.object_mapping.variables.get_variable("A").to_py() == 10
+    assert h.lineage.object_mapping.variables.get_variable("B").to_py() == 20
 
 
 def test___set_multiple_statements(holder):
@@ -39,8 +39,8 @@ def test___set_multiple_statements(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery, SetQuery] == h.query_types
-    assert h.lineage.object_mapping.session_variables["A"].to_py() == 10
-    assert h.lineage.object_mapping.session_variables["B"].to_py() == 20
+    assert h.lineage.object_mapping.variables.get_variable("A").to_py() == 10
+    assert h.lineage.object_mapping.variables.get_variable("B").to_py() == 20
 
 
 def test___set_subquery(holder):
@@ -50,7 +50,7 @@ def test___set_subquery(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert "SELECT MAX(COL) FROM MY_TABLE" in h.lineage.object_mapping.session_variables["A"].sql(dialect=DIALECT)
+    assert "SELECT MAX(COL) FROM MY_TABLE" in h.lineage.object_mapping.variables.get_variable("A").sql(dialect=DIALECT)
 
 
 def test___set_multiple_subquery(holder):
@@ -59,8 +59,8 @@ def test___set_multiple_subquery(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert "(SELECT COL1 FROM TABLE LIMIT 1)" in h.lineage.object_mapping.session_variables["A"].sql(dialect=DIALECT)
-    assert "(SELECT COL2 FROM TABLE LIMIT 1)" in h.lineage.object_mapping.session_variables["B"].sql(dialect=DIALECT)
+    assert "(SELECT COL1 FROM TABLE LIMIT 1)" in h.lineage.object_mapping.variables.get_variable("A").sql(dialect=DIALECT)
+    assert "(SELECT COL2 FROM TABLE LIMIT 1)" in h.lineage.object_mapping.variables.get_variable("B").sql(dialect=DIALECT)
 
 
 def test___set_variable_composition(holder):
@@ -72,7 +72,7 @@ def test___set_variable_composition(holder):
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
 
     assert [SetQuery, SetQuery, InsertQuery] == h.query_types
-    assert h.lineage.object_mapping.session_variables["B"].sql(dialect=DIALECT) == "$a + 1"
+    assert h.lineage.object_mapping.variables.get_variable("B").sql(dialect=DIALECT) == "$a + 1"
     assert (
         h.holders[2].transformed.statement.sql(dialect=DIALECT) == "INSERT INTO FRUIT.PROCESSED (AGE) SELECT 2 AS AGE"
     )

@@ -18,7 +18,7 @@ def test__set(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert h.lineage.object_mapping.session_variables["a"].to_py() == 42
+    assert h.lineage.object_mapping.variables.get_variable("a").to_py() == 42
 
 
 def test__set_multiple_variables(holder):
@@ -28,13 +28,13 @@ def test__set_multiple_variables(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert "x" in h.lineage.object_mapping.session_variables
-    assert "y" in h.lineage.object_mapping.session_variables
-    assert "z" in h.lineage.object_mapping.session_variables
+    assert "x" in h.lineage.object_mapping.variables.get_variables()
+    assert "y" in h.lineage.object_mapping.variables.get_variables()
+    assert "z" in h.lineage.object_mapping.variables.get_variables()
 
-    assert h.lineage.object_mapping.session_variables["x"].to_py() == 10
-    assert h.lineage.object_mapping.session_variables["y"].to_py() == 20
-    assert h.lineage.object_mapping.session_variables["z"].to_py() == 30
+    assert h.lineage.object_mapping.variables.get_variable("x").to_py() == 10
+    assert h.lineage.object_mapping.variables.get_variable("y").to_py() == 20
+    assert h.lineage.object_mapping.variables.get_variable("z").to_py() == 30
 
 
 def test__set_undefined_variable(holder):
@@ -44,7 +44,7 @@ def test__set_undefined_variable(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert h.lineage.object_mapping.session_variables["a"].to_py() == None
+    assert h.lineage.object_mapping.variables.get_variable("a").to_py() == None
 
 
 # def test__set_system_variable(holder):
@@ -55,7 +55,7 @@ def test__set_undefined_variable(holder):
 #
 #     assert [SetQuery] == h.query_types
 #     # TODO: make this a 'system' variable
-#     assert h.lineage.object_mapping.session_variables["session.sql_mode"].to_py() == 100
+#     assert h.lineage.object_mapping.variables.get_variable("session.sql_mode").to_py() == 100
 
 
 # TODO: this is incorrect. It should be @source = 100, @copy = NULL
@@ -66,8 +66,8 @@ def test__set_variable_from_variable(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert h.lineage.object_mapping.session_variables["source"].to_py() == 100
-    assert h.lineage.object_mapping.session_variables["copy"].to_py() == 100
+    assert h.lineage.object_mapping.variables.get_variable("source").to_py() == 100
+    assert h.lineage.object_mapping.variables.get_variable("copy").to_py() == 100
 
 
 def test__set_with_subquery(holder):
@@ -77,7 +77,7 @@ def test__set_with_subquery(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert h.lineage.object_mapping.session_variables["count"].sql(dialect=DIALECT) == "(SELECT COUNT(*) FROM users)"
+    assert h.lineage.object_mapping.variables.get_variable("count").sql(dialect=DIALECT) == "(SELECT COUNT(*) FROM users)"
 
 
 def test__set_mixed_types(holder):
@@ -87,11 +87,11 @@ def test__set_mixed_types(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert h.lineage.object_mapping.session_variables["num"].to_py() == 42
-    assert h.lineage.object_mapping.session_variables["neg"].to_py() == -42
-    assert h.lineage.object_mapping.session_variables["str"].to_py() == "test"
-    assert h.lineage.object_mapping.session_variables["flag"].to_py() is False
-    assert h.lineage.object_mapping.session_variables["empty"].to_py() is None
+    assert h.lineage.object_mapping.variables.get_variable("num").to_py() == 42
+    assert h.lineage.object_mapping.variables.get_variable("neg").to_py() == -42
+    assert h.lineage.object_mapping.variables.get_variable("str").to_py() == "test"
+    assert h.lineage.object_mapping.variables.get_variable("flag").to_py() is False
+    assert h.lineage.object_mapping.variables.get_variable("empty").to_py() is None
 
 
 def test__set_with_coalesce(holder):
@@ -102,7 +102,7 @@ def test__set_with_coalesce(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery, SetQuery] == h.query_types
-    assert h.lineage.object_mapping.session_variables["value"].sql(dialect=DIALECT) == "COALESCE('yes', 0)"
+    assert h.lineage.object_mapping.variables.get_variable("value").sql(dialect=DIALECT) == "COALESCE('yes', 0)"
 
 
 def test__set_with_addition(holder):
@@ -112,8 +112,8 @@ def test__set_with_addition(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.lineage.object_mapping.session_variables["first"].to_py() == 1
-    assert h.lineage.object_mapping.session_variables["second"].sql(dialect=DIALECT) == "1 + 1"
+    assert h.lineage.object_mapping.variables.get_variable("first").to_py() == 1
+    assert h.lineage.object_mapping.variables.get_variable("second").sql(dialect=DIALECT) == "1 + 1"
 
 
 def test__set_with_string_operations(holder):
@@ -123,9 +123,9 @@ def test__set_with_string_operations(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert h.lineage.object_mapping.session_variables["first"].to_py() == 'Hello'
-    assert h.lineage.object_mapping.session_variables["last"].to_py() == 'World'
-    assert h.lineage.object_mapping.session_variables["full"].sql(dialect=DIALECT) == "CONCAT('Hello', ' ', 'World')"
+    assert h.lineage.object_mapping.variables.get_variable("first").to_py() == 'Hello'
+    assert h.lineage.object_mapping.variables.get_variable("last").to_py() == 'World'
+    assert h.lineage.object_mapping.variables.get_variable("full").sql(dialect=DIALECT) == "CONCAT('Hello', ' ', 'World')"
 
 
 def test__set_with_case_expression(holder):
@@ -136,9 +136,9 @@ def test__set_with_case_expression(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery, SetQuery] == h.query_types
-    assert "status" in h.lineage.object_mapping.session_variables
-    assert "code" in h.lineage.object_mapping.session_variables
-    val = h.lineage.object_mapping.session_variables["code"]
+    assert "status" in h.lineage.object_mapping.variables.get_variables()
+    assert "code" in h.lineage.object_mapping.variables.get_variables()
+    val = h.lineage.object_mapping.variables.get_variable("code")
     assert "CASE" in val.sql(dialect=DIALECT)
 #
 #
@@ -149,8 +149,8 @@ def test__set_with_date_functions(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert h.lineage.object_mapping.session_variables["current_time"].sql(dialect=DIALECT) == "NOW()"
-    assert h.lineage.object_mapping.session_variables["current_date"].sql(dialect=DIALECT) == "CURRENT_DATE"
+    assert h.lineage.object_mapping.variables.get_variable("current_time").sql(dialect=DIALECT) == "NOW()"
+    assert h.lineage.object_mapping.variables.get_variable("current_date").sql(dialect=DIALECT) == "CURRENT_DATE"
 
 
 def test__set_variable_reassignment(holder):
@@ -162,7 +162,7 @@ def test__set_variable_reassignment(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery, SetQuery, SetQuery] == h.query_types
-    assert "counter" in h.lineage.object_mapping.session_variables
+    assert "counter" in h.lineage.object_mapping.variables.get_variables()
 
 
 def test__set_with_aggregate_subqueries(holder):
@@ -180,8 +180,8 @@ def test__set_with_equals_operator(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert h.lineage.object_mapping.session_variables["var1"].to_py() == 100
-    assert h.lineage.object_mapping.session_variables["var2"].to_py() == 200
+    assert h.lineage.object_mapping.variables.get_variable("var1").to_py() == 100
+    assert h.lineage.object_mapping.variables.get_variable("var2").to_py() == 200
 
 
 # TODO: system variables can be set like:
