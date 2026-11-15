@@ -56,3 +56,57 @@ def test__select_into_variable_after_limit(holder):
         """
         holder(sql=sql, dialect=DIALECT, with_tables=True)
     assert e.value.args[0].startswith("Invalid expression / Unexpected token.")
+
+
+def test__select_paren(holder):
+    sql = """
+    (SELECT a FROM t);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.queries_transformed[0].statement.sql(dialect=DIALECT) == "SELECT a AS a FROM t AS t"
+
+
+def test__union_paren(holder):
+    sql = """
+    (SELECT 1) UNION (SELECT 2);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.queries_transformed[0].statement.sql(dialect=DIALECT) == "SELECT 1 AS `1` UNION SELECT 2 AS `2`"
+
+
+def test__union_paren_limit(holder):
+    sql = """
+    CREATE TABLE t1 (a INT);
+    CREATE TABLE t2 (b INT);
+    (SELECT a FROM t1 LIMIT 5) UNION (SELECT b FROM t2 LIMIT 5);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    # Keep the brackets if there's LIMIT or ORDER BY
+    assert (
+        h.queries_transformed[2].statement.sql(dialect=DIALECT)
+        == "(SELECT t1.a AS a FROM t1 AS t1 LIMIT 5) UNION (SELECT t2.b AS b FROM t2 AS t2 LIMIT 5)"
+    )
+
+
+def test__with_paren(holder):
+    sql = """
+    (WITH c AS (SELECT a FROM t) SELECT a FROM c);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert (
+        h.queries_transformed[0].statement.sql(dialect=DIALECT)
+        == "WITH c AS (SELECT a AS a FROM t AS t) SELECT c.a AS a FROM c AS c"
+    )
+
+
+def test__nested_paren(holder):
+    sql = """
+    SELECT * FROM ((SELECT a FROM t)) x;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.queries_transformed[0].statement.sql(dialect=DIALECT) == "SELECT a AS a FROM t AS t"

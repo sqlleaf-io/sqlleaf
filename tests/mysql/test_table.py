@@ -66,3 +66,13 @@ def test__table_into_var_fails(holder):
         """
         holder(sql=sql, dialect=DIALECT)
     assert e.value.args[0].startswith("Invalid expression / Unexpected token.")
+
+
+def test__table_paren(holder):
+    sql = """
+    CREATE TABLE t (a INT, b INT);
+    (TABLE t);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.queries_transformed[1].statement.sql(dialect=DIALECT) == "SELECT t.a AS a, t.b AS b FROM t AS t"

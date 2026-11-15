@@ -97,6 +97,7 @@ class BaseQueryTransformer:
         self.replace_variables_in_expression(statement)
         self._expand_to_query(statement)
         self._convert_table_to_select(statement)
+        self._unwrap_union_operands(statement)
         self._redirect_updatable_view_target(statement)
 
         # Remove any FILTER clauses (not used for lineage)
@@ -248,6 +249,23 @@ class BaseQueryTransformer:
             if source:
                 table = source.pop()
                 statement.set("expression", exp.select("*").from_(table))
+
+    def _unwrap_union_operands(self, statement: E) -> None:
+        """
+        Flatten parenthesised operands of a UNION, e.g. "(SELECT 1) UNION (SELECT 2)" -> "SELECT 1 UNION SELECT 2"
+        """
+        for union in list(statement.find_all(exp.Union)):
+            for operand in (union.this, union.expression):
+                if isinstance(operand, exp.Subquery) and not self._has_order_or_limit(operand):
+                    operand.replace(operand.unnest())
+
+    @staticmethod
+    def _has_order_or_limit(operand: exp.Subquery) -> bool:
+        """
+        Whether a parenthesised UNION operand carries its own ORDER BY or LIMIT, in which case the brackets must be kept
+        """
+        inner = operand.unnest()
+        return any(node.args.get(key) for node in (operand, inner) for key in ("order", "limit"))
 
     @_validate_syntax
     def _add_aliases_to_udfs(self, statement: E) -> None:

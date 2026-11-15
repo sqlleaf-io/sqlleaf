@@ -45,3 +45,12 @@ def test__values_empty_insert_named_columns_with_functions(holder):
         h.holders[1].transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO target (name, age) SELECT UPPER(NULL) AS name, 10 AS age"
     )
+
+
+def test__values_paren(holder):
+    sql = """
+    (VALUES ROW(1,2));
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.queries_transformed[0].statement.sql(dialect=DIALECT) == "SELECT 1 AS column_0, 2 AS column_1"
