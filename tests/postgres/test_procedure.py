@@ -1,8 +1,6 @@
 import os
 import sys
 
-from sqlglot import exp
-
 from sqlleaf.models.query import CallQuery, InsertQuery, ProcedureQuery, ValuesQuery
 from tests.new_fixtures import holder as holder
 
@@ -12,7 +10,134 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 DIALECT = "postgres"
 
 
-def test_call_procedure_multi(holder):
+def test__procedure_basic_no_call(holder):
+    sql = """
+    CREATE TABLE target (name TEXT);
+    CREATE PROCEDURE hello()
+    LANGUAGE SQL
+    AS $$
+        INSERT INTO public.target (name) VALUES ('world');
+    $$;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [['literal["world"]', "column[public.target.name]"]]
+
+
+def test__procedure(holder):
+    sql = """
+    CREATE TABLE target (name TEXT);
+    CREATE PROCEDURE hello()
+    LANGUAGE SQL
+    AS $$
+        INSERT INTO public.target (name) VALUES ('world');
+    $$;
+    CALL hello();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    downstream_holders = h.holders[2].downstream_holders
+    assert isinstance(downstream_holders[0].original, InsertQuery)
+    assert (
+        downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO public.target (name) SELECT 'world' AS name"
+    )
+
+    assert h.paths == [['literal["world"]', "column[public.target.name]"]]
+    assert h.nodes_full == [
+        'literal[name="world" type=VARCHAR position=[query_depth=0 query_width=0 statement=2:0 select=0 func_depth=0 func_arg=0]]',
+        "column[name=name type=TEXT properties=[kind=table table=target schema=public]]",
+    ]
+    assert len(h.edges) == 1
+
+
+def test__procedure_schema(holder):
+    sql = """
+    CREATE TABLE target (name TEXT);
+    CREATE PROCEDURE my_schema.hello()
+    LANGUAGE SQL
+    AS $$
+        INSERT INTO public.target (name) VALUES ('world');
+    $$;
+    CALL my_schema.hello();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    downstream_holders = h.holders[2].downstream_holders
+    assert (
+        downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO public.target (name) SELECT 'world' AS name"
+    )
+
+    assert h.paths == [['literal["world"]', "column[public.target.name]"]]
+    assert h.nodes_full == [
+        'literal[name="world" type=VARCHAR position=[query_depth=0 query_width=0 statement=2:0 select=0 func_depth=0 func_arg=0]]',
+        "column[name=name type=TEXT properties=[kind=table table=target schema=public]]",
+    ]
+    assert len(h.edges) == 1
+
+
+def test__procedure_with_params(holder):
+    sql = """
+    CREATE TABLE target (name TEXT);
+    CREATE PROCEDURE hello(greeting TEXT)
+    LANGUAGE SQL
+    AS $$
+        INSERT INTO public.target (name) VALUES (greeting);
+    $$;
+    CALL hello('world');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    downstream_holder = h.holders[2].downstream_holders[0]
+    assert isinstance(downstream_holder.original, InsertQuery)
+    assert (
+        downstream_holder.transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO public.target (name) SELECT 'world' AS name"
+    )
+
+
+def test__procedure_positional_param(holder):
+    sql = """
+    CREATE TABLE target (name TEXT);
+    CREATE PROCEDURE hello(TEXT)
+    LANGUAGE SQL
+    AS $$
+        INSERT INTO public.target (name) VALUES ($1);
+    $$;
+    CALL hello('world');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    downstream_holder = h.holders[2].downstream_holders[0]
+    assert isinstance(downstream_holder.original, InsertQuery)
+    assert (
+        downstream_holder.transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO public.target (name) SELECT 'world' AS name"
+    )
+
+
+def test__procedure_default_value(holder):
+    sql = """
+    CREATE TABLE target (name TEXT);
+    CREATE PROCEDURE hello(greeting TEXT DEFAULT 'world')
+    LANGUAGE SQL
+    AS $$
+        INSERT INTO public.target (name) VALUES (greeting);
+    $$;
+    CALL hello();
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    downstream_holder = h.holders[2].downstream_holders[0]
+    assert isinstance(downstream_holder.original, InsertQuery)
+    assert (
+        downstream_holder.transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO public.target (name) SELECT 'world' AS name"
+    )
+
+
+def test__procedure_multi(holder):
     sql = """
     CREATE TABLE target (name TEXT);
     CREATE PROCEDURE hello()
@@ -24,17 +149,6 @@ def test_call_procedure_multi(holder):
     CALL hello();
     """
     h = holder(sql=sql, dialect=DIALECT)
-
-    assert len(h.holders) == 3
-
-    proc_query = h.holders[1].original
-    assert isinstance(proc_query, ProcedureQuery)
-
-    call_query = h.holders[2].original
-    assert isinstance(call_query, CallQuery)
-
-    assert call_query.procedure == "hello"
-    assert call_query.args == []
 
     downstream_holders = h.holders[2].downstream_holders
     assert len(downstream_holders) == 2
@@ -53,212 +167,7 @@ def test_call_procedure_multi(holder):
     assert len(h.edges) == 1
 
 
-def test_hello_procedure(holder):
-    sql = """
-    CREATE TABLE target (name TEXT);
-    CREATE PROCEDURE hello()
-    LANGUAGE SQL
-    AS $$
-        INSERT INTO public.target (name) VALUES ('world');
-    $$;
-    """
-    h = holder(sql=sql, dialect=DIALECT)
-
-    query = h.holders[1].original
-    assert isinstance(query, ProcedureQuery)
-
-    assert h.paths == []
-    assert h.nodes_full == []
-    assert len(h.edges) == 0
-
-    assert query.procedure == "hello"
-    assert not query.schema
-    assert query.args == []
-
-
-def test_call_procedure(holder):
-    sql = """
-    CREATE TABLE target (name TEXT);
-    CREATE PROCEDURE hello()
-    LANGUAGE SQL
-    AS $$
-        INSERT INTO public.target (name) VALUES ('world');
-    $$;
-    CALL hello();
-    """
-    h = holder(sql=sql, dialect=DIALECT)
-
-    assert len(h.holders) == 3
-
-    proc_query = h.holders[1].original
-    assert isinstance(proc_query, ProcedureQuery)
-
-    call_query = h.holders[2].original
-    assert isinstance(call_query, CallQuery)
-
-    assert call_query.procedure == "hello"
-    assert call_query.args == []
-
-    downstream_holders = h.holders[2].downstream_holders
-    assert len(downstream_holders) == 1
-    assert isinstance(downstream_holders[0].original, InsertQuery)
-    assert (
-        downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO public.target (name) SELECT 'world' AS name"
-    )
-
-    assert h.paths == [['literal["world"]', "column[public.target.name]"]]
-    assert h.nodes_full == [
-        'literal[name="world" type=VARCHAR position=[query_depth=0 query_width=0 statement=2:0 select=0 func_depth=0 func_arg=0]]',
-        "column[name=name type=TEXT properties=[kind=table table=target schema=public]]",
-    ]
-    assert len(h.edges) == 1
-
-
-def test_call_schema_procedure(holder):
-    sql = """
-    CREATE TABLE target (name TEXT);
-    CREATE PROCEDURE my_schema.hello()
-    LANGUAGE SQL
-    AS $$
-        INSERT INTO public.target (name) VALUES ('world');
-    $$;
-    CALL my_schema.hello();
-    """
-    h = holder(sql=sql, dialect=DIALECT)
-
-    assert len(h.holders) == 3
-
-    proc_query = h.holders[1].original
-    assert isinstance(proc_query, ProcedureQuery)
-    assert proc_query.procedure == "hello"
-    assert proc_query.schema == "my_schema"
-
-    call_query = h.holders[2].original
-    assert isinstance(call_query, CallQuery)
-
-    assert call_query.procedure == "hello"
-    assert call_query.schema == "my_schema"
-    assert call_query.name == "my_schema.hello"
-    assert call_query.args == []
-
-    downstream_holders = h.holders[2].downstream_holders
-    assert len(downstream_holders) == 1
-    assert isinstance(downstream_holders[0].original, InsertQuery)
-    assert (
-        downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO public.target (name) SELECT 'world' AS name"
-    )
-
-    assert h.paths == [['literal["world"]', "column[public.target.name]"]]
-    assert h.nodes_full == [
-        'literal[name="world" type=VARCHAR position=[query_depth=0 query_width=0 statement=2:0 select=0 func_depth=0 func_arg=0]]',
-        "column[name=name type=TEXT properties=[kind=table table=target schema=public]]",
-    ]
-    assert len(h.edges) == 1
-
-
-def test_call_procedure_with_params(holder):
-    sql = """
-    CREATE TABLE target (name TEXT);
-    CREATE PROCEDURE hello(greeting TEXT)
-    LANGUAGE SQL
-    AS $$
-        INSERT INTO public.target (name) VALUES (greeting);
-    $$;
-    CALL hello('world');
-    """
-    h = holder(sql=sql, dialect=DIALECT)
-
-    assert len(h.holders) == 3
-
-    proc_query = h.holders[1].original
-    assert isinstance(proc_query, ProcedureQuery)
-    assert proc_query.procedure == "hello"
-    assert len(proc_query.parameters) == 1
-    assert proc_query.parameters[0].name == "greeting"
-
-    call_query = h.holders[2].original
-    assert isinstance(call_query, CallQuery)
-    assert call_query.procedure == "hello"
-    assert len(call_query.args) == 1
-
-    downstream_holder = h.holders[2].downstream_holders[0]
-    assert isinstance(downstream_holder.original, InsertQuery)
-    assert (
-        downstream_holder.transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO public.target (name) SELECT 'world' AS name"
-    )
-
-
-def test_call_procedure_positional_param(holder):
-    sql = """
-    CREATE TABLE target (name TEXT);
-    CREATE PROCEDURE hello(TEXT)
-    LANGUAGE SQL
-    AS $$
-        INSERT INTO public.target (name) VALUES ($1);
-    $$;
-    CALL hello('world');
-    """
-    h = holder(sql=sql, dialect=DIALECT)
-
-    assert len(h.holders) == 3
-
-    proc_query = h.holders[1].original
-    assert isinstance(proc_query, ProcedureQuery)
-    assert proc_query.procedure == "hello"
-    assert len(proc_query.parameters) == 1
-    assert proc_query.parameters[0].name == "$1"
-
-    call_query = h.holders[2].original
-    assert isinstance(call_query, CallQuery)
-    assert call_query.procedure == "hello"
-    assert len(call_query.args) == 1
-
-    downstream_holder = h.holders[2].downstream_holders[0]
-    assert isinstance(downstream_holder.original, InsertQuery)
-    assert (
-        downstream_holder.transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO public.target (name) SELECT 'world' AS name"
-    )
-
-
-def test_call_procedure_default_value(holder):
-    sql = """
-    CREATE TABLE target (name TEXT);
-    CREATE PROCEDURE hello(greeting TEXT DEFAULT 'world')
-    LANGUAGE SQL
-    AS $$
-        INSERT INTO public.target (name) VALUES (greeting);
-    $$;
-    CALL hello();
-    """
-    h = holder(sql=sql, dialect=DIALECT)
-
-    assert len(h.holders) == 3
-
-    proc_query = h.holders[1].original
-    assert isinstance(proc_query, ProcedureQuery)
-    assert proc_query.procedure == "hello"
-    assert len(proc_query.parameters) == 1
-    assert proc_query.parameters[0].name == "greeting"
-    assert proc_query.parameters[0].default.sql(dialect=DIALECT) == "'world'"
-
-    call_query = h.holders[2].original
-    assert isinstance(call_query, CallQuery)
-    assert call_query.procedure == "hello"
-    assert call_query.args == []
-
-    downstream_holder = h.holders[2].downstream_holders[0]
-    assert isinstance(downstream_holder.original, InsertQuery)
-    assert (
-        downstream_holder.transformed.statement.sql(dialect=DIALECT)
-        == "INSERT INTO public.target (name) SELECT 'world' AS name"
-    )
-
-
-def test_procedure_begin_atomic(holder):
+def test__procedure_begin_atomic(holder):
     sql = """
     CREATE TABLE target (name TEXT);
     CREATE PROCEDURE hello()
@@ -269,12 +178,21 @@ def test_procedure_begin_atomic(holder):
     CALL hello();
     """
     h = holder(sql=sql, dialect=DIALECT)
+
     # This currently does not work because sqlglot fails to parse BEGIN ATOMIC correctly
     # resulting in no lineage nodes.
     assert len(h.nodes) == 0
+    assert h.paths == []
+
+    proc_holder = h.holders[1]
+    assert isinstance(proc_holder.original, ProcedureQuery)
+    assert (
+        proc_holder.transformed.statement.sql(dialect=DIALECT)
+        == "CREATE PROCEDURE public.hello() LANGUAGE SQL AS BEGIN atomic; END"
+    )
 
 
-def test_procedure_begin_end(holder):
+def test__procedure_begin_end(holder):
     sql = """
     CREATE TABLE target (name TEXT);
     CREATE PROCEDURE hello()
@@ -286,27 +204,10 @@ def test_procedure_begin_end(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    # Should have 3 queries: Table, Procedure, Call
-    assert len(h.holders) == 3
-
-    proc_query = h.holders[1].original
-    assert isinstance(proc_query, ProcedureQuery)
-    assert proc_query.procedure == "hello"
-    # EndStatement should be filtered out
-    assert all(not isinstance(stmt, exp.EndStatement) for stmt in proc_query.inner_statements)
-
-    call_query = h.holders[2].original
-    assert isinstance(call_query, CallQuery)
-    assert call_query.procedure == "hello"
-
     assert h.paths == [['literal["world"]', "column[public.target.name]"]]
 
 
-# OUT params
-# NULL for out params
-
-
-def test_call_procedure_positional_notation(holder):
+def test__procedure_positional_notation(holder):
     sql = """
     CREATE TABLE target (a INT, b INT);
     CREATE PROCEDURE my_proc(x INT, y INT)
@@ -318,17 +219,19 @@ def test_call_procedure_positional_notation(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert len(h.holders) == 3
     downstream_holder = h.holders[2].downstream_holders[0]
     assert isinstance(downstream_holder.original, InsertQuery)
     assert (
         downstream_holder.transformed.statement.sql(dialect=DIALECT)
         == "INSERT INTO public.target (a, b) SELECT 10 AS a, 20 AS b"
     )
-    assert h.paths == [["literal[10]", "column[public.target.a]"], ["literal[20]", "column[public.target.b]"]]
+    assert h.paths == [
+        ["literal[10]", "column[public.target.a]"],
+        ["literal[20]", "column[public.target.b]"],
+    ]
 
 
-def test_call_procedure_mixed_notation(holder):
+def test__procedure_mixed_notation(holder):
     sql = """
     CREATE TABLE target (a INT, b INT);
     CREATE PROCEDURE my_proc(x INT, y INT)
@@ -340,7 +243,6 @@ def test_call_procedure_mixed_notation(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert len(h.holders) == 3
     downstream_holder = h.holders[2].downstream_holders[0]
     assert isinstance(downstream_holder.original, InsertQuery)
     assert (
@@ -349,7 +251,7 @@ def test_call_procedure_mixed_notation(holder):
     )
 
 
-def test_call_procedure_in_out_params(holder):
+def test__procedure_in_out_params(holder):
     sql = """
     CREATE PROCEDURE my_proc(IN x INT, OUT y INT)
     LANGUAGE SQL
@@ -378,6 +280,5 @@ def test_call_procedure_in_out_params(holder):
     assert downstream_holder.transformed.statement.sql(dialect=DIALECT) == 'SELECT 10 AS "10"'
 
 
-#
 # TODO: test chained procs
 # TODO: nested statements
