@@ -4,4 +4,5 @@ DIALECT_MODULES = {
     "mysql": "sqlleaf.dialects.mysql.config",
     "plpgsql": "sqlleaf.dialects.plpgsql.p_dialect",
     "postgres": "sqlleaf.dialects.postgres.config",
+    "redshift": "sqlleaf.dialects.redshift.config",
 }

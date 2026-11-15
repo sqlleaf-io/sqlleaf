@@ -4,14 +4,10 @@ import logging
 import typing as t
 from dataclasses import dataclass
 
-#fmport networkx as nx
 from networkx import MultiDiGraph
 
 from sqlglot import exp
 from sqlglot.optimizer import Scope, build_scope
-
-from sqlleaf.models.query.declare_item import AssignmentQuery
-from sqlleaf.models.query.block import BlockQuery
 
 if t.TYPE_CHECKING:
     pass
@@ -29,9 +25,11 @@ from sqlleaf.models.query import (
     CTASQuery,
     CopyQuery,
     InsertQuery,
+    PerformQuery,
     PutQuery,
     Q,
     QueryHolder,
+    SelectQuery,
     TableQuery,
     UnloadQuery,
     UpdateQuery,
@@ -596,7 +594,10 @@ def query_has_lineage(query: Q) -> bool:
     calling statement, such as `SELECT UDF()` or `CALL()`, respectively.
     """
     has_lineage = True
-    if not isinstance(query, QUERIES_WITH_LINEAGE):
+    if type(query) is SelectQuery:
+        # SELECT .. INTO <table> has lineage; a plain SELECT or SELECT INTO @var does not
+        has_lineage = query.target_info.type == SqlObjectType.TABLE
+    elif not isinstance(query, QUERIES_WITH_LINEAGE):
         has_lineage = False
     elif isinstance(query, CopyQuery) and query.source_info.type == SqlObjectType.VALUES:
         # COPY TO STDOUT VALUES (..) # TODO: this should have lineage
