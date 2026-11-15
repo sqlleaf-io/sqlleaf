@@ -134,8 +134,8 @@ class Query:
         """
         Compute the source and target expressions for a query.
         """
-        source_exprs: list[exp.Expr] = []
-        target_exprs: list[exp.Expr] = []
+        source_exprs: t.Sequence[exp.Expr] = []
+        target_exprs: t.Sequence[exp.Expr] = []
 
         if source_info and source_info.type == SqlObjectType.SET and isinstance(source_info.expression, list):
             # UPDATE .. SET a = 1: the right-hand side is the source, the left-hand column is the target
@@ -166,12 +166,18 @@ class Query:
                         exp.ColumnDef(this=exp.to_identifier(col.alias_or_name), kind=col.unalias().type)
                         for col in source_exprs
                     ]
+            elif target_info.type == SqlObjectType.TABLE and not target_exprs and source_info.type == SqlObjectType.SELECT:
+                # SELECT .. INTO <new table>: the new table's columns are the projections of the select
+                target_exprs = [
+                    exp.ColumnDef(this=exp.to_identifier(col.alias_or_name), kind=col.unalias().type)
+                    for col in source_exprs
+                ]
 
         source_info = dataclasses.replace(source_info, expressions=source_exprs) if source_info else None
         target_info = dataclasses.replace(target_info, expressions=target_exprs) if target_info else None
         return source_info, target_info
 
-    def _get_table_column_copies(self, table: exp.Table | exp.Var | exp.Schema) -> list[exp.Expr]:
+    def _get_table_column_copies(self, table: exp.Table | exp.Var | exp.Schema) -> list[exp.ColumnDef]:
         """
         Return copies of a table's columns, so that the object mapping is never aliased.
         """
