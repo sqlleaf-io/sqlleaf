@@ -22,6 +22,12 @@ class ExecuteQueryProperties:
         EXECUTE <name>(<arguments>);
         """
         expression_name = expr.expression.name
+        if dialect == "mysql":
+            # EXECUTE stmt_name [USING @var [, @var] ...]
+            name, _, using = expression_name.partition(" USING ")
+            arguments = sqlglot.parse_one(f"SELECT {using}", read=dialect).expressions if using else []
+            return cls(name=name, arguments=arguments)
+
         parsed = sqlglot.parse_one(expression_name, read=dialect)
 
         if isinstance(parsed, exp.Anonymous):

@@ -417,10 +417,38 @@ def substitute_execute_with_plan(
     logger.debug(f"Substituting EXECUTE query for plan '{execute_name}'")
 
     prepare_stmt = matched_prepare.source_info.expression
-    positional_map = {str(i + 1): arg for i, arg in enumerate(execute_arguments)}
-    result_expr = substitute_parameters(prepare_stmt.copy(), None, {}, positional_map)
+    if prepare_stmt.find(exp.Placeholder):
+        result_expr = _substitute_placeholders(prepare_stmt.copy(), execute_arguments, object_mapping)
+    else:
+        positional_map = {str(i + 1): arg for i, arg in enumerate(execute_arguments)}
+        result_expr = substitute_parameters(prepare_stmt.copy(), None, {}, positional_map)
 
     return [result_expr]
+
+
+def _substitute_placeholders(
+    statement: exp.Expr, arguments: list[exp.Expr], object_mapping: mappings.ObjectMapping
+) -> exp.Expr:
+    """
+    Replaces MySQL '?' placeholders, in order, with the values of the EXECUTE ... USING variables.
+    An undefined user variable is NULL in MySQL.
+
+    Example:
+        PREPARE stmt FROM 'SELECT name FROM source WHERE amount > ?';
+        SET @min = 10;
+        EXECUTE stmt USING @min;
+        ->
+        SELECT name FROM source WHERE amount > 10;
+    """
+    values = []
+    for argument in arguments:
+        value = object_mapping.variables.get_variable(argument.this.name, raise_on_missing=False)
+        values.append(value.copy() if value is not None else exp.Null())
+
+    for placeholder, value in zip(list(statement.find_all(exp.Placeholder)), values):
+        placeholder.replace(value)
+
+    return statement
 
 
 def substitute_execute(query: ExecuteQuery) -> list[exp.Expr]:
