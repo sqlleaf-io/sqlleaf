@@ -12,7 +12,7 @@ class AssignmentQuery(Query):
 
     def __init__(
         self,
-        expr: pgexp.PGDeclareItem | exp.PropertyEQ,
+        expr: pgexp.PGDeclareItem | exp.PropertyEQ | exp.Declare,
         dialect: str,
         object_mapping: mappings.ObjectMapping,
         statement_index: int,
@@ -28,10 +28,14 @@ class AssignmentQuery(Query):
 
     @property
     def is_declaration(self) -> bool:
-        return isinstance(self.statement, pgexp.PGDeclareItem)
+        return isinstance(self.statement, (pgexp.PGDeclareItem, exp.Declare))
 
     def get_key(self) -> exp.Expr:
+        if isinstance(self.statement, exp.Declare):
+            return self.statement.expressions[0].this[0].name
         return self.statement.this.name
 
     def get_value(self)-> exp.Expr | None:
+        if isinstance(self.statement, exp.Declare):
+            return self.statement.expressions[0].args.get("default") or exp.Null()
         return self.statement.args.get("expression") or self.statement.args.get("query") or exp.Null()
