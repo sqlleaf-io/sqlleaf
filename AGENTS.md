@@ -11,7 +11,13 @@ sqlleaf/
 ├── path.py              # Algorithms for graph traversal and lineage path discovery
 ├── typing.py            # Common type hints and enumerations
 ├── dialects/            # Custom parsers for SQL dialects
-│   └── plpgsql/         # A parser for the PL/pgSQL procedural dialect in Postgres (tokenizer, parser, generator, dialect, classes)
+│   ├── base.py          # BaseDialectSettings: registry of per-dialect settings (system columns and functions)
+│   ├── loader.py        # Loads system object DDL (tables, views, schemas) from each dialect's system_objects/ folder
+│   ├── athena/          # Athena dialect configuration
+│   ├── mysql/           # MySQL dialect configuration
+│   ├── postgres/        # Postgres dialect configuration
+│   ├── plpgsql/         # A parser for the PL/pgSQL procedural dialect in Postgres (tokenizer, parser, generator, dialect, classes)
+│   └── redshift/        # Redshift dialect configuration
 ├── models/              # Data models and state containers
 │   ├── context.py       # GeneratorContext and PositionContext for AST traversal
 │   ├── hook.py          # Hooks for injecting custom behavior into the processing pipeline
@@ -32,18 +38,17 @@ sqlleaf/
 │   │       └── athena.py
 │   ├── transformer/     # AST normalization and simplification
 │   │   ├── transformer.py       # Entry point: transform_query()
-│   │   ├── insert.py, update.py, merge.py, delete.py, ctas.py, copy.py, ...  # Per-query-type transformer modules
+│   │   ├── assignment.py, base.py, call.py, case.py, copy.py, ctas.py, delete.py, execute.py, execute_dynamic.py,
+│   │   │   for_in.py, insert.py, merge.py, multitable_insert.py, open.py, prepare.py, replace.py, unload.py, update.py,
+│   │   │   values.py  # Per-query-type transformer modules
 │   │   └── expressions/ # Expression-level transformations
 │   │       ├── values.py
 │   │       ├── row.py
 │   │       ├── format.py
-│   │       └── functional_notation.py
+│   │       ├── functional_notation.py
+│   │       └── operator.py
 │   └── substitutor/     # Parameter/placeholder substitution logic
 │       └── substitute.py
-├── settings/            # Dialect-specific configuration and behavior settings
-│   ├── base.py
-│   ├── postgres.py
-│   └── athena.py
 └── util/                # Core utility functions
     ├── expression.py    # SQL expression manipulation utilities
     ├── graph.py         # networkx graph operations
@@ -100,7 +105,7 @@ There are several execution paths that are taken during lineage generation accor
 Method (1) calls (2) for each expression level ("Scope") it yields before it traverses into the next Scope.
 
 # General guidance
-Tools to help with coding and troubleshooting while using `sqglot`:
+Tools to help with coding and troubleshooting while using `sqlglot`:
 
 ## Convert an expression to SQL
 `expression.sql(dialect="postgres")`
