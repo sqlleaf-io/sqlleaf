@@ -60,9 +60,13 @@ def _classify_command(stmt: exp.Command, dialect: str) -> tuple[str, bool]:
     if dialect in ["athena", "redshift"] and stmt.name == "UNLOAD":
         return "unload", True
     if dialect == "postgres" and stmt.name == "PREPARE":
-        return "prepare", _is_prepare_supported(stmt)
+        return "prepare", _is_postgres_prepare_supported(stmt)
+    if dialect == "mysql" and stmt.name == "PREPARE":
+        return "prepare", _is_mysql_prepare_supported(stmt)
     if dialect == "postgres" and stmt.name == "EXECUTE":
-        return "execute", _is_execute_supported(stmt)
+        return "execute", _is_postgres_execute_supported(stmt)
+    if dialect == "mysql" and stmt.name == "EXECUTE":
+        return "execute", _is_mysql_execute_supported(stmt)
     if dialect == "postgres" and stmt.this.upper() == "SET" and _is_search_path_command(stmt):
         return "set", True
     if dialect == "postgres" and stmt.this.upper() == "RESET" and _is_reset_search_path_command(stmt):
@@ -94,7 +98,7 @@ def _is_reset_search_path_command(stmt: exp.Command) -> bool:
     return bool(tokens) and tokens[0].text.lower() == "search_path"
 
 
-def _is_prepare_supported(stmt: exp.Command) -> bool:
+def _is_postgres_prepare_supported(stmt: exp.Command) -> bool:
     """
     Check if a PREPARE statement for Postgres is supported.
     Syntax: PREPARE name AS statement
@@ -119,7 +123,42 @@ def _is_prepare_supported(stmt: exp.Command) -> bool:
     return True
 
 
-def _is_execute_supported(stmt: exp.Command) -> bool:
+def _is_mysql_prepare_supported(stmt: exp.Command) -> bool:
+    """
+    Check if a PREPARE statement for MySQL is supported.
+    Syntax: PREPARE stmt_name FROM preparable_stmt
+    Only a quoted string holding the statement is supported, not a user variable (e.g. @sql).
+    """
+    tokens = sqlglot.tokenize(stmt.expression.name, dialect="mysql")
+
+    if len(tokens) != 3 or tokens[1].token_type != TokenType.FROM:
+        return False
+
+    return tokens[2].token_type == TokenType.STRING
+
+
+def _is_mysql_execute_supported(stmt: exp.Command) -> bool:
+    """
+    Check if an EXECUTE statement for MySQL is supported.
+    Syntax: EXECUTE stmt_name [USING @var_name [, @var_name] ...]
+    The name is a single VAR token, optionally followed by USING and a list of PARAMETER VAR pairs.
+    """
+    tokens = sqlglot.tokenize(stmt.expression.name, dialect="mysql")
+
+    if len(tokens) == 1:
+        return tokens[0].token_type == TokenType.VAR
+    if len(tokens) < 3 or tokens[0].token_type != TokenType.VAR or tokens[1].token_type != TokenType.USING:
+        return False
+
+    # Arguments repeat as '@', 'name', ',' (the comma is only between arguments)
+    argument_types = [token.token_type for token in tokens[2:]]
+    pattern = [TokenType.PARAMETER, TokenType.VAR, TokenType.COMMA]
+    return len(argument_types) % 3 == 2 and all(
+        token_type == pattern[i % 3] for i, token_type in enumerate(argument_types)
+    )
+
+
+def _is_postgres_execute_supported(stmt: exp.Command) -> bool:
     """
     Check if an EXECUTE statement for Postgres is supported.
     Syntax: EXECUTE name [ ( parameter [, ...] ) ]

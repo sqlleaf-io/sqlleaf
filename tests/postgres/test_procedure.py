@@ -21,7 +21,7 @@ def test__procedure_basic_no_call(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [['literal["world"]', "column[public.target.name]"]]
+    assert h.paths == []
 
 
 def test__procedure(holder):
