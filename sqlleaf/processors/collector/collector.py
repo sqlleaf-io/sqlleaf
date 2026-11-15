@@ -441,6 +441,7 @@ _UNNAMED_TYPE_MAP: dict[type, type] = {
     pgexp.PGExecute: ExecuteDynamicQuery,
     pgexp.PGLoop: LoopQuery,
     exp.PropertyEQ: AssignmentQuery,
+    exp.Declare: AssignmentQuery,
     exp.WhileBlock: WhileQuery,
 }
 
