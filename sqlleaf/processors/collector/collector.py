@@ -422,6 +422,7 @@ _UNNAMED_TYPE_MAP: dict[type, type] = {
     exp.MultitableInserts: MultitableInsertQuery,
     exp.Delete: DeleteQuery,
     exp.Select: SelectQuery,
+    exp.Union: SelectQuery,
     exp.Copy: CopyQuery,
     exp.Values: ValuesQuery,
     exp.Put: PutQuery,

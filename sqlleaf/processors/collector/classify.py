@@ -23,6 +23,10 @@ def _determine_query_kind(statement: exp.Expr, dialect: str) -> tuple[exp.Expr, 
     """
     Determine a query's "kind" from the expression, which maps to how it will be processed.
     """
+    if isinstance(statement, exp.Subquery):
+        # A parenthesised top-level query, e.g. '(SELECT ...)', '(TABLE t)' or '(VALUES ...)'
+        statement = statement.unnest()
+
     if statement.key == "create" and isinstance(statement, exp.Create):
         if statement.kind == "TABLE":
             if is_ctas_expression(statement.expression) or statement.find(exp.ExecuteAsProperty):
