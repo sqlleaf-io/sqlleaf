@@ -37,7 +37,9 @@ class UserDefinedFunctionParameters:
         inner_statements = []
 
         if body_expr:
-            inner_statements = util.iter_inner_statements(body_expr, object_mapping.dialect, wrap=True)
+            inner_statements = _convert_return_statements(
+                util.iter_inner_statements(body_expr, object_mapping.dialect, wrap=True)
+            )
 
         return cls(
             schema_name=schema_name,
@@ -48,6 +50,22 @@ class UserDefinedFunctionParameters:
             return_columns=return_columns,
             inner_statements=inner_statements,
         )
+
+
+def _convert_return_statements(statements: list[exp.Expr]) -> list[exp.Expr]:
+    """
+    MySQL parses `RETURN x` inside a function body as an alias on a column named RETURN, followed by an end marker.
+    Convert the return into a SELECT of the returned value and drop the end marker.
+    """
+    converted = []
+    for stmt in statements:
+        if isinstance(stmt, exp.EndStatement):
+            continue
+        if isinstance(stmt, exp.Alias) and isinstance(stmt.this, exp.Column) and stmt.this.name.upper() == "RETURN":
+            converted.append(exp.select(exp.column(stmt.alias)))
+        else:
+            converted.append(stmt)
+    return converted
 
 
 class UserDefinedFunctionQuery(Query):
