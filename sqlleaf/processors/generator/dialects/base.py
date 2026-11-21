@@ -14,7 +14,6 @@ from sqlleaf.models.context import GeneratorContext, PositionContext
 from sqlleaf.models.hook import Hook
 from sqlleaf.models.node import (
     ColumnNode,
-    CounterNode,
     DynamoDbNode,
     FileColumnNode,
     FunctionNode,
@@ -24,6 +23,7 @@ from sqlleaf.models.node import (
     N,
     NullNode,
     ProgramNode,
+    SeriesNode,
     StageColumnNode,
     StarNode,
     StreamNode,
@@ -137,7 +137,7 @@ class BaseGenerator:
             # creation of B; thus we set A is the previous node and C as the next, resulting in the path [A -> C].
             parent = gen_ctx.child_node
 
-        if parent.kind in ["function", "udf"]:
+        if parent.kind in ["function", "udf", "series"]:
             pos_ctx = pos_ctx.replace(function_depth=pos_ctx.function_depth + 1)
 
         for grand_expr in grandparents:
@@ -163,6 +163,20 @@ class BaseGenerator:
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
         grandparents = util.get_function_args(expr=expr)
+        yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
+
+    @process.register
+    def process_generate_series(
+        self, expr: exp.GenerateSeries, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
+        """
+        SELECT d FROM UNNEST(SEQUENCE(DATE '2026-11-01', DATE '2026-11-21', INTERVAL '1' DAY)) AS t(d)
+        SELECT * FROM GENERATE_SERIES(1, 3)
+        """
+        parent = self.create_node(SeriesNode().with_context(gen_ctx).with_positions(pos_ctx))
+        yield EdgeToCreate(parent, gen_ctx.child_node)
+
+        grandparents = [expr.args[key] for key in ("start", "end", "step") if expr.args.get(key)]
         yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
 
     @process.register
@@ -202,14 +216,12 @@ class BaseGenerator:
         """
         SELECT ROW_NUMBER() OVER (ORDER BY name DESC) AS amount
         """
-        if isinstance(expr.this, exp.IgnoreNulls):
-            # IGNORE NULLS
-            grandparents = [expr.this.this.this]
-            yield from self.do_grandparents(grandparents, gen_ctx.child_node, gen_ctx, pos_ctx)
-            return
-
         parent = self.create_node(WindowNode().with_context(gen_ctx).with_positions(pos_ctx))
         yield EdgeToCreate(parent, gen_ctx.child_node)
+
+        func = expr.this.this if isinstance(expr.this, exp.IgnoreNulls) else expr.this
+        grandparents = util.get_function_args(expr=func)
+        yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
 
     @process.register(exp.Literal)
     @process.register(exp.Boolean)
@@ -442,9 +454,9 @@ class BaseGenerator:
             yield EdgeToCreate(maybe_parent, gen_ctx.child_node)
 
             if parent.is_ordinality_column():
-                # The WITH ORDINALITY column has no source other than a counter
-                counter = self.create_node(CounterNode().with_context(gen_ctx).with_positions(pos_ctx))
-                yield EdgeToCreate(counter, maybe_parent)
+                # The WITH ORDINALITY column has no source other than a series
+                series = self.create_node(SeriesNode().with_context(gen_ctx).with_positions(pos_ctx))
+                yield EdgeToCreate(series, maybe_parent)
                 return
 
         source = parent.source_scope

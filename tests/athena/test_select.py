@@ -181,7 +181,10 @@ def test__select_iceberg_metadata_field_files(holder):
 
     assert h.paths == [
         ["column[awsdatacatalog.dbname.iceberg_table$files.file_path]", "column[awsdatacatalog.default.target.f_path]"],
-        ["column[awsdatacatalog.dbname.iceberg_table$files.record_count]", "column[awsdatacatalog.default.target.r_count]"],
+        [
+            "column[awsdatacatalog.dbname.iceberg_table$files.record_count]",
+            "column[awsdatacatalog.default.target.r_count]",
+        ],
     ]
     assert h.nodes_full == [
         "column[name=file_path type=VARCHAR properties=[kind=table table=iceberg_table schema=dbname catalog=awsdatacatalog metadata=$files]]",
@@ -200,7 +203,9 @@ def test__select_iceberg_metadata_field_manifests(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[awsdatacatalog.dbname.iceberg_table$manifests.path]", "column[awsdatacatalog.default.target.path]"]]
+    assert h.paths == [
+        ["column[awsdatacatalog.dbname.iceberg_table$manifests.path]", "column[awsdatacatalog.default.target.path]"]
+    ]
 
 
 def test__select_iceberg_metadata_field_history(holder):
@@ -213,7 +218,10 @@ def test__select_iceberg_metadata_field_history(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[awsdatacatalog.dbname.iceberg_table$history.snapshot_id]", "column[awsdatacatalog.default.target.snapshot_id]"]
+        [
+            "column[awsdatacatalog.dbname.iceberg_table$history.snapshot_id]",
+            "column[awsdatacatalog.default.target.snapshot_id]",
+        ]
     ]
 
 
@@ -227,7 +235,10 @@ def test__select_iceberg_metadata_field_partitions(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[awsdatacatalog.dbname.iceberg_table$partitions.record_count]", "column[awsdatacatalog.default.target.record_count]"]
+        [
+            "column[awsdatacatalog.dbname.iceberg_table$partitions.record_count]",
+            "column[awsdatacatalog.default.target.record_count]",
+        ]
     ]
 
 
@@ -240,7 +251,12 @@ def test__select_iceberg_metadata_field_snapshots(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[awsdatacatalog.dbname.iceberg_table$snapshots.operation]", "column[awsdatacatalog.default.target.operation]"]]
+    assert h.paths == [
+        [
+            "column[awsdatacatalog.dbname.iceberg_table$snapshots.operation]",
+            "column[awsdatacatalog.default.target.operation]",
+        ]
+    ]
 
 
 def test__select_iceberg_metadata_field_refs(holder):
@@ -252,7 +268,9 @@ def test__select_iceberg_metadata_field_refs(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[awsdatacatalog.dbname.iceberg_table$refs.name]", "column[awsdatacatalog.default.target.name]"]]
+    assert h.paths == [
+        ["column[awsdatacatalog.dbname.iceberg_table$refs.name]", "column[awsdatacatalog.default.target.name]"]
+    ]
 
 
 def test__select_transform_lambda(holder):
@@ -266,7 +284,12 @@ def test__select_transform_lambda(holder):
 
     assert h.paths == [
         ["literal[2]", "function[MUL]", "function[TRANSFORM]", "column[awsdatacatalog.default.target.doubled]"],
-        ["literal[{1,2,3}]", "column[t.numbers]", "function[TRANSFORM]", "column[awsdatacatalog.default.target.doubled]"],
+        [
+            "literal[{1,2,3}]",
+            "column[t.numbers]",
+            "function[TRANSFORM]",
+            "column[awsdatacatalog.default.target.doubled]",
+        ],
     ]
     assert len(h.edges) == 5
 
@@ -287,7 +310,7 @@ def test__select_unnest_with_ordinality(holder):
             "column[t.item]",
             "column[awsdatacatalog.default.target.item]",
         ],
-        ["counter[]", "column[t.idx]", "column[awsdatacatalog.default.target.idx]"],
+        ["series[]", "column[t.idx]", "column[awsdatacatalog.default.target.idx]"],
     ]
     assert len(h.edges) == 5
 
@@ -345,7 +368,11 @@ def test__select_array_sort_lambda(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[awsdatacatalog.default.source.name]", "function[ARRAY_SORT]", "column[awsdatacatalog.default.target.name]"],
+        [
+            "column[awsdatacatalog.default.source.name]",
+            "function[ARRAY_SORT]",
+            "column[awsdatacatalog.default.target.name]",
+        ],
         ["literal[0]", "function[ARRAY_SORT]", "column[awsdatacatalog.default.target.name]"],
         ["literal[1]", "function[ARRAY_SORT]", "column[awsdatacatalog.default.target.name]"],
         ["literal[-1]", "function[ARRAY_SORT]", "column[awsdatacatalog.default.target.name]"],
@@ -364,9 +391,13 @@ def test__select_last_value_ignore_nulls(holder):
 
     assert h.paths == [
         ["column[awsdatacatalog.default.source.ts]", "column[awsdatacatalog.default.target.ts]"],
-        ["column[awsdatacatalog.default.source.age]", "column[awsdatacatalog.default.target.age]"],
+        [
+            "column[awsdatacatalog.default.source.age]",
+            "window[LAST_VALUE]",
+            "column[awsdatacatalog.default.target.age]",
+        ],
     ]
-    assert len(h.edges) == 2
+    assert len(h.edges) == 3
 
 
 def test__select_unnest_sequence_dates(holder):
@@ -381,7 +412,7 @@ def test__select_unnest_sequence_dates(holder):
         [
             'literal["2026-11-01"]',
             "function[CAST]",
-            "function[SEQUENCE]",
+            "series[]",
             "function[UNNEST]",
             "column[t.d]",
             "column[awsdatacatalog.default.target.calendar_day]",
@@ -389,20 +420,107 @@ def test__select_unnest_sequence_dates(holder):
         [
             'literal["2026-11-21"]',
             "function[CAST]",
-            "function[SEQUENCE]",
+            "series[]",
             "function[UNNEST]",
             "column[t.d]",
             "column[awsdatacatalog.default.target.calendar_day]",
         ],
         [
             'interval["1 DAY"]',
-            "function[SEQUENCE]",
+            "series[]",
             "function[UNNEST]",
             "column[t.d]",
             "column[awsdatacatalog.default.target.calendar_day]",
         ],
     ]
     assert len(h.edges) == 8
+
+
+def test__select_extract_timezone_hour(holder):
+    sql = """
+    CREATE TABLE target (tz INTEGER);
+    INSERT INTO target (tz) SELECT EXTRACT(TIMEZONE_HOUR FROM TIMESTAMP '2020-05-10 12:34:56 +08:35') AS tz;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["var[TIMEZONE_HOUR]", "function[EXTRACT]", "column[awsdatacatalog.default.target.tz]"],
+        [
+            'literal["2020-05-10 12:34:56 +08:35"]',
+            "function[CAST]",
+            "function[EXTRACT]",
+            "column[awsdatacatalog.default.target.tz]",
+        ],
+    ]
+    assert len(h.edges) == 4
+
+
+def test__select_concat_ws(holder):
+    sql = """
+    CREATE TABLE source (name VARCHAR, kind VARCHAR);
+    CREATE TABLE target (name VARCHAR);
+    INSERT INTO target (name) SELECT CONCAT_WS('-', name, kind) AS name FROM source;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal["-"]', "function[CONCAT_WS]", "column[awsdatacatalog.default.target.name]"],
+        [
+            "column[awsdatacatalog.default.source.name]",
+            "function[CONCAT_WS]",
+            "column[awsdatacatalog.default.target.name]",
+        ],
+        [
+            "column[awsdatacatalog.default.source.kind]",
+            "function[CONCAT_WS]",
+            "column[awsdatacatalog.default.target.name]",
+        ],
+    ]
+    assert len(h.edges) == 4
+
+
+def test__select_array_agg_groups_window(holder):
+    sql = """
+    CREATE TABLE target (arr ARRAY(INTEGER));
+    INSERT INTO target (arr)
+    SELECT array_agg(a) OVER(ORDER BY a ASC NULLS FIRST GROUPS BETWEEN 1 PRECEDING AND 2 FOLLOWING) AS arr
+    FROM (VALUES 3, 3, 2, null) T(a);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["literal[3]", "column[t.a]", "window[ARRAY_AGG]", "column[awsdatacatalog.default.target.arr]"],
+        ["literal[3]", "column[t.a]", "window[ARRAY_AGG]", "column[awsdatacatalog.default.target.arr]"],
+        ["literal[2]", "column[t.a]", "window[ARRAY_AGG]", "column[awsdatacatalog.default.target.arr]"],
+        ["null[NULL]", "column[t.a]", "window[ARRAY_AGG]", "column[awsdatacatalog.default.target.arr]"],
+    ]
+    assert len(h.edges) == 6
+
+
+def test__select_lag_window(holder):
+    sql = """
+    CREATE TABLE source (age INTEGER);
+    CREATE TABLE target (age INTEGER);
+    INSERT INTO target (age) SELECT LAG(age) OVER (ORDER BY age) AS age FROM source;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[awsdatacatalog.default.source.age]", "window[LAG]", "column[awsdatacatalog.default.target.age]"],
+    ]
+    assert len(h.edges) == 2
+
+
+def test__select_rank_window(holder):
+    sql = """
+    CREATE TABLE source (name VARCHAR);
+    CREATE TABLE target (r BIGINT);
+    INSERT INTO target (r) SELECT RANK() OVER (ORDER BY name) AS r FROM source;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [["window[RANK]", "column[awsdatacatalog.default.target.r]"]]
+    assert len(h.edges) == 1
 
 
 # TODO: MATCH_RECOGNIZE()

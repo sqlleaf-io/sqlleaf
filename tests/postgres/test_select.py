@@ -402,10 +402,10 @@ def test__select_rows_from(holder):
     """
     h = holder(sql=sql, dialect=DIALECT, with_tables=True)
     assert h.nodes_full == [
+        "series[position[query_depth=0 query_width=0 statement=0 select=3 func_depth=0 func_arg=0]]",
         'literal[name="[{"a":40,"b":"foo"}]" type=VARCHAR position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=1 func_arg=0]]',
         "literal[name=1 type=INT position=[query_depth=0 query_width=0 statement=0 select=3 func_depth=1 func_arg=0]]",
         "literal[name=3 type=INT position=[query_depth=0 query_width=0 statement=0 select=3 func_depth=1 func_arg=1]]",
-        "function[name=GENERATE_SERIES type=UNKNOWN position=[query_depth=0 query_width=0 statement=0 select=3 func_depth=0 func_arg=0]]",
         "function[name=UNNEST type=VARCHAR position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]",
         "column[name=a type=INT properties=[kind=derived_table statement=0]]",
         "column[name=b type=TEXT properties=[kind=derived_table statement=0]]",
@@ -451,8 +451,8 @@ def test__select_rows_from(holder):
             "column[x.kind]",
             "column[fruit.processed.kind]",
         ],
-        ["literal[1]", "function[GENERATE_SERIES]", "column[x.amount]", "column[fruit.processed.amount]"],
-        ["literal[3]", "function[GENERATE_SERIES]", "column[x.amount]", "column[fruit.processed.amount]"],
+        ["literal[1]", "series[]", "column[x.amount]", "column[fruit.processed.amount]"],
+        ["literal[3]", "series[]", "column[x.amount]", "column[fruit.processed.amount]"],
     ]
     assert len(h.nodes) == 17
     assert len(h.edges) == 15

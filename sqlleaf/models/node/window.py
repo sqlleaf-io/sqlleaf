@@ -13,7 +13,9 @@ class WindowNode(NodeAttributes):
     KIND = NodeKind.WINDOW
 
     def with_context(self, gen_ctx: GeneratorContext) -> t.Self:
-        expr = t.cast(exp.Window, gen_ctx.expr.this)
+        expr = gen_ctx.expr.this
+        if isinstance(expr, exp.IgnoreNulls):
+            expr = expr.this
         self.name = util.calculate_function_name(expr, gen_ctx.query.dialect)
 
         return super().with_context(gen_ctx)

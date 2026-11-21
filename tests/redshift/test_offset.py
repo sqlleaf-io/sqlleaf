@@ -19,7 +19,7 @@ def test_offset(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.nodes == [
-        "counter[]",
+        "series[]",
         "function[UNNEST]",
         "column[s.tags]",
         "column[tag.off]",
@@ -29,5 +29,5 @@ def test_offset(holder):
     ]
     assert h.paths == [
         ["column[s.tags]", "function[UNNEST]", "column[tag.tag]", "column[target.name]"],
-        ["counter[]", "column[tag.off]", "column[target.pos]"],
+        ["series[]", "column[tag.off]", "column[target.pos]"],
     ]

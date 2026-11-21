@@ -4,7 +4,6 @@ from enum import StrEnum, auto
 
 class NodeKind(StrEnum):
     COLUMN = auto()
-    COUNTER = auto()
     DYNAMODB = auto()
     FUNCTION = auto()
     INTERVAL = auto()
@@ -15,6 +14,7 @@ class NodeKind(StrEnum):
     UNPIVOT = auto()
     PROGRAM = auto()
     SEQUENCE = auto()
+    SERIES = auto()
     STAR = auto()
     STREAM = auto()
     UDF = auto()
@@ -30,7 +30,6 @@ from sqlleaf.models.node.base import NodeAttributes as NodeAttributes
 from sqlleaf.models.node.column import ColumnNode as ColumnNode
 from sqlleaf.models.node.column import FileColumnNode as FileColumnNode
 from sqlleaf.models.node.column import StageColumnNode as StageColumnNode
-from sqlleaf.models.node.counter import CounterNode as CounterNode
 from sqlleaf.models.node.dynamodb import DynamoDbNode as DynamoDbNode
 from sqlleaf.models.node.function import FunctionNode as FunctionNode
 from sqlleaf.models.node.interval import IntervalNode as IntervalNode
@@ -41,6 +40,7 @@ from sqlleaf.models.node.pivot import PivotNode as PivotNode
 from sqlleaf.models.node.pivot import UnpivotNode as UnpivotNode
 from sqlleaf.models.node.program import ProgramNode as ProgramNode
 from sqlleaf.models.node.sequence import SequenceNode as SequenceNode
+from sqlleaf.models.node.series import SeriesNode as SeriesNode
 from sqlleaf.models.node.star import StarNode as StarNode
 from sqlleaf.models.node.stream import StreamNode as StreamNode
 from sqlleaf.models.node.user_defined_function import UserDefinedFunctionNode as UserDefinedFunctionNode

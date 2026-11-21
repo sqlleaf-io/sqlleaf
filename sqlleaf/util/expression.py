@@ -51,7 +51,7 @@ def calculate_function_name(expr: exp.Expr, dialect: str) -> str:
     try:
         # Get the name without its parameters
         name = expr.__class__().sql(dialect=dialect)
-    except TypeError, AttributeError:
+    except (TypeError, AttributeError, ValueError):
         # Some classes can't be converted to SQL using this method (e.g. CONCAT() in Postgres)
         name = expr.__class__().sql()
         if not name:

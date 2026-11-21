@@ -18,7 +18,7 @@ def test__ordinality_counter_source(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.nodes_full == [
-        "counter[position[query_depth=0 query_width=0 statement=1 select=1 func_depth=0 func_arg=0]]",
+        "series[position[query_depth=0 query_width=0 statement=1 select=1 func_depth=0 func_arg=0]]",
         "function[name=UNNEST type=VARCHAR position=[query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]",
         "literal[name={'a'} type=ARRAY<VARCHAR> position=[query_depth=0 query_width=0 statement=1 select=0 func_depth=1 func_arg=0]]",
         "column[name=age type=BIGINT properties=[kind=udtf table=src]]",
@@ -28,7 +28,7 @@ def test__ordinality_counter_source(holder):
     ]
     assert h.paths == [
         ["literal[{'a'}]", "function[UNNEST]", "column[src.name]", "column[public.target.name]"],
-        ["counter[]", "column[src.age]", "column[public.target.age]"],
+        ["series[]", "column[src.age]", "column[public.target.age]"],
     ]
 
 
@@ -46,8 +46,8 @@ def test__ordinality_counter_unique_per_query(holder):
 
     # TODO: table alias columns should have positions to make them unique
     assert h.nodes == [
-        "counter[]",
-        "counter[]",
+        "series[]",
+        "series[]",
         "function[UNNEST]",
         "function[UNNEST]",
         "literal[{'a'}]",
@@ -60,12 +60,12 @@ def test__ordinality_counter_unique_per_query(holder):
     assert h.paths == [
         ["literal[{'a'}]", "function[UNNEST]", "column[src.name]", "column[public.target.name]"],
         ["literal[{'a'}]", "function[UNNEST]", "column[src.name]", "column[public.target.name]"],
-        ["counter[]", "column[src.age]", "column[public.target.age]"],
-        ["counter[]", "column[src.age]", "column[public.target.age]"],
+        ["series[]", "column[src.age]", "column[public.target.age]"],
+        ["series[]", "column[src.age]", "column[public.target.age]"],
         ["literal[{'b'}]", "function[UNNEST]", "column[src.name]", "column[public.target.name]"],
         ["literal[{'b'}]", "function[UNNEST]", "column[src.name]", "column[public.target.name]"],
-        ["counter[]", "column[src.age]", "column[public.target.age]"],
-        ["counter[]", "column[src.age]", "column[public.target.age]"],
+        ["series[]", "column[src.age]", "column[public.target.age]"],
+        ["series[]", "column[src.age]", "column[public.target.age]"],
     ]
 
 
@@ -80,7 +80,7 @@ def test__ordinality_lateral_counter_source(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.nodes == [
-        "counter[]",
+        "series[]",
         "function[UNNEST]",
         "column[x.n]",
         "column[x.tag]",
@@ -93,7 +93,7 @@ def test__ordinality_lateral_counter_source(holder):
     assert h.paths == [
         ["column[public.source.id]", "column[public.target.id]"],
         ["column[public.source.tags]", "function[UNNEST]", "column[x.tag]", "column[public.target.tag]"],
-        ["counter[]", "column[x.n]", "column[public.target.pos]"],
+        ["series[]", "column[x.n]", "column[public.target.pos]"],
     ]
 
 
@@ -107,7 +107,7 @@ def test__ordinality_non_ordinal_column_has_no_counter(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.nodes == [
-        "counter[]",
+        "series[]",
         "function[UNNEST]",
         "literal[{'a'}]",
         "column[src.age]",
@@ -117,5 +117,5 @@ def test__ordinality_non_ordinal_column_has_no_counter(holder):
     ]
     assert h.paths == [
         ["literal[{'a'}]", "function[UNNEST]", "column[src.name]", "column[public.target.name]"],
-        ["counter[]", "column[src.age]", "column[public.target.age]"],
+        ["series[]", "column[src.age]", "column[public.target.age]"],
     ]
