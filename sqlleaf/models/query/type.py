@@ -17,6 +17,10 @@ class TypeQuery(Query):
     ):
         source = None
         target = util.get_table(expr)
+        if not target.db and object_mapping.current_user_schema:
+            # Set the schema as the currently selected one
+            default_schema = object_mapping.get_current_schema(expr)
+            target.set("db", exp.to_identifier(default_schema))
 
         target_type = self._determine_expression_type(target, dialect)
 

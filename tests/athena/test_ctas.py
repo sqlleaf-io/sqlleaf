@@ -22,9 +22,9 @@ def test__ctas(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
     statements = [h.holders[1].transformed.statement]
-    assert to_sql(statements, dialect=DIALECT) == ["CREATE TABLE awsdatacatalog.target WITH (format='Parquet') AS SELECT source.name AS name FROM awsdatacatalog.source AS source"]
+    assert to_sql(statements, dialect=DIALECT) == ["CREATE TABLE awsdatacatalog.default.target WITH (format='Parquet') AS SELECT source.name AS name FROM awsdatacatalog.default.source AS source"]
 
-    assert h.paths == [["column[awsdatacatalog.source.name]", "column[awsdatacatalog.target.name]"]]
+    assert h.paths == [["column[awsdatacatalog.default.source.name]", "column[awsdatacatalog.default.target.name]"]]
 
 
 def test__ctas_external_location_valid(holder):

@@ -16,7 +16,7 @@ def test__use(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [UseQuery] == h.query_types
-    assert h.lineage.object_mapping.current_database == "sales"
+    assert h.lineage.object_mapping.current_user_schema == "sales"
 
 
 def test__use_qualifies_unqualified_tables(holder):

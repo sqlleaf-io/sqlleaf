@@ -117,18 +117,18 @@ class PostgresGenerator(BaseGenerator):
         SELECT my.func() or SELECT nextval('my_sequence')
         """
         seq_name_expr: exp.Literal = expr.args["expressions"][0]
-        schema, function = util.get_udf_name(expr)
-        full_name = ".".join([schema, function])
+        # The transformer has already qualified the name, e.g. 'pg_temp.my_seq'
+        seq_schema, _, seq_name = seq_name_expr.name.rpartition(".")
 
         # Ensure the sequence exists
-        seq_table = exp.table_(table=seq_name_expr.name, db=schema)
+        seq_table = exp.table_(table=seq_name, db=seq_schema)
         seq_query = gen_ctx.query.object_mapping.lookup_sequence_query(table=seq_table)
         if not seq_query:
-            raise exception.MappingError(f"Sequence '{full_name}' not found.")
+            raise exception.MappingError(f"Sequence '{seq_name_expr.name}' not found.")
 
-        subkind = seq_query.property if seq_query else ""
+        subkind = seq_query.property
         gen_ctx = gen_ctx.replace(new_data_type=exp.DataType.build("INT"))
-        parent = SequenceNode(name=seq_name_expr.name, subkind=subkind).with_context(gen_ctx).with_positions(pos_ctx)
+        parent = SequenceNode(name=seq_name, subkind=subkind).with_context(gen_ctx).with_positions(pos_ctx)
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
     @process.register

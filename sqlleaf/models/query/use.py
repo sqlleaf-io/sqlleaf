@@ -23,4 +23,4 @@ class UseQuery(Query):
             skip_type_annotation=True,
         )
 
-        self.object_mapping.current_database = expr.this.name
+        self.object_mapping.current_user_schema = expr.this.name

@@ -24,7 +24,7 @@ class ResetQuery(Query):
             skip_type_annotation=True,
         )
 
-        self.reset_catalog()
+        self.reset_schema()
 
-    def reset_catalog(self) -> None:
-        self.object_mapping.current_user_catalog = DialectConfig(self.dialect).DEFAULT_USER_CATALOG
+    def reset_schema(self) -> None:
+        self.object_mapping.current_user_schema = DialectConfig(self.dialect).DEFAULT_USER_SCHEMA

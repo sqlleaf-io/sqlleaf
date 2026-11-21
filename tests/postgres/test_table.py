@@ -92,6 +92,40 @@ def test__table_no_schema_adds_default_schema(holder):
     assert h.queries_transformed[0].statement.sql() == "CREATE TABLE public.new"
 
 
+def test__table_temporary_no_schema_adds_pg_temp_schema(holder):
+    sql = """
+    CREATE TEMPORARY TABLE new (age INT);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.queries_transformed[0].statement.sql() == "CREATE TEMPORARY TABLE pg_temp.new (age INT)"
+    assert h.lineage.object_mapping.lookup_table_query(exp.table_("new", db="pg_temp")) is not None
+
+
+def test__table_temporary_unqualified_reference_resolves_to_pg_temp(holder):
+    sql = """
+    CREATE TEMPORARY TABLE src (age INT);
+    CREATE TABLE out_t (age INT);
+
+    INSERT INTO out_t (age) SELECT age FROM src;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [["column[pg_temp.src.age]", "column[public.out_t.age]"]]
+
+
+def test__table_temporary_cte_shadows_temporary_table(holder):
+    sql = """
+    CREATE TEMPORARY TABLE src (age INT);
+    CREATE TABLE out_t (age INT);
+
+    INSERT INTO out_t (age) WITH src AS (SELECT 1 AS age) SELECT age FROM src;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert all("pg_temp.src" not in n for n in h.nodes_full)
+
+
 def test__table_like_table(holder):
     sql = """
     CREATE TABLE fruit.a (

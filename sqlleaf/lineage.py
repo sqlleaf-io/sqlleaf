@@ -209,7 +209,7 @@ class Lineage:
             ├── literal[2]
             └── literal[4]
         """
-        g = self.graph.reverse()  # We print from the leaves to the roots
+        g = self.graph.reverse(copy=False)  # We print from the leaves to the roots
         root_columns = util.get_root_nodes(g)
         seen = set()
         symbol = "└──"

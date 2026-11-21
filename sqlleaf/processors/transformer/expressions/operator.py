@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlglot import exp, parse_one
 
 
-def simplify_operators(statement: exp.Expr, dialect: str, catalog: str) -> None:
+def simplify_operators(statement: exp.Expr, dialect: str, schema: str) -> None:
     """
     Replace `OPERATOR(pg_catalog.<op>)` with the plain `<op>` operator.
 
@@ -14,13 +14,13 @@ def simplify_operators(statement: exp.Expr, dialect: str, catalog: str) -> None:
     """
     # Process innermost operators first, so that operands are already unwrapped when their parent is rebuilt
     if dialect == "postgres":
-        catalog_prefix = f"{catalog}."
+        schema_prefix = f"{schema}."
         for operator in reversed(list(statement.find_all(exp.Operator))):
             name = operator.args["operator"]
-            if not name.startswith(catalog_prefix):
+            if not name.startswith(schema_prefix):
                 continue
 
-            symbol = name.removeprefix(catalog_prefix)
+            symbol = name.removeprefix(schema_prefix)
             template = parse_one(f"l {symbol} r", read=dialect)
             template.this.replace(operator.this)
             template.expression.replace(operator.expression)

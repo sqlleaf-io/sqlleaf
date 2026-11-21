@@ -30,6 +30,7 @@ EXCLUDE_OPTIMIZER_RULES = [
     "eliminate_subqueries",  # Preserve subqueries
 ]
 LOG_TRANSFORMATIONS = True
+SEQUENCE_FUNCTIONS = ["nextval", "currval", "setval"]
 
 
 class BaseQueryTransformer:
@@ -109,7 +110,7 @@ class BaseQueryTransformer:
             where_expr.pop()
 
         simplify_row(statement, self.query)
-        simplify_operators(statement, dialect=self.query.dialect, catalog=self.query.object_mapping.current_system_catalog)
+        simplify_operators(statement, dialect=self.query.dialect, schema=self.query.object_mapping.current_system_schema)
 
         if isinstance(statement, exp.Insert):
             self._convert_insert_defaults_to_values(statement)
@@ -127,6 +128,7 @@ class BaseQueryTransformer:
 
         validate_columns, exclusion_rules = self._get_validation_and_exclusion_rules(statement)
 
+        self._qualify_sequence_names(statement)
         self._add_aliases_to_udfs(statement)
         self._qualify_function_columns(statement)
         self._apply_qualify(statement, validate_columns)
@@ -266,6 +268,35 @@ class BaseQueryTransformer:
         """
         inner = operand.unnest()
         return any(node.args.get(key) for node in (operand, inner) for key in ("order", "limit"))
+
+    @_validate_syntax
+    def _qualify_sequence_names(self, statement: E) -> None:
+        """
+        Qualify the sequence name passed to a sequence function (e.g. nextval('my_seq')) with its schema, so that it
+        can be looked up by its full name. A temporary sequence takes precedence over a permanent one, as in Postgres.
+        """
+        object_mapping = self.query.object_mapping
+        for node in list(statement.find_all(exp.Anonymous)):
+            schema, function = util.get_udf_name(node)
+            if schema or function not in SEQUENCE_FUNCTIONS:
+                continue
+
+            args = node.expressions
+            if not args or not args[0].is_string or "." in args[0].name:
+                continue
+
+            seq_name = args[0].name
+            temporary_schema = object_mapping.temporary_schema
+            if temporary_schema and object_mapping.lookup_sequence_query(
+                table=exp.table_(seq_name, db=temporary_schema), raise_on_missing=True
+            ):
+                schema = temporary_schema
+            elif object_mapping.lookup_sequence_query(
+                table=exp.table_(seq_name, db=object_mapping.current_user_schema), raise_on_missing=True
+            ):
+                schema = object_mapping.current_user_schema
+
+            args[0].replace(exp.Literal.string(f"{schema}.{seq_name}"))
 
     @_validate_syntax
     def _add_aliases_to_udfs(self, statement: E) -> None:
@@ -538,21 +569,41 @@ class BaseQueryTransformer:
         dialect = self.query.dialect
 
         if dialect == "mysql":
-            db = self.query.object_mapping.current_database
+            db = self.query.object_mapping.current_user_schema
         elif dialect in ["athena", "postgres"]:
-            db = self.query.object_mapping.current_user_catalog
+            db = self.query.object_mapping.current_user_schema
         else:
             db = ""
+
+        if DialectConfig(dialect).DEFAULT_TEMPORARY_SCHEMA:
+            self._qualify_temporary_tables(statement)
 
         qualify.qualify(
             statement,
             db=db,
+            catalog=self.query.object_mapping.current_catalog,
             schema=self.query.object_mapping,
             dialect=self.query.dialect,
             isolate_tables=False,
             validate_qualify_columns=validate_columns,
             quote_identifiers=False,
         )
+
+    def _qualify_temporary_tables(self, statement: E) -> None:
+        """
+        The dialect searches its temporary schema before the user schema, so an unqualified table that is a temporary table resolves to it.
+        """
+        temporary_schema = DialectConfig(self.query.dialect).DEFAULT_TEMPORARY_SCHEMA
+        cte_names = {cte.alias for cte in statement.find_all(exp.CTE)}
+        for table in statement.find_all(exp.Table):
+            if table.db or not table.name or table.name in cte_names:
+                continue
+
+            temp_table = self.query.object_mapping.lookup_table_query(
+                table=exp.table_(table.name, db=temporary_schema), raise_on_missing=False
+            )
+            if temp_table is not None:
+                table.set("db", exp.to_identifier(temporary_schema))
 
     @_validate_syntax
     def _add_missing_table_alias_columns(self, statement: E) -> None:

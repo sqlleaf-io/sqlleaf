@@ -198,16 +198,25 @@ class ObjectMapping(MappingSchema):
         )  # Set `normalize=False` to prevent an unnecessary second parse.
         self.kind_mapping = {}
         self.kind_mapping_trie = {}
-        config = DialectConfig(dialect)
-        # The catalog that unqualified user objects are created in, and the one holding system objects
-        self.current_user_catalog: str = config.DEFAULT_USER_CATALOG
-        self.current_system_catalog: str = config.DEFAULT_SYSTEM_CATALOG
-        self.current_database: str | None = None  # For MySQL
+        self.dialect_config = DialectConfig(dialect)
+        # The catalog that user objects belong to, the schema that unqualified user objects are created in, and the schema holding system objects
+        self.current_catalog: str = self.dialect_config.DEFAULT_CATALOG
+        self.current_user_schema: str = self.dialect_config.DEFAULT_USER_SCHEMA
+        self.current_system_schema: str = self.dialect_config.DEFAULT_SYSTEM_SCHEMA
+        self.temporary_schema: str | None = self.dialect_config.DEFAULT_TEMPORARY_SCHEMA
         # Load system objects lazily from disk
         self.system_object_loader = object_loader
         self.variables = Variables()
         # Nodes that have been added to the graph, indexed by class
         self.node_index = NodeIndex()
+
+    def get_current_schema(self, statement: exp.Create) -> str:
+        """
+        Get the schema an unqualified object is created in. Temporary objects live in the temporary schema, if there is one.
+        """
+        if self.temporary_schema and statement.find(exp.TemporaryProperty):
+            return self.temporary_schema
+        return self.current_user_schema
 
     def add_database_query(self, query: DatabaseQuery) -> None:
         self._add_query(query=query, dialect=query.dialect)

@@ -53,9 +53,12 @@ class TableQuery(Query):
             source = None
 
         target = util.get_table(expr.this)
-        if not target.db and object_mapping.current_user_catalog:
+        if not target.db and object_mapping.current_user_schema:
             # Set the schema as the currently selected one
-            target.set("db", exp.to_identifier(object_mapping.current_user_catalog))
+            default_schema = object_mapping.get_current_schema(expr)
+            target.set("db", exp.to_identifier(default_schema))
+        if target.db and object_mapping.current_catalog and not target.catalog:
+            target.set("catalog", exp.to_identifier(object_mapping.current_catalog))
 
         target_type = self._determine_expression_type(target, dialect)
 

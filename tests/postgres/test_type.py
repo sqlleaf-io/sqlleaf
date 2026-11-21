@@ -135,3 +135,18 @@ def test_type_usage_in_table_and_insert(holder):
     ]
     assert len(h.edges) == 2
     assert TypeQuery == h.query_types[0]
+
+
+def test_type_temporary_schema_and_flag(holder):
+    sql = """
+    CREATE TYPE pg_temp.temp_fruit AS ENUM ('apple');
+    CREATE TYPE perm_fruit AS ENUM ('apple');
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    temp_query, perm_query = h.queries_original
+    assert isinstance(temp_query, TypeQuery)
+    assert temp_query.target_info.expression.sql() == "pg_temp.temp_fruit"
+    assert temp_query.temporary
+    assert perm_query.target_info.expression.sql() == "public.perm_fruit"
+    assert not perm_query.temporary

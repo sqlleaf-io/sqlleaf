@@ -295,6 +295,7 @@ class ColumnNode(NodeAttributes):
         f |= {
             "table": table,
             "schema": self.schema,
+            "catalog": self.catalog,
             "type": self.data_type,
         }
 

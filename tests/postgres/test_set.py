@@ -21,7 +21,7 @@ def test__set_search_path_changes_catalog(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert h.lineage.object_mapping.current_user_catalog == "app"
+    assert h.lineage.object_mapping.current_user_schema == "app"
 
 
 def test__set_search_path_to_syntax(holder):
@@ -31,7 +31,7 @@ def test__set_search_path_to_syntax(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert h.lineage.object_mapping.current_user_catalog == "reporting"
+    assert h.lineage.object_mapping.current_user_schema == "reporting"
 
 
 def test__set_search_path_skips_user_placeholder(holder):
@@ -41,7 +41,7 @@ def test__set_search_path_skips_user_placeholder(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert h.lineage.object_mapping.current_user_catalog == "app"
+    assert h.lineage.object_mapping.current_user_schema == "app"
 
 
 def test__set_search_path_affects_table_resolution(holder):
@@ -56,7 +56,7 @@ def test__set_search_path_affects_table_resolution(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.lineage.object_mapping.current_user_catalog == "app"
+    assert h.lineage.object_mapping.current_user_schema == "app"
     assert h.paths == [["column[app.users.email]", "column[app.report.email]"]]
     assert len(h.edges) == 1
 
@@ -76,7 +76,7 @@ def test__set_session_search_path_changes_catalog(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert [SetQuery] == h.query_types
-    assert h.lineage.object_mapping.current_user_catalog == "app"
+    assert h.lineage.object_mapping.current_user_schema == "app"
 
 
 @pytest.mark.skip(reason="todo - transform into SET")
@@ -86,7 +86,7 @@ def test__set_config_search_path_changes_catalog(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.lineage.object_mapping.current_user_catalog == "app"
+    assert h.lineage.object_mapping.current_user_schema == "app"
 
 
 def test__set_search_path_to_default_restores_default_catalog(holder):
@@ -96,7 +96,7 @@ def test__set_search_path_to_default_restores_default_catalog(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.lineage.object_mapping.current_user_catalog == "public"
+    assert h.lineage.object_mapping.current_user_schema == "public"
 
 
 def test__set_reset_search_path_restores_default_catalog(holder):
@@ -106,7 +106,7 @@ def test__set_reset_search_path_restores_default_catalog(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.lineage.object_mapping.current_user_catalog == "public"
+    assert h.lineage.object_mapping.current_user_schema == "public"
 
 def test__reset_search_path_unsupported_by_sqlglot():
     sql = """

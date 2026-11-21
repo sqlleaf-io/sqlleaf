@@ -16,10 +16,10 @@ def test__select_pseudocolumns(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[awsdatacatalog.source.$path]", "column[awsdatacatalog.target.name]"]]
+    assert h.paths == [["column[awsdatacatalog.default.source.$path]", "column[awsdatacatalog.default.target.name]"]]
     assert h.nodes_full == [
-        "column[name=$path type=VARCHAR properties=[kind=table table=source schema=awsdatacatalog]]",
-        "column[name=name type=VARCHAR properties=[kind=table table=target schema=awsdatacatalog]]",
+        "column[name=$path type=VARCHAR properties=[kind=table table=source schema=default catalog=awsdatacatalog]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=target schema=default catalog=awsdatacatalog]]",
     ]
     assert len(h.edges) == 1
 
@@ -47,7 +47,7 @@ def test__cte_struct_one_column(holder):
             "function[ROW]",
             "function[CAST]",
             "column[dataset.users]",
-            "column[awsdatacatalog.target.name]",
+            "column[awsdatacatalog.default.target.name]",
         ]
     ]
     assert h.nodes_full == [
@@ -55,7 +55,7 @@ def test__cte_struct_one_column(holder):
         "function[name=CAST type=STRUCT<first VARCHAR> position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]",
         "function[name=ROW type=STRUCT<VARCHAR> position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=1 func_arg=0]]",
         "column[name=users type=STRUCT<first VARCHAR> properties=[kind=cte table=dataset statement=1]]",
-        "column[name=name type=STRUCT<first VARCHAR> properties=[kind=table table=target schema=awsdatacatalog]]",
+        "column[name=name type=STRUCT<first VARCHAR> properties=[kind=table table=target schema=default catalog=awsdatacatalog]]",
     ]
     assert len(h.edges) == 4
 
@@ -83,14 +83,14 @@ def test__cte_struct_two_columns(holder):
             "function[ROW]",
             "function[CAST]",
             "column[dataset.users]",
-            "column[awsdatacatalog.target.name]",
+            "column[awsdatacatalog.default.target.name]",
         ],
         [
             'literal["Smith"]',
             "function[ROW]",
             "function[CAST]",
             "column[dataset.users]",
-            "column[awsdatacatalog.target.name]",
+            "column[awsdatacatalog.default.target.name]",
         ],
     ]
     assert h.nodes_full == [
@@ -99,7 +99,7 @@ def test__cte_struct_two_columns(holder):
         "function[name=CAST type=STRUCT<first VARCHAR, last VARCHAR> position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]",
         "function[name=ROW type=STRUCT<VARCHAR, VARCHAR> position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=1 func_arg=0]]",
         "column[name=users type=STRUCT<first VARCHAR, last VARCHAR> properties=[kind=cte table=dataset statement=1]]",
-        "column[name=name type=STRUCT<first VARCHAR, last VARCHAR> properties=[kind=table table=target schema=awsdatacatalog]]",
+        "column[name=name type=STRUCT<first VARCHAR, last VARCHAR> properties=[kind=table table=target schema=default catalog=awsdatacatalog]]",
     ]
     assert len(h.edges) == 5
 
@@ -131,14 +131,14 @@ def test__cte_with_row_complex(holder):
             "function[ROW]",
             "function[CAST]",
             "column[dataset.people]",
-            "column[awsdatacatalog.target.first]",
+            "column[awsdatacatalog.default.target.first]",
         ],
         [
             'literal["Bob"]',
             "function[ROW]",
             "function[CAST]",
             "column[dataset.people]",
-            "column[awsdatacatalog.target.last]",
+            "column[awsdatacatalog.default.target.last]",
         ],
         [
             'literal["Smith"]',
@@ -146,7 +146,7 @@ def test__cte_with_row_complex(holder):
             "function[ROW]",
             "function[CAST]",
             "column[dataset.people]",
-            "column[awsdatacatalog.target.first]",
+            "column[awsdatacatalog.default.target.first]",
         ],
         [
             'literal["Smith"]',
@@ -154,7 +154,7 @@ def test__cte_with_row_complex(holder):
             "function[ROW]",
             "function[CAST]",
             "column[dataset.people]",
-            "column[awsdatacatalog.target.last]",
+            "column[awsdatacatalog.default.target.last]",
         ],
     ]
     assert h.nodes_full == [
@@ -164,8 +164,8 @@ def test__cte_with_row_complex(holder):
         "function[name=ROW type=STRUCT<VARCHAR, STRUCT<VARCHAR>> position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=1 func_arg=0]]",
         "function[name=ROW type=STRUCT<VARCHAR> position=[query_depth=1 query_width=0 statement=1 select=0 func_depth=2 func_arg=1]]",
         "column[name=people type=STRUCT<first_name VARCHAR, other STRUCT<last_name VARCHAR>> properties=[kind=cte table=dataset statement=1]]",
-        "column[name=first type=VARCHAR properties=[kind=table table=target schema=awsdatacatalog]]",
-        "column[name=last type=VARCHAR properties=[kind=table table=target schema=awsdatacatalog]]",
+        "column[name=first type=VARCHAR properties=[kind=table table=target schema=default catalog=awsdatacatalog]]",
+        "column[name=last type=VARCHAR properties=[kind=table table=target schema=default catalog=awsdatacatalog]]",
     ]
     assert len(h.edges) == 7
 
@@ -174,20 +174,20 @@ def test__select_iceberg_metadata_field_files(holder):
     sql = """
     CREATE TABLE "dbname"."iceberg_table" (id bigint, data string, category string)
     TBLPROPERTIES ( 'table_type' = 'ICEBERG' );
-    CREATE TABLE target (file_path varchar, record_count bigint);
-    INSERT INTO target (file_path, record_count) SELECT file_path, record_count FROM "dbname"."iceberg_table$files";
+    CREATE TABLE target (f_path varchar, r_count bigint);
+    INSERT INTO target (f_path, r_count) SELECT file_path, record_count FROM "dbname"."iceberg_table$files";
     """
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[dbname.iceberg_table$files.file_path]", "column[awsdatacatalog.target.file_path]"],
-        ["column[dbname.iceberg_table$files.record_count]", "column[awsdatacatalog.target.record_count]"],
+        ["column[awsdatacatalog.dbname.iceberg_table$files.file_path]", "column[awsdatacatalog.default.target.f_path]"],
+        ["column[awsdatacatalog.dbname.iceberg_table$files.record_count]", "column[awsdatacatalog.default.target.r_count]"],
     ]
     assert h.nodes_full == [
-        "column[name=file_path type=VARCHAR properties=[kind=table table=target schema=awsdatacatalog]]",
-        "column[name=record_count type=BIGINT properties=[kind=table table=target schema=awsdatacatalog]]",
-        "column[name=file_path type=VARCHAR properties=[kind=table table=iceberg_table schema=dbname metadata=$files]]",
-        "column[name=record_count type=BIGINT properties=[kind=table table=iceberg_table schema=dbname metadata=$files]]",
+        "column[name=file_path type=VARCHAR properties=[kind=table table=iceberg_table schema=dbname catalog=awsdatacatalog metadata=$files]]",
+        "column[name=record_count type=BIGINT properties=[kind=table table=iceberg_table schema=dbname catalog=awsdatacatalog metadata=$files]]",
+        "column[name=f_path type=VARCHAR properties=[kind=table table=target schema=default catalog=awsdatacatalog]]",
+        "column[name=r_count type=BIGINT properties=[kind=table table=target schema=default catalog=awsdatacatalog]]",
     ]
 
 
@@ -200,7 +200,7 @@ def test__select_iceberg_metadata_field_manifests(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[dbname.iceberg_table$manifests.path]", "column[awsdatacatalog.target.path]"]]
+    assert h.paths == [["column[awsdatacatalog.dbname.iceberg_table$manifests.path]", "column[awsdatacatalog.default.target.path]"]]
 
 
 def test__select_iceberg_metadata_field_history(holder):
@@ -213,7 +213,7 @@ def test__select_iceberg_metadata_field_history(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[dbname.iceberg_table$history.snapshot_id]", "column[awsdatacatalog.target.snapshot_id]"]
+        ["column[awsdatacatalog.dbname.iceberg_table$history.snapshot_id]", "column[awsdatacatalog.default.target.snapshot_id]"]
     ]
 
 
@@ -227,7 +227,7 @@ def test__select_iceberg_metadata_field_partitions(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[dbname.iceberg_table$partitions.record_count]", "column[awsdatacatalog.target.record_count]"]
+        ["column[awsdatacatalog.dbname.iceberg_table$partitions.record_count]", "column[awsdatacatalog.default.target.record_count]"]
     ]
 
 
@@ -240,7 +240,7 @@ def test__select_iceberg_metadata_field_snapshots(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[dbname.iceberg_table$snapshots.operation]", "column[awsdatacatalog.target.operation]"]]
+    assert h.paths == [["column[awsdatacatalog.dbname.iceberg_table$snapshots.operation]", "column[awsdatacatalog.default.target.operation]"]]
 
 
 def test__select_iceberg_metadata_field_refs(holder):
@@ -252,4 +252,4 @@ def test__select_iceberg_metadata_field_refs(holder):
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[dbname.iceberg_table$refs.name]", "column[awsdatacatalog.target.name]"]]
+    assert h.paths == [["column[awsdatacatalog.dbname.iceberg_table$refs.name]", "column[awsdatacatalog.default.target.name]"]]

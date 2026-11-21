@@ -72,18 +72,18 @@ class SetQuery(Query):
 
     def _set_search_path(self, schemas: list[str]) -> None:
         """
-        Point the current user catalog at the first schema of the search path.
+        Point the current user schema at the first schema of the search path.
         The session user's schema ('$user') is unknown, so it is skipped.
         """
         candidates = [schema for schema in schemas if schema != "$user"]
         if candidates:
-            self.object_mapping.current_user_catalog = candidates[0]
+            self.object_mapping.current_user_schema = candidates[0]
 
     def _reset_search_path(self) -> None:
         """
-        Restore the current user catalog to the dialect default, as 'SET search_path TO DEFAULT' does.
+        Restore the current user schema to the dialect default, as 'SET search_path TO DEFAULT' does.
         """
-        self.object_mapping.current_user_catalog = DialectConfig(self.dialect).DEFAULT_USER_CATALOG
+        self.object_mapping.current_user_schema = DialectConfig(self.dialect).DEFAULT_USER_SCHEMA
 
     def _collect_set_command(self):
         """

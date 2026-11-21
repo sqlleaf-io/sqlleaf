@@ -6,8 +6,9 @@ from sqlleaf.dialects.base import DialectConfig
 
 class AthenaConfig(DialectConfig):
     DIALECT = "athena"
-    DEFAULT_USER_CATALOG = "awsdatacatalog"
-    DEFAULT_SYSTEM_CATALOG = ""
+    DEFAULT_CATALOG = "awsdatacatalog"
+    DEFAULT_USER_SCHEMA = "default"
+    DEFAULT_SYSTEM_SCHEMA = ""
     PSEUDOCOLUMNS = {
         "$bucket": "BIGINT",
         "$file_modified_time": "TIMESTAMP",

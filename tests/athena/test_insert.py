@@ -21,13 +21,13 @@ def test__insert_into_select(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [
-        ["column[fruit.raw.name]", "column[fruit.processed.name]"],
-        ["column[fruit.raw.amount]", "column[fruit.processed.amount]"],
+        ["column[awsdatacatalog.fruit.raw.name]", "column[awsdatacatalog.fruit.processed.name]"],
+        ["column[awsdatacatalog.fruit.raw.amount]", "column[awsdatacatalog.fruit.processed.amount]"],
     ]
     assert h.nodes_full == [
-        "column[name=amount type=INT properties=[kind=table table=processed schema=fruit]]",
-        "column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]",
-        "column[name=amount type=INT properties=[kind=table table=raw schema=fruit]]",
-        "column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]",
+        "column[name=amount type=INT properties=[kind=table table=processed schema=fruit catalog=awsdatacatalog]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit catalog=awsdatacatalog]]",
+        "column[name=amount type=INT properties=[kind=table table=raw schema=fruit catalog=awsdatacatalog]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit catalog=awsdatacatalog]]",
     ]
     assert len(h.edges) == 2

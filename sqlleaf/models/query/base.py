@@ -56,6 +56,18 @@ class Query:
     def set_holder(self, holder: QueryHolder) -> None:
         self.holder = holder
 
+    @property
+    def temporary(self) -> bool:
+        """
+        Whether the query's target lives in the dialect's temporary schema (e.g. 'pg_temp').
+        """
+        target = self.target_info.expression if self.target_info else None
+        return (
+            bool(self.object_mapping.temporary_schema)
+            and isinstance(target, exp.Table)
+            and target.db == self.object_mapping.temporary_schema
+        )
+
     def _determine_expression_type(self, expr: exp.Expr | list[exp.Expr], dialect: str) -> SqlObjectType:
         """
         Determine the type of object that an expression represents.

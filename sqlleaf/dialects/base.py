@@ -26,8 +26,12 @@ class DialectConfig:
     # A registry to store subclasses
     _dialects = {}
     DIALECT = ""
-    DEFAULT_USER_CATALOG = ""
-    DEFAULT_SYSTEM_CATALOG = ""
+    # The catalog that the dialect's objects belong to, if the dialect has a catalog level above schemas
+    DEFAULT_CATALOG = ""
+    DEFAULT_USER_SCHEMA = ""
+    DEFAULT_SYSTEM_SCHEMA = ""
+    # The schema that temporary objects are created in, if the dialect has one
+    DEFAULT_TEMPORARY_SCHEMA: str | None = None
     # The language of procedures that do not declare one explicitly
     DEFAULT_PROCEDURE_LANGUAGE: str | None = None
     # Metadata fields, keyed by their suffix (e.g. '$files' in 'my_table$files'), mapped to their column names and types

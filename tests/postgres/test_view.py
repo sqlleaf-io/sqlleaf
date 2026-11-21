@@ -82,9 +82,10 @@ def test__view_simple(holder, case):
     sql = f"""CREATE {case} VIEW one AS SELECT -1 as number;"""
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["literal[-1]", "column[public.one.number]"]]
+    schema = "pg_temp" if case else "public"
+    assert h.paths == [["literal[-1]", f"column[{schema}.one.number]"]]
     subkind = f" subkind={case.lower()}" if case else ""
-    assert f"column[name=number type=INT properties=[kind=view{subkind} table=one schema=public]]" in h.nodes_full
+    assert f"column[name=number type=INT properties=[kind=view{subkind} table=one schema={schema}]]" in h.nodes_full
     assert len(h.nodes) == 2
     assert len(h.edges) == 1
 
@@ -202,3 +203,21 @@ def test__view_with_aggregate_is_not_updatable(holder):
         INSERT INTO v (a, total) SELECT 1, 2;
         """
         holder(sql=sql, dialect="postgres")
+
+def test__view_temporary_schema_and_flag(holder):
+    sql = """CREATE TEMPORARY VIEW tv AS SELECT 1 AS a;"""
+    h = holder(sql=sql, dialect=DIALECT)
+
+    query = h.queries_original[0]
+    assert isinstance(query, ViewQuery)
+    assert query.target_info.expression.sql() == "pg_temp.tv"
+    assert query.temporary
+
+
+def test__view_permanent_not_temporary(holder):
+    sql = """CREATE VIEW pv AS SELECT 1 AS a;"""
+    h = holder(sql=sql, dialect=DIALECT)
+
+    query = h.queries_original[0]
+    assert query.target_info.expression.sql() == "public.pv"
+    assert not query.temporary
