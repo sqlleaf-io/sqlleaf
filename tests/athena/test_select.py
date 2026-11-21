@@ -253,3 +253,156 @@ def test__select_iceberg_metadata_field_refs(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [["column[awsdatacatalog.dbname.iceberg_table$refs.name]", "column[awsdatacatalog.default.target.name]"]]
+
+
+def test__select_transform_lambda(holder):
+    sql = """
+    CREATE TABLE target (doubled ARRAY(INTEGER));
+    INSERT INTO target (doubled)
+    SELECT TRANSFORM(numbers, x -> x * 2) AS doubled
+    FROM (VALUES (ARRAY[1, 2, 3])) AS t(numbers);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["literal[2]", "function[MUL]", "function[TRANSFORM]", "column[awsdatacatalog.default.target.doubled]"],
+        ["literal[{1,2,3}]", "column[t.numbers]", "function[TRANSFORM]", "column[awsdatacatalog.default.target.doubled]"],
+    ]
+    assert len(h.edges) == 5
+
+
+def test__select_unnest_with_ordinality(holder):
+    sql = """
+    CREATE TABLE my_table (tags ARRAY(VARCHAR));
+    CREATE TABLE target (item VARCHAR, idx BIGINT);
+    INSERT INTO target (item, idx)
+    SELECT item, idx FROM my_table CROSS JOIN UNNEST(tags) WITH ORDINALITY AS t(item, idx);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        [
+            "column[awsdatacatalog.default.my_table.tags]",
+            "function[UNNEST]",
+            "column[t.item]",
+            "column[awsdatacatalog.default.target.item]",
+        ],
+        ["counter[]", "column[t.idx]", "column[awsdatacatalog.default.target.idx]"],
+    ]
+    assert len(h.edges) == 5
+
+
+def test__select_any_match_lambda(holder):
+    sql = """
+    CREATE TABLE students (scores ARRAY(INTEGER));
+    CREATE TABLE target (passed BOOLEAN);
+    INSERT INTO target (passed)
+    SELECT ANY_MATCH(scores, x -> x >= 90) AS passed FROM students;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        [
+            "column[awsdatacatalog.default.students.scores]",
+            "function[ANY_MATCH]",
+            "column[awsdatacatalog.default.target.passed]",
+        ],
+        [
+            "literal[90]",
+            "function[GTE]",
+            "function[ANY_MATCH]",
+            "column[awsdatacatalog.default.target.passed]",
+        ],
+    ]
+    assert len(h.edges) == 4
+
+
+def test__select_tablesample_system(holder):
+    sql = """
+    CREATE TABLE source (name VARCHAR, kind VARCHAR);
+    CREATE TABLE target (name VARCHAR, kind VARCHAR);
+    INSERT INTO target (name, kind) SELECT * FROM source TABLESAMPLE SYSTEM (1);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[awsdatacatalog.default.source.name]", "column[awsdatacatalog.default.target.name]"],
+        ["column[awsdatacatalog.default.source.kind]", "column[awsdatacatalog.default.target.kind]"],
+    ]
+    assert len(h.edges) == 2
+
+
+def test__select_array_sort_lambda(holder):
+    sql = """
+    CREATE TABLE source (name ARRAY(VARCHAR));
+    CREATE TABLE target (name ARRAY(VARCHAR));
+    INSERT INTO target (name)
+    SELECT ARRAY_SORT(
+      name,
+      (x, y) -> CASE WHEN LENGTH(x) < LENGTH(y) THEN 1 WHEN LENGTH(x) > LENGTH(y) THEN -1 ELSE 0 END
+    ) AS name FROM source;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[awsdatacatalog.default.source.name]", "function[ARRAY_SORT]", "column[awsdatacatalog.default.target.name]"],
+        ["literal[0]", "function[ARRAY_SORT]", "column[awsdatacatalog.default.target.name]"],
+        ["literal[1]", "function[ARRAY_SORT]", "column[awsdatacatalog.default.target.name]"],
+        ["literal[-1]", "function[ARRAY_SORT]", "column[awsdatacatalog.default.target.name]"],
+    ]
+    assert len(h.edges) == 5
+
+
+def test__select_last_value_ignore_nulls(holder):
+    sql = """
+    CREATE TABLE source (ts TIMESTAMP, age INT);
+    CREATE TABLE target (ts TIMESTAMP, age INT);
+    INSERT INTO target (ts, age)
+    SELECT ts, LAST_VALUE(age) IGNORE NULLS OVER (ORDER BY ts) AS age FROM source;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[awsdatacatalog.default.source.ts]", "column[awsdatacatalog.default.target.ts]"],
+        ["column[awsdatacatalog.default.source.age]", "column[awsdatacatalog.default.target.age]"],
+    ]
+    assert len(h.edges) == 2
+
+
+def test__select_unnest_sequence_dates(holder):
+    sql = """
+    CREATE TABLE target (calendar_day DATE);
+    INSERT INTO target (calendar_day)
+    SELECT d AS calendar_day FROM UNNEST(SEQUENCE(DATE '2026-11-01', DATE '2026-11-21', INTERVAL '1' DAY)) AS t(d);
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        [
+            'literal["2026-11-01"]',
+            "function[CAST]",
+            "function[SEQUENCE]",
+            "function[UNNEST]",
+            "column[t.d]",
+            "column[awsdatacatalog.default.target.calendar_day]",
+        ],
+        [
+            'literal["2026-11-21"]',
+            "function[CAST]",
+            "function[SEQUENCE]",
+            "function[UNNEST]",
+            "column[t.d]",
+            "column[awsdatacatalog.default.target.calendar_day]",
+        ],
+        [
+            'interval["1 DAY"]',
+            "function[SEQUENCE]",
+            "function[UNNEST]",
+            "column[t.d]",
+            "column[awsdatacatalog.default.target.calendar_day]",
+        ],
+    ]
+    assert len(h.edges) == 8
+
+
+# TODO: MATCH_RECOGNIZE()

@@ -104,26 +104,45 @@ def test__table_temporary_no_schema_adds_pg_temp_schema(holder):
 
 def test__table_temporary_unqualified_reference_resolves_to_pg_temp(holder):
     sql = """
-    CREATE TEMPORARY TABLE src (age INT);
-    CREATE TABLE out_t (age INT);
+    CREATE TEMPORARY TABLE source (age INT);
+    CREATE TABLE target (age INT);
 
-    INSERT INTO out_t (age) SELECT age FROM src;
+    INSERT INTO target (age) SELECT age FROM source;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert h.paths == [["column[pg_temp.src.age]", "column[public.out_t.age]"]]
+    assert h.paths == [["column[pg_temp.source.age]", "column[public.target.age]"]]
+
+
+def test__table_temporary_shadows_permanent_table_of_same_name(holder):
+    sql = """
+    CREATE TABLE shadow_test (id INT, perm_col TEXT);
+    CREATE TEMPORARY TABLE shadow_test (id INT, temp_col TEXT);
+    CREATE TABLE target (temp_col TEXT, perm_col TEXT);
+
+    INSERT INTO target (temp_col) SELECT temp_col FROM shadow_test;
+    INSERT INTO target (perm_col) SELECT perm_col FROM public.shadow_test;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    # The temp table takes precedence
+    assert h.paths == [
+        ["column[pg_temp.shadow_test.temp_col]", "column[public.target.temp_col]"],
+        ["column[public.shadow_test.perm_col]", "column[public.target.perm_col]"],
+    ]
 
 
 def test__table_temporary_cte_shadows_temporary_table(holder):
     sql = """
-    CREATE TEMPORARY TABLE src (age INT);
-    CREATE TABLE out_t (age INT);
+    CREATE TEMPORARY TABLE source (age INT);
+    CREATE TABLE target (age INT);
 
-    INSERT INTO out_t (age) WITH src AS (SELECT 1 AS age) SELECT age FROM src;
+    INSERT INTO target (age) WITH source AS (SELECT 1 AS age) SELECT age FROM source;
     """
     h = holder(sql=sql, dialect=DIALECT)
 
-    assert all("pg_temp.src" not in n for n in h.nodes_full)
+    # The CTE takes precedence
+    assert h.paths == [["literal[1]", "column[source.age]", "column[public.target.age]"]]
 
 
 def test__table_like_table(holder):

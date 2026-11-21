@@ -174,6 +174,16 @@ class BaseGenerator:
         yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
 
     @process.register
+    def process_lambda(
+        self, expr: exp.Lambda, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
+        """
+        SELECT TRANSFORM(numbers, x -> x * 2)
+        """
+        parent = gen_ctx.child_node
+        yield from self.do_grandparents([expr.this], parent, gen_ctx, pos_ctx)
+
+    @process.register
     def process_array(
         self, expr: exp.Array, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
@@ -192,6 +202,12 @@ class BaseGenerator:
         """
         SELECT ROW_NUMBER() OVER (ORDER BY name DESC) AS amount
         """
+        if isinstance(expr.this, exp.IgnoreNulls):
+            # IGNORE NULLS
+            grandparents = [expr.this.this.this]
+            yield from self.do_grandparents(grandparents, gen_ctx.child_node, gen_ctx, pos_ctx)
+            return
+
         parent = self.create_node(WindowNode().with_context(gen_ctx).with_positions(pos_ctx))
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
