@@ -366,3 +366,22 @@ def test__select_inet_fails(holder):
         """
         holder(sql=sql, dialect=DIALECT)
     assert e.value.args[0].startswith("Required keyword: 'expression' missing for")
+
+
+def test__table_with_default_columns(holder):
+    sql = """
+    CREATE TABLE fruit (name varchar, size int default 1, age int default 42);
+
+    INSERT INTO fruit
+    SELECT 'apple' as name, 10 as size;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ['literal["apple"]', "column[public.fruit.name]"],
+        ["literal[1]", "column[public.fruit.size]"],
+        ["literal[10]", "column[public.fruit.size]"],
+        ["literal[42]", "column[public.fruit.age]"],
+    ]
+    assert len(h.nodes) == 7
+    assert len(h.edges) == 4

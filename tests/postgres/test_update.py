@@ -5,7 +5,7 @@ from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from sqlleaf.models.query import UpdateQuery
+from sqlleaf.models.query import InsertQuery, TableQuery, UpdateQuery
 
 DIALECT = "postgres"
 
@@ -84,3 +84,372 @@ def test__update_inheritance_only(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.paths == [["literal[10]", "column[fruit.parent.price]"]]
+
+
+def test__update_with_default(holder):
+    sql = """
+    CREATE TABLE source(age INT DEFAULT 3);
+
+    UPDATE source
+    SET age = DEFAULT;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["literal[3]", "column[public.source.age]"],
+        ["literal[3]", "column[public.source.age]"],
+    ]
+    assert len(h.nodes_full) == 2
+    assert len(h.edges) == 2
+
+
+def test__merge_only_update(holder):
+    sql = """
+    MERGE INTO fruit.processed AS t
+    USING fruit.raw AS s
+    ON t.kind = s.kind
+    WHEN MATCHED THEN
+        UPDATE SET name = s.name;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.name]", "column[fruit.processed.name]"],
+    ]
+    assert len(h.nodes) == 2
+    assert len(h.queries_original) == 1
+    assert [UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
+    assert (
+        h.holders[0].downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed AS t (name) SELECT s.name AS name FROM fruit.raw AS s"
+    )
+
+
+def test__merge_only_insert(holder):
+    sql = """
+    MERGE INTO fruit.processed AS t
+    USING fruit.raw AS s
+    ON t.kind = s.kind
+    WHEN NOT MATCHED THEN
+        INSERT (label) VALUES (s.kind);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
+    ]
+    assert len(h.nodes) == 2
+    assert len(h.queries_original) == 1
+    assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
+    assert (
+        h.holders[0].downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed AS t (label) SELECT s.kind AS label FROM fruit.raw AS s"
+    )
+
+
+def test__merge_with_function(holder):
+    sql = """
+    MERGE INTO fruit.processed AS t
+    USING fruit.raw AS s
+    ON t.kind = s.kind
+    WHEN MATCHED THEN
+        UPDATE SET name = LOWER(s.name);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.name]", "function[LOWER]", "column[fruit.processed.name]"],
+    ]
+    assert len(h.nodes) == 3
+    assert len(h.queries_original) == 1
+    assert [UpdateQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
+    assert (
+        h.holders[0].downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed AS t (name) SELECT LOWER(s.name) AS name FROM fruit.raw AS s"
+    )
+
+
+def test__merge_two_identical_insert_clauses(holder):
+    sql = """
+    MERGE INTO fruit.processed AS t
+    USING fruit.raw AS s
+    ON t.kind = s.kind
+    WHEN NOT MATCHED THEN
+        INSERT (label) VALUES (s.kind)
+    WHEN NOT MATCHED THEN
+        INSERT (label) VALUES (s.kind);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
+        ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
+    ]
+    assert len(h.nodes) == 2
+    assert len(h.queries_original) == 1
+    assert [InsertQuery, InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
+    assert (
+        h.holders[0].downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed AS t (label) SELECT s.kind AS label FROM fruit.raw AS s"
+    )
+    assert (
+        h.holders[0].downstream_holders[1].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed AS t (label) SELECT s.kind AS label FROM fruit.raw AS s"
+    )
+
+
+def test__merge_with_values_in_insert(holder):
+    sql = """
+    MERGE INTO fruit.processed AS t
+    USING fruit.raw AS s
+    ON t.kind = s.kind
+    WHEN NOT MATCHED THEN
+        INSERT (label, name) VALUES (s.kind, 'apple');
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        [
+            'literal["apple"]',
+            "column[fruit.processed.name]",
+        ],
+        ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
+    ]
+    assert len(h.nodes) == 4
+    assert len(h.queries_original) == 1
+    assert [InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
+    assert (
+        h.holders[0].downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed AS t (label, name) SELECT s.kind AS label, 'apple' AS name FROM fruit.raw AS s"
+    )
+
+
+def test__merge_simple_update_and_insert(holder):
+    sql = """
+    MERGE INTO fruit.processed AS t
+    USING fruit.raw AS s
+    ON t.kind = s.kind
+    WHEN MATCHED THEN
+        UPDATE SET name = s.name
+    WHEN NOT MATCHED THEN
+        INSERT (label) VALUES (s.kind);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.name]", "column[fruit.processed.name]"],
+        ["column[fruit.raw.kind]", "column[fruit.processed.label]"],
+    ]
+    assert len(h.nodes) == 4
+    assert len(h.queries_original) == 1
+    assert [UpdateQuery, InsertQuery] == list(map(type, [ch.original for ch in h.holders[0].downstream_holders]))
+    assert (
+        h.holders[0].downstream_holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed AS t (name) SELECT s.name AS name FROM fruit.raw AS s"
+    )
+    assert (
+        h.holders[0].downstream_holders[1].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed AS t (label) SELECT s.kind AS label FROM fruit.raw AS s"
+    )
+
+
+def test__merge_using_select(holder):
+    sql = """
+    MERGE INTO fruit.processed AS t
+    USING (SELECT kind, name FROM fruit.raw) AS s
+    ON t.kind = s.kind
+    WHEN MATCHED THEN
+        UPDATE SET name = s.name
+    WHEN NOT MATCHED THEN
+        INSERT (kind, label) VALUES (s.kind, s.name);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.name]", "column[fruit.processed.label]"],
+        ["column[fruit.raw.name]", "column[fruit.processed.name]"],
+        ["column[fruit.raw.kind]", "column[fruit.processed.kind]"],
+    ]
+
+
+# TODO: test two merge queries that have an identical inner query
+#  expect: the two inner queries are identical (and preserved), but they have different parents
+
+
+def test__update_simple(holder):
+    sql = """
+    UPDATE fruit.processed p
+    SET name = 'john', age = r.age
+    FROM fruit.raw r;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ['literal["john"]', "column[fruit.processed.name]"],
+        ["column[fruit.raw.age]", "column[fruit.processed.age]"],
+    ]
+    assert [UpdateQuery] == h.query_types
+    assert len(h.nodes) == 4
+    assert len(h.edges) == 2
+
+
+def test__update_with_subquery(holder):
+    sql = """
+    UPDATE fruit.processed
+    SET amount = (
+        SELECT COUNT(kind)
+        FROM fruit.raw
+    ), age = 5;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["literal[5]", "column[fruit.processed.age]"],
+        ["column[fruit.raw.kind]", "function[COUNT]", "column[fruit.processed.amount]"],
+    ]
+    assert len(h.nodes_full) == 5
+    assert len(h.edges) == 3
+    assert [UpdateQuery] == h.query_types
+
+
+def test__update_with_join(holder):
+    sql = """
+    UPDATE fruit.processed p
+    SET age = r.age
+    FROM fruit.raw r
+    WHERE p.name = r.name;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [["column[fruit.raw.age]", "column[fruit.processed.age]"]]
+    assert len(h.nodes_full) == 2
+    assert len(h.edges) == 1
+    assert [UpdateQuery] == h.query_types
+
+
+def test__update_with_multiple_joins(holder):
+    sql = """
+    CREATE TABLE fruit.old (name VARCHAR);
+
+    UPDATE fruit.processed p
+    SET age = r.age
+    FROM fruit.raw r
+    JOIN fruit.old o
+    ON r.name = o.name
+    WHERE p.name = r.name;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [["column[fruit.raw.age]", "column[fruit.processed.age]"]]
+    assert len(h.nodes_full) == 2
+    assert len(h.edges) == 1
+    assert [TableQuery, UpdateQuery] == h.query_types
+
+
+def test__update_with_case(holder):
+    sql = """
+    UPDATE fruit.processed
+    SET name = CASE
+        WHEN age > 50 THEN 'old'
+        ELSE 'young'
+    END;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ['literal["young"]', "column[fruit.processed.name]"],
+        ['literal["old"]', "column[fruit.processed.name]"],
+    ]
+    assert len(h.nodes_full) == 3
+    assert len(h.edges) == 2
+    assert [UpdateQuery] == h.query_types
+
+
+def test__update_with_function(holder):
+    sql = """
+    UPDATE fruit.processed
+    SET name = LOWER(name);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.processed.name]", "function[LOWER]", "column[fruit.processed.name]"],
+    ]
+    assert len(h.nodes_full) == 2
+    assert len(h.edges) == 2
+    assert [UpdateQuery] == h.query_types
+
+
+def test__update_with_subquery_in_from(holder):
+    sql = """
+    UPDATE fruit.processed p
+    SET age = s.max_age
+    FROM (
+        SELECT MAX(age) as max_age, kind
+        FROM fruit.raw
+        GROUP BY kind
+    ) s
+    WHERE p.kind = s.kind;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [["column[fruit.raw.age]", "function[MAX]", "column[s.max_age]", "column[fruit.processed.age]"]]
+    assert [UpdateQuery] == h.query_types
+
+
+def test__update_multiple_columns(holder):
+    sql = """
+    UPDATE fruit.processed
+    SET (name, age) = ('apple', 10);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ['literal["apple"]', "column[fruit.processed.name]"],
+        ["literal[10]", "column[fruit.processed.age]"],
+    ]
+    assert (
+        h.queries_transformed[0].statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed (name, age) SELECT 'apple' AS name, 10 AS age FROM fruit.processed AS processed"
+    )
+
+
+def test__update_multiple_columns_from_select(holder):
+    sql = """
+    UPDATE fruit.processed
+    SET (name, age) = (SELECT UPPER(name), age FROM fruit.raw WHERE id = 1);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["column[fruit.raw.name]", "function[UPPER]", "column[fruit.processed.name]"],
+        ["column[fruit.raw.age]", "column[fruit.processed.age]"],
+    ]
+    assert h.nodes_full == [
+        "function[name=UPPER type=VARCHAR position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]",
+        "column[name=age type=INT properties=[kind=table table=processed schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=processed schema=fruit]]",
+        "column[name=age type=INT properties=[kind=table table=raw schema=fruit]]",
+        "column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]",
+    ]
+
+    assert (
+        h.queries_transformed[0].statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.processed (name, age) SELECT UPPER(raw.name) AS name, raw.age AS age FROM fruit.raw AS raw"
+    )
+
+
+def test__update_single_column_tuple(holder):
+    sql = "UPDATE fruit.raw SET (name) = (SELECT 'foo')"
+
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+    assert (
+        h.holders[0].transformed.statement.sql(dialect=DIALECT)
+        == "INSERT INTO fruit.raw (name) SELECT 'foo' AS name FROM fruit.raw AS raw"
+    )
+
+    assert h.paths == [['literal["foo"]', "column[fruit.raw.name]"]]
+    assert h.nodes_full == [
+        'literal[name="foo" type=VARCHAR position=[query_depth=0 query_width=0 statement=0 select=0 func_depth=0 func_arg=0]]',
+        "column[name=name type=VARCHAR properties=[kind=table table=raw schema=fruit]]",
+    ]

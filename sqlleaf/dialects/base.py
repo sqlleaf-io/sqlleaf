@@ -76,11 +76,3 @@ class DialectConfig:
             exp.ColumnDef(this=exp.to_identifier(name), kind=exp.DataType.build(kind, self.DIALECT))
             for name, kind in self.METADATA_FIELDS[suffix].items()
         ]
-
-    class ParameterModeDialect(Dialect):
-        """
-        The generic dialect, which also accepts IN, OUT, and INOUT parameter modes in procedure parameters.
-        """
-
-        class Parser(sqlglot.Parser):
-            _parse_function_parameter = with_parameter_modes(sqlglot.Parser._parse_function_parameter)

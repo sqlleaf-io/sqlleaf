@@ -9,6 +9,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 import sqlglot
 
+from sqlleaf.models.query import InsertQuery
+
 DIALECT = "postgres"
 
 
@@ -110,3 +112,69 @@ def test__insert_overriding(holder):
         holder(sql=sql, dialect=DIALECT)
 
     assert e.value.args[0].startswith("Invalid expression / Unexpected token.")
+
+
+def test__insert_default_values(holder):
+    sql = """
+    CREATE TABLE fruit.a (
+        name VARCHAR,
+        kind VARCHAR,
+        size INT DEFAULT 99
+    );
+    CREATE TABLE fruit.b (
+        color VARCHAR,
+        age INT DEFAULT -1
+    );
+    INSERT INTO fruit.b DEFAULT VALUES;
+    INSERT INTO fruit.a VALUES (DEFAULT, NULL, DEFAULT);
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ["null[NULL]", "column[fruit.b.color]"],
+        ["literal[-1]", "column[fruit.b.age]"],
+        ["literal[-1]", "column[fruit.b.age]"],
+        ["null[NULL]", "column[fruit.a.name]"],
+        ["null[NULL]", "column[fruit.a.kind]"],
+        ["literal[99]", "column[fruit.a.size]"],
+        ["literal[99]", "column[fruit.a.size]"],
+    ]
+    assert (
+        h.holders[2].transformed.statement.sql() == "INSERT INTO fruit.b (color, age) SELECT NULL AS color, -1 AS age"
+    )
+    assert len(h.nodes) == 12
+    assert len(h.edges) == 7
+
+
+def test__insert_select_with_aliases(holder):
+    sql = "INSERT INTO fruit.raw SELECT 'yellow' as name, UPPER('banana') AS kind;"
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ['literal["yellow"]', "column[fruit.raw.name]"],
+        ['literal["banana"]', "function[UPPER]", "column[fruit.raw.kind]"],
+    ]
+    assert [InsertQuery] == h.query_types
+
+
+def test__insert_select_without_aliases(holder):
+    sql = "INSERT INTO fruit.raw SELECT 'yellow', UPPER('banana');"
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [
+        ['literal["yellow"]', "column[fruit.raw.name]"],
+        ['literal["banana"]', "function[UPPER]", "column[fruit.raw.kind]"],
+    ]
+    assert [InsertQuery] == h.query_types
+
+
+def test__insert_select_star_with_warn_on_error(holder):
+    sql = """
+    INSERT INTO fruit.raw SELECT * FROM t2;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True, on_error="warn")
+
+    assert h.paths == [
+        ["star[*]", "column[fruit.raw.name]"],
+    ]
+    assert [InsertQuery] == h.query_types

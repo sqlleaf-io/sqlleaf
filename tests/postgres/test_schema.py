@@ -52,3 +52,16 @@ def test__schema_with_tables(holder):
     assert len(h.nodes) == 0
     assert len(h.edges) == 0
     assert len(h.collected_queries.unsupported) == 1
+
+
+def test__database(holder):
+    sql = """
+    CREATE DATABASE fruit;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == []
+    assert h.nodes_full == []
+    assert len(h.nodes) == 0
+    assert len(h.edges) == 0
+    assert len(h.collected_queries.queries) == 1

@@ -755,15 +755,17 @@ def _get_query_processor(kind: str) -> t.Callable:
     return _QUERY_PROCESSORS.get(kind, _process_unnamed)
 
 
-def _parse_statements(text: str, dialect: str) -> list[exp.Expr]:
+def _parse_statements(text: str, dialect: str) -> list[exp.Expr | None]:
     """
     Parse a script with sqlglot. The generic dialect also accepts IN/OUT/INOUT parameter modes.
     """
-    parse_dialect = DialectConfig.ParameterModeDialect if dialect == "" else dialect
-    return sqlglot.parse(text, dialect=parse_dialect)
+    if dialect == "":
+        raise exception.SqlLeafException("An empty dialect cannot be provided.")
+
+    return sqlglot.parse(text, dialect=dialect)
 
 
-def _split_combined_statements(parsed: list[exp.Expr]) -> list[exp.Expr]:
+def _split_combined_statements(parsed: list[exp.Expr | None]) -> list[exp.Expr]:
     """
     Workaround for sqlglot incorrectly bundling statements following a block-based CREATE.
     For example, with the statement "CREATE PROCEDURE .. BEGIN .. END; CALL();" the CALL()

@@ -46,3 +46,6 @@ def test__fn_select_alias(holder):
         "column[name=name type=VARCHAR properties=[kind=table table=source schema=public]]",
         "column[name=name type=VARCHAR properties=[kind=table table=target schema=public]]",
     ]
+
+
+# TODO: notation <table>.<function>
