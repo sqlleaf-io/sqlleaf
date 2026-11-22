@@ -184,6 +184,20 @@ def test__select_dpipe(holder):
     assert len(h.edges) == 6
 
 
+@pytest.mark.parametrize("case", ["COUNT(DISTINCT r.name)", "COUNT(ALL r.name)"])
+def test__select_aggregate_quantifier(holder, case):
+    sql = f"""
+    INSERT INTO fruit.processed (kind)
+    SELECT {case} AS kind
+    FROM fruit.raw AS r;
+    """
+    h = holder(sql=sql, dialect=DIALECT, with_tables=True)
+
+    assert h.paths == [["column[fruit.raw.name]", "function[COUNT]", "column[fruit.processed.kind]"]]
+    assert len(h.nodes) == 3
+    assert len(h.edges) == 2
+
+
 def test__select_case(holder):
     sql = """
     INSERT INTO fruit.processed (age, number)

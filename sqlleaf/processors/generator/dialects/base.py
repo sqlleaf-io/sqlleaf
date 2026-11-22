@@ -187,6 +187,17 @@ class BaseGenerator:
         yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
 
     @process.register
+    def process_distinct(
+        self, expr: exp.Distinct, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
+        """
+        SELECT COUNT(DISTINCT name) AS cnt
+        """
+        parent = gen_ctx.child_node
+        grandparents = expr.expressions
+        yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
+
+    @process.register
     def process_lambda(
         self, expr: exp.Lambda, gen_ctx: GeneratorContext, pos_ctx: PositionContext
     ) -> t.Iterator[EdgeToCreate]:
@@ -316,7 +327,7 @@ class BaseGenerator:
         SELECT CASE WHEN count(*) > 1 THEN 1 ELSE 0 END AS my_var
         """
         # If no default is specified, the default is NULL (via ANSI SQL) TODO: however in PL/pgsql it's an error instead
-        default = expr.args.get("default", exp.Null())
+        default = expr.args.get("default") or exp.Null()
         thens = [if_expr.args.get("true") or if_expr.args.get("false") for if_expr in expr.args.get("ifs", [])]
         grandparents = [default] + thens
 
