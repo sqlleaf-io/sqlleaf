@@ -2,14 +2,12 @@ import json
 import logging
 import typing as t
 
-from networkx import MultiDiGraph, descendants
+from networkx import MultiDiGraph
 
-from sqlleaf import exception, mappings, path, util
+from sqlleaf import exception, mappings, path
 from sqlleaf.models.hook import Hook
 from sqlleaf.models.node import EdgeAttributes, GraphAttributes, N, NodeAttributes
-from sqlleaf.models.query import (
-    Q,
-)
+from sqlleaf.models.query import Q
 from sqlleaf.path import LineagePath
 from sqlleaf.processors.collector import collector
 from sqlleaf.processors.generator import generator
@@ -22,7 +20,6 @@ class Lineage:
     """
     Holds the lineage as a networkx graph.
     """
-
     def __init__(self):
         self.graph = new_graph()  # The graph that contains all lineage
         self.subgraphs: list[MultiDiGraph] = []  # The subgraphs that make up the main graph
@@ -137,7 +134,6 @@ class Lineage:
 
         return found
 
-
     def get_original_queries(self) -> list[Q]:
         """
         Get the original queries from the graph.
@@ -195,60 +191,40 @@ class Lineage:
     def print_tree(self, full_name=False):
         """
         Print from the leaves to the root (as left to right) so that the tree is displayed correctly.
-        For example:
+        Mimics the `tree` utility on Linux.
 
-        INSERT INTO fruit.processed
-        SELECT SUBSTRING(name, 2, 4) AS name
-        FROM fruit.raw
+        For example, given query:
+            INSERT INTO fruit.processed
+            SELECT SUBSTRING(name, 2, 4) AS name
+            FROM fruit.raw
 
         Output:
-
-        column[fruit.processed.name]
-        └── function[SUBSTRING]
-            ├── column[fruit.raw.name]
-            ├── literal[2]
-            └── literal[4]
+            .
+            └── column[fruit.processed.name]
+                └── function[SUBSTRING]
+                    ├── column[fruit.raw.name]
+                    ├── literal[2]
+                    └── literal[4]
         """
         g = self.graph.reverse(copy=False)  # We print from the leaves to the roots
-        root_columns = util.get_root_nodes(g)
-        seen = set()
-        symbol = "└──"
-
         attr = "full_name" if full_name else "friendly_name"
 
-        # TODO: this may not be needed since the NodeAttributes are node
+        def print_entry(name: str, prefix: str, is_last: bool, ancestors: frozenset[str]) -> None:
+            connector = "└── " if is_last else "├── "
+            print(prefix + connector + getattr(g.nodes[name]["attrs"], attr))
+            # A last entry has no siblings below it, so its children are indented instead of guided
+            child_prefix = prefix + ("    " if is_last else "│   ")
+            print_children(name, child_prefix, ancestors | {name})
+
+        def print_children(name: str, prefix: str, ancestors: frozenset[str]) -> None:
+            children = sorted(n for n in g.successors(name) if n != name and n not in ancestors)
+            for i, child in enumerate(children):
+                print_entry(child, prefix, i == len(children) - 1, ancestors)
+
+        root_columns = path.get_root_nodes(g)
+        print(".")
         for i, root in enumerate(root_columns):
-            for depth, edge_attrs in util.find_edges_downward(
-                g, root
-            ):  # TODO: fetch edges in order of function argument index
-                # Swap the parent and child
-                parent_name = edge_attrs.child.full_name
-                child_name = edge_attrs.parent.full_name
-                num_descendents_of_child = len(descendants(g, child_name))
-
-                parent_node = g.nodes[parent_name]["attrs"]
-                child_node = g.nodes[child_name]["attrs"]
-
-                if parent_name not in seen:
-                    symbol = "└──"
-
-                    # Print arrows
-                    if depth > 0:
-                        prefix = ((depth - 1) * 4 * " ") + f"{symbol} "
-                    else:
-                        prefix = ""
-                    print("%s%s" % (prefix, getattr(parent_node, attr)))
-                seen.add(parent_name)
-
-                # Print the child if we're at the end of the path
-                if num_descendents_of_child == 0:
-                    if depth == 0:
-                        # Direct load (source -> target)
-                        prefix = "└── "
-                    else:
-                        prefix = (depth * 4 * " ") + f"{symbol} "
-                    print("%s%s" % (prefix, getattr(child_node, attr)))
-                    seen.add(child_name)
+            print_entry(root, "", i == len(root_columns) - 1, frozenset())
 
     def print_paths(self):
         """

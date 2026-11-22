@@ -19,12 +19,6 @@ from sqlleaf.util.expression import (
     unwrap_expression as unwrap_expression,
     validate_athena_table_options as validate_athena_table_options
 )
-from sqlleaf.util.graph import (
-    find_edges_downward as find_edges_downward,
-    find_paths as find_paths,
-    get_cycles as get_cycles,
-    get_root_nodes as get_root_nodes,
-)
 from sqlleaf.util.helpers import (
     chunks as chunks,
     flatten as flatten,

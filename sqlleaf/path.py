@@ -54,15 +54,10 @@ def find_all_paths(graph: MultiDiGraph) -> t.Generator[LineagePath]:
     - one for those containing root node (a Rooted graph)
     - one for those containing only cycles (a Circuit graph)
     """
-
-    # Cycle handling logic.
-    #  [x] Stage 1. Error: Throw an error/warning on cycles that include multiple columns.
-    #  [ ] Stage 2. Recovery: For every cycle, print it to the console, and then
-    #  remove all their edges; then proceed with printing the remainder.
     cycles = []
     cycle_errors = 0
 
-    for cycle, errors in util.get_cycles(graph):
+    for cycle, errors in _get_cycles(graph):
         if errors > 0:
             cycle_errors += errors
         else:
@@ -72,7 +67,7 @@ def find_all_paths(graph: MultiDiGraph) -> t.Generator[LineagePath]:
         raise exception.GraphError(message=f"Found {cycle_errors} errors with cycles in graph. Remove these.")
 
     cycles = sorted(cycles)  # simple_cycles() underneath is non-deterministic
-    root_columns = util.get_root_nodes(graph)
+    root_columns = get_root_nodes(graph)
 
     if root_columns:
         logger.debug(f"Found root columns in graph: {root_columns}")
@@ -95,7 +90,7 @@ def find_all_paths(graph: MultiDiGraph) -> t.Generator[LineagePath]:
 
     # Check for selfloops (e.g. a column that goes through another node, such as a function)
     for cycle in cycles:
-        for path in find_edges_along_cycle_path(graph, cycle):
+        for path in _find_edges_along_cycle_path(graph, cycle):
             logger.debug(
                 "Found edge path from cycle: %s --- %s",
                 [e.id for e in path],
@@ -105,7 +100,7 @@ def find_all_paths(graph: MultiDiGraph) -> t.Generator[LineagePath]:
             yield lineage_path
 
 
-def find_edges_along_cycle_path(
+def _find_edges_along_cycle_path(
     g: MultiDiGraph, cycle: list[str], path: list[EdgeAttributes] | None = None
 ) -> t.Generator[list[EdgeAttributes]]:
     """
@@ -124,7 +119,7 @@ def find_edges_along_cycle_path(
         edges = g.get_edge_data(node_src, node_dst)
         for idx, data in edges.items():
             hop = data["attrs"]
-            yield from find_edges_along_cycle_path(g, cycle, path + [hop])
+            yield from _find_edges_along_cycle_path(g, cycle, path + [hop])
 
 
 def find_edges_from_root(
@@ -133,9 +128,6 @@ def find_edges_from_root(
     """
     Find all the complete paths in a graph by traversing the descendants of a node until we find
     a node without any descendants.
-
-    This is the same as the regular find_paths(), but we iterate over all the edges between any two node
-    so that we include all paths.
 
     For example, given the graph:
         A -> B -> C -> D
@@ -195,6 +187,35 @@ def _traverse_path_along_edges(
         yield from find_edges_from_root(g, node_dst, path + [hop], seen.union([node_src]))
 
 
+def _get_cycles(graph: MultiDiGraph) -> t.Generator:
+    """
+    Find all cycles in a graph.
+    """
+    errors = 0
+
+    from networkx import simple_cycles
+
+    for cycle in simple_cycles(graph):
+        columns = [col for col in cycle if col.startswith("column")]
+
+        if len(util.unique(columns)) == 1:
+            # A valid cycle. This is a selfloop that passes through another node, e.g. a function.
+            first_column = columns[0]
+            idx = cycle.index(first_column)
+            new_cycle = cycle[idx:] + cycle[:idx] + [first_column]
+            logger.debug(f"Found valid cycle in graph: {new_cycle}")
+            cycle = new_cycle
+        else:
+            if len(columns) == 0:
+                logger.error(f"A cycle must contain 1 column node: {cycle}")
+                errors = 1
+            elif len(util.unique(columns)) > 1:
+                logger.error(f"A cycle cannot contain more than 1 column (found {len(util.unique(columns))}): {cycle}")
+                errors = 1
+
+        yield cycle, errors
+
+
 class NodeIndex:
     """
     An index that maps Node classes to every occurrence of that Node in the graph.
@@ -212,3 +233,40 @@ class NodeIndex:
 
     def get(self, node_class: type) -> list[NodeAttributes]:
         return self._index.get(node_class, [])
+
+
+def get_root_nodes(graph: MultiDiGraph) -> list[str]:
+    """
+    Get the root node of a graph. A root node has no parents.
+    """
+    selfloops = []
+
+    def remove_selfloop_edges(n1: str, n2: str, edge_key: int) -> bool:
+        attrs = graph[n1][n2][edge_key]["attrs"]
+        if n1 == n2 and attrs:
+            if n1 not in selfloops:
+                selfloops.append(n1)
+            return False
+        return True
+
+    # Remove all the selfloop edges so that we can find the root node,
+    # and then add them back. (This is due to in/out_degree() inclduing them as edges)
+    from networkx import subgraph_view
+
+    view = subgraph_view(graph, filter_edge=remove_selfloop_edges)
+    roots = [
+        n
+        for n in view.nodes
+        if
+        # A root node
+        (view.in_degree(n) == 0 and view.out_degree(n) > 0)
+        or
+        # A selfloop
+        (n in selfloops and view.degree(n) == 0)
+    ]
+    if selfloops:
+        logger.debug(f"Found selfloops: {selfloops}")
+    return roots
+
+
+# TODO: add a function called 'find_unique_paths' to prevent traversal of duplicate edges
