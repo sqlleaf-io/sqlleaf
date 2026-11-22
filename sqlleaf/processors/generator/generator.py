@@ -58,7 +58,7 @@ def generate_lineage_for_query(query_holder: QueryHolder, graph: MultiDiGraph, h
     logger.debug(f"Generating for: {type(query)}")
 
     statement = query.statement
-    logger.debug(f"Getting lineage for query: {statement.sql(dialect=query.dialect)}")
+    logger.debug("Getting lineage for query: %s", statement.sql(dialect=query.dialect))
     logger.debug(repr(statement))
 
     target_object = query.target_info.expression

@@ -63,32 +63,6 @@ class BaseQueryTransformer:
         """
         return statement
 
-    def _validate_syntax(func):
-        """
-        Ensure that the transformed query is parseable.
-        """
-
-        @functools.wraps(func)
-        def wrapper(self, *args, **kwargs) -> E | None:
-            statement = args[0] if args else kwargs.get("statement", self.query.statement)
-            query = self.query
-            in_statement = statement.sql(dialect=query.dialect)
-
-            if LOG_TRANSFORMATIONS:
-                logger.debug(f"Function: {func.__name__}")
-
-            result = func(self, *args, **kwargs)
-
-            result_statement = statement if result is None else result
-            out_statement = result_statement.sql(dialect=query.dialect)
-
-            if in_statement != out_statement:
-                logger.debug(f"Function: {func.__name__} transformed: {out_statement}")
-
-            return result
-
-        return wrapper
-
     def preprocess(self, statement: E) -> E:
         """
         Run a set of transformations over every statement
@@ -243,7 +217,6 @@ class BaseQueryTransformer:
                 subquery = inner_query.subquery()
                 table_from_rows.replace(subquery)
 
-    #@_validate_syntax
     def _convert_table_to_select(self, statement: E) -> None:
         """
         Convert the statement "TABLE x" to "SELECT * FROM x"
@@ -271,7 +244,6 @@ class BaseQueryTransformer:
         inner = operand.unnest()
         return any(node.args.get(key) for node in (operand, inner) for key in ("order", "limit"))
 
-    @_validate_syntax
     def _qualify_sequence_names(self, statement: E) -> None:
         """
         Qualify the sequence name passed to a sequence function (e.g. nextval('my_seq')) with its schema, so that it
@@ -300,7 +272,6 @@ class BaseQueryTransformer:
 
             args[0].replace(exp.Literal.string(f"{schema}.{seq_name}"))
 
-    @_validate_syntax
     def _add_aliases_to_udfs(self, statement: E) -> None:
         """
         Iterate over the query looking for UDFs and add an alias to them with the same name
@@ -334,7 +305,6 @@ class BaseQueryTransformer:
                 # Wrap the expression in an Alias
                 to_alias.replace(exp.alias_(to_alias.copy(), name))
 
-    @_validate_syntax
     def _add_aliases_to_pseudocolumns(self, statement: E) -> None:
         """
         Given a query:
@@ -353,7 +323,6 @@ class BaseQueryTransformer:
                 from_table_alias = pseudo.parent_select.args["from_"].alias_or_name
                 pseudo.set("table", exp.to_identifier(from_table_alias))
 
-    @_validate_syntax
     def _process_inner_ctes(self, statement: E) -> None:
         """
         Transform any inner CTE statements.
@@ -386,7 +355,6 @@ class BaseQueryTransformer:
             # Rename the columns and replace the INSERT with the SELECT
             self._rename_returning_columns(statement=cte_expr, child_table=cte_expr.find(exp.Table))
 
-    #@_validate_syntax
     def _convert_insert_defaults_to_values(self, statement: exp.Insert) -> None:
         """
         Transform the query:
@@ -462,7 +430,6 @@ class BaseQueryTransformer:
         """
         return [r for r in RULES if getattr(r, "__name__", None) not in exclude_rules]
 
-    @_validate_syntax
     def _qualify_function_columns(self, statement: E) -> None:
         """
         Look for table functions used in FROM whose names are known
@@ -544,16 +511,20 @@ class BaseQueryTransformer:
 
         return validate_columns, exclude_rules
 
-    @_validate_syntax
     def _apply_optimizations(self, statement: E, exclusion_rules: list[str]) -> E:
         """
         Call sqlglot's optimization functions, which simplify a range of expressions.
         """
+        if statement.parent:
+            # Allows changes to be isolated and ensures tree isn't modified before subsequent use
+            statement = statement.copy()
+
         statement = optimize(
             expression=statement,
             dialect=self.query.dialect,
             schema=self.query.object_mapping,
             rules=self._optimizer_rules(exclusion_rules),
+            copy=False,
         )
 
         # We don't want to merge the CTEs as they provide useful info to the user
@@ -565,7 +536,6 @@ class BaseQueryTransformer:
 
         return statement
 
-    @_validate_syntax
     def _apply_qualify(self, statement: E, validate_columns: bool) -> None:
         """
         Run sqlglot's qualify() function against the statement for schema validation and naming/aliasing population.
@@ -609,7 +579,6 @@ class BaseQueryTransformer:
             if temp_table is not None:
                 table.set("db", exp.to_identifier(temporary_schema))
 
-    @_validate_syntax
     def _add_missing_table_alias_columns(self, statement: E) -> None:
         """
         Populate any missing column lists on exp.TableAlias nodes by copying the
@@ -679,7 +648,6 @@ class BaseQueryTransformer:
             new_cols = existing_cols + [exp.to_identifier(n) for n in missing]
             tbl_alias.set("columns", new_cols)
 
-    @_validate_syntax
     def _rename_returning_columns(self, statement: exp.CTE, child_table: exp.Table) -> None:
         """
         Given an (INSERT .. RETURNING *) statement, expand the star to the table's column names
@@ -766,7 +734,6 @@ class BaseQueryTransformer:
             "source": source,
         }
 
-    @_validate_syntax
     def _add_column_names_to_insert(self, statement: exp.Expr) -> None:
         """
         Add aliases to SELECTs that are missing them by looking at the corresponding INSERT column.
@@ -870,7 +837,6 @@ class BaseQueryTransformer:
 
         return [c.name for c in table_query.get_column_defs(include_system=include_system)]
 
-    @_validate_syntax
     def _convert_update_to_insert(self, statement: exp.Update) -> exp.Insert:
         """
         Taken from extract_select_from_update() at datahub/metadata-ingestion/src/datahub/sql_parsing/sqlglotlineage.py

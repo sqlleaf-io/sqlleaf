@@ -387,7 +387,7 @@ def substitute_call(query: CallQuery) -> tuple[list[exp.Expr], dict[str, mapping
 
     logger.debug(f"Substituted to {len(replacement_exprs)} statements:")
     for r in replacement_exprs:
-        logger.debug(f"  {r.sql(dialect=query.dialect)}")
+        logger.debug("  %s", r.sql(dialect=query.dialect))
     return replacement_exprs, bindings
 
 
@@ -799,9 +799,9 @@ def _transform_inner_query(
     if isinstance(stmt, exp.Values):
         stmt = normalize_values(query, stmt)
 
-    logger.debug(f"Transforming inner query: {stmt.sql()}")
+    logger.debug("Transforming inner query: %s", stmt.sql())
     replacement_expr = substitute_parameters(stmt, query, param_map, positional_map)
-    logger.debug(f"Query after parameter substitution: {replacement_expr.sql()}")
+    logger.debug("Query after parameter substitution: %s", replacement_expr.sql())
 
     # Handle ROW(...)::table_name replacement (composite/table type casting)
     replacement_expr = transform_row_function_to_subquery(replacement_expr, query)

@@ -2,17 +2,13 @@ from __future__ import annotations
 
 import logging
 import typing as t
-from dataclasses import replace
-
 from sqlglot import exp
 
 from sqlleaf import exception, util
 from sqlleaf.models.context import GeneratorContext, PositionContext
 from sqlleaf.models.node import (
     ColumnNode,
-    JsonPathNode,
     SequenceNode,
-    SeriesNode,
 )
 from sqlleaf.processors.generator.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
 from sqlleaf.typing import SourceInfo, SqlObjectType

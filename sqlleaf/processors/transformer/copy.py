@@ -19,7 +19,6 @@ class CopyTransformer(BaseQueryTransformer):
         self._replace_table_source_with_select(statement)
         return statement
 
-    @BaseQueryTransformer._validate_syntax
     def _replace_table_source_with_select(self, statement: exp.Copy) -> None:
         """
         Replace a table source inside the COPY statement with a SELECT over that table.

@@ -604,7 +604,7 @@ class BaseGenerator:
         # Update the scope to be the subquery itself, as it is a subscope
         scope = t.cast(Scope, gen_ctx.scope)
         logger.debug(
-            f"process_subquery: scope.subquery_scopes={len(scope.subquery_scopes)}, expr.this={expr.this.sql()[:40]}"
+            "process_subquery: scope.subquery_scopes=%s, expr.this=%s", len(scope.subquery_scopes), expr.this.sql()[:40]
         )
         subquery_scope = [s for s in scope.subquery_scopes if s.expression == expr.this][0]
 

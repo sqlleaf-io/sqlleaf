@@ -33,7 +33,6 @@ class InsertTransformer(BaseQueryTransformer):
         if conflict := statement.args.get("conflict"):
             conflict.pop()
 
-    @BaseQueryTransformer._validate_syntax
     def _add_information_from_merge(self, statement: exp.Insert) -> exp.Insert:
         """
         INSERT branch of _add_information_from_merge.
@@ -77,7 +76,6 @@ class InsertTransformer(BaseQueryTransformer):
         statement.replace(insert_expr)
         return insert_expr
 
-    @BaseQueryTransformer._validate_syntax
     def _add_information_from_multitable_insert(self, statement: exp.Insert) -> exp.Insert:
         """
         Reconstruct a standalone INSERT .. SELECT from a MultitableInsert branch.
