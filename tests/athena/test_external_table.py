@@ -57,6 +57,7 @@ def test__external_table_iceberg_fails(holder):
         holder(sql=sql, dialect=DIALECT)
 
 
+# Athena requires 'EXTERNAL' unless it is an Iceberg table
 def test__iceberg_table_with_location_valid(holder):
     sql = """
     CREATE TABLE iceberg_table (id bigint, data string)

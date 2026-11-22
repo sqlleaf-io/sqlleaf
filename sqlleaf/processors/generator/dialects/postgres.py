@@ -10,7 +10,9 @@ from sqlleaf import exception, util
 from sqlleaf.models.context import GeneratorContext, PositionContext
 from sqlleaf.models.node import (
     ColumnNode,
+    JsonPathNode,
     SequenceNode,
+    SeriesNode,
 )
 from sqlleaf.processors.generator.dialects.base import BaseGenerator, EdgeToCreate, singledispatchmethodlogger
 from sqlleaf.typing import SourceInfo, SqlObjectType
@@ -31,8 +33,7 @@ class PostgresGenerator(BaseGenerator):
     ) -> t.Iterator[EdgeToCreate]:
         """
         Process a table or a table function.
-        This is a bit awkward as we have the sequence: Table -> ColumnDef -> Table
-        for table functions.
+        Table functions are a bit awkward as we have the sequence: Table -> ColumnDef -> Table
         """
         if "rows_from" in expr.args:
             yield from self._process_rows_from(expr, gen_ctx, pos_ctx)

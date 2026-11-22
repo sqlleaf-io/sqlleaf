@@ -191,7 +191,9 @@ class BaseQueryTransformer:
             table_name = column.table
 
             if table_name:
-                table_query = self.query.object_mapping.lookup_table_query(table=exp.to_table(table_name))
+                table_query = self.query.object_mapping.lookup_table_query(
+                    table=exp.to_table(table_name), raise_on_missing=False
+                )
                 if not table_query:
                     variable = self.query.object_mapping.variables.get_variable(table_name, raise_on_missing=False)
                     if variable is not None and isinstance(variable, exp.Query):
@@ -475,8 +477,6 @@ class BaseQueryTransformer:
             SELECT * FROM JSON_EACH_TEXT() AS JSON_EACH_TEXT(key, value)
         """
         fn_columns_map: dict[str, list[str]] = DialectConfig(self.query.dialect).SYSTEM_FUNCTIONS
-        if not fn_columns_map:
-            return
 
         # Iterate over SELECT statements and inspect their FROM/JOIN clauses
         for select in statement.find_all(exp.Select):
@@ -494,12 +494,16 @@ class BaseQueryTransformer:
             for tbl in tables:
                 this_expr = tbl.this
 
-                # Existing behavior for other table functions represented as Anonymous
-                if not isinstance(this_expr, exp.Anonymous):
+                if isinstance(this_expr, exp.JSONTable):
+                    # The output columns of JSON_TABLE are defined by its COLUMNS clause
+                    function_name = "json_table"
+                    cols = [col.name for col in this_expr.find_all(exp.JSONColumnDef)]
+                elif isinstance(this_expr, exp.Anonymous):
+                    function_name = str(this_expr.this).lower()
+                    cols = fn_columns_map.get(function_name)
+                else:
                     continue
 
-                function_name = str(this_expr.this).lower()
-                cols = fn_columns_map.get(function_name)
                 if not cols:
                     continue
 

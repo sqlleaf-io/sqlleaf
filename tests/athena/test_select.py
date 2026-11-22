@@ -1,6 +1,9 @@
 import os
 import sys
 
+import pytest
+import sqlglot
+
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -521,6 +524,131 @@ def test__select_rank_window(holder):
 
     assert h.paths == [["window[RANK]", "column[awsdatacatalog.default.target.r]"]]
     assert len(h.edges) == 1
+
+
+def test__select_overlay(holder):
+    sql = """
+    CREATE TABLE source (name VARCHAR);
+    CREATE TABLE target (email VARCHAR);
+    INSERT INTO target (email) SELECT OVERLAY('user@example.com' PLACING 'REDACTED' FROM 1 FOR 4) FROM source;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        [
+            'literal["user@example.com"]',
+            "function[OVERLAY]",
+            "column[awsdatacatalog.default.target.email]",
+        ],
+        [
+            'literal["REDACTED"]',
+            "function[OVERLAY]",
+            "column[awsdatacatalog.default.target.email]",
+        ],
+        [
+            "literal[1]",
+            "function[OVERLAY]",
+            "column[awsdatacatalog.default.target.email]",
+        ],
+        [
+            "literal[4]",
+            "function[OVERLAY]",
+            "column[awsdatacatalog.default.target.email]",
+        ],
+    ]
+    assert len(h.edges) == 5
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    [
+        "WITH WRAPPER",
+        "WITH ARRAY WRAPPER",
+        "WITH CONDITIONAL WRAPPER",
+        "WITH UNCONDITIONAL WRAPPER",
+        "WITH UNCONDITIONAL ARRAY WRAPPER",
+        "WITHOUT ARRAY WRAPPER",
+    ],
+)
+def test__select_json_query_wrapper(holder, wrapper):
+    sql = f"""
+    CREATE TABLE events (payload VARCHAR);
+    CREATE TABLE target (items VARCHAR);
+    INSERT INTO target (items) SELECT JSON_QUERY(payload, 'strict $.items[*].id' {wrapper}) FROM events;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        [
+            "column[awsdatacatalog.default.events.payload]",
+            "jsonpath[.items[*].id]",
+            "column[awsdatacatalog.default.target.items]",
+        ],
+    ]
+    assert len(h.edges) == 2
+
+
+def test__select_json_value_returning_default_on_empty_error(holder):
+    sql = """
+    CREATE TABLE events (payload VARCHAR);
+    CREATE TABLE target (age INT);
+    INSERT INTO target (age)
+    SELECT JSON_VALUE(payload, 'lax $.user.age' RETURNING INT DEFAULT 0 ON EMPTY NULL ON ERROR) FROM events;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        [
+            "column[awsdatacatalog.default.events.payload]",
+            "jsonpath[.user.age]",
+            "column[awsdatacatalog.default.target.age]",
+        ],
+        [
+            "literal[0]",
+            "column[awsdatacatalog.default.target.age]",
+        ],
+    ]
+    assert len(h.edges) == 3
+
+
+def test__select_json_query_conditional_array_wrapper(holder):
+    with pytest.raises(sqlglot.errors.ParseError) as e:
+        sql = """
+        CREATE TABLE events (payload VARCHAR);
+        CREATE TABLE target (items VARCHAR);
+        INSERT INTO target (items)
+        SELECT JSON_QUERY(payload, 'strict $.items[*].id' WITH CONDITIONAL ARRAY WRAPPER) FROM events;
+        """
+        holder(sql=sql, dialect=DIALECT)
+    assert e.value.args[0].startswith("Invalid expression / Unexpected token. Line 5, Col: 62.")
+
+
+def test__select_uuid_literal_and_function(holder):
+    sql = """
+    CREATE TABLE target (name1 UUID, name2 UUID);
+    INSERT INTO target SELECT UUID '12151fd2-7586-11e9-8f9e-2a86e4085a59' AS name1, UUID() AS name2;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        [
+            'literal["12151fd2-7586-11e9-8f9e-2a86e4085a59"]',
+            "function[CAST]",
+            "column[awsdatacatalog.default.target.name1]",
+        ],
+        [
+            "function[UUID]",
+            "column[awsdatacatalog.default.target.name2]",
+        ],
+    ]
+    assert h.nodes_full == [
+        'literal[name="12151fd2-7586-11e9-8f9e-2a86e4085a59" type=VARCHAR position=[query_depth=0 query_width=0 statement=1 select=0 func_depth=1 func_arg=0]]',
+        "function[name=CAST type=UUID position=[query_depth=0 query_width=0 statement=1 select=0 func_depth=0 func_arg=0]]",
+        "function[name=UUID type=UNKNOWN position=[query_depth=0 query_width=0 statement=1 select=1 func_depth=0 func_arg=0]]",
+        "column[name=name1 type=UUID properties=[kind=table table=target schema=default catalog=awsdatacatalog]]",
+        "column[name=name2 type=UUID properties=[kind=table table=target schema=default catalog=awsdatacatalog]]",
+    ]
+    assert len(h.edges) == 3
 
 
 # TODO: MATCH_RECOGNIZE()

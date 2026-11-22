@@ -1,6 +1,9 @@
 import os
 import sys
 
+import pytest
+from sqlglot.errors import ParseError
+
 from tests.new_fixtures import holder as holder
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -161,6 +164,180 @@ def test__json_each_text_alias(holder):
             "column[name=v type=UNKNOWN properties=[kind=udtf table=t]]",
             "column[name=last type=VARCHAR properties=[kind=table table=target schema=public]]",
         ],
+    ]
+
+
+def test__json_table(holder):
+    sql = """
+    CREATE TABLE source (data jsonb);
+    CREATE TABLE target (name VARCHAR);
+
+    INSERT INTO public.target
+    SELECT jt.name
+    FROM public.source, JSON_TABLE(
+        public.source.data,
+        '$' COLUMNS (
+            name VARCHAR PATH '$.name'
+        )
+    ) AS jt;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        [
+            "column[public.source.data]",
+            "jsonpath[$]",
+            "jsonpath[$.name]",
+            "column[jt.name]",
+            "column[public.target.name]",
+        ]
+    ]
+
+
+def test__json_table_literal(holder):
+    sql = """
+    CREATE TABLE target (a INT, b INT, c VARCHAR);
+
+    INSERT INTO public.target
+    SELECT jt.*
+    FROM JSON_TABLE(
+      '[{"id": 1, "name": "Alice"}]',
+      '$[*]'
+      COLUMNS (
+        row_num FOR ORDINALITY,
+        user_id int PATH '$.id',
+        user_name text PATH '$.name'
+      )
+    ) AS jt;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["series[]", "column[jt.row_num]", "column[public.target.a]"],
+        [
+            'literal["[{"id": 1, "name": "Alice"}]"]',
+            "jsonpath[$[*]]",
+            "jsonpath[$.id]",
+            "column[jt.user_id]",
+            "column[public.target.b]",
+        ],
+        [
+            'literal["[{"id": 1, "name": "Alice"}]"]',
+            "jsonpath[$[*]]",
+            "jsonpath[$.name]",
+            "column[jt.user_name]",
+            "column[public.target.c]",
+        ],
+    ]
+
+
+def test__json_table_default_path(holder):
+    sql = """
+    CREATE TABLE source (data jsonb);
+    CREATE TABLE target (user_id INT);
+
+    INSERT INTO public.target
+    SELECT jt.user_id
+    FROM public.source, JSON_TABLE(public.source.data, '$[*]' COLUMNS (user_id INT)) AS jt;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        [
+            "column[public.source.data]",
+            "jsonpath[$[*]]",
+            'jsonpath[$."user_id"]',
+            "column[jt.user_id]",
+            "column[public.target.user_id]",
+        ]
+    ]
+
+
+def test__json_table_exists_column(holder):
+    with pytest.raises(ParseError) as e:
+        sql = """
+        CREATE TABLE source (data jsonb);
+        CREATE TABLE target (has_flag BOOLEAN);
+
+        INSERT INTO public.target
+        SELECT jt.has_flag
+        FROM public.source, JSON_TABLE(public.source.data, '$[*]' COLUMNS (has_flag BOOLEAN EXISTS PATH '$.flag')) AS jt;
+        """
+        h = holder(sql=sql, dialect=DIALECT)
+        assert h.paths == [
+            ["column[public.source.data]", "jsonpath[$.flag]", "column[jt.has_flag]", "column[public.target.has_flag]"]
+        ]
+    assert e.value.args[0].startswith("Invalid expression / Unexpected token. Line 7, Col: 38.")
+
+
+def test__json_table_format_json_column(holder):
+    sql = """
+    CREATE TABLE source (payload jsonb);
+    CREATE TABLE target (data JSONB);
+
+    INSERT INTO public.target
+    SELECT jt.data
+    FROM public.source, JSON_TABLE(public.source.payload, '$[*]' COLUMNS (data JSONB FORMAT JSON PATH '$.data')) AS jt;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        [
+            "column[public.source.payload]",
+            "jsonpath[$[*]]",
+            "jsonpath[$.data]",
+            "column[jt.data]",
+            "column[public.target.data]",
+        ]
+    ]
+
+
+def test__json_table_column_on_empty_error(holder):
+    with pytest.raises(ParseError) as e:
+        sql = """
+        CREATE TABLE source (data jsonb);
+        CREATE TABLE target (name VARCHAR);
+
+        INSERT INTO public.target
+        SELECT jt.name
+        FROM public.source, JSON_TABLE(public.source.data, '$[*]' COLUMNS (name VARCHAR PATH '$.name' DEFAULT 'unknown' ON EMPTY NULL ON ERROR)) AS jt;
+        """
+        h = holder(sql=sql, dialect=DIALECT)
+        assert h.paths == [
+            ["column[public.source.data]", "jsonpath[$.name]", "column[jt.name]", "column[public.target.name]"],
+            ['literal["unknown"]', "column[jt.name]", "column[public.target.name]"],
+        ]
+    assert e.value.args[0].startswith("Invalid expression / Unexpected token. Line 7, Col: 38.")
+
+
+def test__json_table_nested_path(holder):
+    sql = """
+    CREATE TABLE source (data jsonb);
+    CREATE TABLE target (sku VARCHAR);
+
+    INSERT INTO public.target
+    SELECT jt.sku
+    FROM public.source, JSON_TABLE(
+        public.source.data, '$[*]'
+        COLUMNS (
+            NESTED PATH '$.items[*]'
+                COLUMNS (
+                    sku VARCHAR PATH '$.sku'
+                )
+        )
+    ) AS jt;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        [
+            "column[public.source.data]",
+            "jsonpath[$[*]]",
+            "jsonpath[$.items[*]]",
+            "jsonpath[$.sku]",
+            "column[jt.sku]",
+            "column[public.target.sku]",
+        ]
     ]
 
 

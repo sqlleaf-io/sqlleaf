@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
+import re
 import typing as t
 
-from sqlglot import exp
+from sqlglot import exp, jsonpath
 
 from sqlleaf.models.context import GeneratorContext
 from sqlleaf.models.node import NodeAttributes, NodeKind
@@ -20,6 +21,19 @@ class JsonPathNode(NodeAttributes):
         self.selector_depth = selector_depth
 
     def with_context(self, gen_ctx: GeneratorContext) -> t.Self:
+        if isinstance(gen_ctx.expr, exp.JSONTable):
+            # The row path of a JSON_TABLE, e.g. '$[*]' in JSON_TABLE(data, '$[*]' COLUMNS (...))
+            self.name = self.selector = gen_ctx.expr.args["path"].name
+            self.selector_depth = len(self.json_selectors(gen_ctx.expr))
+            return super().with_context(gen_ctx)
+
+        if isinstance(gen_ctx.expr, exp.JSONColumnDef):
+            # A JSON_TABLE column, e.g. user_id INT PATH '$.id'. Without a PATH, Postgres defaults to the column name
+            path = gen_ctx.expr.args.get("path")
+            self.name = self.selector = path.name if path else f'$."{gen_ctx.expr.name}"'
+            self.selector_depth = len(self.json_selectors(gen_ctx.expr))
+            return super().with_context(gen_ctx)
+
         expr = t.cast(exp.JSONExtract, gen_ctx.expr)
 
         selectors = self.json_selectors(expr)
@@ -29,14 +43,27 @@ class JsonPathNode(NodeAttributes):
         return super().with_context(gen_ctx)
 
     @staticmethod
-    def json_selectors(expr: exp.JSONExtract):
+    def json_selectors(expr: exp.JSONExtract | exp.JSONValue | exp.JSONColumnDef | exp.JSONTable) -> list[exp.Expr]:
         """
         Collect all the JSON path elements recursively.
         e.g.
             SELECT my_json -> 'a' -> 'b'
         produces
             ['a', 'b']
+
+        or if we have JSON_VALUE / JSON_QUERY, then the path is a string.
+        e.g.
+            'lax $.user.age'
+        produces the elements of the parsed path:
+            ['.user', '.age']
         """
+        if isinstance(expr, (exp.JSONValue, exp.JSONColumnDef, exp.JSONTable)) or expr.args.get("json_query"):
+            path = expr.args["path"] if isinstance(expr, (exp.JSONValue, exp.JSONColumnDef, exp.JSONTable)) else expr.expression
+            path_name = path.name if path else f'$."{expr.name}"'
+            # sqlglot keeps the JSON path as a raw string with its mode prefix, so it is parsed here
+            parsed = jsonpath.parse(re.sub(r"^(lax|strict)\s+", "", path_name))
+            return list(parsed.find_all(exp.JSONPathKey, exp.JSONPathSubscript))
+
         methods = {
             # Mapping of expression -> attribute getter
             exp.JSONPathKey: None,

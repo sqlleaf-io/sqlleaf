@@ -182,8 +182,8 @@ class ColumnNode(NodeAttributes):
             self.parent_kind = TableType.DERIVED_TABLE
             return True
 
-        if isinstance(source, exp.Table) and isinstance(source.this, exp.Anonymous):
-            # Table function, e.g. SELECT * FROM FUNCTION()
+        if isinstance(source, exp.Table) and isinstance(source.this, (exp.Anonymous, exp.JSONTable)):
+            # Table function, e.g. SELECT * FROM FUNCTION() or SELECT * FROM JSON_TABLE()
             self.parent_kind = TableType.UDTF
             return True
 

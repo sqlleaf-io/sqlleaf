@@ -92,7 +92,6 @@ class BaseGenerator:
     @process.register(exp.DataType)
     @process.register(exp.Identifier)
     @process.register(exp.ColumnDef)
-    @process.register(exp.Table)
     def skip(self, expr: exp.Expr, gen_ctx: GeneratorContext, pos_ctx: PositionContext) -> t.Iterator[EdgeToCreate]:
         """
         This causes tree traversal to stop.
@@ -486,6 +485,78 @@ class BaseGenerator:
 
         gen_ctx = gen_ctx.replace(expr=source, child_node=parent)
         yield from self.process(source, gen_ctx, pos_ctx)
+
+    @process.register(exp.Table)
+    def process_table(
+        self, expr: exp.Table, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
+        if isinstance(expr.this, exp.JSONTable):
+            yield from self._process_json_table(expr, gen_ctx, pos_ctx)
+
+    def _process_json_table(
+        self, expr: exp.Table, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
+        """
+        A JSON_TABLE expression, e.g.
+        SELECT jt.user_id FROM JSON_TABLE(data, '$[*]' COLUMNS (user_id INT PATH '$.id')) AS jt
+        """
+        json_table: exp.JSONTable = expr.this
+        child_column_name = gen_ctx.get_child_node().expr.name
+
+        for col_def in json_table.find_all(exp.JSONColumnDef):
+            if col_def.name != child_column_name:
+                continue
+
+            # A `FOR ORDINALITY` column has no path and no JSON source, it is generated as a series
+            if col_def.args.get("ordinality"):
+                series = self.create_node(SeriesNode().with_context(gen_ctx).with_positions(pos_ctx))
+                yield EdgeToCreate(series, gen_ctx.child_node)
+                return
+
+            # Each `NESTED PATH` enclosing the column is a JSON path the data flows through, innermost first
+            json_defs = [col_def]
+            ancestor = col_def.parent
+            while ancestor is not None and ancestor is not json_table:
+                if isinstance(ancestor, exp.JSONColumnDef):
+                    json_defs.append(ancestor)
+                ancestor = ancestor.parent
+
+            child_node = gen_ctx.child_node
+            for json_def in json_defs:
+                parent = self.create_node(JsonPathNode().with_context(gen_ctx.replace(expr=json_def)).with_positions(pos_ctx))
+                yield EdgeToCreate(parent, child_node)
+                child_node = parent
+
+            # The row path of the JSON_TABLE, e.g. '$[*]', is applied to the data before any column path
+            parent = self.create_node(JsonPathNode().with_context(gen_ctx.replace(expr=json_table)).with_positions(pos_ctx))
+            is_row_path_in_graph = gen_ctx.graph.has_node(parent.full_name)
+            yield EdgeToCreate(parent, child_node)
+
+            # The data source is shared by all columns, so it is only walked for the first column;
+            # otherwise we duplicate the paths
+            if not is_row_path_in_graph:
+                gen_ctx = gen_ctx.replace(expr=json_table.this, child_node=parent)
+                yield from self.process(json_table.this, gen_ctx, pos_ctx)
+            return
+
+    @process.register
+    def process_json_value(
+        self, expr: exp.JSONValue, gen_ctx: GeneratorContext, pos_ctx: PositionContext
+    ) -> t.Iterator[EdgeToCreate]:
+        """
+        JSON_VALUE(payload, 'lax $.user.age' RETURNING INT DEFAULT 0 ON EMPTY NULL ON ERROR)
+
+        The extracted path flows from the source column through a jsonpath node, while
+        the ON EMPTY default is returned directly to the target.
+        """
+        parent = self.create_node(JsonPathNode().with_context(gen_ctx).with_positions(pos_ctx))
+        yield EdgeToCreate(parent, gen_ctx.child_node)
+
+        yield from self.process(expr.this, gen_ctx.replace(expr=expr.this, child_node=parent), pos_ctx)
+
+        on_condition = expr.args.get("on_condition")
+        if on_condition and (empty := on_condition.args.get("empty")):
+            yield from self.process(empty, gen_ctx.replace(expr=empty), pos_ctx)
 
     @process.register
     def process_interval(
