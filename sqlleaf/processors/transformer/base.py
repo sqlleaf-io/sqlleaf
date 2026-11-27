@@ -72,6 +72,7 @@ class BaseQueryTransformer:
         self.replace_variables_in_expression(statement)
         self._expand_to_query(statement)
         self._convert_table_to_select(statement)
+        self._rewrite_exclude_columns(statement)
         self._unwrap_union_operands(statement)
         self._redirect_updatable_view_target(statement)
 
@@ -226,6 +227,41 @@ class BaseQueryTransformer:
             if source:
                 table = source.pop()
                 statement.set("expression", exp.select("*").from_(table))
+
+    def _rewrite_exclude_columns(self, statement: E) -> None:
+        """
+        Rewrite the Athena exclude_columns table function into a star with an EXCEPT list, so that it is processed
+        like a regular SELECT.
+
+        Transforms:
+            SELECT * FROM TABLE(exclude_columns(input => TABLE(db.tbl), columns => DESCRIPTOR(col1, col2)))
+        Into:
+            SELECT * EXCEPT (col1, col2) FROM db.tbl
+        """
+        for table in list(statement.find_all(exp.Table)):
+            wrapper = table.this
+            if not (isinstance(wrapper, exp.Anonymous) and wrapper.name.upper() == "TABLE" and wrapper.expressions):
+                continue
+
+            func = wrapper.expressions[0]
+            if not (isinstance(func, exp.Anonymous) and func.name.lower() == "exclude_columns"):
+                continue
+
+            kwargs = {arg.this.name.lower(): arg.expression for arg in func.expressions if isinstance(arg, exp.Kwarg)}
+            input_table = kwargs.get("input")
+            descriptor = kwargs.get("columns")
+            if not (isinstance(input_table, exp.Anonymous) and input_table.name.upper() == "TABLE"):
+                continue
+            if not (isinstance(descriptor, exp.Anonymous) and descriptor.name.upper() == "DESCRIPTOR"):
+                continue
+
+            select = table.find_ancestor(exp.Select)
+            for star in select.expressions:
+                if isinstance(star, exp.Star):
+                    star.set("except_", [col.copy() for col in descriptor.expressions])
+
+            source = exp.to_table(input_table.expressions[0].sql(dialect=self.query.dialect), dialect=self.query.dialect)
+            table.replace(source)
 
     def _unwrap_union_operands(self, statement: E) -> None:
         """

@@ -14,7 +14,7 @@ class WindowNode(NodeAttributes):
 
     def with_context(self, gen_ctx: GeneratorContext) -> t.Self:
         expr = gen_ctx.expr.this
-        if isinstance(expr, exp.IgnoreNulls):
+        if isinstance(expr, (exp.IgnoreNulls, exp.RespectNulls)):
             expr = expr.this
         self.name = util.calculate_function_name(expr, gen_ctx.query.dialect)
 

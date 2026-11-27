@@ -403,6 +403,26 @@ def test__select_last_value_ignore_nulls(holder):
     assert len(h.edges) == 3
 
 
+def test__select_first_value_respect_nulls(holder):
+    sql = """
+    CREATE TABLE source (ts TIMESTAMP, age INT);
+    CREATE TABLE target (ts TIMESTAMP, age INT);
+    INSERT INTO target (ts, age)
+    SELECT ts, FIRST_VALUE(age) RESPECT NULLS OVER (ORDER BY ts) AS age FROM source;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[awsdatacatalog.default.source.ts]", "column[awsdatacatalog.default.target.ts]"],
+        [
+            "column[awsdatacatalog.default.source.age]",
+            "window[FIRST_VALUE]",
+            "column[awsdatacatalog.default.target.age]",
+        ],
+    ]
+    assert len(h.edges) == 3
+
+
 def test__select_unnest_sequence_dates(holder):
     sql = """
     CREATE TABLE target (calendar_day DATE);

@@ -229,7 +229,7 @@ class BaseGenerator:
         parent = self.create_node(WindowNode().with_context(gen_ctx).with_positions(pos_ctx))
         yield EdgeToCreate(parent, gen_ctx.child_node)
 
-        func = expr.this.this if isinstance(expr.this, exp.IgnoreNulls) else expr.this
+        func = expr.this.this if isinstance(expr.this, (exp.IgnoreNulls, exp.RespectNulls)) else expr.this
         grandparents = util.get_function_args(expr=func)
         yield from self.do_grandparents(grandparents, parent, gen_ctx, pos_ctx)
 
