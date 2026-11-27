@@ -31,13 +31,10 @@ from sqlleaf.models.query import (
 )
 from sqlleaf.path import NodeIndex
 
-ColumnMapping = t.Union[dict, str, list]
+ColumnMapping = dict | str | list
 FunctionCallable = ProcedureQuery | UserDefinedFunctionQuery
 
 logger = logging.getLogger("sqlleaf")
-
-
-ParamMode = t.Literal["IN", "OUT", "INOUT"]
 
 
 @dataclass
@@ -45,7 +42,7 @@ class ParamBinding:
     """One parameter's binding for the lifetime of a single CALL."""
 
     value: exp.Expr
-    mode: ParamMode
+    mode: t.Literal["IN", "OUT", "INOUT"]
     arg_name: str | None = None
 
     @property
@@ -76,6 +73,7 @@ class Variables:
     """
     Tracks the state of every variable currently available to SQL statements.
     """
+
     def __init__(self):
         # An initial scope exists for the top-level statements
         self.scopes: list[VariableScope] = [VariableScope()]
@@ -301,8 +299,7 @@ class ObjectMapping(MappingSchema):
 
         # Normalize the table parts (catalog.db.table.column)
         table = query.get_target_as_table()
-        normalized_table = self._normalize_table(table, dialect=dialect, normalize=normalize)
-        parts = self.table_parts(normalized_table)
+        parts = list(self._normalize_table_parts(table, dialect=dialect, normalize=normalize))
 
         if kind == "udf":
             # Store the UDF with other UDFs of the same name
@@ -357,6 +354,16 @@ class ObjectMapping(MappingSchema):
     def find(self, table: exp.Table, raise_on_missing: bool = True, ensure_data_types: bool = False) -> t.Any | None:
         self.handle_missing_object(table)
         return super().find(table, raise_on_missing=raise_on_missing, ensure_data_types=ensure_data_types)
+
+    def column_names(
+        self,
+        table: exp.Table | str,
+        only_visible: bool = False,
+        dialect: DialectType = None,
+        normalize: bool | None = None,
+    ) -> list[str]:
+        self.handle_missing_object(table)
+        return super().column_names(table, only_visible=only_visible, dialect=dialect, normalize=normalize)
 
     def find_columns_for_table(
         self,
