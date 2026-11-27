@@ -351,10 +351,6 @@ class ObjectMapping(MappingSchema):
         if self.system_object_loader is not None:
             self.system_object_loader(self, object, kind)
 
-    def find(self, table: exp.Table, raise_on_missing: bool = True, ensure_data_types: bool = False) -> t.Any | None:
-        self.handle_missing_object(table)
-        return super().find(table, raise_on_missing=raise_on_missing, ensure_data_types=ensure_data_types)
-
     def column_names(
         self,
         table: exp.Table | str,

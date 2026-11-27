@@ -578,15 +578,13 @@ class BaseQueryTransformer:
         """
         dialect = self.query.dialect
 
-        if dialect == "mysql":
-            db = self.query.object_mapping.current_user_schema
-        elif dialect in ["athena", "postgres"]:
-            db = self.query.object_mapping.current_user_schema
-        else:
-            db = ""
+        db = self.query.object_mapping.current_user_schema
 
-        if DialectConfig(dialect).DEFAULT_TEMPORARY_SCHEMA:
-            self._qualify_temporary_tables(statement)
+        dialect_config = DialectConfig(dialect)
+        if dialect_config.DEFAULT_TEMPORARY_SCHEMA:
+            self._qualify_tables_in_schema(statement, dialect_config.DEFAULT_TEMPORARY_SCHEMA)
+        if dialect_config.DEFAULT_SYSTEM_SCHEMA:
+            self._qualify_tables_in_schema(statement, dialect_config.DEFAULT_SYSTEM_SCHEMA)
 
         qualify.qualify(
             statement,
@@ -599,21 +597,20 @@ class BaseQueryTransformer:
             quote_identifiers=False,
         )
 
-    def _qualify_temporary_tables(self, statement: E) -> None:
+    def _qualify_tables_in_schema(self, statement: E, schema: str) -> None:
         """
-        The dialect searches its temporary schema before the user schema, so an unqualified table that is a temporary table resolves to it.
+        The dialect searches the given schema before the user schema, so an unqualified table that exists in that schema resolves to it.
         """
-        temporary_schema = DialectConfig(self.query.dialect).DEFAULT_TEMPORARY_SCHEMA
         cte_names = {cte.alias for cte in statement.find_all(exp.CTE)}
         for table in statement.find_all(exp.Table):
             if table.db or not table.name or table.name in cte_names:
                 continue
 
-            temp_table = self.query.object_mapping.lookup_table_query(
-                table=exp.table_(table.name, db=temporary_schema), raise_on_missing=False
+            schema_table = self.query.object_mapping.lookup_table_query(
+                table=exp.table_(table.name, db=schema), raise_on_missing=False
             )
-            if temp_table is not None:
-                table.set("db", exp.to_identifier(temporary_schema))
+            if schema_table is not None:
+                table.set("db", exp.to_identifier(schema))
 
     def _add_missing_table_alias_columns(self, statement: E) -> None:
         """
