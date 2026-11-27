@@ -47,7 +47,8 @@ class CTASQuery(Query):
             source_info=SourceInfo(expression=source, type=source_type),
             target_info=TargetInfo(expression=target, type=target_type),
         )
-        self.column_defs: list[exp.ColumnDef] = columns
+        self.column_defs: list[exp.ColumnDef] = [col_def for col_def in columns if not self._is_invisible(col_def)]
+        self.invisible_column_defs: list[exp.ColumnDef] = [col_def for col_def in columns if self._is_invisible(col_def)]
         self.system_column_defs: list[exp.ColumnDef] = system_columns
         self.inherited_by: list[TableQuery] = []
 
@@ -58,5 +59,14 @@ class CTASQuery(Query):
 
         self.property: str = util.find_property(expr, self.target_info.expression, dialect)
 
-    def get_column_defs(self, include_system: bool = False) -> list[exp.ColumnDef]:
-        return self.column_defs + self.system_column_defs if include_system else self.column_defs
+    @staticmethod
+    def _is_invisible(col_def: exp.ColumnDef) -> bool:
+        return col_def.find(exp.InvisibleColumnConstraint) is not None
+
+    def get_column_defs(self, include_system: bool = False, include_invisible: bool = False) -> list[exp.ColumnDef]:
+        column_defs = self.column_defs
+        if include_invisible:
+            column_defs = column_defs + self.invisible_column_defs
+        if include_system:
+            column_defs = column_defs + self.system_column_defs
+        return column_defs

@@ -31,9 +31,9 @@ class DialectConfig:
     DEFAULT_USER_SCHEMA = ""
     DEFAULT_SYSTEM_SCHEMA = ""
     # The schema that temporary objects are created in, if the dialect has one
-    DEFAULT_TEMPORARY_SCHEMA: str | None = None
+    DEFAULT_TEMPORARY_SCHEMA: str = ""
     # The language of procedures that do not declare one explicitly
-    DEFAULT_PROCEDURE_LANGUAGE: str | None = None
+    DEFAULT_PROCEDURE_LANGUAGE: str = ""
     # Metadata fields, keyed by their suffix (e.g. '$files' in 'my_table$files'), mapped to their column names and types
     METADATA_FIELDS: dict[str, dict[str, str]] = {}
 

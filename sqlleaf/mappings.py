@@ -203,7 +203,7 @@ class ObjectMapping(MappingSchema):
         self.current_catalog: str = self.dialect_config.DEFAULT_CATALOG
         self.current_user_schema: str = self.dialect_config.DEFAULT_USER_SCHEMA
         self.current_system_schema: str = self.dialect_config.DEFAULT_SYSTEM_SCHEMA
-        self.temporary_schema: str | None = self.dialect_config.DEFAULT_TEMPORARY_SCHEMA
+        self.temporary_schema: str = self.dialect_config.DEFAULT_TEMPORARY_SCHEMA
         # Load system objects lazily from disk
         self.system_object_loader = object_loader
         self.variables = Variables()
@@ -329,6 +329,10 @@ class ObjectMapping(MappingSchema):
                 normalize=normalize,
                 match_depth=match_depth,
             )
+            if kind == "table":
+                # Invisible columns are excluded from a bare star, but can still be referenced by name
+                visible_columns = {col.name for col in query.get_column_defs(include_system=True)}
+                nested_set(self.visible, tuple(reversed(parts)), visible_columns)
 
     def _add_columns_for_table(
         self,

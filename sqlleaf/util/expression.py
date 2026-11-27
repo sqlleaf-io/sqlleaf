@@ -245,6 +245,8 @@ def qualify_and_annotate(
 ) -> None:
     stmt = qualify(
         expr,
+        db=object_mapping.get_current_schema(expr),
+        catalog=object_mapping.current_catalog,
         schema=object_mapping,
         expand_stars=True,
         expand_alias_refs=True,

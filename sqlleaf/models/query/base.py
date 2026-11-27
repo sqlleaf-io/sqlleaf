@@ -199,7 +199,7 @@ class Query:
         table_query = self.object_mapping.get_table_or_stage(table, raise_on_missing=False)
         if not table_query:
             return []
-        return [col.copy() for col in table_query.get_column_defs()]
+        return [col.copy() for col in table_query.get_column_defs(include_invisible=True)]
 
     def get_sources(self) -> list[exp.Expr]:
         """
@@ -238,14 +238,17 @@ class Query:
     def get_ctes(self) -> list:
         return []
 
-    def get_column_defs(self, include_system: bool = False) -> list[exp.ColumnDef]:
+    def get_column_defs(self, include_system: bool = False, include_invisible: bool = False) -> list[exp.ColumnDef]:
         return self.column_defs
 
     def get_column_names_with_types(self, include_system: bool = False) -> dict[str, str]:
         """
         Used by sqlglot's MappingSchema
         """
-        columns = {col.name: str(col.kind) for col in self.get_column_defs(include_system=include_system)}
+        columns = {
+            col.name: str(col.kind)
+            for col in self.get_column_defs(include_system=include_system, include_invisible=True)
+        }
         return columns
 
     @property

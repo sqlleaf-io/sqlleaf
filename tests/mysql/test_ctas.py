@@ -216,3 +216,61 @@ def test__ctas_table_with_columns_from_values_alias_mismatch(holder):
         ["literal[5]", "column[v.z]", "column[t1.z]"],
         ["literal[6]", "column[v.z]", "column[t1.z]"],
     ]
+
+
+def test__ctas_star_chain_omits_invisible_column(holder):
+    sql = """
+    CREATE TABLE source (id INT, secret INT INVISIBLE, name VARCHAR(10));
+    CREATE TABLE t_star AS SELECT * FROM source;
+    CREATE TABLE t_chain AS SELECT * FROM t_star;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[source.id]", "column[t_star.id]", "column[t_chain.id]"],
+        ["column[source.name]", "column[t_star.name]", "column[t_chain.name]"],
+    ]
+
+
+def test__ctas_explicit_select_of_invisible_column_is_visible_in_chain(holder):
+    sql = """
+    CREATE TABLE source (id INT, secret INT INVISIBLE, name VARCHAR(10));
+    CREATE TABLE t_explicit AS SELECT secret FROM source;
+    CREATE TABLE t_chain AS SELECT * FROM t_explicit;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[source.secret]", "column[t_explicit.secret]", "column[t_chain.secret]"],
+    ]
+
+
+def test__ctas_star_into_invisible_target_column_chain_omits_it(holder):
+    sql = """
+    CREATE TABLE source (id INT, secret INT INVISIBLE, name VARCHAR(10));
+    CREATE TABLE t_hidden (secret_copy INT INVISIBLE) AS SELECT * FROM source;
+    CREATE TABLE t_chain AS SELECT * FROM t_hidden;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[source.id]", "column[t_hidden.id]", "column[t_chain.id]"],
+        ["column[source.name]", "column[t_hidden.name]", "column[t_chain.name]"],
+        ["null[NULL]", "column[t_hidden.secret_copy]"],
+    ]
+
+
+def test__ctas_explicit_select_into_invisible_target_column(holder):
+    sql = """
+    CREATE TABLE source (id INT, secret INT INVISIBLE, name VARCHAR(10));
+    CREATE TABLE t_hidden (flag INT INVISIBLE) AS SELECT secret, name FROM source;
+    CREATE TABLE t_chain AS SELECT * FROM t_hidden;
+    CREATE TABLE t_named AS SELECT flag FROM t_hidden;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["column[source.secret]", "column[t_hidden.secret]", "column[t_chain.secret]"],
+        ["column[source.name]", "column[t_hidden.name]", "column[t_chain.name]"],
+        ["null[NULL]", "column[t_hidden.flag]", "column[t_named.flag]"],
+    ]

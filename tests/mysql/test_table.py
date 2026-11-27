@@ -76,3 +76,64 @@ def test__table_paren(holder):
     h = holder(sql=sql, dialect=DIALECT)
 
     assert h.queries_transformed[1].statement.sql(dialect=DIALECT) == "SELECT t.a AS a, t.b AS b FROM t AS t"
+
+
+def test__table_invisible_column_not_selected_by_star(holder):
+    sql = """
+    CREATE TABLE source (id INT, secret INT INVISIBLE, name VARCHAR(10));
+    CREATE TABLE target (id INT, name VARCHAR(10));
+    INSERT INTO target SELECT * FROM source;
+    """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert (
+        h.queries_transformed[2].statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (id, name) SELECT source.id AS id, source.name AS name FROM source AS source"
+    )
+    assert h.paths == [
+        ["column[source.id]", "column[target.id]"],
+        ["column[source.name]", "column[target.name]"],
+    ]
+
+
+def test__table_invisible_column_named_explicitly(holder):
+    sql = """
+        CREATE TABLE source (id INT, secret INT INVISIBLE, name VARCHAR(10));
+        CREATE TABLE target (id INT, name VARCHAR(10));
+        INSERT INTO target (name) SELECT secret FROM source;
+        """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert (
+        h.queries_transformed[2].statement.sql(dialect=DIALECT)
+        == "INSERT INTO target (name) SELECT source.secret AS name FROM source AS source"
+    )
+    assert h.paths == [["column[source.secret]", "column[target.name]"]]
+
+
+def test__table_invisible_column_named_insert_target(holder):
+    sql = """
+        CREATE TABLE source (id INT, secret INT INVISIBLE, name VARCHAR(10));
+        INSERT INTO source (id, secret, name) SELECT 1, 2, 'a';
+        """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [
+        ["literal[1]", "column[source.id]"],
+        ['literal["a"]', "column[source.name]"],
+        ["literal[2]", "column[source.secret]"],
+    ]
+
+
+def test__table_like_copies_invisible_column(holder):
+    sql = """
+        CREATE TABLE source (id INT, secret INT INVISIBLE, name VARCHAR(10));
+        CREATE TABLE target (LIKE source);
+        INSERT INTO target (secret) SELECT id FROM source;
+        """
+    h = holder(sql=sql, dialect=DIALECT)
+
+    assert h.paths == [["column[source.id]", "column[target.secret]"]]
+
+
+# TODO: SET SESSION sql_generate_invisible_primary_key=ON to make 'CREATE TABLE' add a column 'my_row_id'

@@ -73,6 +73,7 @@ class TableQuery(Query):
         )
         self.column_defs: list[exp.ColumnDef] = []
         self.system_column_defs: list[exp.ColumnDef] = []
+        self.invisible_column_defs: list[exp.ColumnDef] = []
         self.inherits: list[TableQuery] = []
         self.inherited_by: list[TableQuery] = []
 
@@ -89,8 +90,17 @@ class TableQuery(Query):
     def is_external(self) -> bool:
         return
 
-    def get_column_defs(self, include_system: bool = False) -> list[exp.ColumnDef]:
-        return self.column_defs + self.system_column_defs if include_system else self.column_defs
+    def get_column_defs(self, include_system: bool = False, include_invisible: bool = False) -> list[exp.ColumnDef]:
+        column_defs = self.column_defs
+        if include_invisible:
+            column_defs = column_defs + self.invisible_column_defs
+        if include_system:
+            column_defs = column_defs + self.system_column_defs
+        return column_defs
+
+    @staticmethod
+    def _is_invisible(col_def: exp.ColumnDef) -> bool:
+        return col_def.find(exp.InvisibleColumnConstraint) is not None
 
     def set_column_defs(self) -> None:
         """
@@ -119,7 +129,8 @@ class TableQuery(Query):
             if default := col_def.find(exp.DefaultColumnConstraint):
                 default.this.type = col_def.kind
 
-        self.column_defs = all_columns
+        self.column_defs = [col_def for col_def in all_columns if not self._is_invisible(col_def)]
+        self.invisible_column_defs = [col_def for col_def in all_columns if self._is_invisible(col_def)]
         self.system_column_defs = DialectConfig(self.dialect).SYSTEM_COLUMNS
 
     def _collect_inherited_columns(
@@ -166,7 +177,7 @@ class TableQuery(Query):
 
         # Look up the like-table's columns and determine which properties to transfer
         parent_table_query = t.cast(TableQuery, object_mapping.lookup_table_query(table=like_property.this))
-        parent_columns = parent_table_query.get_column_defs()
+        parent_columns = parent_table_query.get_column_defs(include_invisible=True)
 
         for parent_col_def in parent_columns:
             new_col = parent_col_def.copy()

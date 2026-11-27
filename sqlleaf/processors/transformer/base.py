@@ -800,7 +800,7 @@ class BaseQueryTransformer:
         if not table_query:
             raise exception.SqlLeafException(message=f"Unknown target table: {str(exp.table_name(child_table))}")
 
-        table_columns = [c.name for c in table_query.get_column_defs(include_system=True)]
+        table_columns = [c.name for c in table_query.get_column_defs(include_system=True, include_invisible=True)]
         selects = statement.selects
         insert_columns = self._extract_insert_columns(statement, child_table, include_system=True)
 
